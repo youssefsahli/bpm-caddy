@@ -42491,7 +42491,10 @@ impl App {
                     // The strength of each ingredient, read off the
                     // formula itself: « 5 g pour 100 g » is 5 %, and
                     // that is the number the prescription argues about.
-                    let base = crate::codex::parse_amount(&prep.yield_amount);
+                    // Lu comme la formule et le rendement le sont : « 1.000 mL »
+                    // est mille (le titre s'écrivait « 83300 % »).
+                    let yield_read = crate::codex::thousands_dot(&prep.yield_amount);
+                    let base = crate::codex::parse_amount(&yield_read);
                     egui::Grid::new(("codex_formula", prep.id))
                         .num_columns(4)
                         .spacing([14.0, 5.0])
@@ -42628,7 +42631,7 @@ impl App {
         }
         if delete {
             session.codex_confirm_delete = false;
-            match session.db.delete_preparation(prep.id, &prep.name) {
+            match session.db.delete_preparation(prep) {
                 Ok(true) => {
                     session.codex_open = None;
                     session.reload_codex();
@@ -42650,7 +42653,10 @@ impl App {
         motif::section(ui, tr("codex_calc"));
         ui.add_space(4.0);
         let calc = &mut session.codex_calc;
-        let num = |s: &str| crate::codex::parse_amount(s).map(|(v, _)| v);
+        // « 1.000 » est mille ici aussi, comme dans les formules : lu 1, la
+        // dilution répondait mille fois trop peu.
+        let num =
+            |s: &str| crate::codex::parse_amount(&crate::codex::thousands_dot(s)).map(|(v, _)| v);
         let field = |ui: &mut egui::Ui, value: &mut String, hint: &str| {
             motif::field(
                 ui,
@@ -42670,7 +42676,7 @@ impl App {
                 ui.label(
                     egui::RichText::new(trf(
                         "codex_calc_mass",
-                        crate::codex::format_quantity(crate::codex::mass_for_percent(p, t)),
+                        crate::codex::format_scaled(crate::codex::mass_for_percent(p, t)),
                     ))
                     .size(motif::pt(ui, 12.0))
                     .strong()
@@ -42697,8 +42703,8 @@ impl App {
                             egui::RichText::new(trn(
                                 "codex_calc_take",
                                 &[
-                                    &crate::codex::format_quantity(take),
-                                    &crate::codex::format_quantity(v - take),
+                                    &crate::codex::format_scaled(take),
+                                    &crate::codex::format_scaled(v - take),
                                 ],
                             ))
                             .size(motif::pt(ui, 12.0))
@@ -42731,7 +42737,7 @@ impl App {
                 ui.label(
                     egui::RichText::new(trf(
                         "codex_calc_batch",
-                        crate::codex::format_quantity(crate::codex::capsule_batch_mass(d, n, over)),
+                        crate::codex::format_scaled(crate::codex::capsule_batch_mass(d, n, over)),
                     ))
                     .size(motif::pt(ui, 12.0))
                     .strong()

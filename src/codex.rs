@@ -81,8 +81,9 @@ pub fn parse_formula(text: &str) -> Vec<FormulaLine> {
             // quantité ne se lisait pas et l'excipient restait à 100 g
             // quand le reste passait à 60.
             let rest = if qsp {
+                // « q. s. p. 100 g », « qsp : 100 g » aussi.
                 let after = written
-                    .trim_start_matches(|c: char| c.is_alphabetic() || c == '.')
+                    .trim_start_matches(|c: char| c.is_alphabetic() || matches!(c, '.' | ' ' | ':'))
                     .trim();
                 let lower = after.to_lowercase();
                 ["pour ", "ad "]
@@ -111,16 +112,20 @@ pub fn parse_formula(text: &str) -> Vec<FormulaLine> {
 /// Does this quantity open with a « qsp » (quantité suffisante pour),
 /// however it is spelled at the counter?
 fn starts_with_qsp(text: &str) -> bool {
-    let head: String = text
-        .chars()
-        .take_while(|c| c.is_alphabetic() || *c == '.')
-        .collect::<String>()
-        .to_lowercase();
-    // Le point final aussi : « q.s.p. » est l'écriture la plus
-    // courante, et lu « q.s.p. » il n'était pas reconnu — l'excipient ne
-    // suivait pas le changement de quantité, et la préparation sortait
-    // à une autre concentration.
-    matches!(head.trim_end_matches('.'), "qsp" | "q.s.p" | "qs" | "q.s")
+    // Espaces ôtés : « q. s. p. » s'écrit aussi. Le point final aussi :
+    // « q.s.p. » est l'écriture la plus courante, et lu « q.s.p. » il
+    // n'était pas reconnu — l'excipient ne suivait pas le changement de
+    // quantité, et la préparation sortait à une autre concentration.
+    let flat: String = text.to_lowercase().chars().filter(|c| *c != ' ').collect();
+    ["q.s.p.", "q.s.p", "qsp", "q.s.", "q.s", "qs"]
+        .iter()
+        .any(|p| {
+            flat.strip_prefix(p).is_some_and(|rest| {
+                !rest.starts_with(char::is_alphabetic)
+                    || rest.starts_with("pour")
+                    || rest.starts_with("ad")
+            })
+        })
 }
 
 /// **« 1.000 mL » est mille millilitres** dans une formule écrite à la
@@ -129,21 +134,33 @@ fn starts_with_qsp(text: &str) -> bool {
 /// recalcul. Un point devant exactement trois chiffres, après un nombre
 /// de un à trois chiffres qui n'est pas zéro, et sans virgule, est un
 /// séparateur de milliers ; « 0.500 » ou « 12.5 » restent des décimaux.
-fn thousands_dot(text: &str) -> String {
+pub fn thousands_dot(text: &str) -> String {
     let head: String = text
         .chars()
         .take_while(|c| c.is_ascii_digit() || *c == '.' || *c == ',')
         .collect();
-    let groups: Vec<&str> = head.split('.').collect();
+    // « 1.000,5 g » aussi : la partie entière groupée, puis la virgule
+    // décimale — lu tel quel, il ne se lisait pas du tout, et la ligne
+    // restait à sa quantité écrite quand le reste était recalculé.
+    let (int, frac) = match head.split_once(',') {
+        Some((i, f)) => (i, Some(f)),
+        None => (head.as_str(), None),
+    };
+    let groups: Vec<&str> = int.split('.').collect();
     let grouped = groups.len() >= 2
-        && !head.contains(',')
+        && frac.is_none_or(|f| !f.contains(['.', ',']))
         && (1..=3).contains(&groups[0].len())
         && !groups[0].starts_with('0')
         && groups[1..]
             .iter()
             .all(|g| g.len() == 3 && g.chars().all(|c| c.is_ascii_digit()));
     if grouped {
-        format!("{}{}", head.replace('.', ""), &text[head.len()..])
+        let int = int.replace('.', "");
+        let number = match frac {
+            Some(f) => format!("{int},{f}"),
+            None => int,
+        };
+        format!("{number}{}", &text[head.len()..])
     } else {
         text.to_owned()
     }
@@ -230,16 +247,51 @@ pub fn format_quantity(value: f64) -> String {
 /// the units disagree — a formula for 100 g does not scale to 60 mL,
 /// and guessing there would be worse than saying nothing.
 pub fn scale_factor(yield_amount: &str, target: &str) -> Option<f64> {
-    let (yield_amount, target) = (thousands_dot(yield_amount), thousands_dot(target));
+    // La quantité écrite elle-même ne se recalcule pas : un rendement
+    // « qsp 100 g » recopié en cible ne se lisait pas, et l'impression
+    // restait refusée à la taille écrite.
+    if yield_amount.trim() == target.trim() && !target.trim().is_empty() {
+        return Some(1.0);
+    }
+    let strip = |t: &str| -> String {
+        let t = t.trim();
+        if starts_with_qsp(t) {
+            t.trim_start_matches(|c: char| c.is_alphabetic() || matches!(c, '.' | ' ' | ':'))
+                .trim()
+                .to_owned()
+        } else {
+            t.to_owned()
+        }
+    };
+    let (yield_amount, target) = (
+        thousands_dot(&strip(yield_amount)),
+        thousands_dot(&strip(target)),
+    );
     let (base, base_unit) = parse_amount(&yield_amount)?;
     let (want, want_unit) = parse_amount(&target)?;
     if base <= 0.0 || want <= 0.0 {
         return None;
     }
-    if !base_unit.eq_ignore_ascii_case(want_unit) {
+    if !same_unit(base_unit, want_unit) {
         return None;
     }
     Some(want / base)
+}
+
+/// Deux unités sont-elles la même ? La casse, et le pluriel : « 1 gélule »
+/// se recalcule pour « 30 gélules », « 12 suppositoires » pour « 1
+/// suppositoire ».
+fn same_unit(a: &str, b: &str) -> bool {
+    let norm = |u: &str| {
+        let u = u.trim().to_lowercase();
+        let u = u
+            .strip_suffix('s')
+            .or_else(|| u.strip_suffix('x'))
+            .unwrap_or(&u)
+            .to_owned();
+        u
+    };
+    norm(a) == norm(b)
 }
 
 /// The mass of active ingredient in `total` of a preparation titrated
@@ -296,6 +348,22 @@ mod tests {
         assert_eq!(lines[1].quantity, Some(0.5));
         assert_eq!(lines[2].quantity, Some(12.5));
         assert_eq!(lines[0].scaled(0.5), "500 mL");
+        // Groupée à la française avec sa virgule décimale.
+        let lines = parse_formula(
+            "Glycérol | 1.000,5 g\nVaseline | q. s. p. 100 g\nLanoline | qsp : 100 g",
+        );
+        assert_eq!(lines[0].quantity, Some(1000.5));
+        assert_eq!(lines[1].scaled(0.6), "qsp 60 g");
+        assert_eq!(lines[2].scaled(0.6), "qsp 60 g");
+        // Le pluriel, et un rendement écrit « qsp ».
+        assert_eq!(scale_factor("1 gélule", "30 gélules"), Some(30.0));
+        assert_eq!(
+            scale_factor("12 suppositoires", "6 suppositoires"),
+            Some(0.5)
+        );
+        assert_eq!(scale_factor("qsp 100 g", "qsp 100 g"), Some(1.0));
+        assert_eq!(scale_factor("qsp 100 g", "50 g"), Some(0.5));
+        assert_eq!(scale_factor("100 g", "60 mL"), None);
     }
 
     /// « 1 000 g » est mille grammes : l'espace des milliers ne coupe

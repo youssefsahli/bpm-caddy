@@ -48492,12 +48492,30 @@ impl Db {
     }
 
     /// Remove a preparation. Compare-and-set on the name displayed.
-    pub fn delete_preparation(&self, id: i64, expected_name: &str) -> Result<bool, String> {
+    ///
+    /// **Comparée en entier**, comme l'écriture : une formule réécrite
+    /// ailleurs entre-temps ne part pas sans un mot.
+    pub fn delete_preparation(&self, expected: &Preparation) -> Result<bool, String> {
         let changed = self
             .conn
             .execute(
-                "DELETE FROM preparations WHERE id = ?1 AND name = ?2",
-                (id, expected_name),
+                "DELETE FROM preparations
+                 WHERE id = ?1 AND name = ?2 AND formula = ?3 AND form = ?4
+                   AND indication = ?5 AND yield_amount = ?6 AND method = ?7
+                   AND conservation = ?8 AND caution = ?9 AND tags = ?10 AND sources = ?11",
+                rusqlite::params![
+                    expected.id,
+                    &expected.name,
+                    &expected.formula,
+                    &expected.form,
+                    &expected.indication,
+                    &expected.yield_amount,
+                    &expected.method,
+                    &expected.conservation,
+                    &expected.caution,
+                    &expected.tags,
+                    &expected.sources,
+                ],
             )
             .map_err(|e| e.to_string())?;
         Ok(changed == 1)
@@ -62958,12 +62976,29 @@ mod tests {
         // And one added by hand behaves like any other.
         let id = db.add_preparation("Pommade de l'officine").unwrap();
         assert!(db.preparations().unwrap().iter().any(|p| p.id == id));
-        assert!(!db.delete_preparation(id, "Autre nom").unwrap());
-        assert!(db.delete_preparation(id, "Pommade de l'officine").unwrap());
+        let mine = db
+            .preparations()
+            .unwrap()
+            .into_iter()
+            .find(|p| p.id == id)
+            .unwrap();
+        let other = Preparation {
+            name: "Autre nom".to_owned(),
+            ..mine.clone()
+        };
+        assert!(!db.delete_preparation(&other).unwrap());
+        // Une formule réécrite ailleurs entre-temps ne part pas non plus.
+        let rewritten = Preparation {
+            formula: "Vaseline | 100 g".to_owned(),
+            ..mine.clone()
+        };
+        assert!(db.update_preparation(&rewritten, &mine).unwrap());
+        assert!(!db.delete_preparation(&mine).unwrap());
+        assert!(db.delete_preparation(&rewritten).unwrap());
         // A shipped one the team deletes, or renames, does not come back
         // at the next launch under its shipped name.
         let first = db.preparations().unwrap()[0].clone();
-        assert!(db.delete_preparation(first.id, &first.name).unwrap());
+        assert!(db.delete_preparation(&first).unwrap());
         let second = db.preparations().unwrap()[0].clone();
         let mut renamed = second.clone();
         renamed.name = format!("{} (officine)", second.name);

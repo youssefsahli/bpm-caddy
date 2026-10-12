@@ -74,6 +74,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read mark); the conversation on screen counts as read when messages
   arrive; a file chosen for an officine whose conversation failed to open
   no longer sticks to the previous one.
+- Codex: « 1.000,5 g » is read as a thousand grams and a half, and « q. s.
+  p. 100 g » or « qsp : 100 g » as a qsp line — both stayed at their
+  written quantity while the rest of the formula was scaled; « 1 gélule »
+  scales to « 30 gélules » (singular and plural were two units); a yield
+  written « qsp 100 g » can be printed; the Titre column and the
+  calculators read « 1.000 » as a thousand, and the calculators keep a
+  trace quantity instead of printing 0; deleting a preparation compares
+  the whole formula.
 
 ## [0.401.0] - 2026-10-12
 

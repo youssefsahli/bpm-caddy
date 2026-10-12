@@ -150,6 +150,11 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   (comme `seeds_here`), ou dédoublonnage par `uid` à l'application —
   l'index unique ne peut pas s'ajouter sans nettoyer les doublons déjà
   rangés ;
+- codex : un point devant trois chiffres reste lu comme séparateur de
+  milliers même dans une formule qui écrit ailleurs « 12.5 » (« 2.500 g »
+  lu 2 500) ; « À peser » laisse un pourcentage tel quel (pas de masse) et
+  « 5 % soit 5 g » ne recalcule pas sa masse ; la colonne « Titre » donne
+  la part d'une solution diluée, pas la concentration de son principe ;
 - téléphone : la suppression d'un rendez-vous de l'agenda ne compare que
   le titre ; la base peut s'ouvrir deux fois (deux déverrouillages) et
   n'est jamais refermée en quittant par Retour. Le code Kotlin modifié le
