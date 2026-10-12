@@ -292,6 +292,21 @@ fn read_at_most(path: &std::path::Path, limit: usize) -> std::io::Result<Vec<u8>
 /// numérisation recto verso en haute définition comprise.
 const SCANNER_PATIENCE: std::time::Duration = std::time::Duration::from_secs(120);
 
+/// Le mot de passe passé par `BPM_CADDY_PASSWORD` (crochet des
+/// captures et de la commande `audit`), **lu une fois puis retiré de
+/// l'environnement** : laissé, il passait à chaque programme lancé —
+/// `xdg-open`, le lecteur PDF, le navigateur — et se lisait dans leur
+/// `/proc/<pid>/environ`. Appelé tôt dans `main`, avant tout fil.
+pub fn env_password() -> Option<String> {
+    static ONCE: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    ONCE.get_or_init(|| {
+        let pw = std::env::var("BPM_CADDY_PASSWORD").ok();
+        std::env::remove_var("BPM_CADDY_PASSWORD");
+        pw
+    })
+    .clone()
+}
+
 /// Deux secrets égaux, comparés en temps constant.
 fn same_secret(a: &str, b: &str) -> bool {
     let (a, b) = (a.as_bytes(), b.as_bytes());
@@ -16794,7 +16809,7 @@ impl App {
         // tenait déjà : venu de la variable d'environnement, il partait au
         // trousseau au déverrouillage suivant sans que personne l'ait
         // demandé.
-        let from_env = std::env::var("BPM_CADDY_PASSWORD").ok();
+        let from_env = env_password();
         let from_keyring = from_env.is_none();
         let stored_pw = from_env
             .or_else(|| keyring_entry().and_then(|e| e.get_password().ok()))

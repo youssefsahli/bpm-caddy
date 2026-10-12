@@ -133,7 +133,7 @@ impl AuditApp {
             note: None,
             themed: false,
         };
-        let silent = std::env::var("BPM_CADDY_PASSWORD").ok().or_else(|| {
+        let silent = crate::app::env_password().or_else(|| {
             if std::env::var("BPM_CADDY_NO_KEYRING").is_ok() {
                 None
             } else {

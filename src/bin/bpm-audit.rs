@@ -3,6 +3,8 @@
 //! `src/audit_window.rs` : ce binaire n'en est que la porte.
 
 fn main() -> eframe::Result {
+    // Lu et retiré de l'environnement avant tout fil.
+    let _ = bpm_caddy::app::env_password();
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_inner_size([1100.0, 760.0])

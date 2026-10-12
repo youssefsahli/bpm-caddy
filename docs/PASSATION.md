@@ -58,10 +58,6 @@ conciliation, acte de vaccination, retour d'une case de table), ADELI,
 lanceur, relais.
 
 Laissé, relevé par les relectures (à trancher ou à vérifier) :
-- `BPM_CADDY_PASSWORD` reste dans l'environnement du processus, donc de
-  `xdg-open` et de ce qu'il lance (lecteur PDF, navigateur) — à lire une
-  fois en tête de `main` puis retirer (le scanner, lui, ne le reçoit
-  plus) ;
 - paquet et copie : `VACUUM INTO` tient les fichiers partagés pendant
   toute la copie (les autres postes attendent, cinq secondes puis
   échouent) et l'export tourne dans l'image — à passer à

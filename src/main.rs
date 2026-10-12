@@ -99,9 +99,8 @@ fn run_audit(args: &[String]) -> i32 {
     }
 
     let cfg = config::Config::load();
-    let Some(password) = std::env::var("BPM_CADDY_PASSWORD")
-        .ok()
-        .or_else(|| app::keyring_entry().and_then(|e| e.get_password().ok()))
+    let Some(password) =
+        app::env_password().or_else(|| app::keyring_entry().and_then(|e| e.get_password().ok()))
     else {
         eprintln!("{}", audit::locked());
         return 2;
@@ -159,6 +158,9 @@ fn run_audit(args: &[String]) -> i32 {
 }
 
 fn main() -> eframe::Result {
+    // Lu et retiré de l'environnement avant tout fil et tout programme
+    // lancé : voir `app::env_password`.
+    let _ = app::env_password();
     // Le relevé passe avant tout le reste : une fenêtre ne s'ouvre pas
     // pour répondre à une question posée depuis un terminal.
     let args: Vec<String> = std::env::args().skip(1).collect();
