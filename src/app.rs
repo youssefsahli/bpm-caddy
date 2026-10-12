@@ -51311,7 +51311,16 @@ impl App {
                 .stup_summary
                 .iter()
                 .map(|s| s.product.id)
-                .filter(|id| batch.typed.get(id).is_some_and(|t| !t.trim().is_empty()))
+                // Les lignes qui s'écriront, pas celles dont la quantité
+                // coince : « O » pour zéro prendrait un numéro, et la ligne
+                // d'après le sien décalé d'un cran une fois la faute effacée.
+                .filter(|id| {
+                    batch
+                        .typed
+                        .get(id)
+                        .and_then(|t| crate::ordonnancier::read_count(t))
+                        .is_some_and(|v| v > 0.0)
+                })
                 .map(|id| (id, batch.numbers.get(&id).map_or("", String::as_str)))
                 .collect();
             crate::ordonnancier::number_onwards(&rows)
@@ -84164,7 +84173,8 @@ mod tests {
                             11.0,
                             crate::ordonnancier::Snag::ALL
                                 .iter()
-                                .map(|s| super::tr(s.label_key())),
+                                .map(|s| super::tr(s.label_key()))
+                                .chain([super::tr("batch_beyond_stock")]),
                         );
                         let floor16 = super::chars_wide(ui, 16.0);
                         let floor8 = super::chars_wide(ui, 8.0);

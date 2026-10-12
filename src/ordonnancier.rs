@@ -1779,8 +1779,8 @@ pub fn plan(kind: Kind, slots: &[Slot]) -> Plan {
 /// Le logiciel de l'officine numérote ses lignes d'une ordonnance à la
 /// suite — 18400, 18401, 18402. Taper le premier suffit donc à proposer
 /// les autres : chaque ligne remplie dont le numéro est vide reçoit le
-/// suivant du plus haut déjà tapé, dans l'ordre de la feuille, en
-/// sautant ceux qui sont déjà pris. Rien n'est proposé tant qu'aucun
+/// suivant du plus haut déjà tapé, dans l'ordre de la feuille — au-dessus
+/// de tous ceux de la feuille, donc aucun n'est repris. Rien n'est proposé tant qu'aucun
 /// numéro n'est tapé : la suite part d'un numéro du logiciel, jamais
 /// d'un numéro inventé.
 ///
@@ -1799,8 +1799,9 @@ pub fn number_onwards(rows: &[(i64, &str)]) -> Vec<(i64, i64)> {
             continue;
         }
         next += 1;
-        while typed.contains(&next) {
-            next += 1;
+        // Au-delà, `read_number` refuserait le numéro proposé.
+        if next > i64::from(u32::MAX) {
+            break;
         }
         out.push((*id, next));
     }
@@ -1818,19 +1819,6 @@ pub fn beyond_stock(kind: Kind, expected: f64, quantity: f64) -> bool {
 
 #[cfg(test)]
 mod tests {
-    /// **Une boîte périmée est encore dans le coffre.**
-    ///
-    /// C'était une perte, et c'était faux : une perte est ce qui n'est
-    /// plus là — cassé, volé, écoulé. Une boîte périmée y reste jusqu'au
-    /// procès-verbal, et l'officine en répond. Notée en perte, elle
-    /// disparaissait du registre en restant sur l'étagère : exactement
-    /// l'erreur que le compte des retours patients avait été créé pour
-    /// réparer, sur l'autre étagère.
-    ///
-    /// Trois comptes et non deux, donc — et ils ne s'additionnent pas :
-    /// ce qu'un patient rapporte et ce qui a périmé au coffre ne
-    /// suivent pas le même chemin, et « quarante à détruire » là où il
-    /// y a deux sacs scellés ne veut rien dire.
     /// **Une délivrance de la feuille porte son numéro, et le sien.**
     ///
     /// Le numéro manquant et le numéro tapé deux fois coincent en face
@@ -1892,14 +1880,15 @@ mod tests {
             number_onwards(&[(1, "18400"), (2, ""), (3, "")]),
             vec![(2, 18_401), (3, 18_402)]
         );
-        // Les vides avant le premier tapé suivent aussi le plus haut, et
-        // un numéro déjà pris est sauté.
+        // Les vides avant le premier tapé suivent aussi le plus haut.
         assert_eq!(
             number_onwards(&[(1, ""), (2, "18400"), (3, "18401"), (4, "")]),
             vec![(1, 18_402), (4, 18_403)]
         );
         // Un numéro illisible n'est pas vide : on ne l'écrase pas.
         assert_eq!(number_onwards(&[(1, "18400"), (2, "184OO")]), vec![]);
+        // Et rien au-delà du plus grand numéro lisible.
+        assert_eq!(number_onwards(&[(1, "4294967295"), (2, "")]), vec![]);
     }
 
     #[test]
@@ -1909,6 +1898,19 @@ mod tests {
         assert!(!beyond_stock(Kind::Inventaire, 6.0, 16.0));
     }
 
+    /// **Une boîte périmée est encore dans le coffre.**
+    ///
+    /// C'était une perte, et c'était faux : une perte est ce qui n'est
+    /// plus là — cassé, volé, écoulé. Une boîte périmée y reste jusqu'au
+    /// procès-verbal, et l'officine en répond. Notée en perte, elle
+    /// disparaissait du registre en restant sur l'étagère : exactement
+    /// l'erreur que le compte des retours patients avait été créé pour
+    /// réparer, sur l'autre étagère.
+    ///
+    /// Trois comptes et non deux, donc — et ils ne s'additionnent pas :
+    /// ce qu'un patient rapporte et ce qui a périmé au coffre ne
+    /// suivent pas le même chemin, et « quarante à détruire » là où il
+    /// y a deux sacs scellés ne veut rien dire.
     #[test]
     fn an_expired_box_leaves_the_shelf_but_not_the_safe() {
         let line = |seq: i64, kind: super::Kind, quantity: f64| super::Move {
