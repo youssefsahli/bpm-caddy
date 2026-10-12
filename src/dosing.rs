@@ -500,6 +500,11 @@ fn cap_after(hay: &str, at: usize, dose: Cadence) -> Option<f64> {
         Some(t) => (value, t),
         None => (value * 1000.0, unit.strip_prefix('g')?),
     };
+    // L'unité entière : « 4 gélules » n'est pas « 4 g », ni « 2 mgr » des
+    // milligrammes d'autre chose.
+    if tail.starts_with(|c: char| c.is_alphabetic()) {
+        return None;
+    }
     // « 30 mg/kg » est un plafond au poids, pas un plafond absolu.
     if tail.trim_start().starts_with("/kg") || tail.starts_with("/kg") {
         return None;
@@ -940,6 +945,9 @@ mod tests {
         assert_eq!(r[0].cap, None);
         // Un plafond au poids n'est pas un plafond absolu.
         let r = read("15 mg/kg par prise, sans dépasser 60 mg/kg par jour.");
+        assert_eq!(r[0].cap, None);
+        // « 4 gélules » ne sont pas quatre grammes.
+        let r = read("15 mg/kg par jour, sans dépasser 4 gélules par jour.");
         assert_eq!(r[0].cap, None);
         // Sans plafond, rien.
         assert_eq!(read("50 mg/kg par jour en 2 prises.")[0].cap, None);
