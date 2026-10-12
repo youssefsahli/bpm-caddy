@@ -85,6 +85,19 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   manqué laissé « Planifié ») prend un rang et entame le quota ; il n'y a
   pas d'état « abandonné » — à trancher (le rang ne compterait que les
   actes tenus, ou un état de plus) ;
+- versions entre officines (relevé le 12/10, à reprendre ensemble) :
+  l'historique se range par identifiant, donc par tranche de poste et
+  non par date (« garder la mienne » écrit sur le poste fondateur peut
+  passer avant la version reçue sur un autre, et l'arbitrage ne se ferme
+  pas) ; un poste autre que la référence reçoit sans versionner d'abord
+  ce qu'il a changé, et une modification d'ici peut alors « répondre »
+  à une version en attente sans clic ; renommer une fiche, une
+  préparation ou un protocole les duplique chez les autres (pas
+  d'origine figée, contrairement aux lignes TROD et aux vaccins) ; une
+  version reçue recrée vide une fiche, une préparation ou un protocole
+  supprimé ici ; un retour d'ici à la valeur d'avant une version reçue
+  appliquée ne se versionne pas ; une valeur TROD que l'écriture
+  normalise (espaces, lignes vides) reste à arbitrer pour toujours ;
 - téléphone : la suppression d'un rendez-vous de l'agenda ne compare que
   le titre ; la base peut s'ouvrir deux fois (deux déverrouillages) et
   n'est jamais refermée en quittant par Retour. Le code Kotlin modifié le

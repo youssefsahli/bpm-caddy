@@ -60353,7 +60353,13 @@ impl App {
     fn version_counts(session: &Session, card: &Drug) -> (usize, usize, usize) {
         let k = crate::versions::key(&card.name);
         let mine: Vec<&crate::versions::Edit> =
-            session.card_edits.iter().filter(|e| e.card == k).collect();
+            // Les versions de la fiche, et pas celles d'une préparation ou
+            // d'un protocole qui porte le même nom replié.
+            session
+                .card_edits
+                .iter()
+                .filter(|e| e.kind == crate::versions::Kind::Fiche && e.card == k)
+                .collect();
         let others = mine.iter().filter(|e| !e.source.is_empty()).count();
         let local = |f: &str| db::drug_field(card, f).map(str::to_owned);
         let pending = crate::versions::pending(&session.card_edits, &card.name, &local).len();
@@ -60495,7 +60501,11 @@ impl App {
                             let h: Vec<&crate::versions::Edit> = session
                                 .card_edits
                                 .iter()
-                                .filter(|e| e.card == k && e.field == field)
+                                .filter(|e| {
+                                    e.kind == crate::versions::Kind::Fiche
+                                        && e.card == k
+                                        && e.field == field
+                                })
                                 .collect();
                             if h.is_empty() {
                                 continue;

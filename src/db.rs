@@ -45402,6 +45402,35 @@ impl Db {
             else {
                 continue;
             };
+            // **Un nom reçu se vérifie** : vide, la fiche ne se versionnait
+            // plus jamais ; porté déjà par une autre fiche d'ici, deux fiches
+            // se seraient répondu sous la même clé. La version reste au
+            // journal, à arbitrer.
+            if *column == "name" {
+                let wanted = crate::versions::key(&e.value);
+                if wanted.is_empty() {
+                    continue;
+                }
+                let taken: i64 = {
+                    let mut stmt = self
+                        .conn
+                        .prepare("SELECT id, name FROM drugs WHERE id <> ?1")
+                        .map_err(|e| e.to_string())?;
+                    let rows = stmt
+                        .query_map([id], |r| r.get::<_, String>(1))
+                        .map_err(|e| e.to_string())?;
+                    let mut n = 0;
+                    for name in rows {
+                        if crate::versions::key(&name.map_err(|e| e.to_string())?) == wanted {
+                            n += 1;
+                        }
+                    }
+                    n
+                };
+                if taken > 0 {
+                    continue;
+                }
+            }
             applied += self
                 .conn
                 .execute(
@@ -54693,6 +54722,36 @@ impl Db {
         operator: &str,
         revert: bool,
     ) -> Result<bool, String> {
+        // **L'écriture et sa version ensemble, ou rien** : un arbre de
+        // protocole se réécrit en effaçant puis en réinsérant, et une
+        // erreur au milieu laissait le protocole tronqué, sans version ;
+        // lu hors transaction, il pouvait aussi recouvrir ce qu'un autre
+        // poste venait d'y écrire.
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
+        let done = self.set_entry_field_in(kind, card, field, value, shown, operator, revert);
+        match done {
+            Ok(true) => {
+                tx.commit().map_err(|e| e.to_string())?;
+                Ok(true)
+            }
+            other => {
+                let _ = tx.rollback();
+                other
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn set_entry_field_in(
+        &self,
+        kind: crate::versions::Kind,
+        card: &str,
+        field: &str,
+        value: &str,
+        shown: &str,
+        operator: &str,
+        revert: bool,
+    ) -> Result<bool, String> {
         let Some((id, name, _)) = self.entry_fields(kind, card)? else {
             return Ok(false);
         };
@@ -57167,6 +57226,29 @@ mod tests {
         let all = db.card_edits().unwrap();
         let local = |f: &str| drug_field(&card, f).map(str::to_owned);
         assert_eq!(crate::versions::pending(&all, "Eliquis", &local).len(), 1);
+        // Un nom reçu vide, ou déjà porté par une autre fiche, n'est pas
+        // appliqué.
+        db.add_drug("Xarelto").unwrap();
+        for (uid, value) in [("ffff:n1", ""), ("ffff:n2", "XARELTO")] {
+            let rename = crate::versions::Edit {
+                uid: uid.to_owned(),
+                field: "name".to_owned(),
+                previous: "Eliquis".to_owned(),
+                value: value.to_owned(),
+                source: "Pharmacie du Port".to_owned(),
+                ..all[0].clone()
+            };
+            assert_eq!(
+                db.receive_card_edits(&[rename]).unwrap(),
+                (1, 0),
+                "{value:?}"
+            );
+        }
+        assert!(db
+            .drugs()
+            .unwrap()
+            .iter()
+            .any(|d| d.id == id && d.name == "Eliquis"));
         // Une fiche inconnue ici se crée.
         let new_card = crate::versions::Edit {
             uid: "ffff:v2".to_owned(),
