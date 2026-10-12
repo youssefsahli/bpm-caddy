@@ -2995,6 +2995,7 @@ ver_f_tags = "Étiquettes"
 ver_f_other = "Autre champ"
 ver_f_lignes = "Lignes"
 ver_f_texte = "Texte"
+ver_f_titre = "Titre"
 ver_shipped_text = "texte livré, rétabli"
 
 # Les postes de l'officine

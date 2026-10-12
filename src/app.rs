@@ -8620,27 +8620,22 @@ impl Session {
             // phrases, par les adresses que le journal reçu nomme. Une
             // liste ou une phrase reçue attend toujours qu'on l'adopte :
             // sans elles ici, rien ne disait qu'elle attendait.
-            names.extend(
-                self.db
-                    .dispositifs()
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|d| (crate::versions::Kind::Dispositif, d.name)),
-            );
-            names.extend(
-                self.db
-                    .checklists()
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|l| (crate::versions::Kind::Liste, l.title)),
-            );
-            names.extend(
-                self.db
-                    .cascades()
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|c| (crate::versions::Kind::Cascade, db::cascade_title(&c.text))),
-            );
+            // Par leur identité réseau, comme les vaccins.
+            for (kind, entries) in [
+                (
+                    crate::versions::Kind::Dispositif,
+                    self.db.dispositif_entries(),
+                ),
+                (crate::versions::Kind::Liste, self.db.checklist_entries()),
+                (crate::versions::Kind::Cascade, self.db.cascade_entries()),
+            ] {
+                names.extend(
+                    entries
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|(_, e)| (kind, e)),
+                );
+            }
             {
                 let mut seen = std::collections::HashSet::new();
                 for e in &self.card_edits {
@@ -62368,9 +62363,24 @@ impl App {
                             }
                             shown += 1;
                             ui.horizontal_wrapped(|ui| {
-                                let shown = online.labels.get(&o.name).unwrap_or(&o.name);
+                                // Le nom d'aujourd'hui, pas l'identité sous
+                                // laquelle l'entrée voyage.
+                                let today = match o.kind {
+                                    crate::versions::Kind::Dispositif => o.field("nom"),
+                                    crate::versions::Kind::Liste => o.field("titre"),
+                                    crate::versions::Kind::Vaccin => o.field("label"),
+                                    crate::versions::Kind::Trod => o.field("name"),
+                                    _ => None,
+                                }
+                                .filter(|n| !n.trim().is_empty());
+                                let shown = online
+                                    .labels
+                                    .get(&o.name)
+                                    .map(String::as_str)
+                                    .or(today)
+                                    .unwrap_or(&o.name);
                                 ui.label(
-                                    egui::RichText::new(shown.as_str())
+                                    egui::RichText::new(shown)
                                         .size(motif::pt(ui, 11.5))
                                         .strong(),
                                 )
@@ -62494,6 +62504,8 @@ impl App {
             "lpp" => tr("dispo_lpp"),
             "lignes" => tr("ver_f_lignes"),
             "texte" | "value" => tr("ver_f_texte"),
+            "nom" => tr("dispo_name"),
+            "titre" => tr("ver_f_titre"),
             _ => tr("ver_f_other"),
         }
     }

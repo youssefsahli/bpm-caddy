@@ -112,7 +112,11 @@ pub const VACCIN_FIELDS: [&str; 3] = ["label", "code", "schedule"];
 /// fiche médicament, et publiait alors les `tags` d'un pansement comme
 /// ceux d'une fiche — chez les autres officines, une fiche médicament
 /// au nom du pansement. Sous ces noms-ci, une version d'avant les refuse.
-pub const DISPOSITIF_FIELDS: [&str; 9] = [
+pub const DISPOSITIF_FIELDS: [&str; 10] = [
+    // Son nom affiché : il voyage sous une identité figée (`origin`), et
+    // un renommage est une version — pas un dispositif de plus chez les
+    // autres. `nom` et non `name`, pour la même raison qu'au-dessus.
+    "nom",
     "family",
     "indication",
     "sizes",
@@ -127,6 +131,7 @@ pub const DISPOSITIF_FIELDS: [&str; 9] = [
 /// La colonne d'un champ de dispositif, depuis son nom de voyage.
 pub fn dispositif_column(field: &str) -> Option<&'static str> {
     Some(match field {
+        "nom" => "name",
         "family" => "family",
         "indication" => "indication",
         "sizes" => "sizes",
@@ -144,7 +149,10 @@ pub fn dispositif_column(field: &str) -> Option<&'static str> {
 /// entières**, sous une forme canonique ([`items_json`]) — comme l'arbre
 /// d'un protocole : une ligne déplacée ou ajoutée est une version de la
 /// liste, et elle ne s'applique que sur la liste qu'elle remplaçait.
-pub const LISTE_FIELDS: [&str; 2] = ["subject", "lignes"];
+///
+/// Son titre aussi (`titre`) : elle voyage sous une identité figée, et un
+/// renommage est une version.
+pub const LISTE_FIELDS: [&str; 3] = ["titre", "subject", "lignes"];
 
 /// Le seul champ d'une cascade : son texte, d'où tout le reste se lit —
 /// son titre, qui la reconnaît, compris.

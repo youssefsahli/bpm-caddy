@@ -600,7 +600,14 @@ une liste ou une phrase déjà versionnée, puis décochée, reste au journal
 des postes, et un poste d'une version antérieure à la 0.413 la publierait
 encore (les autres officines la refusent au décodage, mais elle est
 scellée dans le journal du réseau) : mettre tous les postes à jour avant
-de cocher. « En ligne »
+de cocher.
+
+Depuis la 0.414, dispositifs, listes et cascades voyagent sous une
+**identité figée** comme les vaccins (`origin`, figée par
+`freeze_origins` à la première publication : le nom, le titre, ou le
+titre que le texte d'une cascade porte) ; le nom d'un dispositif (`nom`)
+et le titre d'une liste (`titre`) sont des champs comme les autres — un
+renommage est une version, pas une entrée de plus chez les autres. « En ligne »
 (`src/enligne.rs`) lit le journal reçu en offres par sorte ;
 `Db::adopt_offer` prend une offre d'un geste — une entrée livrée retirée
 ici revient alors entière (`entry_origin`), la dernière version

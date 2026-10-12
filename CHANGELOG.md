@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Renaming a dispositif, a checklist or a cascade no longer creates a
+  second one at the other officines: like vaccines and TROD lines, they
+  now travel under an identity frozen at their first publication, and a
+  new name (or a cascade's new title) is a version of the same entry.
+  « En ligne » shows entries under today's name.
+
 ## [0.413.0] - 2026-10-12
 
 ### Added

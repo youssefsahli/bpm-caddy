@@ -103,6 +103,8 @@ CREATE TABLE IF NOT EXISTS checklists (
     id          INTEGER PRIMARY KEY,
     title       TEXT NOT NULL,
     subject     TEXT NOT NULL DEFAULT '',
+    -- L'identité réseau, figée à la première publication.
+    origin      TEXT NOT NULL DEFAULT '',
     created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 CREATE TABLE IF NOT EXISTS checklist_items (
@@ -119,6 +121,8 @@ CREATE TABLE IF NOT EXISTS checklist_items (
 CREATE TABLE IF NOT EXISTS cascades (
     id          INTEGER PRIMARY KEY,
     text        TEXT NOT NULL,
+    -- L'identité réseau (le titre à la première publication).
+    origin      TEXT NOT NULL DEFAULT '',
     created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 CREATE TABLE IF NOT EXISTS protocol_nodes (
@@ -537,7 +541,9 @@ CREATE TABLE IF NOT EXISTS dispositifs (
     lpp          TEXT NOT NULL DEFAULT '',
     caution      TEXT NOT NULL DEFAULT '',
     tags         TEXT NOT NULL DEFAULT '',
-    sources      TEXT NOT NULL DEFAULT ''
+    sources      TEXT NOT NULL DEFAULT '',
+    -- L'identité réseau, figée à la première publication.
+    origin       TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS class_notes (
     class       TEXT PRIMARY KEY,
@@ -1587,6 +1593,11 @@ const MIGRATIONS: &[&str] = &[
     // Les listes de contrôle, partagées seulement sur demande — voir
     // `NetShares::listes`.
     "ALTER TABLE net_networks ADD COLUMN share_listes INTEGER NOT NULL DEFAULT 0",
+    // L'identité réseau des dispositifs, des listes et des cascades —
+    // voir `freeze_origins`.
+    "ALTER TABLE dispositifs ADD COLUMN origin TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE checklists ADD COLUMN origin TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE cascades ADD COLUMN origin TEXT NOT NULL DEFAULT ''",
     // La campagne de vaccination — voir `SCHEMA`.
     "CREATE TABLE IF NOT EXISTS vial_openings (
         id          INTEGER PRIMARY KEY,
@@ -48635,6 +48646,9 @@ impl Db {
         // Le nom de table vient d'ici, jamais d'un pair.
         let table = match table {
             "trod_lines" => "trod_lines",
+            "dispositifs" => "dispositifs",
+            "checklists" => "checklists",
+            "cascades" => "cascades",
             _ => "vaccine_catalogue",
         };
         self.conn
@@ -48652,10 +48666,61 @@ impl Db {
         for sql in [
             "UPDATE trod_lines SET origin = name WHERE origin = '' AND trim(name) <> ''",
             "UPDATE vaccine_catalogue SET origin = label WHERE origin = '' AND trim(label) <> ''",
+            "UPDATE dispositifs SET origin = name WHERE origin = '' AND trim(name) <> ''",
+            "UPDATE checklists SET origin = title WHERE origin = '' AND trim(title) <> ''",
         ] {
             self.conn.execute(sql, []).map_err(|e| e.to_string())?;
         }
+        // Une cascade, par le titre que son texte porte : SQLite ne le lit
+        // pas.
+        for c in self.cascades()? {
+            let title = cascade_title(&c.text);
+            if !title.trim().is_empty() {
+                self.conn
+                    .execute(
+                        "UPDATE cascades SET origin = ?1 WHERE id = ?2 AND origin = ''",
+                        (title.trim(), c.id),
+                    )
+                    .map_err(|e| e.to_string())?;
+            }
+        }
         Ok(())
+    }
+
+    /// Les dispositifs par leur identité réseau.
+    pub fn dispositif_entries(&self) -> Result<Vec<(i64, String)>, String> {
+        self.identities("SELECT id, CASE WHEN origin <> '' THEN origin ELSE name END FROM dispositifs ORDER BY id")
+    }
+
+    /// Les listes de contrôle par leur identité réseau.
+    pub fn checklist_entries(&self) -> Result<Vec<(i64, String)>, String> {
+        self.identities("SELECT id, CASE WHEN origin <> '' THEN origin ELSE title END FROM checklists ORDER BY id")
+    }
+
+    /// Les cascades par leur identité réseau : figée, ou le titre que leur
+    /// texte porte aujourd'hui.
+    pub fn cascade_entries(&self) -> Result<Vec<(i64, String)>, String> {
+        let rows = self.identities("SELECT id, origin FROM cascades ORDER BY id")?;
+        let texts = self.cascades()?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|(id, origin)| {
+                let name = if origin.trim().is_empty() {
+                    cascade_title(&texts.iter().find(|c| c.id == id)?.text)
+                } else {
+                    origin
+                };
+                (!name.trim().is_empty()).then_some((id, name))
+            })
+            .collect())
+    }
+
+    fn identities(&self, sql: &str) -> Result<Vec<(i64, String)>, String> {
+        let mut stmt = self.conn.prepare(sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
     }
 
     /// Les lignes de TROD par leur identité réseau : identifiant, nom de
@@ -54714,6 +54779,7 @@ pub fn codex_field<'a>(p: &'a Preparation, field: &str) -> Option<&'a str> {
 /// Un champ d'un dispositif, par son nom de voyage.
 pub fn dispositif_field<'a>(d: &'a Dispositif, field: &str) -> Option<&'a str> {
     Some(match crate::versions::dispositif_column(field)? {
+        "name" => &d.name,
         "family" => &d.family,
         "indication" => &d.indication,
         "sizes" => &d.sizes,
@@ -54729,6 +54795,7 @@ pub fn dispositif_field<'a>(d: &'a Dispositif, field: &str) -> Option<&'a str> {
 
 fn starter_dispositif_field(d: &StarterDispositif, field: &str) -> Option<&'static str> {
     Some(match crate::versions::dispositif_column(field)? {
+        "name" => d.name,
         "family" => d.family,
         "indication" => d.indication,
         "sizes" => d.sizes,
@@ -54937,19 +55004,37 @@ impl Db {
                     .collect();
                 Ok(Some((line.id, entry, fields)))
             }
-            Kind::Dispositif => Ok(self
-                .dispositifs()?
-                .into_iter()
-                .find(|d| key(&d.name) == k)
-                .map(|d| {
-                    let fields = crate::versions::DISPOSITIF_FIELDS
-                        .iter()
-                        .map(|f| (*f, dispositif_field(&d, f).unwrap_or_default().to_owned()))
-                        .collect();
-                    (d.id, d.name, fields)
-                })),
+            // Par l'identité réseau, comme un vaccin : un dispositif
+            // renommé ici reste celui que les autres connaissent.
+            Kind::Dispositif => {
+                let Some((id, entry)) = self
+                    .dispositif_entries()?
+                    .into_iter()
+                    .find(|(_, e)| key(e) == k)
+                else {
+                    return Ok(None);
+                };
+                Ok(self
+                    .dispositifs()?
+                    .into_iter()
+                    .find(|d| d.id == id)
+                    .map(|d| {
+                        let fields = crate::versions::DISPOSITIF_FIELDS
+                            .iter()
+                            .map(|f| (*f, dispositif_field(&d, f).unwrap_or_default().to_owned()))
+                            .collect();
+                        (d.id, entry, fields)
+                    }))
+            }
             Kind::Liste => {
-                let Some(l) = self.checklists()?.into_iter().find(|l| key(&l.title) == k) else {
+                let Some((id, entry)) = self
+                    .checklist_entries()?
+                    .into_iter()
+                    .find(|(_, e)| key(e) == k)
+                else {
+                    return Ok(None);
+                };
+                let Some(l) = self.checklists()?.into_iter().find(|l| l.id == id) else {
                     return Ok(None);
                 };
                 let items: Vec<(String, String)> = self
@@ -54959,19 +55044,28 @@ impl Db {
                     .collect();
                 Ok(Some((
                     l.id,
-                    l.title,
+                    entry,
                     vec![
+                        ("titre", l.title),
                         ("subject", l.subject),
                         ("lignes", crate::versions::items_json(&items)),
                     ],
                 )))
             }
-            Kind::Cascade => Ok(self
-                .cascades()?
-                .into_iter()
-                .map(|c| (cascade_title(&c.text), c))
-                .find(|(t, _)| !t.trim().is_empty() && key(t) == k)
-                .map(|(t, c)| (c.id, t, vec![("texte", c.text)]))),
+            Kind::Cascade => {
+                let Some((id, entry)) = self
+                    .cascade_entries()?
+                    .into_iter()
+                    .find(|(_, e)| key(e) == k)
+                else {
+                    return Ok(None);
+                };
+                Ok(self
+                    .cascades()?
+                    .into_iter()
+                    .find(|c| c.id == id)
+                    .map(|c| (c.id, entry, vec![("texte", c.text)])))
+            }
             // Une phrase que cette version ne connaît pas n'a rien ici.
             // Ce qu'elle dit est ce qui s'imprime : la réécriture qui vise
             // encore le texte livré, sinon le texte livré.
@@ -55052,14 +55146,17 @@ impl Db {
                     field,
                 ),
             },
+            // Son nom part de son identité, livré ou non.
+            Kind::Dispositif if field == "nom" => name.to_owned(),
             Kind::Dispositif => STARTER_DISPOSITIFS
                 .iter()
                 .find(|d| d.name == name)
                 .and_then(|d| starter_dispositif_field(d, field))
                 .unwrap_or_default()
                 .to_owned(),
-            // Une liste part sans lignes.
+            // Une liste part sans lignes, sous le titre qui la nomme.
             Kind::Liste if field == "lignes" => crate::versions::items_json(&[]),
+            Kind::Liste if field == "titre" => name.to_owned(),
             Kind::Liste => String::new(),
             Kind::Cascade => STARTER_CASCADES
                 .iter()
@@ -55154,9 +55251,9 @@ impl Db {
                 .map(|(_, e)| (Kind::Trod, e)),
         );
         names.extend(
-            self.dispositifs()?
+            self.dispositif_entries()?
                 .into_iter()
-                .map(|d| (Kind::Dispositif, d.name)),
+                .map(|(_, e)| (Kind::Dispositif, e)),
         );
         // **Les listes et les phrases ne se versionnent que partagées.**
         // Écrites au journal, elles voyagent vers les autres postes, et un
@@ -55168,18 +55265,25 @@ impl Db {
             self.principal_shares().listes || self.net_networks()?.iter().any(|n| n.shares.listes);
         if private {
             names.extend(
-                self.checklists()?
+                self.checklist_entries()?
                     .into_iter()
-                    .map(|l| (Kind::Liste, l.title)),
+                    .map(|(_, e)| (Kind::Liste, e)),
             );
         }
-        names.extend(
-            self.cascades()?
-                .into_iter()
-                .filter(|c| !old_shipped_cascade(&c.text))
-                .map(|c| (Kind::Cascade, cascade_title(&c.text)))
-                .filter(|(_, t)| !t.trim().is_empty()),
-        );
+        {
+            let texts = self.cascades()?;
+            names.extend(
+                self.cascade_entries()?
+                    .into_iter()
+                    .filter(|(id, _)| {
+                        texts
+                            .iter()
+                            .find(|c| c.id == *id)
+                            .is_some_and(|c| !old_shipped_cascade(&c.text))
+                    })
+                    .map(|(_, e)| (Kind::Cascade, e)),
+            );
+        }
         // Les phrases réécrites ici, et celles qui ont une histoire : une
         // phrase rendue à son texte livré n'a plus de ligne, et ce retour
         // est une version comme une autre.
@@ -55344,11 +55448,28 @@ impl Db {
                 let Some(column) = crate::versions::dispositif_column(field) else {
                     return Ok(false);
                 };
+                // Un nom vide n'est pas un dispositif : refusé plutôt
+                // qu'écrit.
+                if column == "name" && value.trim().is_empty() {
+                    return Ok(false);
+                }
                 self.conn
                     .execute(
                         &format!(
                             "UPDATE dispositifs SET {column} = ?1 WHERE id = ?2 AND {column} = ?3"
                         ),
+                        (value, id, expected),
+                    )
+                    .map(|n| n == 1)
+                    .map_err(|e| e.to_string())
+            }
+            (Kind::Liste, "titre") => {
+                if value.trim().is_empty() {
+                    return Ok(false);
+                }
+                self.conn
+                    .execute(
+                        "UPDATE checklists SET title = ?1 WHERE id = ?2 AND title = ?3",
                         (value, id, expected),
                     )
                     .map(|n| n == 1)
@@ -55489,8 +55610,16 @@ impl Db {
             Kind::Dispositif if !asked && STARTER_DISPOSITIFS.iter().any(|d| d.name == name) => {
                 return Ok(None)
             }
-            Kind::Dispositif => self.add_dispositif(name)?,
-            Kind::Liste => self.add_checklist(name, "")?,
+            Kind::Dispositif => {
+                let id = self.add_dispositif(name)?;
+                self.set_origin("dispositifs", id, name)?;
+                id
+            }
+            Kind::Liste => {
+                let id = self.add_checklist(name, "")?;
+                self.set_origin("checklists", id, name)?;
+                id
+            }
             // Une cascade se crée **avec son texte** — c'est lui qui la
             // nomme : voir `create_cascade`.
             Kind::Cascade => return Ok(None),
@@ -55517,14 +55646,22 @@ impl Db {
     /// absente ici, ne revient pas d'une version reçue (`asked` faux) —
     /// l'officine l'a retirée — mais revient d'un geste.
     fn create_cascade(&self, name: &str, text: &str, asked: bool) -> Result<bool, String> {
+        // Le texte doit encore se lire comme une cascade ; son titre peut
+        // avoir changé depuis qu'elle voyage sous ce nom — l'identité, elle,
+        // reste `name`.
         let title = cascade_title(text);
-        if title.trim().is_empty() || crate::versions::key(&title) != crate::versions::key(name) {
+        if title.trim().is_empty() || name.trim().is_empty() {
             return Ok(false);
         }
-        if !asked && STARTER_CASCADES.iter().any(|t| cascade_title(t) == title) {
+        if !asked
+            && STARTER_CASCADES
+                .iter()
+                .any(|t| cascade_title(t) == name.trim())
+        {
             return Ok(false);
         }
-        self.add_cascade(text)?;
+        let id = self.add_cascade(text)?;
+        self.set_origin("cascades", id, name)?;
         Ok(true)
     }
 
@@ -55592,26 +55729,29 @@ impl Db {
                 }
             }
             Kind::Dispositif => {
-                for d in self.dispositifs()? {
-                    let fields = crate::versions::DISPOSITIF_FIELDS
-                        .iter()
-                        .map(|f| (*f, dispositif_field(&d, f).unwrap_or_default().to_owned()))
-                        .collect();
-                    out.insert(key(&d.name), fields);
+                let all = self.dispositifs()?;
+                for (id, entry) in self.dispositif_entries()? {
+                    if let Some(d) = all.iter().find(|d| d.id == id) {
+                        let fields = crate::versions::DISPOSITIF_FIELDS
+                            .iter()
+                            .map(|f| (*f, dispositif_field(d, f).unwrap_or_default().to_owned()))
+                            .collect();
+                        out.insert(key(&entry), fields);
+                    }
                 }
             }
             Kind::Liste => {
-                for l in self.checklists()? {
-                    if let Some((_, name, fields)) = self.entry_fields(kind, &l.title)? {
+                for (_, entry) in self.checklist_entries()? {
+                    if let Some((_, name, fields)) = self.entry_fields(kind, &entry)? {
                         out.insert(key(&name), fields);
                     }
                 }
             }
             Kind::Cascade => {
-                for c in self.cascades()? {
-                    let title = cascade_title(&c.text);
-                    if !title.trim().is_empty() {
-                        out.insert(key(&title), vec![("texte", c.text)]);
+                let all = self.cascades()?;
+                for (id, entry) in self.cascade_entries()? {
+                    if let Some(c) = all.iter().find(|c| c.id == id) {
+                        out.insert(key(&entry), vec![("texte", c.text.clone())]);
                     }
                 }
             }
@@ -58637,6 +58777,108 @@ mod tests {
             .unwrap());
         assert_eq!(b.checklist_items(list.id).unwrap().len(), 3);
         assert!(Kind::Liste.is_private() && !Kind::Dispositif.is_private());
+    }
+
+    /// **Un renommage est une version, pas une entrée de plus** : un
+    /// dispositif, une cascade et une liste voyagent sous une identité
+    /// figée à leur première publication, et leur nouveau nom rejoint
+    /// l'entrée que l'autre officine a déjà.
+    #[test]
+    fn a_renamed_entry_renames_rather_than_duplicates() {
+        use crate::versions::Kind;
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-rename-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let a = Db::open(&dir.join("a.db"), "secret").unwrap();
+        let b = Db::open(&dir.join("b.db"), "secret").unwrap();
+        let ship = |from: &Db, to: &Db| {
+            let edits: Vec<crate::versions::Edit> = from
+                .card_edits()
+                .unwrap()
+                .into_iter()
+                .filter(|e| e.source.is_empty())
+                .map(|e| crate::versions::Edit {
+                    source: "Pharmacie A".to_owned(),
+                    ..e
+                })
+                .collect();
+            to.receive_card_edits(&edits).unwrap()
+        };
+        a.set_principal_shares(NetShares {
+            listes: true,
+            ..NetShares::default()
+        })
+        .unwrap();
+        let d = a.add_dispositif("Pansement A").unwrap();
+        let before = a
+            .dispositifs()
+            .unwrap()
+            .into_iter()
+            .find(|x| x.id == d)
+            .unwrap();
+        let filled = Dispositif {
+            family: "Pansement".to_owned(),
+            ..before.clone()
+        };
+        assert!(a.update_dispositif(&filled, &before).unwrap());
+        let text = "titre : Cascade A\nligand X\nrécepteur Y\nX -> Y";
+        let c = a.add_cascade(text).unwrap();
+        let l = a.add_checklist("Liste A", "").unwrap();
+        a.add_checklist_item(l, "Une ligne", "").unwrap();
+        a.version_shared_entries("AB").unwrap();
+        ship(&a, &b);
+        let offers = crate::enligne::offers(&b.card_edits().unwrap(), Kind::Liste);
+        assert!(b.adopt_offer(&offers[0]).unwrap());
+
+        let renamed = Dispositif {
+            name: "Pansement B".to_owned(),
+            ..filled.clone()
+        };
+        assert!(a.update_dispositif(&renamed, &filled).unwrap());
+        let new_text = "titre : Cascade B\nligand X\nrécepteur Y\nX -> Y";
+        assert!(a.update_cascade(c, new_text, text).unwrap());
+        assert!(a.rename_checklist(l, "Liste B", "", "Liste A").unwrap());
+        a.version_shared_entries("AB").unwrap();
+        ship(&a, &b);
+
+        let names: Vec<String> = b
+            .dispositifs()
+            .unwrap()
+            .into_iter()
+            .map(|d| d.name)
+            .collect();
+        assert_eq!(names, vec!["Pansement B"], "renommé, pas doublé");
+        let texts: Vec<String> = b.cascades().unwrap().into_iter().map(|c| c.text).collect();
+        assert_eq!(texts, vec![new_text.to_owned()]);
+        // La liste attend qu'on adopte son nouveau titre — et ne se double
+        // pas en attendant.
+        assert_eq!(b.checklists().unwrap().len(), 1);
+        let (_, name, fields) = b.entry_fields(Kind::Liste, "Liste A").unwrap().unwrap();
+        let local = |f: &str| fields.iter().find(|(k, _)| *k == f).map(|(_, v)| v.clone());
+        let edits = b.card_edits().unwrap();
+        let waiting = crate::versions::pending_of(&edits, Kind::Liste, &name, &local);
+        let titre = waiting
+            .iter()
+            .find(|e| e.field == "titre")
+            .expect("le titre attend");
+        assert!(b
+            .set_entry_field(
+                Kind::Liste,
+                &name,
+                "titre",
+                &titre.value,
+                "Liste A",
+                "CD",
+                false
+            )
+            .unwrap());
+        let titles: Vec<String> = b
+            .checklists()
+            .unwrap()
+            .into_iter()
+            .map(|l| l.title)
+            .collect();
+        assert_eq!(titles, vec!["Liste B"]);
     }
 
     /// **Une phrase imprimée réécrite voyage**, sous son adresse, et
