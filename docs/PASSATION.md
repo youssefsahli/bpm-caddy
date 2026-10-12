@@ -29,7 +29,8 @@ tapé d'un autre produit et les adresses des réécritures rénales, sont
 corrigées) — a passé son smoke dans les quatre formes et une passe de
 fuzz sur toutes les vues (d33dbe5) : **c'est elle à publier** —
 `git tag v0.410.0 d33dbe5 && git push origin v0.410.0` (à défaut, la
-0.403.0 : `git tag v0.403.0 bac8fce`) ; les étiquettes intermédiaires n'ont jamais été
+0.403.0 : `git tag v0.403.0 bac8fce`) ; la 0.411.0 (numéros d'ordonnancier tapés depuis le logiciel de
+l'officine, téléphone, aide) suit, smoke en cours ; les étiquettes intermédiaires n'ont jamais été
 posées, et **la 0.395.0 ne se publie pas** (elle lisait mal les doses de
 charge et les titrations, corrigé dans la 0.396.0).
 

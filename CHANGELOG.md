@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.411.0] - 2026-10-12
+
 ### Changed
 - **Narcotics register: the ordonnancier number comes from the pharmacy
   software.** The LGO numbers every line of the ordonnancier — lists I
