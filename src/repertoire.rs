@@ -66,6 +66,10 @@ pub const FORGET: Duration = Duration::from_secs(24 * 3600);
 /// ceci. Le poste en signe une nouvelle toutes les [`ANNOUNCE_EVERY`].
 pub const ONLINE: Duration = Duration::from_secs(25 * 60);
 pub const ANNOUNCE_EVERY: Duration = Duration::from_secs(10 * 60);
+/// Combien de temps la base garde la même heure de réception
+/// (`Presence::parue_le`) avant de la récrire : le réglage voyage vers
+/// tous les postes, pas toutes les dix minutes.
+pub const PARUE_REFRESH: u64 = 6 * 3600;
 /// Une carte n'est reçue que signée depuis moins de ceci, et pas plus
 /// loin dans l'avenir : rejouée plus tard, elle est refusée. Les deux
 /// horloges doivent donc s'accorder à une demi-heure près.
@@ -154,8 +158,11 @@ impl Presence {
         let wanted = self.paraitre.then(|| self.address()).flatten();
         (!self.parue.is_empty()
             && wanted.as_deref() != Some(self.parue.as_str())
-            && now.saturating_sub(self.parue_le) < FORGET.as_secs())
-        .then(|| self.parue.clone())
+            // Le répertoire garde la carte un jour depuis la dernière ;
+            // l'heure retenue ici peut avoir jusqu'à `PARUE_REFRESH` de
+            // retard sur elle.
+            && now.saturating_sub(self.parue_le) < FORGET.as_secs() + PARUE_REFRESH)
+            .then(|| self.parue.clone())
     }
 }
 
@@ -1419,7 +1426,7 @@ mod tests {
         );
         assert_eq!(at(false, "a", "", 0).owed(NOW), None, "aucune carte reçue");
         assert_eq!(
-            at(false, "a", "a:7747", NOW).owed(NOW + FORGET.as_secs()),
+            at(false, "a", "a:7747", NOW).owed(NOW + FORGET.as_secs() + PARUE_REFRESH),
             None,
             "le répertoire a oublié"
         );
