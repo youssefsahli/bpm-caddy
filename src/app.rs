@@ -26506,11 +26506,13 @@ impl App {
             }
         };
         let today = session.today.clone();
-        let year = session.db.current_year();
         let taken_on = if session.bio_new_date.trim().is_empty() {
             today
         } else {
-            match db::parse_french_date(&session.bio_new_date, year, db::YearHint::Future) {
+            // Un résultat a eu lieu : jamais après aujourd'hui. Lu en
+            // « futur », « 2012 » tapé le 05/01/2027 devenait le
+            // 20/12/2027, et le suivi se disait à jour pour un an.
+            match db::parse_event_date(&session.bio_new_date, &today) {
                 Ok(iso) => iso,
                 Err(e) => {
                     session.error = Some(e);
@@ -26564,11 +26566,10 @@ impl App {
         if !bound.is_empty() {
             edited.remark = session.bio_edit_value.trim().to_owned();
         }
-        let year = session.db.current_year();
         let taken_on = if session.bio_edit_date.trim().is_empty() {
             String::new()
         } else {
-            match db::parse_french_date(&session.bio_edit_date, year, db::YearHint::Future) {
+            match db::parse_event_date(&session.bio_edit_date, &session.today) {
                 Ok(iso) => iso,
                 Err(e) => {
                     session.error = Some(e);

@@ -51,6 +51,11 @@ conciliation, acte de vaccination, retour d'une case de table), ADELI,
 lanceur, relais.
 
 Laissé, relevé par les relectures (à trancher ou à vérifier) :
+- barre du compagnon : son survol lit grossesse, rein et écrasement sans
+  les réécritures de l'officine (`companion_signals` n'a pas les
+  `Overrides`) — les panneaux, eux, les ont ; le texte « molécule absente
+  de la table » de `gravidity.rs` n'a pas d'adresse de réécriture, et
+  `rhythm_text` (« tous les mois ») est écrit en dur ;
 - ordonnance après TROD : la nitrofurantoïne en 3e intention de la
   cystite simple, et l'amoxicilline de l'enfant « maximum 50 mg/kg/j »
   sans plafond adulte — à relire contre le texte du protocole ;

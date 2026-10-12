@@ -54055,6 +54055,18 @@ pub fn parse_event_date(input: &str, today: &str) -> Result<String, String> {
         if iso.as_str() <= today {
             return Ok(iso);
         }
+        // Sans année tapée (« 2012 » le 05/01/2027), c'est l'an dernier :
+        // le 20 décembre passé, pas celui qui vient. Une année écrite en
+        // toutes lettres, elle, se relit pareille et reste refusée.
+        // Seulement quand l'année relue **est** celle de référence : c'est
+        // le signe qu'elle n'a pas été tapée (« 151226 » relu en 1926
+        // n'est pas un 15 décembre dernier).
+        let before = year.saturating_sub(1);
+        if let Ok(last) = parse_french_date(input, before, YearHint::Past) {
+            if last.as_str() <= today && last.get(..4) == Some(before.to_string().as_str()) {
+                return Ok(last);
+            }
+        }
         return Err("Date postérieure à aujourd'hui.".to_owned());
     }
     let iso = parse_french_date(input, year, YearHint::Future)?;

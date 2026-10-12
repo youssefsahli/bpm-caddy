@@ -174,7 +174,15 @@ fn months_between(from: &str, to: &str) -> Option<u32> {
     let (y1, m1, d1) = read(from)?;
     let (y2, m2, d2) = read(to)?;
     let mut months = (y2 - y1) * 12 + (m2 - m1);
-    if d2 < d1 {
+    // Le dernier jour d'un mois court vaut le jour qui lui manque : un
+    // INR du 31 janvier est dû le 28 février, pas le 1er mars.
+    let last_day = match m2 {
+        2 if (y2 % 4 == 0 && y2 % 100 != 0) || y2 % 400 == 0 => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    };
+    if d2 < d1 && d2 < last_day {
         months -= 1;
     }
     Some(months.max(0) as u32)
@@ -229,6 +237,12 @@ pub fn due(
     let mut latest: Vec<(&str, &str)> = Vec::new();
     for r in readings {
         if r.code.trim().is_empty() || r.date.trim().is_empty() {
+            continue;
+        }
+        // **Un résultat daté d'après aujourd'hui ne compte pas** : une
+        // faute de frappe (« 2062 ») tenait l'analyte « à jour » des
+        // années, et cachait le vrai dernier résultat, lui en retard.
+        if !today.is_empty() && r.date > today {
             continue;
         }
         match latest.iter_mut().find(|(c, _)| *c == r.code) {
@@ -643,7 +657,9 @@ pub const WATCHES: &[Watch] = &[
         code: "VITD",
         every_months: 12,
         why: "Une carence en vitamine D entretient l'hyperparathyroïdie et fait échouer le traitement de l'os : elle se corrige avant, et se recontrôle une fois par an.",
-        never: &[],
+        // L'alfacalcidol et le calcitriol (« dérivé actif de la
+        // vitamine D ») : le 25-OH-D n'en dit rien.
+        never: &["dérivé actif"],
     },
     Watch {
         needs: &["oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole"],
@@ -1180,5 +1196,37 @@ mod tests {
         let modamide = due(&[shipped("Modamide")], &[], "2026-09-23");
         let k = modamide.iter().find(|d| d.code == "K").expect("kaliémie");
         assert!(!k.why.contains("descendent"), "{}", k.why);
+    }
+
+    /// Un résultat daté d'après aujourd'hui ne tient pas le suivi à jour,
+    /// et le dernier jour d'un mois court compte comme l'échéance.
+    #[test]
+    fn a_future_reading_does_not_count_and_month_ends_are_due() {
+        assert_eq!(months_between("2026-01-31", "2026-02-28"), Some(1));
+        assert_eq!(months_between("2024-02-29", "2025-02-28"), Some(12));
+        assert_eq!(months_between("2026-01-31", "2026-02-27"), Some(0));
+        assert_eq!(months_between("2026-03-15", "2026-04-14"), Some(0));
+        let t = crate::revue::Treatment {
+            name: "Coumadine",
+            dci: "warfarine",
+            class: "AVK",
+            tags: "",
+        };
+        let readings = [
+            crate::biology::Reading {
+                code: "INR",
+                value: 2.5,
+                date: "2026-06-01",
+            },
+            crate::biology::Reading {
+                code: "INR",
+                value: 2.5,
+                date: "2062-10-12",
+            },
+        ];
+        let d = due(&[t], &readings, "2026-10-12");
+        let inr = d.iter().find(|d| d.code == "INR").unwrap();
+        assert_eq!(inr.last.as_deref(), Some("2026-06-01"));
+        assert_eq!(inr.level, Level::Overdue);
     }
 }

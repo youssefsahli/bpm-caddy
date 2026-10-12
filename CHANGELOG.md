@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the morning was kept); the condition of an as-needed line starts at its
   marker (« 1 sachet au petit-déjeuner si besoin » printed « déjeuner si
   besoin »).
+- Monitoring plan: a result dated after today no longer keeps an analyte
+  « up to date » (a typo like 2062 hid the real, overdue last result for
+  years), and a biology date is read like any past event — « 2012 » typed
+  on 5 January is last December, not next; a reading on the 31st is due
+  on the last day of a shorter month; alfacalcidol and calcitriol no
+  longer ask for a yearly 25-OH vitamin D.
 - Conciliation: the strength the file keeps is compared (Triatec 5 mg
   against « Ramipril 10 mg : 1 cp le soir » read as kept); a combination
   is not matched to one of its molecules (« Amlodipine valsartan » was
