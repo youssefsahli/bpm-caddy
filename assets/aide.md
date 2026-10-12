@@ -30,7 +30,8 @@ parle de l'écran en cours — l'agenda, un dossier, la caisse… — puis
 toutes les autres. Une recherche remplace cet ordre.
 
 Le bouton « ? » de la barre du haut, ou `F12`, liste tous les raccourcis
-clavier. Cette liste est générée par l'application et reste à jour.
+clavier. Cette liste est générée par l'application et reste à jour. Sur
+Mac, Cmd remplace Ctrl, sauf pour Ctrl+Tab.
 
 Après une mise à jour, la fenêtre **« Nouveautés »** s'ouvre une fois
 sur ce poste : ce que la version apporte, modifie et corrige — toutes
@@ -94,9 +95,10 @@ Le bandeau porte l'identité et les traitements ; en dessous, les actes,
 le journal, la biologie, les vaccins et les pièces scannées.
 
 Saisie courte des dates : `230826` ou `2308` donne `23/08/2026`. Pour
-une date déjà passée (délivrance, ordonnance, registre, pièce, DDR),
-`2312` tapé en janvier donne le 23 décembre précédent ; une date de
-naissance demande son année. Des heures : `9`, `930`, `9h30`.
+une date déjà passée (délivrance, ordonnance, registre, pièce, vaccin,
+biologie, DDR), `2312` tapé en janvier donne le 23 décembre précédent, et
+une date postérieure à aujourd'hui est refusée ; une date de naissance
+demande son année. Des heures : `9`, `930`, `9h30`.
 
 Les données partagées entre postes — identité, états d'acte,
 rendez-vous — sont écrites par comparaison avec la valeur affichée. Si
@@ -230,6 +232,9 @@ Six lectures, et la première passe avant les autres : la ligne non
 rapprochée, donc non vérifiée. Puis le remplacement dans la même classe
 — risque de doublon, le patient gardant les deux boîtes —, l'arrêt, la
 modification de posologie, l'ajout, et la reconduction à l'identique.
+Le dosage aussi est comparé. Une association écrite avec « + » (ou « / »
+sur la fiche) n'est jamais rapprochée d'une seule de ses molécules ;
+« matin/soir » tapé reste un rythme.
 
 La feuille s'imprime à l'attention du prescripteur, avec un cadre
 réservé à sa réponse. Elle ne constitue pas un avis médical et le
@@ -323,13 +328,18 @@ les 6 heures » et « 60 mg/kg par 24 heures » décrivent le même
 traitement. L'indication aussi : une même fiche indique souvent
 50 mg/kg/j pour l'angine et 80 pour l'otite. Une fiche sans dose au
 poids n'en propose pas, et l'écran le signale : posologie à compléter.
+Un maximum absolu écrit par la même phrase (« sans dépasser 500 mg par
+jour ») plafonne la dose calculée, et l'écran le dit.
 
 **Adaptation rénale**, pour la fiche ouverte et un DFG saisi, ou repris
 du calcul précédent d'un bouton. Même table que le panneau « Rein » du
 dossier, appliquée à une fiche plutôt qu'à une ordonnance — utile
 lorsque le dossier du patient n'est pas ouvert. Le palier retenu est le
 plus bas des paliers franchis ; les seuils viennent des RCP ; la
-décision revient au prescripteur.
+décision revient au prescripteur. Aucun verdict avant qu'un DFG soit
+saisi ou calculé ; une créatinine sous 35 µmol/L fait penser à des mg/L.
+Le panneau du dossier donne le DFG avec sa date, et un DFG daté après
+aujourd'hui ne compte pas.
 
 **Décroissance et accumulation** : demi-vie, intervalle entre deux
 prises, et délai d'élimination. La demi-vie peut être reprise d'une
@@ -1106,6 +1116,11 @@ Reprise d'un registre papier : Options › Base, « Premier numéro
 d'ordonnancier », une seule fois. Un numéro inférieur saisi après coup
 est sans effet.
 
+Les touches 1 à 8 choisissent la nature, dans l'ordre de la bande ;
+Entrée inscrit la ligne depuis le formulaire. La quantité s'écrit en
+unités : « 1/2 », « 3 boîtes » ou « 2 x 14 » sont refusés. Un lot lu ou
+tapé pour un autre produit bloque la ligne : le retaper ou l'effacer.
+
 ## Vigilance
 
 L'onglet « Vigilance » analyse le registre selon trois critères :
@@ -1339,8 +1354,9 @@ Connexions les postes détectés et la marche à suivre :
   Connexions. Y saisir le code — tirets et majuscules facultatifs —,
   puis « Rejoindre… ».
 
-**Rejoindre remplace le contenu du poste** par les données du groupe :
-faire une copie au préalable si nécessaire. Un code erroné se corrige
+**Rejoindre remplace le contenu du poste** par les données du groupe ;
+une copie entière des trois fichiers est faite avant, dans les
+sauvegardes. Un code erroné se corrige
 et se ressaisit tant que l'invitation est ouverte. Si elle n'apparaît pas
 (autre réseau, pare-feu), coller le code complet, adresse comprise,
 affiché sous le code.
@@ -1350,7 +1366,8 @@ Sur le réseau local, les postes se découvrent et se synchronisent
 se voient pas (réseau cloisonné, deux sites), un dossier d'échange ou
 des adresses saisies dans Options › Base assurent la liaison ; le bouton
 « Synchroniser » et la synchronisation à la fermeture restent
-disponibles.
+disponibles. « Synchroniser » nomme les postes injoignables ; un dossier
+d'échange introuvable (partage démonté) est signalé, jamais créé.
 
 Deux postes n'attribuent jamais le même numéro de dossier : chacun a sa
 plage (le deuxième poste commence à 100 000). Une modification reçue ne
@@ -1365,7 +1382,8 @@ jusqu'à sa réception, quelques secondes sur le réseau local. Le
 registre, la caisse et les journaux restent en ajout seul : une
 modification reçue pour eux est refusée, et le refus est affiché. Le
 poste de référence installe aussi le contenu livré avec les mises à
-jour.
+jour. Il ne se retire ni ne quitte le groupe tant que d'autres postes y
+restent : en désigner un autre d'abord.
 
 **L'officine** (nom, adresse, pharmacien, n° AM, équipe, horaires) se
 corrige depuis n'importe quel poste, dans Options › Officine. Deux postes
@@ -1516,7 +1534,10 @@ retient le dernier comptage de chaque soir et affiche les autres barrés.
 Chaque document imprimable a un modèle modifiable — bouton « Modèles… »
 de la barre du haut. Les modèles sont écrits en Typst ; les
 `{{MARQUEURS}}` acceptés sont listés dans l'éditeur, et l'aperçu utilise
-le même rendu que l'impression.
+le même rendu que l'impression. Un modèle de l'officine illisible
+(enregistré en Windows-1252, par exemple) arrête l'impression avec un
+message, sans retour silencieux au modèle livré ; un modèle « UTF-8 avec
+BOM » est accepté.
 
 Les textes imprimés au nom de l'officine se modifient dans la vue du
 document ou dans l'écran « Textes imprimés ». Les modifications sont
@@ -1562,8 +1583,9 @@ boîte de dialogue est ouverte.
 **Export en un seul fichier.** « Exporter en un fichier… » regroupe la
 base, les pièces et le registre dans un paquet chiffré du même mot de
 passe, pour transport ou archivage. « Importer un paquet… » les restaure
-dans un dossier **vide** : rien n'est écrasé, et la base y pointe au
-redémarrage.
+dans un dossier **vide** : rien n'est écrasé. Son chemin est proposé
+dans Options, et c'est « Enregistrer » qui y bascule ce poste. Un paquet
+venu d'un poste d'un groupe en sort, et se rejoint comme un poste neuf.
 
 # Annuaire des prescripteurs
 
@@ -1633,11 +1655,13 @@ dossier. Un acte écrit par une version
 plus récente de l'application est compté à part. L'impression n'est pas
 tracée.
 
-Durée de conservation : choisie dans Options (`[audit] keep_days`), un
-an par défaut ; au-delà, les lignes sont purgées à l'ouverture de session, et
+Durée de conservation : champ « Conservation du journal, pour
+l'officine » d'Options, un an par défaut ; au-delà, les lignes sont purgées à l'ouverture de session, et
 la purge est elle-même journalisée. `0` désactive la purge. La
 durée choisie dans Options vaut pour toute l'officine : elle est rangée
-dans la base, et tous les postes purgent à la même.
+dans la base, et tous les postes purgent à la même ; elle ne s'écrit que
+si elle a été changée, et un changement fait entre-temps sur un autre
+poste est dit plutôt qu'écrasé.
 
 # Fenêtre d'audit
 
