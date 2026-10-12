@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.401.0] - 2026-10-12
+
 ### Fixed
 - Versions from other officines: a received card name that is empty, or
   already another card's here, is no longer applied; a drug card's
