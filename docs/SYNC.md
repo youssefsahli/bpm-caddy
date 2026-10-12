@@ -875,6 +875,50 @@ sont (`relay::tests`, `a_phone_reaches_its_desktop_through_a_relay`,
 `a_relay_offer_and_a_relay_request_cross_the_network`). Un seul poste
 par officine devrait relayer : l'offre est un réglage de l'officine.
 
+### 7.10 Le répertoire des officines
+
+Pour les officines qui ne se sont **pas appairées** : une carte où
+paraît celle qui le veut, et son partage à parcourir
+(`src/repertoire.rs`, la vue « Carte des officines »). Ce n'est pas le
+réseau : rien ne s'y synchronise, rien n'entre de soi-même, et aucune
+clé de réseau n'y passe.
+
+* **Héberger** (`[reseau] repertoire`, `port_repertoire`, 7747) : un
+  poste tient le répertoire, en mémoire seulement, et demande au
+  routeur d'ouvrir le port. Aucune adresse n'est livrée : les officines
+  écrivent celle qu'on leur a donnée.
+* **Paraître** (réglage de l'officine, `settings`, clé `repertoire` :
+  adresse, paraître, commune, FINESS — écrit contre ce qui était lu) :
+  toutes les dix minutes, le poste ouvert envoie sa **carte de visite**
+  signée par la clé de l'officine sur le réseau (la même que
+  l'appairage montre) et son **catalogue** — les seuls champs des sortes
+  publiques dont la dernière version est d'ici (`enligne::own_offers`) :
+  jamais une liste, une phrase, ce qu'une officine appairée a réécrit, ni
+  un patient. Décochée, une carte de départ la retire.
+* **Lire** : la liste des cartes, puis le catalogue d'une officine,
+  vérifiés **par chaque poste** — la signature, l'empreinte du
+  catalogue, et ce qui peut entrer (`versions::admissible`, sortes
+  publiques connues). L'officine qui héberge ne peut ni changer un mot,
+  ni parler à la place d'une autre ; « ouverte » se lit à l'heure de la
+  carte signée, contre l'horloge de qui lit.
+
+Ses bornes : une carte de 4 Kio, un catalogue de 2 Mio **dans sa forme
+exacte** (re-sérialisé, il doit redonner les mêmes octets, et le compte
+par sorte de la carte doit être le sien) ; 2 000 officines, 16 et 8 Mio
+par adresse — comptés à chaque annonce, une carte qui change d'adresse
+entre dans le compte de la nouvelle — et 256 Mio en tout ; 64
+connexions, 30 appels par adresse et par minute ; **une échéance
+unique** de trente secondes pour la demande entière, lecture et
+écriture. Une carte n'est reçue que signée depuis moins d'une demi-heure
+(et pas au-delà dans l'avenir) et plus récente que tout ce qu'on a vu de
+cette clé, départ compris : sauvée et rejouée, elle est refusée. Les
+deux horloges doivent s'accorder à une demi-heure près.
+
+Ce qu'il ne garantit pas : **qui est qui**. N'importe quelle clé peut
+s'appeler « Pharmacie du Port » ; l'écran montre l'empreinte, et
+l'appairage reste la seule preuve. L'officine qui héberge sait qui
+paraît, d'où, et qui lit quoi.
+
 ## 8. Travaux restants
 
 1. **Le journal ne se compacte pas.** Chaque poste garde tout ce qui a

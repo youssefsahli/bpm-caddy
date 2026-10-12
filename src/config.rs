@@ -541,6 +541,13 @@ pub struct ReseauConfig {
     /// garder ni rien lire (`relay.rs`). Éteint par défaut.
     pub relais: bool,
     pub port_relais: u16,
+    /// **Héberger le répertoire des officines** : tenir, sur
+    /// `port_repertoire`, le serveur sans disque où les officines qui le
+    /// veulent paraissent sur la carte (`repertoire.rs`). Éteint par
+    /// défaut ; un seul poste d'une seule officine suffit à toutes celles
+    /// qui en écrivent l'adresse.
+    pub repertoire: bool,
+    pub port_repertoire: u16,
 }
 
 impl Default for ReseauConfig {
@@ -556,6 +563,8 @@ impl Default for ReseauConfig {
             port_ecoute: 7745,
             relais: false,
             port_relais: 7746,
+            repertoire: false,
+            port_repertoire: 7747,
         }
     }
 }

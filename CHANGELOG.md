@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- « Carte des officines »: a map of France where officines that choose
+  to appear show up at their commune, open or not, with what they
+  share; « Parcourir… » browses an officine's share in the « En ligne »
+  window without pairing, and each entry is taken by hand.
+- The directory behind it is hosted by any officine on one of its posts
+  (Options › Base, port 7747), in memory only. Cards are signed by the
+  officine's network key and each catalogue is bound to its card; every
+  post checks both. Only what the officine wrote itself of drug cards,
+  preparations, protocols, TROD lines, vaccines, dispositifs and
+  cascades is published — never a patient, a checklist, a printed
+  phrase, or text a paired officine wrote.
+- Bundled geography: département outlines and the communes with their
+  centre (IGN, INSEE, geo.api.gouv.fr, Licence Ouverte).
+
 ## [0.415.0] - 2026-10-12
 
 ### Added

@@ -62,26 +62,35 @@ const CONTEXT: &[u8] = b"bpm-caddy/repertoire/v1\n";
 /// Une officine qui ne s'est pas annoncée depuis ceci quitte le
 /// répertoire…
 pub const FORGET: Duration = Duration::from_secs(24 * 3600);
-/// …et passe pour **ouverte** tant que sa dernière annonce a moins de
-/// ceci. Le poste annonce toutes les [`ANNOUNCE_EVERY`].
+/// …et passe pour **ouverte** tant que sa dernière carte a moins de
+/// ceci. Le poste en signe une nouvelle toutes les [`ANNOUNCE_EVERY`].
 pub const ONLINE: Duration = Duration::from_secs(25 * 60);
 pub const ANNOUNCE_EVERY: Duration = Duration::from_secs(10 * 60);
+/// Une carte n'est reçue que signée depuis moins de ceci, et pas plus
+/// loin dans l'avenir : rejouée plus tard, elle est refusée. Les deux
+/// horloges doivent donc s'accorder à une demi-heure près.
+pub const FRESH: u64 = 30 * 60;
 
 /// Les bornes d'une carte de visite.
 pub const NAME_MAX: usize = 80;
+const CARD_MAX: usize = 4 * 1024;
 /// Un catalogue porte au plus ceci, en octets…
 pub const CATALOGUE_MAX: usize = 2 * 1024 * 1024;
 /// …et autant d'entrées, d'au plus ceci par valeur.
 pub const ARTICLES_MAX: usize = 5000;
 const VALUE_MAX: usize = 64 * 1024;
-/// Combien d'officines le répertoire tient, en tout et par adresse.
+/// Combien d'officines le répertoire tient, en tout et par adresse, et
+/// ce qu'une adresse peut y occuper.
 const MOST_LISTED: usize = 2000;
 const LISTED_PER_ADDRESS: usize = 16;
+const BYTES_PER_ADDRESS: usize = 8 * 1024 * 1024;
+/// Combien d'officines parties il se rappelle.
+const MOST_GONE: usize = 4096;
 /// Ce que le répertoire garde en tout, catalogues compris.
 const MOST_BYTES: usize = 256 * 1024 * 1024;
 const MOST_CONNECTIONS: usize = 64;
 const CALLS_PER_MINUTE: usize = 30;
-/// Le temps de dire sa demande entière, catalogue compris.
+/// Le temps d'une demande entière, réponse comprise.
 const REQUEST_WAIT: Duration = Duration::from_secs(30);
 /// Ce qu'un poste accepte de lire en réponse.
 const ANSWER_MAX: usize = 16 * 1024 * 1024;
@@ -109,6 +118,66 @@ pub struct Fiche {
     pub signature: String,
 }
 
+/// **Ce que l'officine a décidé** pour la carte — un réglage de la base
+/// (`settings`, clé [`SETTING`]), le même sur tous ses postes : où est le
+/// répertoire, si elle y paraît, sa commune, son FINESS.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Presence {
+    /// L'adresse du répertoire, `hôte:port` — celle qu'une officine qui
+    /// l'héberge a donnée. Vide : pas de répertoire.
+    pub adresse: String,
+    pub paraitre: bool,
+    pub code_postal: String,
+    pub commune: String,
+    pub finess: String,
+}
+
+/// La clé du réglage.
+pub const SETTING: &str = "repertoire";
+
+impl Presence {
+    /// Relire le réglage ; illisible ou absent, rien n'est décidé.
+    pub fn read(text: Option<&str>) -> Self {
+        text.and_then(|t| serde_json::from_str(t).ok())
+            .unwrap_or_default()
+    }
+
+    pub fn text(&self) -> String {
+        serde_json::to_string(self).unwrap_or_default()
+    }
+
+    /// L'adresse, complétée du port proposé quand elle n'en dit pas.
+    pub fn address(&self) -> Option<String> {
+        let a = self.adresse.trim();
+        if a.is_empty() || a.contains(char::is_whitespace) {
+            return None;
+        }
+        // `hôte:port`, `[v6]:port` ; un hôte seul, ou une IPv6 nue, prend
+        // le port du répertoire.
+        let has_port = match a.rsplit_once(':') {
+            Some((host, port)) => {
+                port.parse::<u16>().is_ok() && (!host.contains(':') || host.ends_with(']'))
+            }
+            None => false,
+        };
+        Some(if has_port {
+            a.to_owned()
+        } else if a.contains(':') && !a.starts_with('[') {
+            format!("[{a}]:{DEFAULT_PORT}")
+        } else {
+            format!("{a}:{DEFAULT_PORT}")
+        })
+    }
+}
+
+/// Les cinq groupes de l'empreinte d'une clé, tels que l'appairage les
+/// fait lire : la même chose ici et à l'écran du réseau.
+pub fn fingerprint(device: &str) -> Option<String> {
+    let id = unhex::<32>(device)?;
+    Some(bpm_sync::DeviceId::from_bytes(id).fingerprint().groups())
+}
+
 /// Une entrée du catalogue : ce qu'une offre de `enligne` est, sans ce
 /// que seul le journal local sait.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -120,18 +189,17 @@ pub struct Article {
     pub fields: Vec<(String, String)>,
 }
 
-/// Une officine telle que le répertoire la rend : sa carte, et depuis
-/// combien de secondes elle ne s'est pas annoncée.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Vue {
-    pub fiche: Fiche,
-    pub age: u64,
-}
+impl Fiche {
+    /// Depuis combien de secondes elle n'a pas signé de carte, **à
+    /// l'horloge de qui lit** : ce que le répertoire dirait de son âge,
+    /// il pourrait le mentir.
+    pub fn age(&self, now: u64) -> u64 {
+        now.saturating_sub(self.seq)
+    }
 
-impl Vue {
     /// Ouverte en ce moment, à peu de chose près.
-    pub fn online(&self) -> bool {
-        self.age < ONLINE.as_secs()
+    pub fn online(&self, now: u64) -> bool {
+        self.age(now) < ONLINE.as_secs()
     }
 }
 
@@ -140,7 +208,8 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 fn unhex<const N: usize>(text: &str) -> Option<[u8; N]> {
-    if text.len() != N * 2 || !text.is_ascii() {
+    // Minuscules seulement : une clé n'a qu'une écriture.
+    if text.len() != N * 2 || !text.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
         return None;
     }
     let mut out = [0u8; N];
@@ -244,6 +313,12 @@ pub fn verify(fiche: &Fiche) -> bool {
 /// Les bornes d'une carte, avant toute signature.
 fn well_formed(f: &Fiche) -> bool {
     let printable = |s: &str| !s.chars().any(char::is_control);
+    // Ce qu'elle partage : des sortes publiques connues, chacune une fois.
+    let parts_ok = f.parts.iter().enumerate().all(|(i, (k, n))| {
+        versions::kind_of_key(k).is_some_and(|k| !k.is_private())
+            && *n as usize <= ARTICLES_MAX
+            && !f.parts[..i].iter().any(|(o, _)| o == k)
+    });
     f.nom.chars().count() <= NAME_MAX
         && f.commune.chars().count() <= NAME_MAX
         && printable(&f.nom)
@@ -252,9 +327,10 @@ fn well_formed(f: &Fiche) -> bool {
             || (f.code_postal.len() == 5 && f.code_postal.chars().all(|c| c.is_ascii_digit())))
         && (f.finess.is_empty()
             || (f.finess.len() == 9 && f.finess.chars().all(|c| c.is_ascii_alphanumeric())))
-        && f.parts.len() <= Kind::ALL.len()
+        && parts_ok
         && (!f.present || !f.nom.trim().is_empty())
         && (f.catalogue.is_empty() || unhex::<32>(&f.catalogue).is_some())
+        && serde_json::to_vec(f).is_ok_and(|b| b.len() <= CARD_MAX)
 }
 
 /// **Lire un catalogue reçu**, et n'en garder que ce qui peut entrer :
@@ -358,101 +434,136 @@ fn read_block(stream: &mut impl Read, most: usize) -> std::io::Result<Vec<u8>> {
 struct Listed {
     fiche: Fiche,
     catalogue: Vec<u8>,
-    seen: Instant,
+    /// Ce que la carte et le catalogue occupent, comptés tels quels.
+    weight: usize,
     from: IpAddr,
 }
 
-/// L'état du répertoire, partagé entre ses fils.
+/// L'état du répertoire, partagé entre ses fils. Le temps lui est donné
+/// (`now`, heure Unix en secondes) : il se teste sans horloge.
 #[derive(Default)]
 pub struct Store {
     listed: HashMap<String, Listed>,
+    /// **Ceux qui sont partis**, et la dernière carte qu'ils ont signée :
+    /// rejouer leur carte d'avant, encore fraîche, ne les fait pas
+    /// revenir. Oubliés quand cette carte n'est plus fraîche — elle serait
+    /// refusée de toute façon.
+    gone: HashMap<String, u64>,
 }
 
 impl Store {
     fn bytes(&self) -> usize {
-        self.listed.values().map(|l| l.catalogue.len() + 1024).sum()
+        self.listed.values().map(|l| l.weight).sum()
     }
 
-    fn prune(&mut self) {
-        self.listed.retain(|_, l| l.seen.elapsed() < FORGET);
+    fn prune(&mut self, now: u64) {
+        self.listed
+            .retain(|_, l| now.saturating_sub(l.fiche.seq) < FORGET.as_secs());
+        self.gone.retain(|_, seq| seq.saturating_add(FRESH) >= now);
     }
 
-    /// **Garder une annonce** si elle est signée, bien formée, plus
-    /// récente que celle qu'on tient, et que les bornes le permettent.
-    /// Rend le refus en un mot.
+    /// **Garder une annonce** si elle est signée, bien formée, fraîche,
+    /// plus récente que tout ce qu'on a vu de cette officine, que son
+    /// catalogue est celui qu'elle signe et dans sa forme exacte, et que
+    /// les bornes le permettent. Rend le refus en un mot.
     pub fn take(
         &mut self,
         fiche: Fiche,
         catalogue: Vec<u8>,
         from: IpAddr,
+        now: u64,
     ) -> Result<(), &'static str> {
-        self.prune();
+        self.prune(now);
         if !verify(&fiche) {
             return Err("signature");
         }
-        if let Some(held) = self.listed.get(&fiche.device) {
-            if fiche.seq <= held.fiche.seq {
-                return Err("ancienne");
-            }
+        // Fraîche, à l'heure de ce poste près : une carte d'hier, sauvée
+        // par qui l'a lue, ne se rejoue pas.
+        if fiche.seq.saturating_add(FRESH) < now || fiche.seq > now.saturating_add(FRESH) {
+            return Err("heure");
+        }
+        let last = self
+            .listed
+            .get(&fiche.device)
+            .map(|l| l.fiche.seq)
+            .or_else(|| self.gone.get(&fiche.device).copied());
+        if last.is_some_and(|seq| fiche.seq <= seq) {
+            return Err("ancienne");
         }
         if !fiche.present {
             self.listed.remove(&fiche.device);
+            if self.gone.len() < MOST_GONE {
+                self.gone.insert(fiche.device, fiche.seq);
+            }
             return Ok(());
         }
-        if read_catalogue(&fiche, &catalogue).is_none() {
+        // **Le catalogue dans sa forme exacte**, celle que `catalogue_of`
+        // écrit : ce qui ne sert à rien — une sorte inconnue, un champ que
+        // personne ne prendrait, de l'espace — n'occupe pas la mémoire de
+        // l'officine qui héberge.
+        let Some(articles) = read_catalogue(&fiche, &catalogue) else {
+            return Err("catalogue");
+        };
+        if serde_json::to_vec(&articles).ok().as_deref() != Some(&catalogue[..])
+            || recount(&articles) != fiche.parts
+        {
             return Err("catalogue");
         }
-        let known = self.listed.contains_key(&fiche.device);
-        if !known {
-            if self.listed.len() >= MOST_LISTED {
-                return Err("plein");
-            }
-            let here = self.listed.values().filter(|l| l.from == from).count();
-            if here >= LISTED_PER_ADDRESS {
-                return Err("adresse");
+        let weight = catalogue.len() + serde_json::to_vec(&fiche).map_or(CARD_MAX, |b| b.len());
+        // Les bornes par adresse, comptées **à chaque annonce** : une carte
+        // qui change d'adresse entre dans le compte de la nouvelle.
+        let (mut here, mut here_bytes) = (0_usize, weight);
+        for (device, l) in &self.listed {
+            if *device != fiche.device && l.from == from {
+                here += 1;
+                here_bytes += l.weight;
             }
         }
-        let held = self
-            .listed
-            .get(&fiche.device)
-            .map_or(0, |l| l.catalogue.len() + 1024);
-        if self.bytes() - held + catalogue.len() + 1024 > MOST_BYTES {
+        if here >= LISTED_PER_ADDRESS || here_bytes > BYTES_PER_ADDRESS {
+            return Err("adresse");
+        }
+        let held = self.listed.get(&fiche.device).map_or(0, |l| l.weight);
+        if held == 0 && self.listed.len() >= MOST_LISTED {
             return Err("plein");
         }
+        if self.bytes() - held + weight > MOST_BYTES {
+            return Err("plein");
+        }
+        self.gone.remove(&fiche.device);
         self.listed.insert(
             fiche.device.clone(),
             Listed {
                 fiche,
                 catalogue,
-                seen: Instant::now(),
+                weight,
                 from,
             },
         );
         Ok(())
     }
 
-    /// Les officines du répertoire, la plus récemment annoncée d'abord.
-    pub fn list(&mut self) -> Vec<Vue> {
-        self.prune();
-        let mut out: Vec<Vue> = self
-            .listed
-            .values()
-            .map(|l| Vue {
-                fiche: l.fiche.clone(),
-                age: l.seen.elapsed().as_secs(),
-            })
-            .collect();
-        out.sort_by_key(|v| v.age);
+    /// Les cartes du répertoire, la plus récente d'abord.
+    pub fn list(&mut self, now: u64) -> Vec<Fiche> {
+        self.prune(now);
+        let mut out: Vec<Fiche> = self.listed.values().map(|l| l.fiche.clone()).collect();
+        out.sort_by_key(|f| std::cmp::Reverse(f.seq));
         out
     }
 
-    pub fn catalogue(&mut self, device: &str) -> Vec<u8> {
-        self.prune();
+    pub fn catalogue(&mut self, device: &str, now: u64) -> Vec<u8> {
+        self.prune(now);
         self.listed
             .get(device)
             .map(|l| l.catalogue.clone())
             .unwrap_or_default()
     }
+}
+
+/// L'heure Unix de ce poste, en secondes.
+pub fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
 }
 
 /// **Tenir le répertoire** sur `port` jusqu'à ce que `stop` passe à vrai.
@@ -500,7 +611,7 @@ fn admit(calls: &Mutex<HashMap<IpAddr, Vec<Instant>>>, ip: IpAddr) -> bool {
         v.retain(|t| now.duration_since(*t) < Duration::from_secs(60));
         !v.is_empty()
     });
-    if calls.len() >= 1024 && !calls.contains_key(&ip) {
+    if calls.len() >= 8192 && !calls.contains_key(&ip) {
         return false;
     }
     let seen = calls.entry(ip).or_default();
@@ -508,22 +619,43 @@ fn admit(calls: &Mutex<HashMap<IpAddr, Vec<Instant>>>, ip: IpAddr) -> bool {
     seen.len() <= CALLS_PER_MINUTE
 }
 
-/// Une lecture qui ne dépasse jamais l'échéance de la demande entière :
-/// un octet toutes les quelques secondes ne tient pas un fil une heure.
+/// Une prise lue et écrite **contre une seule échéance**, celle de
+/// l'échange entier : un octet toutes les quelques secondes, dans un sens
+/// ou dans l'autre, ne tient pas un fil une heure.
 struct Deadline<'a> {
     stream: &'a TcpStream,
     until: Instant,
 }
 
-impl Read for Deadline<'_> {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+impl Deadline<'_> {
+    fn left(&self) -> std::io::Result<Duration> {
         let left = self.until.saturating_duration_since(Instant::now());
         if left.is_zero() {
             return Err(std::io::Error::from(std::io::ErrorKind::TimedOut));
         }
-        self.stream.set_read_timeout(Some(left))?;
+        Ok(left)
+    }
+}
+
+impl Read for Deadline<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.stream.set_read_timeout(Some(self.left()?))?;
         let mut s = self.stream;
         s.read(buf)
+    }
+}
+
+impl Write for Deadline<'_> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.stream.set_write_timeout(Some(self.left()?))?;
+        let mut s = self.stream;
+        // Par morceaux : l'échéance est relue entre deux.
+        s.write(&buf[..buf.len().min(16 * 1024)])
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        let mut s = self.stream;
+        s.flush()
     }
 }
 
@@ -541,24 +673,25 @@ fn read_line(r: &mut impl Read) -> std::io::Result<String> {
     Err(std::io::Error::from(std::io::ErrorKind::InvalidData))
 }
 
-/// Une demande reçue, et sa réponse.
-fn answer(mut stream: TcpStream, from: IpAddr, store: &Mutex<Store>) -> std::io::Result<()> {
+/// Une demande reçue, et sa réponse — l'une et l'autre dans le temps
+/// d'une demande.
+fn answer(stream: TcpStream, from: IpAddr, store: &Mutex<Store>) -> std::io::Result<()> {
     stream.set_nonblocking(false)?;
-    stream.set_write_timeout(Some(REQUEST_WAIT))?;
-    let mut r = Deadline {
+    let mut io = Deadline {
         stream: &stream,
         until: Instant::now() + REQUEST_WAIT,
     };
-    let Some(verbe) = read_preface(&read_line(&mut r)?) else {
+    let Some(verbe) = read_preface(&read_line(&mut io)?) else {
         return Ok(());
     };
+    let now = unix_now();
     match verbe {
         Verbe::Annonce => {
-            let fiche = read_block(&mut r, 64 * 1024)?;
-            let catalogue = read_block(&mut r, CATALOGUE_MAX)?;
+            let fiche = read_block(&mut io, CARD_MAX)?;
+            let catalogue = read_block(&mut io, CATALOGUE_MAX)?;
             let said = match serde_json::from_slice::<Fiche>(&fiche) {
                 Ok(fiche) => match store.lock() {
-                    Ok(mut s) => s.take(fiche, catalogue, from),
+                    Ok(mut s) => s.take(fiche, catalogue, from, now),
                     Err(_) => Err("plein"),
                 },
                 Err(_) => Err("illisible"),
@@ -567,18 +700,18 @@ fn answer(mut stream: TcpStream, from: IpAddr, store: &Mutex<Store>) -> std::io:
                 Ok(()) => "OK\n".to_owned(),
                 Err(why) => format!("NON {why}\n"),
             };
-            stream.write_all(line.as_bytes())
+            io.write_all(line.as_bytes())
         }
         Verbe::Liste => {
-            let list = store.lock().map(|mut s| s.list()).unwrap_or_default();
-            write_block(&mut stream, &serde_json::to_vec(&list).unwrap_or_default())
+            let list = store.lock().map(|mut s| s.list(now)).unwrap_or_default();
+            write_block(&mut io, &serde_json::to_vec(&list).unwrap_or_default())
         }
         Verbe::Catalogue(device) => {
             let bytes = store
                 .lock()
-                .map(|mut s| s.catalogue(&device))
+                .map(|mut s| s.catalogue(&device, now))
                 .unwrap_or_default();
-            write_block(&mut stream, &bytes)
+            write_block(&mut io, &bytes)
         }
     }
 }
@@ -592,17 +725,27 @@ fn dial(address: &str, patience: Duration) -> Result<TcpStream, String> {
     let mut last = String::from("adresse vide");
     for a in addrs {
         match TcpStream::connect_timeout(&a, patience) {
-            Ok(s) => {
-                s.set_read_timeout(Some(patience))
-                    .map_err(|e| e.to_string())?;
-                s.set_write_timeout(Some(patience))
-                    .map_err(|e| e.to_string())?;
-                return Ok(s);
-            }
+            Ok(s) => return Ok(s),
             Err(e) => last = e.to_string(),
         }
     }
     Err(last)
+}
+
+/// Un échange avec le répertoire, borné en tout par `patience` fois
+/// quatre : un répertoire qui répond un octet à la fois ne tient pas le
+/// poste.
+fn exchange<T>(
+    address: &str,
+    patience: Duration,
+    talk: impl FnOnce(&mut Deadline<'_>) -> std::io::Result<T>,
+) -> Result<T, String> {
+    let stream = dial(address, patience)?;
+    let mut io = Deadline {
+        stream: &stream,
+        until: Instant::now() + patience * 4,
+    };
+    talk(&mut io).map_err(|e| e.to_string())
 }
 
 /// **S'annoncer** : la carte signée et son catalogue.
@@ -612,34 +755,38 @@ pub fn announce(
     catalogue: &[u8],
     patience: Duration,
 ) -> Result<(), String> {
-    let mut s = dial(address, patience)?;
-    s.write_all(preface(&Verbe::Annonce).as_bytes())
-        .map_err(|e| e.to_string())?;
-    write_block(
-        &mut s,
-        &serde_json::to_vec(fiche).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())?;
-    write_block(&mut s, catalogue).map_err(|e| e.to_string())?;
-    let line = read_line(&mut s).map_err(|e| e.to_string())?;
+    let card = serde_json::to_vec(fiche).map_err(|e| e.to_string())?;
+    let line = exchange(address, patience, |io| {
+        io.write_all(preface(&Verbe::Annonce).as_bytes())?;
+        write_block(io, &card)?;
+        write_block(io, catalogue)?;
+        read_line(io)
+    })?;
     match line.trim() {
         "OK" => Ok(()),
         other => Err(other.trim_start_matches("NON ").to_owned()),
     }
 }
 
-/// **Lire le répertoire** — les seules cartes qui se vérifient.
-pub fn list(address: &str, patience: Duration) -> Result<Vec<Vue>, String> {
-    let mut s = dial(address, patience)?;
-    s.write_all(preface(&Verbe::Liste).as_bytes())
-        .map_err(|e| e.to_string())?;
-    let bytes = read_block(&mut s, ANSWER_MAX).map_err(|e| e.to_string())?;
-    let list: Vec<Vue> = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
-    Ok(list
-        .into_iter()
-        .filter(|v| v.fiche.present && verify(&v.fiche))
-        .take(MOST_LISTED)
-        .collect())
+/// **Lire le répertoire** — les seules cartes qui se vérifient, une par
+/// officine, la plus récente.
+pub fn list(address: &str, patience: Duration) -> Result<Vec<Fiche>, String> {
+    let bytes = exchange(address, patience, |io| {
+        io.write_all(preface(&Verbe::Liste).as_bytes())?;
+        read_block(io, ANSWER_MAX)
+    })?;
+    let mut list: Vec<Fiche> = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+    // Borné avant de vérifier : chaque vérification coûte.
+    list.truncate(MOST_LISTED);
+    let mut out: Vec<Fiche> = Vec::new();
+    for f in list.into_iter().filter(|f| f.present && verify(f)) {
+        match out.iter_mut().find(|o| o.device == f.device) {
+            Some(o) if o.seq < f.seq => *o = f,
+            Some(_) => {}
+            None => out.push(f),
+        }
+    }
+    Ok(out)
 }
 
 /// **Lire le catalogue d'une officine**, vérifié contre sa carte.
@@ -648,10 +795,11 @@ pub fn fetch_catalogue(
     fiche: &Fiche,
     patience: Duration,
 ) -> Result<Vec<Article>, String> {
-    let mut s = dial(address, patience)?;
-    s.write_all(preface(&Verbe::Catalogue(fiche.device.clone())).as_bytes())
-        .map_err(|e| e.to_string())?;
-    let bytes = read_block(&mut s, CATALOGUE_MAX).map_err(|e| e.to_string())?;
+    let device = fiche.device.clone();
+    let bytes = exchange(address, patience, |io| {
+        io.write_all(preface(&Verbe::Catalogue(device)).as_bytes())?;
+        read_block(io, CATALOGUE_MAX)
+    })?;
     read_catalogue(fiche, &bytes).ok_or_else(|| "catalogue".to_owned())
 }
 
@@ -797,54 +945,230 @@ mod tests {
         assert_eq!(offer.from, vec!["Pharmacie de la Gare"]);
     }
 
+    const NOW: u64 = 1_800_000_000;
+
+    fn lugol() -> (Vec<u8>, Vec<(String, u32)>) {
+        catalogue_of(&[edit(Kind::Codex, "Lugol", "form", "solution", "")])
+    }
+
     /// **Le répertoire garde la plus récente, et seulement elle** ; une
-    /// officine qui part s'en va ; une adresse ne remplit pas tout.
+    /// officine qui part s'en va ; une adresse ne remplit pas tout, même
+    /// en faisant passer ses cartes par une autre.
     #[test]
     fn the_store_keeps_the_newest_card_and_its_bounds() {
         let ip: IpAddr = "192.0.2.1".parse().unwrap();
+        let other: IpAddr = "192.0.2.2".parse().unwrap();
         let mut store = Store::default();
-        let (bytes, parts) = catalogue_of(&[edit(Kind::Codex, "Lugol", "form", "solution", "")]);
+        let (bytes, parts) = lugol();
+        let take =
+            |s: &mut Store, f: Fiche, b: &[u8], from: IpAddr| s.take(f, b.to_vec(), from, NOW);
         assert_eq!(
-            store.take(card(1, 10, &bytes, parts.clone()), bytes.clone(), ip),
+            take(&mut store, card(1, NOW, &bytes, parts.clone()), &bytes, ip),
             Ok(())
         );
         assert_eq!(
-            store.take(card(1, 9, &bytes, parts.clone()), bytes.clone(), ip),
+            take(
+                &mut store,
+                card(1, NOW - 1, &bytes, parts.clone()),
+                &bytes,
+                ip
+            ),
             Err("ancienne")
         );
         assert_eq!(
-            store.take(card(1, 10, &bytes, parts.clone()), bytes.clone(), ip),
+            take(&mut store, card(1, NOW, &bytes, parts.clone()), &bytes, ip),
             Err("ancienne")
         );
-        let mut forged = card(1, 11, &bytes, parts.clone());
+        let mut forged = card(1, NOW + 1, &bytes, parts.clone());
         forged.commune = "Ailleurs".to_owned();
-        assert_eq!(store.take(forged, bytes.clone(), ip), Err("signature"));
+        assert_eq!(take(&mut store, forged, &bytes, ip), Err("signature"));
         assert_eq!(
-            store.take(card(1, 12, &bytes, parts.clone()), b"[]".to_vec(), ip),
+            take(
+                &mut store,
+                card(1, NOW + 2, &bytes, parts.clone()),
+                b"[]",
+                ip
+            ),
             Err("catalogue")
         );
-        assert_eq!(store.list().len(), 1);
-        assert_eq!(store.catalogue(&hex(&device(1).id().0)), bytes);
+        assert_eq!(store.list(NOW).len(), 1);
+        assert_eq!(store.catalogue(&hex(&device(1).id().0), NOW), bytes);
         for n in 2..=LISTED_PER_ADDRESS as u8 {
             assert_eq!(
-                store.take(card(n, 1, &bytes, parts.clone()), bytes.clone(), ip),
+                take(&mut store, card(n, NOW, &bytes, parts.clone()), &bytes, ip),
                 Ok(())
             );
         }
         assert_eq!(
-            store.take(card(200, 1, &bytes, parts.clone()), bytes.clone(), ip),
+            take(
+                &mut store,
+                card(200, NOW, &bytes, parts.clone()),
+                &bytes,
+                ip
+            ),
             Err("adresse")
         );
-        let other: IpAddr = "192.0.2.2".parse().unwrap();
+        // Quinze cartes passées par une autre adresse, une seizième qui y
+        // naît : la première carte ne peut plus y passer.
+        for n in 2..=LISTED_PER_ADDRESS as u8 {
+            assert_eq!(
+                take(
+                    &mut store,
+                    card(n, NOW + 1, &bytes, parts.clone()),
+                    &bytes,
+                    other
+                ),
+                Ok(())
+            );
+        }
         assert_eq!(
-            store.take(card(200, 1, &bytes, parts.clone()), bytes.clone(), other),
+            take(
+                &mut store,
+                card(100, NOW, &bytes, parts.clone()),
+                &bytes,
+                other
+            ),
             Ok(())
         );
-        let mut gone = card(1, 20, b"", Vec::new());
+        assert_eq!(
+            take(
+                &mut store,
+                card(1, NOW + 3, &bytes, parts.clone()),
+                &bytes,
+                other
+            ),
+            Err("adresse"),
+            "une carte qui change d'adresse entre dans son compte"
+        );
+        let mut gone = card(1, NOW + 4, b"", Vec::new());
         gone.present = false;
         let gone = sign(gone, &device(1));
-        assert_eq!(store.take(gone, Vec::new(), ip), Ok(()));
-        assert!(store.catalogue(&hex(&device(1).id().0)).is_empty());
+        assert_eq!(take(&mut store, gone, &[], ip), Ok(()));
+        assert!(store.catalogue(&hex(&device(1).id().0), NOW).is_empty());
+    }
+
+    /// **Une carte ne se rejoue pas** : ni vieille d'une heure, ni après
+    /// le départ de l'officine, ni signée dans un avenir lointain.
+    #[test]
+    fn a_saved_card_does_not_replay() {
+        let ip: IpAddr = "192.0.2.1".parse().unwrap();
+        let mut store = Store::default();
+        let (bytes, parts) = lugol();
+        let saved = card(1, NOW, &bytes, parts.clone());
+        assert_eq!(store.take(saved.clone(), bytes.clone(), ip, NOW), Ok(()));
+        let mut gone = card(1, NOW + 60, b"", Vec::new());
+        gone.present = false;
+        let gone = sign(gone, &device(1));
+        assert_eq!(store.take(gone, Vec::new(), ip, NOW + 60), Ok(()));
+        assert_eq!(
+            store.take(saved.clone(), bytes.clone(), ip, NOW + 120),
+            Err("ancienne"),
+            "partie, elle ne revient pas par sa carte d'avant"
+        );
+        let mut fresh = Store::default();
+        assert_eq!(
+            fresh.take(saved, bytes.clone(), ip, NOW + FRESH + 1),
+            Err("heure"),
+            "rejouée trop tard"
+        );
+        assert_eq!(
+            fresh.take(card(2, NOW + 2 * FRESH, &bytes, parts), bytes, ip, NOW),
+            Err("heure"),
+            "signée dans l'avenir"
+        );
+    }
+
+    /// **Le catalogue dans sa forme exacte** : du remplissage, une sorte
+    /// inconnue, un compte qui ment — refusés ; une carte qui annonce une
+    /// sorte privée ou inconnue ne se vérifie même pas.
+    #[test]
+    fn a_padded_or_lying_catalogue_is_refused() {
+        let ip: IpAddr = "192.0.2.1".parse().unwrap();
+        let mut store = Store::default();
+        let (bytes, parts) = lugol();
+        let mut padded = bytes.clone();
+        padded.splice(1..1, std::iter::repeat_n(b' ', 1000));
+        assert_eq!(
+            store.take(card(1, NOW, &padded, parts.clone()), padded, ip, NOW),
+            Err("catalogue")
+        );
+        assert_eq!(
+            store.take(
+                card(1, NOW, &bytes, vec![("codex".to_owned(), 7)]),
+                bytes.clone(),
+                ip,
+                NOW
+            ),
+            Err("catalogue")
+        );
+        assert!(!verify(&card(
+            1,
+            NOW,
+            &bytes,
+            vec![("liste".to_owned(), 1)]
+        )));
+        assert!(!verify(&card(1, NOW, &bytes, vec![("x".repeat(3000), 1)])));
+        assert!(!verify(&card(
+            1,
+            NOW,
+            &bytes,
+            vec![("codex".to_owned(), 1), ("codex".to_owned(), 1)]
+        )));
+        let mut upper = card(1, NOW, &bytes, parts);
+        upper.device = upper.device.to_uppercase();
+        assert!(!verify(&upper), "une clé n'a qu'une écriture");
+    }
+
+    /// **Ce qu'une officine appairée a réécrit ne sort pas** au nom de
+    /// celle-ci : seuls les champs dont la dernière version est d'ici.
+    #[test]
+    fn a_field_a_peer_rewrote_is_not_published_as_ours() {
+        let edits = [
+            edit(Kind::Codex, "Lugol", "form", "solution", ""),
+            edit(Kind::Codex, "Lugol", "indication", "thyroïde", ""),
+            edit(Kind::Codex, "Lugol", "form", "à 5 %", "Pharmacie B"),
+        ];
+        let (bytes, _) = catalogue_of(&edits);
+        let articles: Vec<Article> = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(
+            articles[0].fields,
+            vec![("indication".to_owned(), "thyroïde".to_owned())]
+        );
+    }
+
+    #[test]
+    fn the_directory_address_takes_the_default_port_when_it_names_none() {
+        let p = |a: &str| {
+            Presence {
+                adresse: a.to_owned(),
+                ..Presence::default()
+            }
+            .address()
+        };
+        assert_eq!(
+            p("annuaire.example.fr"),
+            Some("annuaire.example.fr:7747".to_owned())
+        );
+        assert_eq!(p(" 192.0.2.4:9000 "), Some("192.0.2.4:9000".to_owned()));
+        assert_eq!(p("2001:db8::1"), Some("[2001:db8::1]:7747".to_owned()));
+        assert_eq!(
+            p("[2001:db8::1]:9000"),
+            Some("[2001:db8::1]:9000".to_owned())
+        );
+        assert_eq!(p(""), None);
+        assert_eq!(p("deux mots"), None);
+        let back = Presence::read(Some(
+            &Presence {
+                adresse: "x".to_owned(),
+                paraitre: true,
+                ..Presence::default()
+            }
+            .text(),
+        ));
+        assert!(back.paraitre);
+        assert_eq!(Presence::read(Some("pas du json")), Presence::default());
+        assert!(fingerprint(&hex(&device(1).id().0)).is_some());
+        assert!(fingerprint("zz").is_none());
     }
 
     #[test]
@@ -872,7 +1196,7 @@ mod tests {
         serve(port, Arc::clone(&stop)).unwrap();
         let at = format!("127.0.0.1:{port}");
         let (bytes, parts) = catalogue_of(&[edit(Kind::Codex, "Lugol", "form", "solution", "")]);
-        let fiche = card(1, 10, &bytes, parts);
+        let fiche = card(1, unix_now(), &bytes, parts);
         let patience = Duration::from_secs(5);
         let mut said = announce(&at, &fiche, &bytes, patience);
         for _ in 0..20 {
@@ -889,9 +1213,9 @@ mod tests {
         );
         let seen = list(&at, patience).unwrap();
         assert_eq!(seen.len(), 1);
-        assert!(seen[0].online());
-        assert_eq!(seen[0].fiche.nom, "Pharmacie de la Gare");
-        let articles = fetch_catalogue(&at, &seen[0].fiche, patience).unwrap();
+        assert!(seen[0].online(unix_now()));
+        assert_eq!(seen[0].nom, "Pharmacie de la Gare");
+        let articles = fetch_catalogue(&at, &seen[0], patience).unwrap();
         assert_eq!(articles.len(), 1);
         assert_eq!(articles[0].name, "Lugol");
         stop.store(true, Ordering::SeqCst);

@@ -1230,6 +1230,34 @@ soi-même ne compte pas. Dans la fenêtre, elles viennent en tête, marquées
 prendre ; quand plusieurs officines partagent, la liste de choix
 parcourt le partage d'une seule.
 
+# Carte des officines
+
+« Carte des officines » (onglet, ou « Aller à… ») montre les officines
+qui paraissent au **répertoire** : une pastille par officine, à sa
+commune — pleine si elle est ouverte, creuse sinon, avec depuis quand
+elle n'a pas été vue. Le carré est cette officine. Choisie sur la carte
+ou dans la liste, une officine dit sa commune, son FINESS s'il est
+écrit (déclaré, non vérifié), l'empreinte de sa clé et ce qu'elle
+partage ; « Parcourir… » ouvre son partage dans la fenêtre « En
+ligne », où chaque entrée se prend d'un geste. **Aucun appairage** :
+rien n'entre de soi-même, et son nom n'est prouvé que par l'empreinte,
+à comparer de vive voix.
+
+Le répertoire est tenu par une officine qui accepte de l'héberger sur
+l'un de ses postes (Options › Base, « Héberger le répertoire des
+officines », port 7747) ; il ne garde rien sur le disque. Les autres
+écrivent son adresse dans « Cette officine sur la carte », choisissent
+leur commune et, si elles le veulent, cochent « Paraître sur la
+carte » : le poste annonce alors l'officine toutes les dix minutes tant
+que l'application est ouverte. Partent son nom, sa commune, son FINESS
+s'il est écrit, et ce qu'elle a écrit elle-même des fiches,
+préparations, protocoles, lignes de TROD, vaccins, dispositifs et
+cascades — **jamais un patient, une liste de contrôle ni une phrase
+imprimée**. Décocher la retire du répertoire.
+
+Les contours des départements et les communes viennent de l'IGN, de
+l'INSEE et de geo.api.gouv.fr (Licence Ouverte).
+
 # Ruptures
 
 Une rupture se déclare sur la fiche : « Signaler une rupture », dans la

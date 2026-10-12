@@ -497,9 +497,6 @@ pub fn encode(e: &Edit, officine: &str) -> Vec<u8> {
     .into_bytes()
 }
 
-/// L'inverse. Un champ que ce module ne partage pas n'entre pas — une
-/// version postérieure qui partagerait les notes de l'équipe ne les ferait
-/// pas entrer ici.
 /// **Une valeur venue d'ailleurs peut-elle entrer ?** Un champ que la
 /// sorte partage, un arbre qui se lit comme un arbre, des lignes comme
 /// des lignes — la même règle pour le journal du réseau et pour le
@@ -523,6 +520,9 @@ pub fn kind_of_key(key: &str) -> Option<Kind> {
     Kind::ALL.into_iter().find(|k| k.key() == key)
 }
 
+/// L'inverse. Un champ que ce module ne partage pas n'entre pas — une
+/// version postérieure qui partagerait les notes de l'équipe ne les ferait
+/// pas entrer ici.
 pub fn decode(bytes: &[u8]) -> Option<Edit> {
     let v: serde_json::Value = serde_json::from_slice(bytes).ok()?;
     if v.get("v")?.as_u64()? != 1 {

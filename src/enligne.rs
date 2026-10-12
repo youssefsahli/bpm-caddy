@@ -67,8 +67,25 @@ pub fn own_offers(edits: &[Edit], kind: Kind) -> Vec<Offer> {
     if kind.is_private() {
         return Vec::new();
     }
+    // **Les seuls champs dont la dernière version est d'ici** : une
+    // officine appairée qui a réécrit un champ l'a écrit pour son réseau,
+    // pas pour le répertoire public, et pas au nom de celle-ci.
+    let mut last_here: std::collections::HashMap<(&str, &str), bool> =
+        std::collections::HashMap::new();
+    for e in edits.iter().filter(|e| e.kind == kind) {
+        last_here.insert(
+            (e.card.as_str(), e.field.as_str()),
+            e.source.trim().is_empty(),
+        );
+    }
     let mut out = gather(edits, kind);
     out.retain(|o| o.mine);
+    for o in &mut out {
+        let card = o.card.clone();
+        o.fields
+            .retain(|(f, _)| last_here.get(&(card.as_str(), f.as_str())) == Some(&true));
+    }
+    out.retain(|o| !o.fields.is_empty());
     out
 }
 

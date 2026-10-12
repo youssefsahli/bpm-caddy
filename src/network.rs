@@ -1278,6 +1278,14 @@ pub fn read_join(text: &str) -> Option<(String, Option<bpm_sync::Ticket>)> {
     }
 }
 
+/// La clé de l'officine sur le réseau — ce qui signe sa carte au
+/// répertoire (`repertoire::sign`), la même que l'appairage montre.
+pub fn device(db: &Db) -> Result<Device, String> {
+    let seed = db.net_key("net_seed", &hex(&random32()))?;
+    let seed = unhex::<32>(&seed).ok_or("identité du réseau illisible")?;
+    Ok(Device::from_seed(seed))
+}
+
 /// L'identité de l'officine sur le réseau, en hexadécimal — sans lire
 /// son journal : ce qu'une annonce sur le réseau local a besoin de dire.
 pub fn device_hex(db: &Db) -> Result<String, String> {
