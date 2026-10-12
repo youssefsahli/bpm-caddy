@@ -1536,7 +1536,12 @@ Un fichier chiffré, partageable entre postes. Le registre des
 stupéfiants et les pièces scannées ont chacun leur fichier, à côté.
 
 Sauvegardes quotidiennes, en nombre fixé ; « Copier la base… » copie les
-trois fichiers. Le changement de mot de passe rechiffre les trois.
+trois fichiers, ensemble ou pas du tout. « Déplacer la base vers… » les
+copie de même puis bascule ce poste sur la copie : il se verrouille et se
+rouvre dessus ; l'ancien fichier reste celui des autres postes, à
+repointer un par un. « Réinitialiser » fait d'abord une copie des trois
+fichiers dans `backups/`, et n'efface rien si elle échoue. Le changement
+de mot de passe rechiffre les trois.
 
 La suppression de pièces ne libère pas l'espace : seul « Compacter » le
 fait.
