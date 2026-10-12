@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the morning was kept); the condition of an as-needed line starts at its
   marker (« 1 sachet au petit-déjeuner si besoin » printed « déjeuner si
   besoin »).
+- Posts' sync: only the group's posts set the clock (one record ranked
+  at the ceiling, from a retired device or a lost phone, pinned every
+  later write and left edits « to arbitrate »); a correction sealed by
+  another device no longer hides a post's record (posts never write
+  one); an exchange-folder file over 1 GB is not read.
 - Monitoring plan: a result dated after today no longer keeps an analyte
   « up to date » (a typo like 2062 hid the real, overdue last result for
   years), and a biology date is read like any past event — « 2012 » typed

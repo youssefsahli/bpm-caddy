@@ -141,6 +141,9 @@ pub struct Posts {
     journal: Journal,
 }
 
+/// Le plus gros fichier d'échange qu'un poste lit : un gigaoctet.
+const MOST_FOLDER_BYTES: u64 = 1 << 30;
+
 impl Posts {
     /// Lire l'identité de ce poste, la clé des postes s'il en a une, et
     /// le journal. L'identité est tirée au hasard la première fois, **dans
@@ -167,11 +170,27 @@ impl Posts {
                 journal.insert(record);
             }
         }
-        Ok(Self {
+        let mut posts = Self {
             device: Device::from_seed(seed),
             trousseau,
             journal,
-        })
+        };
+        posts.trust_known(db);
+        Ok(posts)
+    }
+
+    /// **Seuls les postes du groupe règlent l'horloge** — la règle que le
+    /// réseau d'officines suit depuis la 0.321. Sans elle, un seul
+    /// enregistrement au rang `u64::MAX` — d'un appareil retiré, d'un
+    /// téléphone perdu, même illisible — fixait chaque écriture suivante
+    /// de chaque poste au plafond : leurs lignes ne se rangeaient plus que
+    /// par empreinte, une modification passait avant sa création, et
+    /// finissait « à arbitrer ». Relu avant chaque échange, puisqu'un
+    /// poste admis entre-temps compte.
+    fn trust_known(&mut self, db: &Db) {
+        let mut trusted = self.known(db);
+        trusted.push(self.device.id());
+        self.journal.trust(trusted);
     }
 
     pub fn in_group(&self) -> bool {
@@ -384,9 +403,26 @@ impl Posts {
         let mut facts: Vec<(Flux, bpm_sync::Fact)> = Vec::new();
         // A companion reads only what its share opens; the rest it holds
         // sealed and relays — not « unopened », just not its to read.
+        // **Les postes n'écrivent aucune correction** (`corrects: None`,
+        // toujours) : une qui se trouve au journal vient d'ailleurs. Un
+        // téléphone qui tient une part de la clé en scellait une sur son
+        // flux, qui « corrigeait » l'enregistrement d'un poste : chaque
+        // poste qui ne l'avait pas encore rangé ne le rangeait jamais,
+        // sans un mot. Lu sans elles — la vue ne se bâtit que s'il y en a.
+        let without_fixes;
+        let journal = if self.journal.records().any(|r| r.corrects().is_some()) {
+            let mut view = Journal::new();
+            for r in self.journal.records().filter(|r| r.corrects().is_none()) {
+                view.insert(r.clone());
+            }
+            without_fixes = view;
+            &without_fixes
+        } else {
+            &self.journal
+        };
         for s in STREAMS.into_iter().filter(|s| trousseau.opens(*s)) {
             let Some(flux) = flux_of(s) else { continue };
-            let reading = self.journal.read(trousseau, s);
+            let reading = journal.read(trousseau, s);
             report.unopened += reading.unopened.len();
             facts.extend(reading.facts.into_iter().map(|f| (flux, f)));
         }
@@ -467,6 +503,7 @@ impl Posts {
             return Ok(0);
         };
         std::fs::create_dir_all(folder).map_err(|e| e.to_string())?;
+        self.trust_known(db);
         let me = self.device.id();
         let known = self.known(db);
         let mine: Vec<u8> = self
@@ -491,6 +528,15 @@ impl Posts {
         {
             let path = entry.path();
             if path == target || path.extension().and_then(|e| e.to_str()) != Some("bpmposte") {
+                continue;
+            }
+            // Lu entier, donc borné avant : n'importe qui peut écrire
+            // dans un partage, et un fichier de plusieurs gigaoctets y
+            // emportait la mémoire du poste.
+            if entry
+                .metadata()
+                .map_or(true, |m| m.len() > MOST_FOLDER_BYTES)
+            {
                 continue;
             }
             let Ok(bytes) = std::fs::read(&path) else {
@@ -554,6 +600,7 @@ impl Posts {
             &self.known(db),
         )
         .map_err(|e| format!("{e:?}"))?;
+        self.trust_known(db);
         let mut meter = Meter::new();
         let held = self.journal.len();
         let said = bpm_sync::drive(
@@ -2268,6 +2315,48 @@ mod tests {
             let text = String::from_utf8_lossy(&bytes);
             assert!(!text.contains("Dupont") && !text.contains("Grand") && !text.contains("0611"));
         }
+
+        // **Une correction venue d'ailleurs ne cache rien** : un appareil
+        // qui tient la clé scelle un enregistrement qui « corrige » la
+        // dernière écriture de A ; B, qui ne l'avait pas encore rangée,
+        // la range quand même.
+        a.add_patient("Cible", "Correction", "1960-06-06").unwrap();
+        let mut pa = Posts::load(&a).unwrap();
+        pa.publish(&a, "2026-09-23").unwrap();
+        let me_a = pa.device.id();
+        let target = pa
+            .journal
+            .records()
+            .filter(|r| r.author() == me_a)
+            .max_by_key(|r| r.lamport())
+            .map(|r| (r.id(), r.stream()))
+            .unwrap();
+        let mut rogue = Posts {
+            device: Device::from_seed([9; 32]),
+            trousseau: pa.trousseau.clone(),
+            journal: Journal::new(),
+        };
+        let key = rogue.trousseau.clone().unwrap();
+        rogue
+            .journal
+            .write(
+                &rogue.device,
+                &key,
+                target.1,
+                b"rien",
+                Some(target.0),
+                &mut bpm_sync::OsEntropy,
+            )
+            .unwrap();
+        rogue.exchange_folder(&a, &folder).unwrap();
+        pa.exchange_folder(&a, &folder).unwrap();
+        let mut pb = Posts::load(&b).unwrap();
+        pb.exchange_folder(&b, &folder).unwrap();
+        pb.absorb(&b, "2026-09-23").unwrap();
+        assert!(
+            b.patients().unwrap().iter().any(|p| p.last_name == "Cible"),
+            "une correction d'un autre auteur ne cache pas l'écriture de A"
+        );
 
         // A retired post is no longer ranged.
         a.retire_post(1, "2026-09-24").unwrap();

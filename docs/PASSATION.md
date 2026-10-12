@@ -51,6 +51,14 @@ conciliation, acte de vaccination, retour d'une case de table), ADELI,
 lanceur, relais.
 
 Laissé, relevé par les relectures (à trancher ou à vérifier) :
+- postes : retirer un poste ne change pas la clé — un poste retiré (ou
+  un téléphone retiré, avec sa part) qui se tire une identité neuve
+  écrit encore, et peut inscrire sa propre ligne de `sync_posts` ; la
+  vraie révocation demande de tourner la clé au retrait, et l'amorce
+  d'un nouveau poste par celui qui l'invite plutôt que par lui-même ;
+- `bpm-sync` : un `Give` est accepté sans `Want` en attente, et des
+  parents inventés près de `0x00…` passent devant les vraies têtes dans
+  `need` — un membre peut étirer ou faire échouer une séance ;
 - barre du compagnon : son survol lit grossesse, rein et écrasement sans
   les réécritures de l'officine (`companion_signals` n'a pas les
   `Overrides`) — les panneaux, eux, les ont ; le texte « molécule absente
