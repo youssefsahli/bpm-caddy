@@ -167,9 +167,9 @@ pub fn fill(
     patient: &Patient,
     pharmacy: &PharmacyConfig,
 ) -> Result<Vec<u8>, String> {
-    let form = form_for(kind)
-        .ok_or_else(|| format!("{} n'a pas de bulletin d'adhésion.", kind.label()))?;
-    let mut doc = Document::load_mem(form.pdf).map_err(|e| format!("bulletin illisible : {e}"))?;
+    let form = form_for(kind).ok_or_else(|| crate::strings::trf("bulletin_none", kind.label()))?;
+    let mut doc =
+        Document::load_mem(form.pdf).map_err(|e| crate::strings::trf("bulletin_unreadable", e))?;
 
     let patient_address = split_address(&patient.address);
     let pharmacy_address = split_address(&pharmacy.address);
@@ -204,7 +204,7 @@ pub fn fill(
 
     let mut out = Vec::new();
     doc.save_to(&mut out)
-        .map_err(|e| format!("écriture du bulletin impossible : {e}"))?;
+        .map_err(|e| crate::strings::trf("bulletin_write_failed", e))?;
     Ok(out)
 }
 

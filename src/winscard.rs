@@ -25,6 +25,7 @@
 
 #![allow(clippy::upper_case_acronyms)]
 
+use crate::strings::{tr, trf};
 use std::ffi::{c_char, c_void, CString};
 use std::sync::OnceLock;
 
@@ -164,9 +165,9 @@ fn load() -> Result<Lib, String> {
             Err(e) => last = e.to_string(),
         }
     }
-    Err(format!(
-        "aucune bibliothèque PC/SC sur ce poste ({}) : {last}",
-        CANDIDATES.join(", ")
+    Err(crate::strings::trn(
+        "pcsc_no_library",
+        &[&CANDIDATES.join(", "), &last],
     ))
 }
 
@@ -194,17 +195,15 @@ fn code_of(code: Long) -> u32 {
 /// which is what a support call needs.
 pub fn message(code: Long) -> String {
     match code_of(code) {
-        0x0000_0000 => "succès".to_owned(),
-        0x8010_001D | 0x8010_001E => {
-            "le service de cartes n'est pas démarré sur ce poste".to_owned()
-        }
-        0x8010_002E => "aucun lecteur de carte disponible".to_owned(),
-        0x8010_000C => "aucune carte dans le lecteur".to_owned(),
-        0x8010_0069 | 0x8010_0068 => "la carte a été retirée pendant la lecture".to_owned(),
-        0x8010_000B => "la carte est déjà utilisée par un autre logiciel".to_owned(),
-        0x8010_0017 => "le lecteur ne répond plus".to_owned(),
-        0x8010_000A => "le lecteur n'a pas répondu à temps".to_owned(),
-        other => format!("erreur PC/SC 0x{other:08X}"),
+        0x0000_0000 => tr("pcsc_ok").to_owned(),
+        0x8010_001D | 0x8010_001E => tr("pcsc_no_service").to_owned(),
+        0x8010_002E => tr("pcsc_no_reader").to_owned(),
+        0x8010_000C => tr("pcsc_no_card").to_owned(),
+        0x8010_0069 | 0x8010_0068 => tr("pcsc_card_removed").to_owned(),
+        0x8010_000B => tr("pcsc_card_busy").to_owned(),
+        0x8010_0017 => tr("pcsc_reader_gone").to_owned(),
+        0x8010_000A => tr("pcsc_timeout").to_owned(),
+        other => trf("pcsc_code", format!("0x{other:08X}")),
     }
 }
 

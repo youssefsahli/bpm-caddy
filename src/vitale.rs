@@ -439,14 +439,14 @@ pub fn read_card(reader_filter: &str, script: &[Vec<u8>]) -> Result<CardRead, St
         .find(|n| filter.is_empty() || n.to_lowercase().contains(&filter))
     else {
         return Err(if names.is_empty() {
-            "aucun lecteur de carte détecté".to_owned()
+            crate::strings::tr("vitale_no_reader").to_owned()
         } else {
-            format!("aucun lecteur ne correspond à « {reader_filter} »")
+            crate::strings::trf("vitale_no_matching_reader", reader_filter)
         });
     };
     let card = ctx
         .connect(name)
-        .map_err(|e| format!("carte illisible dans « {name} » : {e}"))?;
+        .map_err(|e| crate::strings::trn("vitale_card_unreadable", &[name, &e]))?;
     if let Some(atr) = card.atr() {
         out.atr = hex(&atr);
     }

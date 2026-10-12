@@ -376,6 +376,9 @@ mod tests {
             include_str!("config.rs"),
             include_str!("db.rs"),
             include_str!("bulletin.rs"),
+            // Le lecteur de cartes dit ses erreurs en clair.
+            include_str!("winscard.rs"),
+            include_str!("vitale.rs"),
             include_str!("maintenance.rs"),
             include_str!("graph.rs"),
             include_str!("ordonnancier.rs"),

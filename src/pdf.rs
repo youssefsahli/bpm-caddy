@@ -4261,7 +4261,7 @@ fn compile_and_open(source: String, stem: &str) -> Result<PathBuf, String> {
 
     let out = fresh_pdf_path(stem);
     write_private(&out, &pdf).map_err(|e| format!("écriture du PDF impossible : {e}"))?;
-    open::that_detached(&out).map_err(|e| format!("ouverture du PDF impossible : {e}"))?;
+    open::that_detached(&out).map_err(|e| crate::strings::trf("pdf_open_failed", e))?;
     // Compté ici et nulle part ailleurs : les vingt et un `open_*`
     // passent tous par cette fonction, et compter chez chacun d'eux
     // serait vingt et une occasions d'en oublier un. Voir
@@ -4653,8 +4653,8 @@ pub fn open_bulletin(
         patient.id,
         kind.as_str().to_lowercase()
     ));
-    write_private(&out, &bytes).map_err(|e| format!("écriture du bulletin impossible : {e}"))?;
-    open::that_detached(&out).map_err(|e| format!("ouverture du PDF impossible : {e}"))?;
+    write_private(&out, &bytes).map_err(|e| crate::strings::trf("bulletin_write_failed", e))?;
+    open::that_detached(&out).map_err(|e| crate::strings::trf("pdf_open_failed", e))?;
     crate::telemetry::tally(crate::telemetry::Signal::Printed);
     Ok(out)
 }
