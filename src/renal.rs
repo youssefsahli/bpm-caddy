@@ -355,7 +355,8 @@ pub const TABLE: &[Adaptation] = &[
         label: "Dabigatran",
         steps: &[
             Step {
-                below: 50,
+                // « Entre … et 50 » : la borne écrite est dedans.
+                below: 51,
                 level: Level::Reduce,
                 conduct: "Entre 30 et 50 : dose réduite selon l'âge et l'indication, et le risque hémorragique se réévalue.",
             },
@@ -409,7 +410,8 @@ pub const TABLE: &[Adaptation] = &[
         label: "Édoxaban",
         steps: &[
             Step {
-                below: 50,
+                // « Entre … et 50 » : la borne écrite est dedans.
+                below: 51,
                 level: Level::Reduce,
                 conduct: "Entre 15 et 50 : dose réduite.",
             },
@@ -439,9 +441,14 @@ pub const TABLE: &[Adaptation] = &[
             "celecoxib",
             "etoricoxib",
             "piroxicam",
-            "acideniflumique",
-            "acidetiaprofenique",
-            "acidemefenamique",
+            // **Avec leur espace** : le pliage la garde, et écrites d'un
+            // seul mot (« acideniflumique ») ces trois aiguilles ne
+            // trouvaient ni Nifluril, ni Surgam, ni Ponstyl — sans
+            // « contre-indiqué sous 30 » à un DFG de 25. La même faute que
+            // `gravidity.rs` a corrigée chez lui.
+            "acide niflumique",
+            "acide tiaprofenique",
+            "acide mefenamique",
             // L'indométacine n'y est pas : elle existe en collyre
             // (Indocollyre), et cette table est indexée sur la molécule.
             // Une conduite rénale systémique prêtée à deux gouttes dans
@@ -650,7 +657,8 @@ pub const TABLE: &[Adaptation] = &[
         label: "Cotrimoxazole",
         steps: &[
             Step {
-                below: 30,
+                // « Entre … et 30 » : la borne écrite est dedans.
+                below: 31,
                 level: Level::Reduce,
                 conduct: "Entre 15 et 30 : dose réduite de moitié, et kaliémie surveillée : il augmente la kaliémie et la créatininémie.",
             },
@@ -2044,6 +2052,34 @@ mod tests {
     /// possible : c'est alors la **fiche** qui manque, et l'ajouter est
     /// le geste attendu.
     #[test]
+    fn the_acid_nsaids_are_claimed_by_their_dci() {
+        // Les DCI « acide … » s'écrivent en deux mots, et le pliage garde
+        // l'espace : une aiguille collée ne les trouvait jamais.
+        for (name, dci) in [
+            ("Nifluril", "acide niflumique"),
+            ("Surgam", "acide tiaprofénique"),
+            ("Ponstyl", "acide méfénamique"),
+        ] {
+            let hay = crate::fuzzy::sort_key(&format!("{name} {dci} AINS"));
+            assert!(
+                TABLE.iter().any(|row| row
+                    .needs
+                    .iter()
+                    .any(|n| crate::fuzzy::contains_folded(&hay, &crate::fuzzy::sort_key(n)))),
+                "{name} n'est pris par aucune ligne"
+            );
+        }
+        for row in TABLE {
+            for n in row.needs {
+                assert!(
+                    !(n.starts_with("acide") && !n.contains(' ')),
+                    "{n:?} : une DCI « acide … » s'écrit en deux mots"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn every_row_can_fire_on_the_base_as_shipped() {
         for row in TABLE {
             let reachable = row.needs.iter().any(|needle| {
@@ -2093,6 +2129,12 @@ mod tests {
         assert_eq!(at("Orelox 100 mg", 40.0), None);
         assert_eq!(at("Tarka LP 240/2 mg", 30.0), Some(Level::Contraindicated));
         assert_eq!(at("Tarka LP 240/2 mg", 31.0), None);
+        // « Entre 15 et 50 » (édoxaban), « entre 30 et 50 » (dabigatran),
+        // « entre 15 et 30 » (cotrimoxazole) : la borne haute compte.
+        assert_eq!(at("Lixiana 30 mg", 50.0), Some(Level::Reduce));
+        assert_eq!(at("Lixiana 30 mg", 51.0), None);
+        assert_eq!(at("Pradaxa 110 mg", 50.0), Some(Level::Reduce));
+        assert_eq!(at("Bactrim forte", 30.0), Some(Level::Reduce));
     }
 
     #[test]

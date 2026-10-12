@@ -4833,6 +4833,8 @@ struct Session {
     /// Ce que le rein impose au dossier ouvert, **déjà résolu**.
     renal: Vec<crate::renal::Resolved>,
     renal_dfg: Option<f64>,
+    /// Le jour de ce DFG, ISO ; vide sans DFG.
+    renal_dfg_on: String,
     /// Ce qu'on peut écraser de l'ordonnance ouverte, ligne par ligne
     /// et **toutes les lignes** — celles que la table ne connaît pas
     /// comprises, sans quoi la feuille se lirait comme un feu vert.
@@ -6015,6 +6017,10 @@ struct Session {
     /// `renal_dfg`, qui est celui du **dossier** : on vient souvent
     /// demander « et à trente ? » pour quelqu'un qui n'est pas ouvert.
     calc_renal_dfg: f64,
+    /// Un DFG a-t-il été tapé, ou repris du calcul ? **Sans lui, pas de
+    /// verdict** : la valeur de départ (45) donnait « dose à réduire »
+    /// pour la metformine avant que personne ait rien saisi.
+    calc_renal_set: bool,
     /// Le poids de « dose par kilo », **séparé de celui de la
     /// clairance**.
     ///
@@ -6230,6 +6236,7 @@ impl Session {
             bio_findings: Vec::new(),
             renal: Vec::new(),
             renal_dfg: None,
+            renal_dfg_on: String::new(),
             crush: Vec::new(),
             gravidity: Vec::new(),
             elderly: Vec::new(),
@@ -6653,6 +6660,7 @@ impl Session {
             calc_drug_query: String::new(),
             calc_poso: None,
             calc_renal_dfg: 45.0,
+            calc_renal_set: false,
             // Un poids d'enfant : c'est la question que cet outil-là
             // répond, et un champ ouvert sur soixante-dix kilos la pose
             // mal.
@@ -11872,11 +11880,22 @@ impl Session {
         // non la plus basse jamais vue : c'est l'état du rein
         // aujourd'hui qui décide, et une valeur d'il y a trois ans
         // n'est pas celle-là.
-        let dfg = readings
+        //
+        // **Arrondi une fois**, comme le calcul le fait : comparé brut et
+        // affiché arrondi, un 29,6 s'écrivait « 30 » à côté de
+        // « contre-indiqué sous 30 ». Et **daté** : un DFG de 70 relevé il
+        // y a cinq ans taisait toutes les lignes sans que rien ne dise son
+        // âge. Un résultat daté d'après aujourd'hui ne compte pas.
+        let latest = readings
             .iter()
-            .filter(|r| r.code.eq_ignore_ascii_case("DFG") && !r.date.trim().is_empty())
-            .max_by(|a, b| a.date.cmp(b.date))
-            .map(|r| r.value);
+            .filter(|r| {
+                r.code.eq_ignore_ascii_case("DFG")
+                    && !r.date.trim().is_empty()
+                    && (self.today.is_empty() || r.date <= self.today.as_str())
+            })
+            .max_by(|a, b| a.date.cmp(b.date));
+        let dfg = latest.map(|r| r.value.round());
+        self.renal_dfg_on = latest.map(|r| r.date.to_owned()).unwrap_or_default();
         self.renal = crate::renal::resolve(crate::renal::read(&terms, dfg), &self.content);
         self.renal_dfg = dfg;
         // Et la question qu'on pose au téléphone, celle de l'EHPAD :
@@ -18229,6 +18248,7 @@ impl App {
                                 .map(|d| d.id);
                             session.calc_drug_query = "Orelox".into();
                             session.calc_renal_dfg = 35.0;
+                            session.calc_renal_set = true;
                             session.view = MainView::Drugs;
                         }
                         Ok("tables") => {
@@ -24175,7 +24195,13 @@ impl App {
                     let pending = crate::renal::undecided(&session.renal);
                     ui.label(
                         egui::RichText::new(match session.renal_dfg {
-                            Some(v) => trf("renal_dfg", format!("{v:.0}")),
+                            Some(v) => trn(
+                                "renal_dfg",
+                                &[
+                                    &format!("{v:.0}"),
+                                    &db::format_french_date(&session.renal_dfg_on),
+                                ],
+                            ),
                             // Sans chiffre, la ligne dit **combien** de
                             // traitements attendent ce chiffre : « aucun
                             // DFG » tout seul est une remarque, « aucun
@@ -40868,6 +40894,13 @@ impl App {
                         .size(motif::pt(ui, 11.0))
                         .color(motif::text_dim()),
                 );
+                // **Une créatinine en mg/L se trahit** : sous 35 µmol/L,
+                // c'est presque toujours une valeur en mg/L tapée telle
+                // quelle (12 mg/L font 106 µmol/L), et la clairance sort
+                // huit fois trop haute.
+                if session.calc_creat > 0.0 && session.calc_creat < 35.0 {
+                    ui.colored_label(motif::alert(), tr("calc_creat_mg_l"));
+                }
             };
             let per_kilo = |ui: &mut egui::Ui, session: &mut Session| {
                 // --- Dose par kilo ---
@@ -41012,7 +41045,20 @@ impl App {
                             }
                             None => tr(f.cadence.label_key()).to_owned(),
                         };
-                        let result = span(f.low * w, f.high.map(|h| h * w));
+                        // **Bornée par le plafond que la phrase écrit** : 40 kg
+                        // de « 20 mg/kg par jour, sans dépasser 500 mg »
+                        // s'affichaient 800 mg, dans la couleur de ce qu'on
+                        // donne.
+                        let bound = |v: f64| f.cap.map_or(v, |c| v.min(c));
+                        let capped = !f.ceiling
+                            && f.cap.is_some_and(|c| {
+                                f.low * w > c || f.high.is_some_and(|h| h * w > c)
+                            });
+                        let result = if f.ceiling {
+                            span(f.low * w, f.high.map(|h| h * w))
+                        } else {
+                            span(bound(f.low * w), f.high.map(|h| bound(h * w)))
+                        };
                         // **Un plafond n'est pas une dose** : il se dit
                         // comme tel, et pas dans la couleur de ce qu'on
                         // donne.
@@ -41022,6 +41068,9 @@ impl App {
                             ("calc_perkg_card_line", motif::accent())
                         };
                         let mut text = trn(key, &[&span(f.low, f.high), &rhythm, &num(w), &result]);
+                        if let (true, Some(c)) = (capped, f.cap) {
+                            text.push_str(&trf("calc_perkg_capped", num(c)));
+                        }
                         // La dose du jour en prises, quand la phrase dit
                         // en combien d'un seul chiffre.
                         if let (crate::dosing::Cadence::Jour, Some(n), false) =
@@ -41031,7 +41080,10 @@ impl App {
                                 let n = f64::from(n);
                                 text.push_str(&trn(
                                     "calc_perkg_card_take",
-                                    &[&span(f.low * w / n, f.high.map(|h| h * w / n))],
+                                    &[&span(
+                                        bound(f.low * w) / n,
+                                        f.high.map(|h| bound(h * w) / n),
+                                    )],
                                 ));
                             }
                         }
@@ -41087,11 +41139,16 @@ impl App {
                 );
                 ui.horizontal_wrapped(|ui| {
                     ui.label(tr("calc_renal_dfg"));
-                    ui.add(
-                        egui::DragValue::new(&mut session.calc_renal_dfg)
-                            .range(3.0..=140.0)
-                            .suffix(" mL/min"),
-                    );
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut session.calc_renal_dfg)
+                                .range(3.0..=140.0)
+                                .suffix(" mL/min"),
+                        )
+                        .changed()
+                    {
+                        session.calc_renal_set = true;
+                    }
                     // Les deux outils sont côte à côte : calculer une
                     // clairance puis retaper le chiffre trois lignes
                     // plus bas serait la seule chose que l'écran
@@ -41107,6 +41164,7 @@ impl App {
                                     / session.calc_creat)
                                     .round()
                                     .clamp(3.0, 140.0);
+                            session.calc_renal_set = true;
                         }
                     }
                 });
@@ -41122,11 +41180,25 @@ impl App {
                     )
                     .wrap(),
                 );
+                let terms = ordonnance_terms(std::slice::from_ref(&d));
                 let found = crate::renal::read(
-                    &ordonnance_terms(std::slice::from_ref(&d)),
-                    Some(session.calc_renal_dfg),
+                    &terms,
+                    session.calc_renal_set.then_some(session.calc_renal_dfg),
                 );
-                if found.is_empty() {
+                // La table connaît-elle la molécule ? Muette **à ce DFG**
+                // n'est pas absente : le paracétamol à 45 se disait « fiche
+                // absente de la table rénale ».
+                let known = !found.is_empty() || !crate::renal::read(&terms, None).is_empty();
+                if found.is_empty() && known {
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(tr("calc_renal_fine"))
+                                .size(motif::pt(ui, 11.0))
+                                .color(motif::text_dim()),
+                        )
+                        .wrap(),
+                    );
+                } else if found.is_empty() {
                     // **Rien d'écrit n'est pas « rien à faire »** : la
                     // table nomme ce qu'elle connaît, et son silence
                     // dit qu'elle ne connaît pas cette molécule-là.

@@ -58,6 +58,15 @@ conciliation, acte de vaccination, retour d'une case de table), ADELI,
 lanceur, relais.
 
 Laissé, relevé par les relectures (à trancher ou à vérifier) :
+- rein : un résultat de biologie « <15 » se range 15 (la borne ne vit
+  que dans la remarque) et tombe au palier « 15 à 49 » des anti-Xa au
+  lieu de « au-dessous de 15 » — à porter dans `biology::Reading` ;
+  une vingtaine de lignes « Entre X et Y » ont encore `below: Y` (Y
+  exclu) — à relire contre chaque RCP (les trois anticoagulant et
+  cotrimoxazole sont faits) ; metformine « Entre 45 et 60 » est 45–59
+  au RCP ; un DFG ancien n'est pas signalé comme tel au-delà de sa date
+  affichée ; le plafond d'une note de posologie (Alfatil « Sans dépasser
+  1 g par jour » dans la colonne note) n'atteint pas « Dose par kilo » ;
 - paquet et copie : `VACUUM INTO` tient les fichiers partagés pendant
   toute la copie (les autres postes attendent, cinq secondes puis
   échouent) et l'export tourne dans l'image — à passer à

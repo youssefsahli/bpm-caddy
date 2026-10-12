@@ -86,6 +86,12 @@ pub struct PerKilo {
     /// phrase le dit d'un seul chiffre (« en 2 prises »). « En 2 ou 3
     /// prises » laisse le choix au prescripteur et reste `None`.
     pub takes: Option<u32>,
+    /// **Le plafond absolu que la même phrase écrit**, en milligrammes :
+    /// « 20 mg/kg par jour…, sans dépasser 500 mg par jour ». Lu au même
+    /// rythme que la dose (ou sans rythme dit), sinon il ne se compare
+    /// pas et reste `None`. Sans lui, 40 kg donnaient 800 mg à l'écran
+    /// sous une phrase qui en interdit plus de 500.
+    pub cap: Option<f64>,
     /// La phrase d'où elle vient, telle que la fiche l'écrit.
     ///
     /// **C'est elle qui décide, pas le chiffre.** Une même fiche donne
@@ -117,10 +123,12 @@ pub fn read(dosage: &str) -> Vec<PerKilo> {
             // grammes à un adulte de soixante kilos.
             if !cumulative_before(hay, start) && !step_before(hay, begin) {
                 let tail = rhythm_window(hay, end);
+                let cadence = cadence_of(hay, end, &tail);
                 out.push(PerKilo {
                     low,
                     high,
-                    cadence: cadence_of(hay, end, &tail),
+                    cadence,
+                    cap: cap_after(hay, end, cadence),
                     ceiling: ceiling_around(hay, begin, &tail),
                     of: component_after(hay, end),
                     takes: takes_in(&tail),
@@ -447,6 +455,70 @@ fn takes_in(window: &str) -> Option<u32> {
 /// Bornée parce qu'une posologie écrit parfois trois lignes sans point,
 /// et qu'une bulle de trois cents pixels ne les porte pas. On coupe au
 /// dernier espace, jamais au milieu d'un mot.
+/// Un plafond en milligrammes ou en grammes écrit après la dose, dans la
+/// même phrase : « sans dépasser 600 mg », « maximum 1 g par jour ».
+/// Jamais un plafond au poids (« 30 mg/kg ») — celui-là est une dose
+/// lue pour elle-même. Rend `None` quand le rythme du plafond n'est pas
+/// celui de la dose : un maximum par jour ne borne pas une prise.
+fn cap_after(hay: &str, at: usize, dose: Cadence) -> Option<f64> {
+    let rest = &hay[at..];
+    let stop = rest.find(". ").unwrap_or(rest.len());
+    let clause = rest[..stop].to_lowercase();
+    let marker = [
+        "sans dépasser",
+        "maximum",
+        "dose maximale",
+        "au plus",
+        "max.",
+    ]
+    .iter()
+    .filter_map(|m| clause.find(m).map(|i| i + m.len()))
+    .min()?;
+    let after = &clause[marker..];
+    let after = after.trim_start_matches([' ', ':', '\u{a0}']);
+    // Le nombre, espaces de milliers et virgule compris : « 1 000 mg ».
+    let mut digits = String::new();
+    let mut used = 0;
+    for (i, c) in after.char_indices() {
+        if c.is_ascii_digit() {
+            digits.push(c);
+        } else if c == ',' || c == '.' {
+            digits.push('.');
+        } else if (c == ' ' || c == '\u{a0}' || c == '\u{202f}')
+            && after[i + c.len_utf8()..].starts_with(|d: char| d.is_ascii_digit())
+            && !digits.is_empty()
+        {
+        } else {
+            used = i;
+            break;
+        }
+        used = i + c.len_utf8();
+    }
+    let value: f64 = digits.trim_end_matches('.').parse().ok()?;
+    let unit = after[used..].trim_start();
+    let (mg, tail) = match unit.strip_prefix("mg") {
+        Some(t) => (value, t),
+        None => (value * 1000.0, unit.strip_prefix('g')?),
+    };
+    // « 30 mg/kg » est un plafond au poids, pas un plafond absolu.
+    if tail.trim_start().starts_with("/kg") || tail.starts_with("/kg") {
+        return None;
+    }
+    let tail = tail.trim_start();
+    let cadence = if tail.starts_with("par jour")
+        || tail.starts_with("/jour")
+        || tail.starts_with("/j")
+        || tail.starts_with("par 24")
+    {
+        Cadence::Jour
+    } else if tail.starts_with("par prise") || tail.starts_with("par injection") {
+        Cadence::Prise
+    } else {
+        Cadence::NonDite
+    };
+    (cadence == dose || cadence == Cadence::NonDite).then_some(mg)
+}
+
 fn sentence_around(hay: &str, at: usize) -> String {
     let start = hay[..at]
         .rfind(". ")
@@ -848,5 +920,28 @@ mod tests {
         assert_eq!(milligrams(0.4), "0,4");
         assert_ne!(milligrams(0.004), "0");
         assert!(milligrams(0.004).starts_with("0,00"));
+    }
+
+    /// **Le plafond absolu de la phrase** borne la dose calculée.
+    #[test]
+    fn an_absolute_ceiling_in_the_sentence_is_read() {
+        let r = read("20 mg/kg par jour en une prise, sans dépasser 500 mg par jour.");
+        assert_eq!(r[0].cap, Some(500.0));
+        let r = read("1 à 2 mg/kg par jour, sans dépasser 60 mg.");
+        assert_eq!(r[0].cap, Some(60.0));
+        let r = read("10 mg/kg par jour, sans dépasser 600 mg, à jeun.");
+        assert_eq!(r[0].cap, Some(600.0));
+        let r = read("40 mg/kg par jour, maximum 1 g par jour.");
+        assert_eq!(r[0].cap, Some(1000.0));
+        let r = read("80 mg/kg par jour, sans dépasser 3 000 mg par jour.");
+        assert_eq!(r[0].cap, Some(3000.0));
+        // Un maximum par jour ne borne pas une prise.
+        let r = read("15 mg/kg par prise, sans dépasser 4 g par jour.");
+        assert_eq!(r[0].cap, None);
+        // Un plafond au poids n'est pas un plafond absolu.
+        let r = read("15 mg/kg par prise, sans dépasser 60 mg/kg par jour.");
+        assert_eq!(r[0].cap, None);
+        // Sans plafond, rien.
+        assert_eq!(read("50 mg/kg par jour en 2 prises.")[0].cap, None);
     }
 }

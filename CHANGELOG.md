@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Kidney table: niflumic, tiaprofenic and mefenamic acid (Nifluril,
+  Surgam, Ponstyl) are found again — their needles were written in one
+  word and matched nothing, so a DFG of 25 said nothing about them;
+  edoxaban « between 15 and 50 », dabigatran « between 30 and 50 » and
+  cotrimoxazole « between 15 and 30 » now include the upper bound; the
+  file's DFG is rounded once (29.6 showed « 30 » beside « contra-indicated
+  below 30 ») and shown with its date, and a DFG dated after today does
+  not count.
+- Calculators: the kidney table gives no verdict before a DFG is typed or
+  computed (the default 45 said « reduce the dose » for metformin), and
+  says « no adjustment at this DFG » for a molecule it knows instead of
+  « not in the table »; a creatinine under 35 µmol/L warns that it looks
+  like mg/L; a dose per kilo is capped by the absolute maximum its
+  sentence writes (« 20 mg/kg per day, not more than 500 mg per day »
+  showed 800 mg for 40 kg), and says so.
 - External programs: a scanner that never answers is stopped after two
   minutes instead of freezing the application for good; its output goes
   to a private folder, not a predictable name in the shared temporary
