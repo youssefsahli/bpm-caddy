@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.403.0] - 2026-10-12
+
 ### Fixed
 - Messages: a message and its attachment are written together (a network
   sync between the two sent the message without its file, for good); a

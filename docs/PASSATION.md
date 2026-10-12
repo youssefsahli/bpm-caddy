@@ -13,7 +13,9 @@ actes) a passé son smoke dans les quatre formes (bfffa2d) ; la 0.401.0
 0.402.0 (automesure, tables, ruptures, console, dossiers) a passé son
 smoke dans les quatre formes (5012a7a) : c'est elle à publier —
 `git tag v0.402.0 5012a7a && git push origin v0.402.0` ; les autres
-n'ont pas besoin d'étiquette ; les étiquettes intermédiaires n'ont jamais été
+n'ont pas besoin d'étiquette ; la 0.403.0 (messagerie, téléphone,
+codex, dispositifs, tableau de bord, pièces, caisse, nutrition) suit,
+smoke en cours ; les étiquettes intermédiaires n'ont jamais été
 posées, et **la 0.395.0 ne se publie pas** (elle lisait mal les doses de
 charge et les titrations, corrigé dans la 0.396.0).
 
