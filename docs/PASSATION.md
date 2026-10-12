@@ -14,9 +14,7 @@ actes) a passé son smoke dans les quatre formes (bfffa2d) ; la 0.401.0
 smoke dans les quatre formes (5012a7a) ; la 0.403.0 (messagerie,
 téléphone, codex, dispositifs, tableau de bord, pièces, caisse,
 nutrition) a passé son smoke dans les quatre formes (bac8fce), et la
-relecture des régressions n'y a rien trouvé : **c'est elle à publier**
-tant que la 0.410.0 n'a pas passé le sien —
-`git tag v0.403.0 bac8fce && git push origin v0.403.0` ; **les 0.404.0 à 0.409.0 ne se publient pas** — la relecture de leurs
+relecture des régressions n'y a rien trouvé ; **les 0.404.0 à 0.409.0 ne se publient pas** — la relecture de leurs
 corrections y a trouvé des régressions : la conciliation lisait
 « arrêtée » une molécule écrite sans son sel (Dépakine contre
 « Valproate »), un enregistrement de textes effaçait les réécritures
@@ -28,7 +26,10 @@ chaque correction relue commit par commit, puis l'ensemble depuis la
 0.403.0 relu d'un bloc (ni chute, ni registre abîmé, ni lecture
 clinique fausse ; les deux pertes silencieuses trouvées alors, le lot
 tapé d'un autre produit et les adresses des réécritures rénales, sont
-corrigées) —, qui suit, smoke en cours ; les étiquettes intermédiaires n'ont jamais été
+corrigées) — a passé son smoke dans les quatre formes et une passe de
+fuzz sur toutes les vues (d33dbe5) : **c'est elle à publier** —
+`git tag v0.410.0 d33dbe5 && git push origin v0.410.0` (à défaut, la
+0.403.0 : `git tag v0.403.0 bac8fce`) ; les étiquettes intermédiaires n'ont jamais été
 posées, et **la 0.395.0 ne se publie pas** (elle lisait mal les doses de
 charge et les titrations, corrigé dans la 0.396.0).
 
