@@ -5143,6 +5143,11 @@ struct Session {
     trans_days: Vec<String>,
     /// Input buffer of the visible notes box (views are exclusive).
     note_text: String,
+    /// Celui des transmissions, à part : un seul champ pour le carnet
+    /// de côté, le dossier et la fiche, et une remarque tapée sur le
+    /// patient partait au carnet de l'équipe — ou l'inverse.
+    trans_note_text: String,
+    trans_note_confirm: Option<i64>,
     /// Two-step delete confirmation for one note.
     note_confirm: Option<i64>,
     /// In-progress text of the treatment picker.
@@ -6293,6 +6298,8 @@ impl Session {
             trans_days: Vec::new(),
             note_text: String::new(),
             note_confirm: None,
+            trans_note_text: String::new(),
+            trans_note_confirm: None,
             treat_query: String::new(),
             treat_cursor: 0,
             focus_treat_add: false,
@@ -8112,6 +8119,12 @@ impl Session {
         // qui n'était plus.
         if let Ok((day, minutes)) = self.db.now_local() {
             let rolled = !self.today.is_empty() && day != self.today;
+            // Le carnet qui montrait « aujourd'hui » passe au jour
+            // nouveau : resté sur la veille, il perdait sa ligne d'ajout.
+            if rolled && self.trans_day == self.today {
+                self.trans_day = day.clone();
+                self.load_transmissions();
+            }
             self.today = day;
             self.now_minutes = minutes;
             // **Et ce qui dépend du jour suit** — sur un poste de garde,
@@ -8259,8 +8272,30 @@ impl Session {
         if self.cascades_read {
             self.reload_cascades();
         }
-        if self.view == MainView::Transmissions {
+        // **Les notes à l'écran aussi** — des lectures, pas des champs où
+        // l'on tape : une transmission ou une note écrite sur un autre
+        // poste n'arrivait ni au carnet de côté, ni au dossier, ni à la
+        // fiche, ni au jour de l'agenda.
+        if !self.trans_day.is_empty() {
             self.load_transmissions();
+        }
+        if let Some(open) = self.viewing.as_ref().map(|p| p.id) {
+            self.patient_notes = self
+                .db
+                .notes_for(NoteSubject::Patient, open)
+                .unwrap_or_default();
+        }
+        if let Some(card) = self.drug_base.as_ref().map(|d| d.id) {
+            self.drug_notes = self
+                .db
+                .notes_for(NoteSubject::Drug, card)
+                .unwrap_or_default();
+        }
+        if !self.agenda_day.is_empty() {
+            self.day_notes = self
+                .db
+                .notes_for(NoteSubject::Day, db::day_subject_id(&self.agenda_day))
+                .unwrap_or_default();
         }
         self.reread_campagne_if_shown();
         // Le dossier ouvert : ses onglets sont des lectures, et ce sont
@@ -12137,24 +12172,48 @@ fn rich_text(text: &str, size: f32, color: egui::Color32) -> egui::text::LayoutJ
         job.append(buf, 0.0, format);
         buf.clear();
     };
-    let mut chars = text.chars().peekable();
-    while let Some(c) = chars.next() {
+    // **Un marqueur n'agit qu'en bord de mot**, et qu'en paire : il ouvre
+    // au début d'un mot quand le même marqueur le ferme plus loin, il
+    // ferme à la fin d'un mot. Collé au milieu (« 2*500 mg », « INR=4,2 »,
+    // « lot_A12 »), il est du texte : avalé, la note disait « 2500 mg »
+    // à l'écran et « 2*500 mg » sur le papier.
+    let chars: Vec<char> = text.chars().collect();
+    let word = |c: Option<&char>| c.is_some_and(|c| c.is_alphanumeric());
+    for (i, &c) in chars.iter().enumerate() {
+        let on = match c {
+            '*' => Some(bold),
+            '_' => Some(italic),
+            '=' => Some(mark),
+            _ => None,
+        };
+        let Some(on) = on else {
+            buf.push(c);
+            continue;
+        };
+        let before = if i == 0 { None } else { chars.get(i - 1) };
+        let after = chars.get(i + 1);
+        let toggles = if on {
+            // Fermer : à la fin d'un mot.
+            before.is_some_and(|b| !b.is_whitespace()) && !word(after)
+        } else {
+            // Ouvrir : au début d'un mot, et refermé plus loin.
+            !word(before)
+                && after.is_some_and(|a| !a.is_whitespace())
+                && chars[i + 1..].iter().enumerate().any(|(k, &d)| {
+                    d == c
+                        && !word(chars.get(i + 2 + k))
+                        && chars.get(i + k).is_some_and(|p| !p.is_whitespace())
+                })
+        };
+        if !toggles {
+            buf.push(c);
+            continue;
+        }
+        push(&mut job, &mut buf, bold, italic, mark);
         match c {
-            '*' | '_' | '=' => {
-                // A marker glued to a word toggles; a lone one is text.
-                let toggles = !buf.ends_with(' ') || chars.peek().is_some_and(|n| *n != ' ');
-                if !toggles {
-                    buf.push(c);
-                    continue;
-                }
-                push(&mut job, &mut buf, bold, italic, mark);
-                match c {
-                    '*' => bold = !bold,
-                    '_' => italic = !italic,
-                    _ => mark = !mark,
-                }
-            }
-            _ => buf.push(c),
+            '*' => bold = !bold,
+            '_' => italic = !italic,
+            _ => mark = !mark,
         }
     }
     push(&mut job, &mut buf, bold, italic, mark);
@@ -18899,8 +18958,8 @@ impl App {
             ui,
             "side_carnet",
             &session.trans_notes,
-            &mut session.note_text,
-            &mut session.note_confirm,
+            &mut session.trans_note_text,
+            &mut session.trans_note_confirm,
             ui.available_height() - 60.0,
             is_today,
         );
@@ -18910,8 +18969,11 @@ impl App {
                 .add_note(NoteSubject::Transmission, 0, &op, &body)
             {
                 session.error = Some(e);
+            } else {
+                // Vidé seulement une fois écrit : refusé (base verrouillée
+                // sur un partage), le texte tapé restait perdu.
+                session.trans_note_text.clear();
             }
-            session.note_text.clear();
             session.load_transmissions();
         }
         if let Some(id) = delete {
@@ -19268,14 +19330,14 @@ impl App {
         if let State::Unlocked(session) = &self.state {
             let mut changed = false;
             if let Some(body) = add {
-                if session
-                    .db
-                    .add_note(NoteSubject::Operator, 0, &op, &body)
-                    .is_ok()
-                {
-                    changed = true;
+                match session.db.add_note(NoteSubject::Operator, 0, &op, &body) {
+                    Ok(_) => {
+                        changed = true;
+                        self.op_note_text.clear();
+                    }
+                    // Refusée : le texte reste dans le champ, ce qui le dit.
+                    Err(_) => {}
                 }
-                self.op_note_text.clear();
             }
             if let Some(id) = delete {
                 let expected = self
@@ -20427,14 +20489,14 @@ impl App {
                     if let State::Unlocked(session) = &self.state {
                         let mut changed = false;
                         if let Some(body) = add {
-                            if session
-                                .db
-                                .add_note(NoteSubject::Operator, 0, &op, &body)
-                                .is_ok()
-                            {
-                                changed = true;
+                            match session.db.add_note(NoteSubject::Operator, 0, &op, &body) {
+                                Ok(_) => {
+                                    changed = true;
+                                    self.op_note_text.clear();
+                                }
+                                // Refusée : le texte reste dans le champ, ce qui le dit.
+                                Err(_) => {}
                             }
-                            self.op_note_text.clear();
                         }
                         if let Some(id) = delete {
                             let expected = self
@@ -33037,8 +33099,11 @@ impl App {
                         .add_note(NoteSubject::Patient, patient.id, operator, &body)
                 {
                     session.error = Some(e);
+                } else {
+                    // Vidé seulement une fois écrit : refusé (base verrouillée
+                    // sur un partage), le texte tapé restait perdu.
+                    session.note_text.clear();
                 }
-                session.note_text.clear();
                 session.patient_notes = session
                     .db
                     .notes_for(NoteSubject::Patient, patient.id)
@@ -33652,7 +33717,7 @@ impl App {
                     .db
                     .transmissions_for_day(&session.trans_day)
                     .unwrap_or_default();
-                session.note_confirm = None;
+                session.trans_note_confirm = None;
             }
             ui.add_space(8.0);
 
@@ -33662,8 +33727,8 @@ impl App {
                 ui,
                 "transmissions",
                 &session.trans_notes,
-                &mut session.note_text,
-                &mut session.note_confirm,
+                &mut session.trans_note_text,
+                &mut session.trans_note_confirm,
                 h,
                 is_today,
             );
@@ -33680,8 +33745,11 @@ impl App {
                     .add_note(NoteSubject::Transmission, 0, operator, &body)
                 {
                     session.error = Some(e);
+                } else {
+                    // Vidé seulement une fois écrit : refusé (base verrouillée
+                    // sur un partage), le texte tapé restait perdu.
+                    session.trans_note_text.clear();
                 }
-                session.note_text.clear();
                 session.load_transmissions();
             }
             if let Some(id) = delete {
@@ -35244,8 +35312,11 @@ impl App {
                     .add_note(NoteSubject::Day, db::day_subject_id(&day), operator, &body)
             {
                 session.error = Some(e);
+            } else {
+                // Vidé seulement une fois écrit : refusé (base verrouillée
+                // sur un partage), le texte tapé restait perdu.
+                session.day_note_text.clear();
             }
-            session.day_note_text.clear();
             session.load_day();
         }
         if let Some(id) = note_delete {
@@ -62044,8 +62115,11 @@ impl App {
                 .add_note(NoteSubject::Drug, drug_id, operator, &body)
             {
                 session.error = Some(e);
+            } else {
+                // Vidé seulement une fois écrit : refusé (base verrouillée
+                // sur un partage), le texte tapé restait perdu.
+                session.note_text.clear();
             }
-            session.note_text.clear();
             session.drug_notes = session
                 .db
                 .notes_for(NoteSubject::Drug, drug_id)
@@ -91443,6 +91517,16 @@ mod tests {
         // A lone marker inside a sentence stays literal.
         let job = rich_text("dose = 5 mg", 13.0, motif::text());
         assert_eq!(job.text, "dose = 5 mg");
+        // Collé au milieu d'un mot, il est du texte : ni « 2500 mg » ni
+        // « INR4,2 » à la place de ce qui est écrit.
+        for written in ["Doliprane 2*500 mg", "INR=4,2", "lot_A12", "3*2 = 6"] {
+            assert_eq!(rich_text(written, 13.0, motif::text()).text, written);
+        }
+        // Un marqueur sans son pareil plus loin non plus.
+        assert_eq!(
+            rich_text("*important", 13.0, motif::text()).text,
+            "*important"
+        );
         // Plain text goes through untouched, in one section.
         let job = rich_text("Rien de particulier", 13.0, motif::text());
         assert_eq!(job.text, "Rien de particulier");

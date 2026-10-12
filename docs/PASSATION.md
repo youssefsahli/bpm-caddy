@@ -56,6 +56,15 @@ conciliation, acte de vaccination, retour d'une case de table), ADELI,
 lanceur, relais.
 
 Laissé, relevé par les relectures (à trancher ou à vérifier) :
+- **le document d'équipe (`notes_equipe.md`) est un fichier en clair**
+  à côté de la base, que son modèle invite à remplir de noms
+  (« Patients à recontacter ») : hors du chiffrement, hors des copies et
+  des sauvegardes, et partagé seulement par un dossier commun — à
+  ranger dans la base, chiffré et compare-and-set ; sa fusion entre deux
+  postes ramène une ligne que l'autre avait rayée et duplique une ligne
+  reformulée ;
+- une transmission écrite dans les deux secondes après minuit se range au
+  jour nouveau pendant que la page montre encore la veille ;
 - tables de référence : `edited_table_keys` et `all_table_cells`
   relus à chaque image (à mémoriser contre `table_rev`) ; survol de la
   carte : la mémoire `GraphPairKey` ne suit ni la biologie ni la fiche

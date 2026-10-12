@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Notes and transmissions: a note or transmission written on another
+  post now appears in the side notebook, the open file, the drug card and
+  the agenda day (only the Transmissions view re-read them); the side
+  notebook moves to the new day at midnight; a note whose writing fails
+  keeps its text in the field; the transmissions have their own field,
+  so a remark typed on the patient no longer ends up in the team's
+  notebook; a marker inside a word is text (« 2*500 mg » showed as
+  « 2500 mg », « INR=4,2 » as « INR4,2 »).
 - Reference tables: a table wider than its pane slides under the
   horizontal bar — it stayed put and its last columns could not be
   reached; a cell being edited or an undo pending in one table is
