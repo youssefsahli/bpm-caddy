@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.405.0] - 2026-10-12
+
 ### Fixed
 - Narcotics register and access log: a creation that reuses a number
   already taken here with other values (a post restored from a backup,
