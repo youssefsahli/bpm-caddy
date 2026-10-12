@@ -461,8 +461,9 @@ conseils à tenir à jour deux fois.
   raison pour laquelle cette colonne est écrite et non recalculée.
 - **Le numéro d'ordonnancier** est celui du logiciel de l'officine, tapé
   sur chaque délivrance : exigé, et refusé s'il désigne déjà une ligne,
-  toutes années confondues. Une délivrance annulée garde le sien ; les
-  écarts entre deux numéros sont les autres lignes du logiciel.
+  toutes années confondues, par une délivrance **en vigueur** : une
+  délivrance annulée garde le sien, et celle qui la remplace le reprend.
+  Les écarts entre deux numéros sont les autres lignes du logiciel.
 - **Réglages** : `[stock] suppliers` (les grossistes, le premier étant
   celui qu'on propose — c'est pour la vitesse de saisie) et
   `[stock] count_days` (au bout de combien de jours un produit non

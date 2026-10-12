@@ -54939,36 +54939,35 @@ impl App {
                 .filter(|m| m.ordo_no > 0)
                 .map(|m| m.ordo_no as u32)
                 .collect();
-            if let Some(seq) = crate::ordonnancier::sequence(&used) {
-                // **Les trous sont normaux** : le logiciel de l'officine
-                // numérote toutes les lignes de l'ordonnancier, et celles
-                // qui ne sont pas des stupéfiants tombent entre deux
-                // numéros d'ici. Seul un numéro porté deux fois dit une
-                // anomalie.
-                // Toutes années confondues : deux postes peuvent avoir tapé
-                // le même numéro à des jours différents.
-                let mut doubled: Vec<i64> = seq.doubled.iter().map(|n| i64::from(*n)).collect();
-                doubled.extend(session.stup_doubled.iter().copied());
-                doubled.sort_unstable();
-                doubled.dedup();
-                let (text, colour) = if doubled.is_empty() {
+            // **Les trous sont normaux** : le logiciel de l'officine numérote
+            // toutes les lignes de l'ordonnancier, et celles qui ne sont pas
+            // des stupéfiants tombent entre deux numéros d'ici. Seul un
+            // numéro porté par deux délivrances **en vigueur** dit une
+            // anomalie — toutes années confondues, et même une année qui
+            // n'a encore rien délivré. Une délivrance annulée et celle qui
+            // la remplace sous le même numéro n'en font pas une.
+            let said = if session.stup_doubled.is_empty() {
+                crate::ordonnancier::sequence(&used).map(|seq| {
                     (
                         trn("stup_seq_whole", &[&seq.first, &seq.last, &seq.count]),
                         motif::text_dim(),
                     )
-                } else {
-                    (
-                        trf(
-                            "stup_seq_doubled",
-                            doubled
-                                .iter()
-                                .map(i64::to_string)
-                                .collect::<Vec<_>>()
-                                .join(", "),
-                        ),
-                        motif::alert(),
-                    )
-                };
+                })
+            } else {
+                Some((
+                    trf(
+                        "stup_seq_doubled",
+                        session
+                            .stup_doubled
+                            .iter()
+                            .map(i64::to_string)
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                    ),
+                    motif::alert(),
+                ))
+            };
+            if let Some((text, colour)) = said {
                 ui.add(
                     egui::Label::new(
                         egui::RichText::new(text)

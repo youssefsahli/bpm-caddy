@@ -2074,8 +2074,12 @@ add clicking and typing; it is not the price of entry.
   as narcotics — so this register's numbers have gaps (18400 for a
   methadone, 19027 for the next narcotic). It is typed on each
   dispensing, required, and refused **inside** the inserting
-  transaction if it already designates a line of any year: « le 18400 »
-  has to designate one dispensing and only one. BPM-Caddy used to
+  transaction if it already designates a line in force, of any year:
+  « le 18400 » has to designate one dispensing and only one. A
+  cancelled dispensing keeps its number, and the line that replaces it
+  takes it again (the LGO keeps the number on the corrected line). Two
+  posts typing the same number before syncing keep both lines; the
+  ordonnancier names the number carried twice. BPM-Caddy used to
   generate highest + 1, which handed out numbers the LGO had already
   given to something else; it never generates one now, and the
   reference post no longer numbers other posts' lines

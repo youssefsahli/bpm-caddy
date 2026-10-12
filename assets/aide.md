@@ -1112,7 +1112,11 @@ dans « N° d'ordonnancier » (par exemple 18400 pour seize gélules de
 méthadone, 19027 pour la suivante). Il est exigé sur une délivrance, et
 refusé s'il désigne déjà une ligne du registre, quelle que soit l'année.
 Les écarts entre deux numéros sont normaux : ce sont les autres lignes
-du logiciel. Une ligne annulée conserve son numéro, qui ne resert pas.
+du logiciel. Une ligne annulée conserve son numéro, et la délivrance qui
+la remplace (quantité ou dossier corrigé) se réinscrit sous ce même
+numéro. Un numéro porté par deux délivrances en vigueur — deux postes
+qui ont tapé le même avant de se synchroniser — est signalé dans
+l'ordonnancier ; les deux lignes sont gardées.
 
 Les touches 1 à 8 choisissent la nature, dans l'ordre de la bande ;
 Entrée inscrit la ligne depuis le formulaire. La quantité s'écrit en

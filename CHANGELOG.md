@@ -24,7 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   numéro ». Two posts that type the same number before syncing keep
   both lines (the register used to drop the one that arrived second,
   without a word), and the ordonnancier names the number carried twice,
-  across all years.
+  across all years, even in a year with no dispensing yet. A cancelled
+  dispensing keeps its number and the line that replaces it takes it
+  again — the software keeps the number on the corrected line.
 
 ### Fixed
 - Companion phone: « Effacer ce téléphone » and the lock remove the

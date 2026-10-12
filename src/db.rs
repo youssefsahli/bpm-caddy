@@ -51593,6 +51593,31 @@ impl Db {
         Ok(changed == 1)
     }
 
+    /// Les numéros d'ordonnancier portés par **plus d'une** délivrance en
+    /// vigueur, toutes années confondues — ce que deux postes ont tapé
+    /// pareil avant de se parler. Les deux lignes sont gardées ; ce compte
+    /// le dit. Une délivrance annulée et celle qui la remplace sous le
+    /// même numéro n'en font pas un.
+    pub fn stup_doubled_numbers(&self) -> Result<Vec<i64>, String> {
+        let mut stmt = self
+            .stups
+            .prepare(
+                "SELECT n FROM (
+                     SELECT m.ordo_no AS n FROM stup_moves m WHERE m.ordo_no > 0
+                       AND NOT EXISTS (SELECT 1 FROM stup_moves a
+                                        WHERE a.kind = 'ANNULATION' AND a.cancels = m.id)
+                     UNION ALL SELECT x.ordo_no FROM stup_numbers x
+                       WHERE NOT EXISTS (SELECT 1 FROM stup_moves a
+                                          WHERE a.kind = 'ANNULATION' AND a.cancels = x.move_id))
+                 GROUP BY n HAVING COUNT(*) > 1 ORDER BY n",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, i64>(0))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
     /// Les délivrances depuis un jour donné, avec ce que le produit dit
     /// d'elles : son libellé, son unité et le plafond de sa famille.
     ///
@@ -51604,24 +51629,6 @@ impl Db {
     /// Les annulations sortent avec, parce qu'une délivrance annulée
     /// n'a pas eu lieu et ne doit pas faire un motif — c'est à
     /// `crate::vigilance` de le savoir, pas au SQL de le cacher.
-    /// Les numéros d'ordonnancier portés par **plus d'une** délivrance,
-    /// toutes années confondues — ce que deux postes ont tapé pareil avant
-    /// de se parler. Les deux lignes sont gardées ; ce compte le dit.
-    pub fn stup_doubled_numbers(&self) -> Result<Vec<i64>, String> {
-        let mut stmt = self
-            .stups
-            .prepare(
-                "SELECT n FROM (SELECT ordo_no AS n FROM stup_moves WHERE ordo_no > 0
-                                UNION ALL SELECT ordo_no FROM stup_numbers)
-                 GROUP BY n HAVING COUNT(*) > 1 ORDER BY n",
-            )
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map([], |r| r.get::<_, i64>(0))
-            .map_err(|e| e.to_string())?;
-        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
-    }
-
     pub fn stup_dispensings_since(&self, day: &str) -> Result<Vec<StupDispensing>, String> {
         let cancelled = self.stup_cancelled_ids()?;
         let mut st = self
@@ -52233,9 +52240,18 @@ impl Db {
                 return Err(crate::strings::tr("stup_err_no_number").to_owned());
             }
             let taken: bool = tx
+                // Seulement une ligne **en vigueur** : une délivrance
+                // annulée (quantité fausse, dossier faux) se réinscrit sous
+                // le numéro que le logiciel lui garde.
                 .query_row(
-                    "SELECT EXISTS (SELECT 1 FROM stup_moves WHERE ordo_no = ?1)
-                         OR EXISTS (SELECT 1 FROM stup_numbers WHERE ordo_no = ?1)",
+                    "SELECT EXISTS (SELECT 1 FROM stup_moves m WHERE m.ordo_no = ?1
+                                      AND NOT EXISTS (SELECT 1 FROM stup_moves a
+                                                       WHERE a.kind = 'ANNULATION'
+                                                         AND a.cancels = m.id))
+                         OR EXISTS (SELECT 1 FROM stup_numbers n WHERE n.ordo_no = ?1
+                                      AND NOT EXISTS (SELECT 1 FROM stup_moves a
+                                                       WHERE a.kind = 'ANNULATION'
+                                                         AND a.cancels = n.move_id))",
                     [m.ordo_no],
                     |r| r.get(0),
                 )
@@ -52338,8 +52354,8 @@ impl Db {
     /// précisément ce que l'inaltérabilité interdit.
     ///
     /// Le numéro d'ordonnancier de la délivrance annulée **reste le
-    /// sien** : retapé sur une autre délivrance, il est refusé. Un numéro
-    /// servi deux fois ne désignerait plus rien.
+    /// sien** sur sa ligne, et peut servir à la délivrance qui la remplace :
+    /// le logiciel de l'officine garde ce numéro à la délivrance corrigée.
     pub fn cancel_stup_move(
         &self,
         move_id: i64,
@@ -61345,29 +61361,28 @@ mod tests {
             .is_err());
 
         // Le numéro d'ordonnancier de la délivrance annulée **reste le
-        // sien** : la ligne d'annulation n'en prend pas, et le même numéro
-        // retapé sur une autre délivrance est refusé — servi deux fois, il
-        // ne désignerait plus rien.
+        // sien** sur sa ligne, et **sert à celle qui la remplace** : une
+        // quantité fausse s'annule et se réinscrit sous le numéro que le
+        // logiciel de l'officine garde à cette délivrance. Un numéro porté
+        // par une délivrance **en vigueur**, lui, est refusé.
         let next = write(sid, "SORTIE", 7.0, "2026-01-12", pid);
         let moves = db.stup_moves(sid).unwrap();
-        let numbered: Vec<i64> = moves
-            .iter()
-            .filter(|m| m.ordo_no > 0)
-            .map(|m| m.ordo_no)
-            .collect();
-        assert_eq!(numbered.len(), 3, "la délivrance annulée garde le sien");
         let cancelled_no = moves.iter().find(|m| m.id == twice).unwrap().ordo_no;
-        assert!(cancelled_no > 0);
-        assert_ne!(
-            moves.iter().find(|m| m.id == next).unwrap().ordo_no,
-            cancelled_no
-        );
-        let mut reuse = moves.iter().find(|m| m.id == next).unwrap().clone();
-        reuse.id = 0;
-        reuse.ordo_no = cancelled_no;
+        assert!(cancelled_no > 0, "la délivrance annulée garde le sien");
+        let live_no = moves.iter().find(|m| m.id == next).unwrap().ordo_no;
+        let mut again = moves.iter().find(|m| m.id == next).unwrap().clone();
+        again.id = 0;
+        again.ordo_no = live_no;
+        assert!(db.add_stup_move(&again).is_err(), "en vigueur : refusé");
+        again.ordo_no = cancelled_no;
+        again.quantity = 13.0;
         assert!(
-            db.add_stup_move(&reuse).is_err(),
-            "le numéro annulé ne revient pas servir"
+            db.add_stup_move(&again).is_ok(),
+            "la délivrance réinscrite reprend le numéro de celle qu'elle remplace"
+        );
+        assert!(
+            db.stup_doubled_numbers().unwrap().is_empty(),
+            "et ce n'est pas un doublon"
         );
 
         // Et une ligne d'un autre produit ne s'annule pas depuis
@@ -61398,9 +61413,11 @@ mod tests {
         // L'ordonnancier de l'année les porte toutes, annulée comprise :
         // une feuille d'où l'on aurait ôté les erreurs ne serait pas une
         // copie du registre.
+        // (Quatre : la délivrance annulée et celle qui la remplace sous son
+        // numéro comptent chacune.)
         let ordo = db.stup_dispensings(2026).unwrap();
-        assert_eq!(ordo.len(), 3);
-        assert!(ordo.windows(2).all(|w| w[0].ordo_no < w[1].ordo_no));
+        assert_eq!(ordo.len(), 4);
+        assert!(ordo.windows(2).all(|w| w[0].ordo_no <= w[1].ordo_no));
         assert_eq!(db.stup_years().unwrap(), vec![2026]);
         // Le journal rend les dernières lignes **tous produits
         // confondus**, la plus récente en tête : c'est l'ordre dans
