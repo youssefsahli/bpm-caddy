@@ -56180,14 +56180,37 @@ impl Db {
             // ici avant que la suppression arrive renvoyait à un dossier
             // que plus personne n'avait. Le registre se garde dix ans et
             // doit ramener à la personne.
-            if op.table == "patients"
-                && op.kind == Kind::Delete
+            //
+            // **Et son contenu reste avec lui** : la suppression arrive en
+            // une suite d'effacements — actes, traitements, biologie,
+            // notes… — avant celui du dossier ; refuser le dernier seul
+            // gardait une identité vide.
+            let of_patient = |op: &crate::replica::Op| -> Option<i64> {
+                let old = &op.old;
+                let num = |k: &str| old.get(k).and_then(serde_json::Value::as_i64);
+                let txt = |k: &str| old.get(k).and_then(serde_json::Value::as_str);
+                match op.table.as_str() {
+                    "patients" => op.key.get("id").and_then(serde_json::Value::as_i64),
+                    "favorites" if txt("kind") == Some("patient") => {
+                        txt("target").and_then(|t| t.parse().ok())
+                    }
+                    _ if txt("subject_kind") == Some("PATIENT") => num("subject_id"),
+                    _ => num("patient_id"),
+                }
+            };
+            // Seulement les effacements **qui accompagnent** celui d'un
+            // dossier cité, dans le même envoi : un résultat de biologie
+            // retiré seul reste un geste ordinaire.
+            let kept_file = |id: i64| {
+                ops.iter().any(|o| {
+                    o.table == "patients"
+                        && o.kind == Kind::Delete
+                        && o.key.get("id").and_then(serde_json::Value::as_i64) == Some(id)
+                }) && self.register_cites(id)
+            };
+            if op.kind == Kind::Delete
                 && matches!(outcome.action, Action::Delete)
-                && op
-                    .key
-                    .get("id")
-                    .and_then(serde_json::Value::as_i64)
-                    .is_some_and(|id| self.register_cites(id))
+                && of_patient(op).is_some_and(kept_file)
             {
                 outcome = crate::replica::Outcome {
                     action: Action::Refused,
@@ -67107,12 +67130,53 @@ mod tests {
             old: serde_json::Map::new(),
             new: serde_json::Map::new(),
         };
-        db.apply_gated("r1", "ailleurs", "2026-02-11", &[delete(pid)], None)
+        // Une note du dossier, que la suppression emporte d'abord.
+        db.add_note(crate::db::NoteSubject::Patient, pid, "CL", "à rappeler")
             .unwrap();
+        let note = db
+            .notes_for(crate::db::NoteSubject::Patient, pid)
+            .unwrap()
+            .remove(0);
+        let mut old = serde_json::Map::new();
+        old.insert("subject_kind".into(), serde_json::json!("PATIENT"));
+        old.insert("subject_id".into(), serde_json::json!(pid));
+        let note_delete = crate::replica::Op {
+            file: crate::replica::File::Main,
+            table: "notes".to_owned(),
+            kind: crate::replica::Kind::Delete,
+            key: serde_json::json!({ "id": note.id })
+                .as_object()
+                .unwrap()
+                .clone(),
+            old,
+            new: serde_json::Map::new(),
+        };
+        db.apply_gated(
+            "r1",
+            "ailleurs",
+            "2026-02-11",
+            &[note_delete.clone(), delete(pid)],
+            None,
+        )
+        .unwrap();
         assert!(
             db.patients().unwrap().iter().any(|p| p.id == pid),
             "cité : gardé"
         );
+        assert_eq!(
+            db.notes_for(crate::db::NoteSubject::Patient, pid)
+                .unwrap()
+                .len(),
+            1,
+            "et son contenu avec lui"
+        );
+        // Une note retirée seule, elle, part.
+        db.apply_gated("r1b", "ailleurs", "2026-02-11", &[note_delete], None)
+            .unwrap();
+        assert!(db
+            .notes_for(crate::db::NoteSubject::Patient, pid)
+            .unwrap()
+            .is_empty());
         db.apply_gated("r2", "ailleurs", "2026-02-11", &[delete(free)], None)
             .unwrap();
         assert!(

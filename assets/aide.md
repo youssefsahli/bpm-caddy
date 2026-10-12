@@ -1635,9 +1635,9 @@ tracée.
 
 Durée de conservation : `[audit] keep_days` de `config.toml`, un an par
 défaut ; au-delà, les lignes sont purgées à l'ouverture de session, et
-la purge est elle-même journalisée. `0` désactive la purge. Quand
-plusieurs postes partagent la base, la durée la plus longue demandée
-par l'un d'eux s'applique.
+la purge est elle-même journalisée. `0` désactive la purge. La
+durée choisie dans Options vaut pour toute l'officine : elle est rangée
+dans la base, et tous les postes purgent à la même.
 
 # Fenêtre d'audit
 

@@ -13,22 +13,19 @@ actes) a passé son smoke dans les quatre formes (bfffa2d) ; la 0.401.0
 0.402.0 (automesure, tables, ruptures, console, dossiers) a passé son
 smoke dans les quatre formes (5012a7a) ; la 0.403.0 (messagerie,
 téléphone, codex, dispositifs, tableau de bord, pièces, caisse,
-nutrition) a passé son smoke dans les quatre formes (bac8fce) ; la
-0.404.0 (ordonnance, conciliation, surveillance, postes, lanceur,
-lecture des boîtes, textes réécrits) a passé son smoke dans les quatre
-formes (eaf52c7) ; la 0.405.0 (registre et journal, audit, menus,
-impression, options, suppression d'un dossier) a passé son smoke dans
-les quatre formes (efc9a3c) : c'est elle à publier —
-`git tag v0.405.0 efc9a3c && git push origin v0.405.0` ; les autres
-n'ont pas besoin d'étiquette ; la 0.406.0 (registre des stupéfiants,
-tables et « Aller à… », notes, entretiens imprimés, carnet de
-vaccination, postes) a passé son smoke (1c07199) mais **ne se publie
-pas** : la relecture de ses corrections y a trouvé trois régressions —
-le lot d'une boîte lue à la douchette perdu au registre, le code d'une
-dose corrigée effacé, un DFG arrondi qui taisait une contre-indication
-— corrigées dans la suivante ; la 0.407.0 (régressions, rein et calculs,
-programmes extérieurs, déverrouillage, paquets) suit, smoke en cours ;
-les étiquettes intermédiaires n'ont jamais été
+nutrition) a passé son smoke dans les quatre formes (bac8fce), et la
+relecture des régressions n'y a rien trouvé : **c'est elle à publier**
+tant que la 0.408.0 n'a pas passé le sien —
+`git tag v0.403.0 bac8fce && git push origin v0.403.0` ; **les 0.404.0,
+0.405.0, 0.406.0 et 0.407.0 ne se publient pas** — la relecture de leurs
+corrections y a trouvé des régressions : la conciliation lisait
+« arrêtée » une molécule écrite sans son sel (Dépakine contre
+« Valproate »), un enregistrement de textes effaçait les réécritures
+périmées de tout le document, la conservation du journal ne redescendait
+jamais, une suppression refusée vidait quand même le dossier, le lot
+d'une boîte lue perdu, le code d'une dose corrigée effacé, un DFG
+arrondi qui taisait une contre-indication ; corrigées dans la 0.408.0,
+qui suit ; les étiquettes intermédiaires n'ont jamais été
 posées, et **la 0.395.0 ne se publie pas** (elle lisait mal les doses de
 charge et les titrations, corrigé dans la 0.396.0).
 
@@ -64,6 +61,11 @@ conciliation, acte de vaccination, retour d'une case de table), ADELI,
 lanceur, relais.
 
 Laissé, relevé par les relectures (à trancher ou à vérifier) :
+- dossier d'échange : un fichier `.bpmposte` de plus d'un gigaoctet
+  (le poste fondateur, avec ses pièces jointes) est sauté sans un mot —
+  à dire, ou à découper à l'écriture ; une réécriture périmée ne
+  s'accepte plus qu'en la retapant (un geste « garder le texte livré »
+  par phrase reste à faire) ;
 - rein : un résultat de biologie « <15 » se range 15 (la borne ne vit
   que dans la remarque) et tombe au palier « 15 à 49 » des anti-Xa au
   lieu de « au-dessous de 15 » — à porter dans `biology::Reading` ;

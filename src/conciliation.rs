@@ -294,12 +294,21 @@ fn molecule_words<'a>(dcis: impl Iterator<Item = &'a str>) -> Vec<String> {
         "anhydre",
         "lysine",
     ];
+    // **La tête de chaque DCI, pas chacun de ses mots** : « valproate de
+    // sodium » nomme le valproate, et son sel n'est pas une seconde
+    // molécule. Tous les mots pris, « Valproate » ne répondait plus à
+    // la Dépakine (« sodium » de plus), qui se lisait arrêtée — de même
+    // la fluticasone contre « fluticasone furoate ». Une association se
+    // coupe à ses « + » et « / », et chaque part donne sa tête.
     let mut out: Vec<String> = dcis
         .flat_map(|d| {
             crate::fuzzy::sort_key(d)
-                .split(|c: char| !c.is_alphanumeric())
-                .filter(|w| w.chars().count() >= 5 && !NOT_A_MOLECULE.contains(w))
-                .map(str::to_owned)
+                .split(['+', '/'])
+                .filter_map(|part| {
+                    part.split(|c: char| !c.is_alphanumeric())
+                        .find(|w| w.chars().count() >= 5 && !NOT_A_MOLECULE.contains(w))
+                        .map(str::to_owned)
+                })
                 .collect::<Vec<_>>()
         })
         .collect();
@@ -1187,5 +1196,38 @@ Vogalène lyoc si nausées
         assert!(rows
             .iter()
             .any(|r| r.kind == Change::Stopped && r.label == "Cotriatec"));
+    }
+
+    /// **Un sel n'est pas une molécule de plus** : « Valproate » répond à
+    /// la Dépakine (valproate de sodium), « Fluticasone » à l'Avamys.
+    #[test]
+    fn a_salt_is_not_a_second_molecule() {
+        let base: Vec<Known> = Vec::new();
+        let held = vec![
+            Held {
+                name: "Dépakine",
+                dci: "valproate de sodium",
+                class: "antiépileptique",
+                posology: "500 mg matin et soir",
+                strength: "",
+            },
+            Held {
+                name: "Avamys",
+                dci: "fluticasone furoate",
+                class: "corticoïde nasal",
+                posology: "2 pulvérisations le matin",
+                strength: "",
+            },
+        ];
+        let rows = compare(
+            &held,
+            "Valproate 500 mg matin et soir\nFluticasone : 2 pulvérisations le matin",
+            &base,
+        );
+        assert!(
+            rows.iter().all(|r| r.kind == Change::Kept),
+            "{:?}",
+            rows.iter().map(|r| (&r.label, r.kind)).collect::<Vec<_>>()
+        );
     }
 }

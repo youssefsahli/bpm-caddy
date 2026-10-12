@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Regressions found by reviewing the fixes of 0.404.0–0.406.0:
+  conciliation counts the head of each DCI as its molecule, not its salt
+  (« Valproate » against Dépakine, valproate de sodium, read « stopped »);
+  saving a document of rewritten texts no longer deletes its outdated
+  rewrites (accepting one will be a gesture of its own); the access-log
+  retention is one officine-wide value written from Options — the
+  ratcheted maximum never came down, and a zero once stopped purging for
+  good; a deletion refused because the register cites the file also
+  keeps the file's acts, biology, notes and pins sent with it, while a
+  single line deleted alone still goes.
+
 ## [0.407.0] - 2026-10-12
 
 ### Fixed

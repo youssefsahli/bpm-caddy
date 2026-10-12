@@ -318,6 +318,9 @@ fn renal_dfg_text(v: f64) -> String {
     }
 }
 
+/// La durée de conservation du journal des accès, pour toute l'officine.
+const AUDIT_KEEP_KEY: &str = "audit_keep_days";
+
 /// Deux secrets égaux, comparés en temps constant.
 fn same_secret(a: &str, b: &str) -> bool {
     let (a, b) = (a.as_bytes(), b.as_bytes());
@@ -7989,26 +7992,18 @@ impl Session {
         let Ok(today) = self.db.today_iso() else {
             return;
         };
-        // **La durée la plus longue que l'officine ait demandée**, et non
-        // celle de ce poste seul : sur une base partagée par un lecteur
-        // réseau, la purge d'un poste réglé à sept jours vidait le journal
-        // que l'officine garde un an. Chaque poste y inscrit la sienne ;
-        // zéro veut dire « toujours », et l'emporte.
-        let key = "audit_keep_days";
-        let stored = self.db.setting(key);
-        let theirs = stored.as_deref().and_then(|v| v.trim().parse::<u32>().ok());
-        let mine = self.audit_keep_days;
-        let longest = |a: u32, b: u32| if a == 0 || b == 0 { 0 } else { a.max(b) };
-        let keep = theirs.map_or(mine, |t| longest(t, mine));
-        if theirs != Some(keep) {
-            let _ = self.db.set_setting(
-                key,
-                &keep.to_string(),
-                stored.as_deref(),
-                &today,
-                &self.operator,
-            );
-        }
+        // **La durée de l'officine**, rangée dans la base et écrite par
+        // Options : sur une base partagée par un lecteur réseau, la purge
+        // d'un poste réglé à sept jours vidait le journal que l'officine
+        // garde un an. Une seule valeur pour tous, la dernière choisie ;
+        // celle du poste ne vaut que tant que l'officine n'en a pas écrit.
+        // (Un maximum gardé tout seul ne redescendait jamais, et un zéro
+        // passé arrêtait la purge pour toujours.)
+        let keep = self
+            .db
+            .setting(AUDIT_KEEP_KEY)
+            .and_then(|v| v.trim().parse::<u32>().ok())
+            .unwrap_or(self.audit_keep_days);
         let Some(horizon) = crate::audit::horizon(&today, keep) else {
             return;
         };
@@ -62717,13 +62712,13 @@ impl App {
             let (Some(value), Some(seen)) = (edit.typed.get(key), edit.seen.get(key)) else {
                 continue;
             };
-            // Inchangé, rien à écrire — **sauf une réécriture périmée** :
-            // le texte livré a changé, l'écran montre le nouveau, et
-            // l'enregistrer tel quel est la façon de dire « le nouveau me
-            // va ». Sautée, la phrase restait « à relire » pour toujours,
-            // et seul « Rétablir » sur tout le document l'effaçait.
-            let outdated = session.content.state(key, shipped) == crate::content::State::Outdated;
-            if value == seen && !outdated {
+            // Inchangé, rien à écrire. **Une réécriture périmée non plus** :
+            // l'accepter en enregistrant le document effaçait d'un coup
+            // toutes celles qu'on n'avait pas touchées — sur chaque poste,
+            // et sur ceux d'une version plus récente, où les réécritures
+            // des autres se lisent périmées. L'accepter se fera phrase
+            // par phrase, d'un geste à elle.
+            if value == seen {
                 continue;
             }
             match session.db.set_content(key, value, shipped, seen, &day, who) {
@@ -83697,6 +83692,17 @@ impl eframe::App for App {
                     session.operator.clone_from(&self.config.ui.operator);
                 }
                 session.audit_keep_days = self.config.audit.keep_days;
+                // Changée ici, elle vaut pour l'officine entière.
+                if self.config.audit.keep_days != before.audit.keep_days {
+                    let was = session.db.setting(AUDIT_KEEP_KEY);
+                    let _ = session.db.set_setting(
+                        AUDIT_KEEP_KEY,
+                        &self.config.audit.keep_days.to_string(),
+                        was.as_deref(),
+                        &session.today,
+                        &session.operator,
+                    );
+                }
                 session.cycle_months = self.config.rules.cycle_months.max(1);
                 session.loc_notice_days = self.config.locations.notice_days;
                 session.scripts_dir = self.config.scripts_dir();
