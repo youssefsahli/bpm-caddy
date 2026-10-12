@@ -15086,7 +15086,7 @@ fn interview_ranks(
     let mut by_kind: std::collections::HashMap<InterviewKind, Vec<(i64, String, bool)>> =
         std::collections::HashMap::new();
     for itv in interviews {
-        let date = itv.created_at[..10.min(itv.created_at.len())].to_owned();
+        let date = db::act_date(itv);
         by_kind.entry(itv.kind).or_default().push((
             itv.id,
             date,
@@ -15123,7 +15123,7 @@ fn treatment_change_shortfall(
         .iter()
         .filter(|i| i.kind == marked.kind)
         .collect();
-    same.sort_by(|a, b| a.created_at.cmp(&b.created_at).then(a.id.cmp(&b.id)));
+    same.sort_by(|a, b| db::act_date(a).cmp(&db::act_date(b)).then(a.id.cmp(&b.id)));
     let ranks = interview_ranks(interviews, months);
     let pos = same.iter().position(|i| i.id == marked.id)?;
     // The sequence the change closes runs back to the previous entretien
@@ -89471,6 +89471,37 @@ mod tests {
     /// ce que le pliage lui laisse. Le test le vérifie sur un dossier
     /// qui porte de tout : un TROD (sept boutons de fiche), un
     /// anticancéreux (les deux drapeaux) et une vaccination.
+    /// **Le dossier range un acte comme le récapitulatif** : au rendez-vous
+    /// quand il y en a un. Saisi le 20 décembre pour le 20 janvier, après
+    /// un premier acte du 5 janvier, il ouvre l'année 2 — l'écran le
+    /// rangeait en année 1, rang 4.
+    #[test]
+    fn the_file_ranks_an_act_as_the_recap_does() {
+        use crate::db::{Interview, InterviewKind, InterviewState};
+        let act = |id: i64, day: Option<&str>, made: &str| Interview {
+            id,
+            kind: InterviewKind::Bpm,
+            state: InterviewState::Performed,
+            duration_minutes: 20,
+            scheduled_date: day.map(str::to_owned),
+            scheduled_time: String::new(),
+            remote: false,
+            treatment_change: false,
+            theme: String::new(),
+            trod_result: String::new(),
+            operator: "CL".to_owned(),
+            created_at: format!("{made} 09:00"),
+        };
+        let interviews = vec![
+            act(1, None, "2026-01-05"),
+            act(2, None, "2026-02-05"),
+            act(3, None, "2026-03-05"),
+            act(4, Some("2027-01-20"), "2026-12-20"),
+        ];
+        let ranks = super::interview_ranks(&interviews, 12);
+        assert_eq!(ranks.get(&4), Some(&(1, 0)), "{ranks:?}");
+    }
+
     #[test]
     fn the_acts_table_never_runs_off_the_right_of_its_panel() {
         use crate::db::{Interview, InterviewKind, InterviewState};

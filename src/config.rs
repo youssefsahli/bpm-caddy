@@ -2065,7 +2065,17 @@ impl Config {
     /// What one entretien is worth: its theme, the year of
     /// accompaniment it belongs to and its rank in that year's
     /// sequence, all 0-based.
+    ///
+    /// **Hors accompagnement, l'acte se paie à chaque fois** : une
+    /// vaccination, un TROD, un rendez-vous de prévention n'ont pas de
+    /// séquence, et leur rang continue de monter dans l'année — la
+    /// cinquième vaccination d'un cycle sortait à zéro euro.
     pub fn fee(&self, kind: crate::db::InterviewKind, year: usize, rank: usize) -> f64 {
+        let rank = if kind.is_accompaniment() {
+            rank
+        } else {
+            rank.min(ActFees::STEPS - 1)
+        };
         self.act_fees(kind).amount(year, rank)
     }
 
@@ -2717,6 +2727,14 @@ mod tests {
         // AC2 15 + 15 + 50 = 80 €, AC4 30 €.
         year(AnticancereuxAutres, 0, &[15.0, 15.0, 50.0, 0.0], 80.0);
         year(AnticancereuxAutres, 1, &[10.0, 20.0, 0.0, 0.0], 30.0);
+        // Hors accompagnement, le cinquième acte d'un cycle se paie comme
+        // le premier — il sortait à zéro.
+        for kind in [Vaccination, TrodAngine, Prevention] {
+            assert_eq!(cfg.fee(kind, 0, 4), cfg.fee(kind, 0, 0), "{kind:?}");
+            assert_eq!(cfg.fee(kind, 1, 9), cfg.fee(kind, 1, 0), "{kind:?}");
+        }
+        // L'accompagnement, lui, n'a rien au-delà de sa séquence.
+        assert_eq!(cfg.fee(Bpm, 0, 4), 0.0);
         // Adhésion : le code traceur TAC, 0,01 €.
         assert_eq!(cfg.billing.adhesion, 0.01);
         // Codes actes, années 1 et suivantes.

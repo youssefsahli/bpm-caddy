@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gap written for good). A line already cancelled higher up no longer
   counts. The printed ordonnancier gives each quantity its unit and says
   how many of the year's deliveries still wait for their number.
+- Acts: the file ranks an act by its appointment date, as the CSV and the
+  printed recap do (an act typed in December for January showed « BMI ·
+  4 » on screen and « BMS · 1 » on paper). A vaccination, TROD or
+  prevention act past the fourth of a cycle is paid like the first; it
+  came out at 0 €.
 
 ## [0.399.0] - 2026-10-12
 

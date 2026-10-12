@@ -79,6 +79,10 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   chaque poste (`created_at`) : il se fie aux horloges des postes, et un
   poste en retard de quelques minutes place sa ligne avant une ligne
   écrite plus tôt ailleurs ;
+- actes : un acte jamais tenu (« Identifié » puis abandonné, rendez-vous
+  manqué laissé « Planifié ») prend un rang et entame le quota ; il n'y a
+  pas d'état « abandonné » — à trancher (le rang ne compterait que les
+  actes tenus, ou un état de plus) ;
 - téléphone : la suppression d'un rendez-vous de l'agenda ne compare que
   le titre ; la base peut s'ouvrir deux fois (deux déverrouillages) et
   n'est jamais refermée en quittant par Retour. Le code Kotlin modifié le

@@ -53756,6 +53756,19 @@ pub fn add_one_year(iso: &str) -> String {
 /// caller's list, its date, and whether it follows a treatment change.
 type FeeKey = (i64, InterviewKind, String, bool);
 
+/// **Le jour d'un acte pour son cycle et son honoraire** : le rendez-vous
+/// quand il y en a un, sinon le jour de saisie — la règle de [`fee_ranks`],
+/// écrite une fois pour l'écran du dossier, qui rangeait au jour de saisie
+/// et disait un autre rang que le récapitulatif.
+pub fn act_date(itv: &Interview) -> String {
+    itv.scheduled_date
+        .as_deref()
+        .map(|d| d.get(..10).unwrap_or(d))
+        .filter(|d| !d.is_empty())
+        .unwrap_or_else(|| itv.created_at.get(..10).unwrap_or(&itv.created_at))
+        .to_owned()
+}
+
 fn fee_ranks(keys: &[FeeKey], months: u32) -> Vec<(usize, (usize, usize))> {
     /// The acts of one patient and one theme: index, date, restart.
     type Group = Vec<(usize, String, bool)>;
