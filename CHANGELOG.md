@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the morning was kept); the condition of an as-needed line starts at its
   marker (« 1 sachet au petit-déjeuner si besoin » printed « déjeuner si
   besoin »).
+- Companion bar: its hover on pregnancy, kidney, crushing and age says
+  the officine's rewritten phrases, as the panels do, instead of the
+  shipped ones.
 - Posts' sync: only the group's posts set the clock (one record ranked
   at the ceiling, from a retired device or a lost phone, pinned every
   later write and left edits « to arbitrate »); a correction sealed by

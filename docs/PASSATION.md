@@ -59,9 +59,7 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
 - `bpm-sync` : un `Give` est accepté sans `Want` en attente, et des
   parents inventés près de `0x00…` passent devant les vraies têtes dans
   `need` — un membre peut étirer ou faire échouer une séance ;
-- barre du compagnon : son survol lit grossesse, rein et écrasement sans
-  les réécritures de l'officine (`companion_signals` n'a pas les
-  `Overrides`) — les panneaux, eux, les ont ; le texte « molécule absente
+- grossesse : le texte « molécule absente
   de la table » de `gravidity.rs` n'a pas d'adresse de réécriture, et
   `rhythm_text` (« tous les mois ») est écrit en dur ;
 - ordonnance après TROD : la nitrofurantoïne en 3e intention de la

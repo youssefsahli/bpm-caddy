@@ -72573,6 +72573,7 @@ impl App {
             &session.surveillance,
             &bio,
             &cascades,
+            &session.content,
         )
     }
 
@@ -76932,6 +76933,7 @@ impl App {
                     })
                     .collect::<Vec<_>>(),
                 &cascades,
+                &session.content,
             );
             // **Une rupture se dit avant tout le reste**, avec ce que les
             // collègues ont donné à la place : c'est souvent pour ça
@@ -78453,6 +78455,7 @@ fn companion_look(
     filed: (String, String),
     taught: &[(i64, String, String)],
     cascades: &[&crate::cascade::Cascade],
+    over: &crate::content::Overrides,
 ) -> CompanionRead {
     // Ce qu'on a tapé est-il un code-barres ? La clé de contrôle décide,
     // jamais la longueur — c'est la règle de `codebar`, et elle fait
@@ -78504,7 +78507,7 @@ fn companion_look(
             filed,
         };
     };
-    let signals = companion_signals(&card, file, dfg, age, watch, bio, cascades);
+    let signals = companion_signals(&card, file, dfg, age, watch, bio, cascades, over);
     // Les pages qui parlent. La première est toujours là : les puces,
     // le signe d'alerte et ce à quoi le produit sert sont ce que la
     // barre est venue dire, et quand toutes les tables se taisent c'est
@@ -78588,6 +78591,7 @@ fn companion_look(
 /// pour toujours, c'est-à-dire la rangée de « à vérifier » que le
 /// paragraphe ci-dessus refuse. Le stade se désigne au croisement, où
 /// trois boutons l'attendent.
+#[allow(clippy::too_many_arguments)]
 fn companion_signals(
     card: &Drug,
     file: &[Drug],
@@ -78596,6 +78600,9 @@ fn companion_signals(
     watch: &[crate::surveillance::ResolvedDue],
     bio: &[crate::biology::Reading],
     cascades: &[&crate::cascade::Cascade],
+    // Les réécritures de l'officine : le survol dit ce que les panneaux
+    // disent, et non la phrase livrée.
+    over: &crate::content::Overrides,
 ) -> Vec<CompanionSignal> {
     let mut out: Vec<CompanionSignal> = Vec::new();
     // Le dossier, plus la fiche cherchée si elle n'y est pas déjà : la
@@ -78908,14 +78915,14 @@ fn companion_signals(
         });
     }
     // « Peut-on l'écraser ? » — la question du téléphone de l'EHPAD.
-    if let Some(a) = crate::crush::read(&one)
+    if let Some(a) = crate::crush::resolve(crate::crush::read(&one), over)
         .into_iter()
         .find(|a| a.verdict != crate::crush::Verdict::Unknown)
     {
-        let mut hover = a.why.to_owned();
+        let mut hover = a.why.clone();
         if !a.instead.is_empty() {
             hover.push_str("\n\n");
-            hover.push_str(a.instead);
+            hover.push_str(&a.instead);
         }
         out.push(CompanionSignal {
             chip: format!("{} · {}", tr("companion_sig_crush"), a.verdict.label()),
@@ -78933,7 +78940,7 @@ fn companion_signals(
     // utilisable enceinte et contre-indiquée en allaitant, les AVK
     // l'exact inverse — une puce qui dirait « grossesse » sans dire
     // laquelle se tromperait une fois sur deux.
-    if let Some(f) = crate::gravidity::read(&one)
+    if let Some(f) = crate::gravidity::resolve(crate::gravidity::read(&one), over)
         .into_iter()
         .find(|f| f.worst() != crate::gravidity::Level::SansDonnee)
     {
@@ -78941,13 +78948,13 @@ fn companion_signals(
             (
                 crate::gravidity::Stage::Grossesse,
                 f.pregnancy,
-                f.pregnancy_note,
+                f.pregnancy_note.clone(),
             )
         } else {
             (
                 crate::gravidity::Stage::Allaitement,
                 f.breastfeeding,
-                f.breastfeeding_note,
+                f.breastfeeding_note.clone(),
             )
         };
         let mut hover = tr("gravid_scope").to_owned();
@@ -78970,7 +78977,10 @@ fn companion_signals(
     }
     // Le rein, au DFG du dossier quand il y en a un. Sans chiffre la
     // puce dit qu'il manque, et ne conclut pas.
-    if let Some(f) = crate::renal::read(&one, dfg).into_iter().next() {
+    if let Some(f) = crate::renal::resolve(crate::renal::read(&one, dfg), over)
+        .into_iter()
+        .next()
+    {
         let said = match (f.level, f.below) {
             (Some(l), Some(b)) => format!("{} sous {b} mL/min", l.label()),
             _ => tr("companion_renal_pending").to_owned(),
@@ -78989,7 +78999,10 @@ fn companion_signals(
     // Et l'âge, dont le chiffre est déjà au dossier : le rein demande
     // d'aller chercher un compte rendu, l'âge ne demande rien, et c'est
     // pour cela qu'il ne se regarde jamais.
-    if let Some(f) = crate::elderly::read(&one, age).into_iter().next() {
+    if let Some(f) = crate::elderly::resolve(crate::elderly::read(&one, age), over)
+        .into_iter()
+        .next()
+    {
         let said = match f.level {
             Some(l) => l.label().to_owned(),
             None => trf("companion_age_pending", f.from),
@@ -87504,7 +87517,43 @@ mod tests {
             <(String, String)>::default(),
             &[],
             &[],
+            &crate::content::Overrides::default(),
         )
+    }
+
+    /// Le survol de la barre dit ce que disent les panneaux : la phrase
+    /// que l'officine a réécrite, pas celle qui est livrée.
+    #[test]
+    fn the_companion_hover_says_the_officine_s_rewrites() {
+        use crate::db::Drug;
+        let codeine = Drug {
+            id: 1,
+            name: "Codéine".to_owned(),
+            dci: "codéine".to_owned(),
+            class: "opioïde".to_owned(),
+            ..Drug::default()
+        };
+        let mut rows = Vec::new();
+        for listed in [
+            crate::gravidity::phrases(),
+            crate::renal::phrases(),
+            crate::crush::phrases(),
+            crate::elderly::phrases(),
+        ] {
+            rows.extend(
+                listed
+                    .into_iter()
+                    .map(|(k, _, shipped)| (k.clone(), format!("réécrit:{k}"), shipped.to_owned())),
+            );
+        }
+        let over = crate::content::Overrides::from_rows(rows);
+        let signals =
+            super::companion_signals(&codeine, &[], Some(20.0), Some(80), &[], &[], &[], &over);
+        let gravid = signals
+            .iter()
+            .find(|s| s.goes == super::CompanionWhere::Cross(super::DdiSection::Gravidity))
+            .expect("la codéine a une ligne de grossesse");
+        assert!(gravid.hover.contains("réécrit:"), "{}", gravid.hover);
     }
 
     #[test]
@@ -87520,7 +87569,16 @@ mod tests {
         // Le mot est celui de la table, cité : `crush` répond « sous
         // condition » d'une gélule à microgranules, et la puce le
         // reprend plutôt que de le reformuler.
-        let signals = super::companion_signals(&skenan, &[], None, None, &[], &[], &[]);
+        let signals = super::companion_signals(
+            &skenan,
+            &[],
+            None,
+            None,
+            &[],
+            &[],
+            &[],
+            &crate::content::Overrides::default(),
+        );
         let crush = signals
             .iter()
             .find(|s| s.chip.starts_with("Écrasement"))
@@ -87550,7 +87608,17 @@ mod tests {
             name: "Zorglubine".to_owned(),
             ..Drug::default()
         };
-        assert!(super::companion_signals(&unknown, &[], None, None, &[], &[], &[]).is_empty());
+        assert!(super::companion_signals(
+            &unknown,
+            &[],
+            None,
+            None,
+            &[],
+            &[],
+            &[],
+            &crate::content::Overrides::default()
+        )
+        .is_empty());
         let read = companion_read(
             std::slice::from_ref(&unknown),
             &[],
@@ -87585,6 +87653,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &crate::content::Overrides::default(),
         );
         assert!(
             crossed.iter().any(|s| s.chip.starts_with("Ordonnance")),
@@ -87619,6 +87688,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &crate::content::Overrides::default(),
         );
         assert!(
             !aside.iter().any(|s| s.chip.starts_with("Revue")),
@@ -87902,6 +87972,7 @@ mod tests {
             ("50 mg".to_owned(), "1 le matin".to_owned()),
             &[],
             &[],
+            &crate::content::Overrides::default(),
         );
         assert!(
             filed.pages.contains(&CompanionPage::Posology),
@@ -87948,10 +88019,19 @@ mod tests {
             date: "2026-09-01",
         }];
         let chips = |card: &Drug, bio: &[crate::biology::Reading]| -> Vec<String> {
-            super::companion_signals(card, &[], None, None, &[], bio, &[])
-                .into_iter()
-                .map(|s| s.chip)
-                .collect()
+            super::companion_signals(
+                card,
+                &[],
+                None,
+                None,
+                &[],
+                bio,
+                &[],
+                &crate::content::Overrides::default(),
+            )
+            .into_iter()
+            .map(|s| s.chip)
+            .collect()
         };
         assert!(
             chips(&heparine, &high)
@@ -88028,6 +88108,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &crate::content::Overrides::default(),
         );
         assert!(
             signals.len() >= 2,
@@ -88086,10 +88167,19 @@ mod tests {
             ..Drug::default()
         };
         let chips = |card: &Drug, file: &[Drug]| -> Vec<String> {
-            super::companion_signals(card, file, None, None, &[], &[], &[])
-                .into_iter()
-                .map(|s| s.chip)
-                .collect()
+            super::companion_signals(
+                card,
+                file,
+                None,
+                None,
+                &[],
+                &[],
+                &[],
+                &crate::content::Overrides::default(),
+            )
+            .into_iter()
+            .map(|s| s.chip)
+            .collect()
         };
         // Le doublon, nommé — et il nomme la ligne du dossier, sans quoi
         // il faudrait la chercher.
@@ -88377,6 +88467,7 @@ mod tests {
                 <(String, String)>::default(),
                 taught,
                 &[],
+                &crate::content::Overrides::default(),
             )
         };
 
@@ -88616,6 +88707,7 @@ mod tests {
             <(String, String)>::default(),
             &[],
             &[],
+            &crate::content::Overrides::default(),
         );
         // Le nom d'abord, sur toutes les pages.
         for page in CompanionPage::ALL {
@@ -88649,6 +88741,7 @@ mod tests {
                 ("5 mg".to_owned(), "matin et soir".to_owned()),
                 &[],
                 &[],
+                &crate::content::Overrides::default(),
             ),
             Some(CompanionPage::Posology),
         );
@@ -88793,6 +88886,7 @@ mod tests {
             <(String, String)>::default(),
             &[],
             &[],
+            &crate::content::Overrides::default(),
         );
         assert_eq!(
             read.pages,
@@ -88994,7 +89088,16 @@ mod tests {
         let refs: Vec<&crate::cascade::Cascade> = parsed.iter().collect();
         let plavix = card(1, "Plavix", "clopidogrel");
         let file = vec![card(2, "Kardégic", "acide acétylsalicylique")];
-        let signals = super::companion_signals(&plavix, &file, None, None, &[], &[], &refs);
+        let signals = super::companion_signals(
+            &plavix,
+            &file,
+            None,
+            None,
+            &[],
+            &[],
+            &refs,
+            &crate::content::Overrides::default(),
+        );
         let chip = signals
             .iter()
             .find(|s| {
@@ -89010,7 +89113,16 @@ mod tests {
             "{}",
             chip.hover
         );
-        let alone = super::companion_signals(&plavix, &[], None, None, &[], &[], &refs);
+        let alone = super::companion_signals(
+            &plavix,
+            &[],
+            None,
+            None,
+            &[],
+            &[],
+            &refs,
+            &crate::content::Overrides::default(),
+        );
         assert!(!alone.iter().any(|s| matches!(
             s.goes,
             super::CompanionWhere::Cross(super::DdiSection::Cascades)
