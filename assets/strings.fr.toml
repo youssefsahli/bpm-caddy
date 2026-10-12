@@ -3950,3 +3950,5 @@ calc_creat_mg_l = "Créatinine très basse pour des µmol/L : une valeur en mg/L
 calc_perkg_capped = " — plafonnée à {} mg, comme la phrase l'écrit"
 lock_db_create_again = "Pour créer exprès une base neuve à cet emplacement, retapez le même mot de passe."
 audit_keep_stale = "La conservation du journal a été changée sur un autre poste entre-temps : rien n'a été écrasé. Rouvrez les options pour la voir."
+stup_lot_other_product = "Le lot affiché a été lu ou tapé pour un autre produit : retapez-le pour celui-ci, ou effacez-le."
+event_date_future = "Date postérieure à aujourd'hui."

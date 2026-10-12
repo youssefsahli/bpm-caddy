@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Narcotics register: a lot typed for one product leaves the form when
+  another product is opened — it stayed displayed and was dropped at
+  writing — and a line is refused, with a notice, rather than written
+  without the lot the screen showed.
+- Kidney table: the officine's rewrites of the dabigatran, edoxaban and
+  cotrimoxazole conducts keep their address now that those thresholds
+  include their upper bound — they would have been orphaned on upgrade.
+
+### Changed
+- Behaviour changes since 0.403.0 worth knowing: an exchange folder that
+  does not exist is refused, not created; an officine print template
+  that cannot be read stops printing with a message; importing a bundle
+  from a member of a group leaves the group; creating a missing base asks
+  for the password twice; a vaccination dated after today is refused;
+  « 1/2 », « 3 boîtes » or « 2 x 14 » are refused as register quantities;
+  an emptied rewrite prints the shipped text.
+
 ## [0.409.0] - 2026-10-12
 
 ### Fixed

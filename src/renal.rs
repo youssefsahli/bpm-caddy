@@ -226,6 +226,25 @@ pub const DOC: &str = "rein";
 /// palier se désigne par le DFG sous lequel il s'applique, qui est un
 /// chiffre de RCP et ne bouge pas. Le rang, lui, se décalerait dès qu'on
 /// insère un palier au-dessus.
+/// **Les paliers dont le seuil a bougé gardent leur adresse d'avant** :
+/// « Entre 30 et 50 » est passé de `below: 50` à `51` pour que 50 en soit,
+/// et l'adresse, faite du seuil, aurait suivi — la réécriture de
+/// l'officine restait en base sans plus rien viser. Le seuil d'adresse
+/// est celui-ci ; le seuil de lecture, celui de la ligne.
+const ADDRESS_BELOW_WAS: [(&str, u16, u16); 3] = [
+    ("Dabigatran", 51, 50),
+    ("Édoxaban", 51, 50),
+    ("Cotrimoxazole", 31, 30),
+];
+
+/// Le seuil qui sert d'adresse à un palier.
+fn address_below(label: &str, below: u16) -> u16 {
+    ADDRESS_BELOW_WAS
+        .iter()
+        .find(|(l, now, _)| *l == label && *now == below)
+        .map_or(below, |(_, _, was)| *was)
+}
+
 fn addressed() -> Vec<(String, &'static str)> {
     TABLE
         .iter()
@@ -233,7 +252,11 @@ fn addressed() -> Vec<(String, &'static str)> {
             let id = crate::content::slug(a.label);
             a.steps.iter().map(move |s| {
                 (
-                    crate::content::key(DOC, &id, &format!("dfg{}", s.below)),
+                    crate::content::key(
+                        DOC,
+                        &id,
+                        &format!("dfg{}", address_below(a.label, s.below)),
+                    ),
                     s.conduct,
                 )
             })
@@ -263,7 +286,13 @@ pub fn resolve(findings: Vec<Finding>, over: &crate::content::Overrides) -> Vec<
                 .iter()
                 .find(|a| a.label == f.label)
                 .and_then(|a| a.steps.iter().find(|s| Some(s.below) == f.below))
-                .map(|s| crate::content::key(DOC, &id, &format!("dfg{}", s.below)));
+                .map(|s| {
+                    crate::content::key(
+                        DOC,
+                        &id,
+                        &format!("dfg{}", address_below(f.label, s.below)),
+                    )
+                });
             Resolved {
                 conduct: match &key {
                     Some(k) => over.get(k, f.conduct).to_owned(),
@@ -2465,6 +2494,29 @@ mod tests {
                     "« {n} » est réclamé par plusieurs lignes"
                 );
             }
+        }
+    }
+
+    /// Une réécriture faite avant que le seuil bouge vise toujours son
+    /// palier.
+    #[test]
+    fn a_moved_threshold_keeps_its_address() {
+        let keys: Vec<String> = phrases().into_iter().map(|(k, _, _)| k).collect();
+        let dabigatran = crate::content::slug("Dabigatran");
+        assert!(keys
+            .iter()
+            .any(|k| *k == crate::content::key(DOC, &dabigatran, "dfg50")));
+        assert!(!keys
+            .iter()
+            .any(|k| *k == crate::content::key(DOC, &dabigatran, "dfg51")));
+        // Et chaque seuil gardé désigne une ligne qui existe.
+        for (label, now, _) in ADDRESS_BELOW_WAS {
+            assert!(
+                TABLE
+                    .iter()
+                    .any(|a| a.label == label && a.steps.iter().any(|s| s.below == now)),
+                "{label} n'a plus de palier sous {now}"
+            );
         }
     }
 }

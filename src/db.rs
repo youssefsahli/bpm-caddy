@@ -54099,7 +54099,7 @@ pub fn parse_birth_date(input: &str, today: &str) -> Result<String, String> {
     if again.as_str() <= today {
         return Ok(again);
     }
-    Err("Date postérieure à aujourd'hui.".to_owned())
+    Err(crate::strings::tr("event_date_future").to_owned())
 }
 
 /// Parse the date of something that **has happened** — a delivery, a
@@ -54132,7 +54132,7 @@ pub fn parse_event_date(input: &str, today: &str) -> Result<String, String> {
                 return Ok(last);
             }
         }
-        return Err("Date postérieure à aujourd'hui.".to_owned());
+        return Err(crate::strings::tr("event_date_future").to_owned());
     }
     let iso = parse_french_date(input, year, YearHint::Future)?;
     if iso.as_str() <= today {

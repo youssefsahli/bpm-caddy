@@ -9058,6 +9058,15 @@ impl Session {
         let open = self.stup_open.unwrap_or(0);
         if self.stup_count_of != open {
             self.stup_count_of = open;
+            // **Le lot d'un autre produit part du formulaire** au lieu d'y
+            // rester affiché : tapé pour A puis B choisi, il se montrait
+            // encore et ne s'écrivait pas (il n'est pas celui de B). Un lot
+            // lu sur la boîte du produit qu'on ouvre, lui, reste.
+            if self.stup_lot_for != self.stup_open {
+                self.stup_new_lot.clear();
+                self.stup_new_expiry.clear();
+                self.stup_lot_for = None;
+            }
             self.stup_count_boxes.clear();
             self.stup_count_loose.clear();
             self.stup_count_per_box = self
@@ -53132,6 +53141,13 @@ impl App {
             .or_else(|| session.viewing.as_ref().map(|p| p.id));
         if kind.is_dispensing() && file.is_none() {
             session.stup_note = Some((true, tr("stup_no_file").to_owned()));
+            return;
+        }
+        // Un lot affiché qui n'est pas celui de ce produit ne part ni en
+        // silence, ni sur la mauvaise ligne : la ligne attend qu'on le
+        // corrige ou l'efface.
+        if !session.stup_new_lot.trim().is_empty() && session.stup_lot_for != Some(product.id) {
+            session.stup_note = Some((true, tr("stup_lot_other_product").to_owned()));
             return;
         }
         let move_ = db::StupMove {
