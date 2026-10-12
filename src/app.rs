@@ -5812,6 +5812,8 @@ struct Session {
     stup_destruction: Vec<db::StupMove>,
     stup_year: i64,
     stup_dispensings: Vec<db::StupMove>,
+    /// Les numéros portés deux fois, toutes années confondues.
+    stup_doubled: Vec<i64>,
     stup_years: Vec<i64>,
     /// Les lignes qui ont été annulées, et le libellé de chaque produit.
     ///
@@ -6609,6 +6611,7 @@ impl Session {
             stup_destruction: Vec::new(),
             stup_year: 0,
             stup_dispensings: Vec::new(),
+            stup_doubled: Vec::new(),
             stup_years: Vec::new(),
             stup_cancelled: std::collections::HashSet::new(),
             stup_labels: std::collections::HashMap::new(),
@@ -9142,6 +9145,7 @@ impl Session {
                 .unwrap_or_else(|| i64::from(self.year_now()));
         }
         self.stup_dispensings = self.db.stup_dispensings(self.stup_year).unwrap_or_default();
+        self.stup_doubled = self.db.stup_doubled_numbers().unwrap_or_default();
     }
 
     /// Écrire l'annulation d'une ligne, et relire.
@@ -51571,6 +51575,7 @@ impl App {
                         // se corrige que par une contre-passation.
                         if k != Kind::Sortie {
                             batch.prescriber.clear();
+                            batch.numbers.clear();
                         }
                     }
                     // Le dossier, par la même rangée que le formulaire
@@ -51930,6 +51935,7 @@ impl App {
         if clear {
             batch.typed.clear();
             batch.reasons.clear();
+            batch.numbers.clear();
             session.stup_note = None;
         }
         if write {
@@ -51937,6 +51943,7 @@ impl App {
             if session.stup_note.as_ref().is_some_and(|(err, _)| !err) {
                 batch.typed.clear();
                 batch.reasons.clear();
+                batch.numbers.clear();
             }
         }
         session.batch = batch;
@@ -52079,7 +52086,7 @@ impl App {
                     return;
                 };
                 if numbers.values().any(|m| *m == n) {
-                    session.stup_note = Some((true, trf("stup_err_number_taken", n)));
+                    session.stup_note = Some((true, trf("stup_err_number_twice", n)));
                     return;
                 }
                 numbers.insert(l.stup_id, n);
@@ -53635,8 +53642,8 @@ impl App {
                 ),
             );
         } else if crate::ordonnancier::Kind::from_key(&m.kind).is_dispensing() {
-            // Écrite sur un poste qui ne numérote pas : le poste de
-            // référence donnera le numéro en la recevant.
+            // Inscrite sans numéro par une version d'avant : aucun n'est
+            // inventé après coup.
             Self::grid_cell(
                 ui,
                 w,
@@ -54938,7 +54945,13 @@ impl App {
                 // qui ne sont pas des stupéfiants tombent entre deux
                 // numéros d'ici. Seul un numéro porté deux fois dit une
                 // anomalie.
-                let (text, colour) = if seq.doubled.is_empty() {
+                // Toutes années confondues : deux postes peuvent avoir tapé
+                // le même numéro à des jours différents.
+                let mut doubled: Vec<i64> = seq.doubled.iter().map(|n| i64::from(*n)).collect();
+                doubled.extend(session.stup_doubled.iter().copied());
+                doubled.sort_unstable();
+                doubled.dedup();
+                let (text, colour) = if doubled.is_empty() {
                     (
                         trn("stup_seq_whole", &[&seq.first, &seq.last, &seq.count]),
                         motif::text_dim(),
@@ -54947,9 +54960,9 @@ impl App {
                     (
                         trf(
                             "stup_seq_doubled",
-                            seq.doubled
+                            doubled
                                 .iter()
-                                .map(u32::to_string)
+                                .map(i64::to_string)
                                 .collect::<Vec<_>>()
                                 .join(", "),
                         ),

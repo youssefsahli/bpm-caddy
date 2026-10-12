@@ -461,8 +461,8 @@ impl Posts {
             report.received.refused += got.refused;
             report.received.duplicates += got.duplicates;
         }
-        // The reference post numbers what arrived without a number; the
-        // numbers leave with its next publication.
+        // Nothing to number any more (the ordonnancier number comes from
+        // the pharmacy software, typed with the line); kept as a no-op.
         db.number_pending(day)?;
         Ok(report)
     }

@@ -995,7 +995,10 @@ pub fn waiting_since(moves: &[Move]) -> Option<String> {
     since
 }
 
-/// Le prochain numéro d'ordonnancier de l'année.
+/// Le prochain numéro d'une suite continue. **Plus utilisé par le
+/// registre** : le numéro d'ordonnancier vient du logiciel de l'officine
+/// et se tape (`read_number`). Gardé pour sa règle, que ses tests
+/// tiennent.
 ///
 /// **Une seule suite, continue**, et non une par année.
 ///

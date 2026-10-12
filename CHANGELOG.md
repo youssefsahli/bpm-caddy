@@ -21,7 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   d'ordonnancier » option is gone. Gaps between numbers are no longer
   reported as missing numbers; a number carried twice still is. Lines
   written without a number by earlier versions keep none and read « sans
-  numéro ».
+  numéro ». Two posts that type the same number before syncing keep
+  both lines (the register used to drop the one that arrived second,
+  without a word), and the ordonnancier names the number carried twice,
+  across all years.
 
 ### Fixed
 - Companion phone: « Effacer ce téléphone » and the lock remove the

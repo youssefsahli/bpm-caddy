@@ -6376,9 +6376,8 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
         // ordinaire, la colonne « État » reste vide et le barré ne se
         // voit nulle part : or c'est exactement ce que cet
         // ordonnancier-là doit savoir montrer, puisqu'une ligne ne se
-        // rature jamais. Le numéro de la ligne annulée reste le sien, et
-        // la suite continue après lui — la phrase du pied le dit, et
-        // l'exemple le montre.
+        // rature jamais. Le numéro de la ligne annulée reste le sien — la
+        // phrase du pied le dit, et l'exemple le montre.
         "ordonnancier" => {
             let mut cancelled = sample_stup_move();
             cancelled.id = 2;

@@ -385,12 +385,11 @@ pas ce que l'article demande :
 - **listes I et II** : l'« Ordonnancier » ne tient que les stupéfiants
   et assimilés, alors que la recherche promet « liste I, liste II » —
   dire qu'un autre logiciel tient celui-là, ou l'ajouter ;
-- les numéros suivent l'ordre d'écriture, pas celui des dates (une
-  saisie antidatée, ou numérotée plus tard depuis un autre poste, prend
-  un numéro plus haut) ; et un premier numéro déclaré après coup saute
-  des numéros sans en garder la raison sur le papier (voulu pour la
-  reprise d'un registre de papier ; une ligne qui le consigne
-  manque).
+- les numéros d'ordonnancier viennent désormais du logiciel de
+  l'officine, tapés sur chaque délivrance (12/10) : deux postes qui
+  tapent le même avant de se synchroniser gardent les deux lignes, et
+  l'ordonnancier dit le numéro porté deux fois ; le choix de la bonne
+  ligne reste à faire à la main (une annulation de l'autre).
 Corrigé : une remise à zéro garde les dossiers que le registre cite.
 
 **Application Android (relevé, Kotlin non construit ici).** Joindre un

@@ -41773,11 +41773,9 @@ CREATE TABLE IF NOT EXISTS stup_moves (
 );
 -- Ce que l'officine a déclaré de son propre registre.
 --
--- Une seule chose pour l'instant : le premier numéro d'ordonnancier que
--- ce registre-ci doit porter, pour **continuer celui de papier**. Une
--- officine qui s'installe avec ce logiciel en est à dix-huit mille neuf
--- cent cinquante, pas à un, et le numéro qu'elle écrit sur l'ordonnance
--- doit suivre le précédent.
+-- Ce qui vaut pour ce registre-ci. (Le premier numéro d'ordonnancier y
+-- était déclaré du temps où l'application numérotait ; le numéro vient
+-- désormais du logiciel de l'officine, et ce réglage n'est plus lu.)
 --
 -- **Ici et non dans `settings` de la base**, où vivent pourtant les
 -- réglages de l'officine : une inspection demande ce fichier-là seul,
@@ -41842,13 +41840,10 @@ CREATE INDEX IF NOT EXISTS idx_stup_moves_stup ON stup_moves(stup_id);
 CREATE INDEX IF NOT EXISTS idx_stup_moves_day ON stup_moves(happened_on);
 CREATE INDEX IF NOT EXISTS idx_stup_moves_ordo ON stup_moves(ordo_year, ordo_no);
 CREATE INDEX IF NOT EXISTS idx_stup_moves_cancels ON stup_moves(cancels);
--- Les numéros d'ordonnancier que **le poste de référence** a donnés aux
--- délivrances écrites sur un autre poste. Un registre se numérote d'un
--- bout à l'autre, et deux postes qui délivrent chacun de leur côté
--- tireraient le même numéro : seul le poste de référence numérote, et une
--- délivrance écrite ailleurs se lit « en attente » jusqu'à ce qu'il
--- l'ait reçue. En ajout seul, comme le registre qu'elle complète : la
--- ligne de délivrance ne se réécrit pas pour recevoir son numéro.
+-- Les numéros d'ordonnancier que le poste de référence donnait, du temps
+-- où l'application numérotait, aux délivrances écrites ailleurs. Plus
+-- rien ne s'y ajoute : le numéro vient du logiciel de l'officine et se
+-- tape avec la ligne. Gardée, en ajout seul, pour ceux qu'elle porte.
 CREATE TABLE IF NOT EXISTS stup_numbers (
     move_id     INTEGER PRIMARY KEY,
     ordo_year   INTEGER NOT NULL DEFAULT 0,
@@ -41898,24 +41893,15 @@ const STUP_MIGRATIONS: &[&str] = &[
     // même pour ranger ses colonnes.
     "ALTER TABLE stup_moves ADD COLUMN lot TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE stup_moves ADD COLUMN expiry TEXT NOT NULL DEFAULT ''",
-    // Deux lignes ne peuvent pas porter le même numéro d'ordonnancier.
-    //
-    // `add_stup_move` l'attribue dans la transaction qui écrit, donc
-    // cela ne devrait pas arriver — mais rien de structurel ne
-    // l'empêchait, et « ne devrait pas » n'est pas une contrainte.
-    //
-    // L'index est **partiel** : `ordo_no` vaut zéro sur chaque ligne qui
-    // n'est pas une délivrance, et un UNIQUE ordinaire refuserait la
-    // deuxième d'entre elles.
-    //
-    // Et il est **ici** et non dans `STUP_SCHEMA`, où il aurait sa place
-    // logique : ce lot-là est appliqué par `execute_batch` dont l'erreur
-    // remonte, si bien qu'un registre écrit par une version d'avant et
-    // portant déjà un doublon ne s'ouvrirait plus du tout. Les
-    // migrations, elles, avalent l'échec. Un registre qu'on ne peut plus
-    // ouvrir est infiniment pire qu'un doublon qu'on peut voir.
-    "CREATE UNIQUE INDEX IF NOT EXISTS idx_stup_ordo_unique
-       ON stup_moves(ordo_year, ordo_no) WHERE ordo_no > 0",
+    // **Plus d'index unique sur le numéro d'ordonnancier.** Le numéro vient
+    // du logiciel de l'officine et se tape sur chaque poste : deux postes
+    // qui tapent le même avant de se parler écrivent deux lignes, et
+    // l'index faisait **abandonner** celle qui arrivait — une délivrance
+    // perdue d'un registre, sans un mot. Un registre ne perd pas de ligne :
+    // les deux restent, et l'ordonnancier dit le numéro porté deux fois.
+    // La frappe d'un numéro déjà inscrit ici reste refusée
+    // (`insert_stup_move`).
+    "DROP INDEX IF EXISTS idx_stup_ordo_unique",
     // Les numéros donnés par le poste de référence — voir `STUP_SCHEMA`.
     "CREATE TABLE IF NOT EXISTS stup_numbers (
         move_id     INTEGER PRIMARY KEY,
@@ -51618,6 +51604,24 @@ impl Db {
     /// Les annulations sortent avec, parce qu'une délivrance annulée
     /// n'a pas eu lieu et ne doit pas faire un motif — c'est à
     /// `crate::vigilance` de le savoir, pas au SQL de le cacher.
+    /// Les numéros d'ordonnancier portés par **plus d'une** délivrance,
+    /// toutes années confondues — ce que deux postes ont tapé pareil avant
+    /// de se parler. Les deux lignes sont gardées ; ce compte le dit.
+    pub fn stup_doubled_numbers(&self) -> Result<Vec<i64>, String> {
+        let mut stmt = self
+            .stups
+            .prepare(
+                "SELECT n FROM (SELECT ordo_no AS n FROM stup_moves WHERE ordo_no > 0
+                                UNION ALL SELECT ordo_no FROM stup_numbers)
+                 GROUP BY n HAVING COUNT(*) > 1 ORDER BY n",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, i64>(0))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
     pub fn stup_dispensings_since(&self, day: &str) -> Result<Vec<StupDispensing>, String> {
         let cancelled = self.stup_cancelled_ids()?;
         let mut st = self
@@ -52333,9 +52337,9 @@ impl Db {
     /// ligne qui disparaît sans que personne ne sache pourquoi, soit
     /// précisément ce que l'inaltérabilité interdit.
     ///
-    /// Le numéro d'ordonnancier de la délivrance annulée **ne revient
-    /// pas** : il reste pris, et la suite continue après lui. Un trou
-    /// dans la suite se lit ; un numéro servi deux fois ne se lit pas.
+    /// Le numéro d'ordonnancier de la délivrance annulée **reste le
+    /// sien** : retapé sur une autre délivrance, il est refusé. Un numéro
+    /// servi deux fois ne désignerait plus rien.
     pub fn cancel_stup_move(
         &self,
         move_id: i64,
@@ -58013,6 +58017,40 @@ mod tests {
         assert_eq!(after.len(), 2);
         assert_eq!(after[1].id, own);
         assert_eq!(after[1].ordo_no, 4_019_027);
+
+        // **Le même numéro tapé sur deux postes** avant qu'ils se parlent :
+        // les deux lignes restent, de part et d'autre, et le numéro se dit
+        // porté deux fois. Aucune délivrance ne disparaît du registre.
+        let on_a = a
+            .add_stup_move(&StupMove {
+                quantity: 1.0,
+                ordo_no: 4_020_000,
+                ..sortie.clone()
+            })
+            .unwrap();
+        let on_b = b
+            .add_stup_move(&StupMove {
+                quantity: 2.0,
+                ordo_no: 4_020_000,
+                ..sortie.clone()
+            })
+            .unwrap();
+        ship(&a, &b, "a2");
+        ship(&b, &a, "b3");
+        for (post, name) in [(&a, "A"), (&b, "B")] {
+            let ids: Vec<i64> = post
+                .stup_dispensings(2026)
+                .unwrap()
+                .iter()
+                .filter(|m| m.ordo_no == 4_020_000)
+                .map(|m| m.id)
+                .collect();
+            assert!(
+                ids.contains(&on_a) && ids.contains(&on_b),
+                "{name} garde les deux délivrances : {ids:?}"
+            );
+            assert!(post.stup_doubled_numbers().unwrap().contains(&4_020_000));
+        }
     }
 
     /// **Chaque table voyage ou reste, jamais les deux, et aucune n'est
