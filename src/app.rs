@@ -16383,6 +16383,29 @@ struct TplEditor {
     text: String,
     /// Status line; `true` marks an error.
     message: Option<(bool, String)>,
+    /// Le modèle de l'officine n'a pas pu être lu : l'éditeur montre le
+    /// modèle livré et **refuse de l'enregistrer par-dessus** — c'était
+    /// perdre la mise en page de l'officine au premier clic.
+    unreadable: bool,
+}
+
+impl TplEditor {
+    fn open(key: &'static str, path: &std::path::Path) -> Self {
+        match crate::pdf::template_source(key, path) {
+            Ok(text) => Self {
+                key,
+                text,
+                message: None,
+                unreadable: false,
+            },
+            Err(e) => Self {
+                key,
+                text: crate::pdf::doc(key).map_or("", |d| d.default).to_owned(),
+                message: Some((true, e)),
+                unreadable: true,
+            },
+        }
+    }
 }
 
 #[derive(Default)]
@@ -18395,6 +18418,7 @@ impl App {
                 key: "fiche",
                 text: crate::pdf::default_template().to_owned(),
                 message: None,
+                unreadable: false,
             })
         } else {
             None
@@ -27482,7 +27506,7 @@ impl App {
         config: &Config,
         operator: &str,
         want_source: bool,
-    ) -> String {
+    ) -> Result<String, String> {
         let today = session
             .db
             .today_french()
@@ -27510,7 +27534,7 @@ impl App {
         } else {
             session.error = None;
         }
-        String::new()
+        Ok(String::new())
     }
 
     /// La fiche que le patient emporte pour une nouvelle ordonnance.
@@ -27643,7 +27667,7 @@ impl App {
         config: &Config,
         operator: &str,
         want_source: bool,
-    ) -> String {
+    ) -> Result<String, String> {
         let today = session
             .db
             .today_french()
@@ -27867,7 +27891,7 @@ impl App {
         } else {
             session.error = None;
         }
-        String::new()
+        Ok(String::new())
     }
 
     /// The width a Motif button with this label occupies.
@@ -31835,13 +31859,13 @@ impl App {
             // **La liasse d'une vaccination** : la fiche, puis le carnet
             // de vaccination à remettre — et non le bilan de médication
             // et le plan de prise, qui n'ont rien à y faire.
-            let sheet = crate::pdf::vaccination_source(&paper, &config.pharmacy, &path);
+            let sheet = crate::pdf::vaccination_source(&paper, &config.pharmacy, &path)?;
             let carnet = crate::pdf::vaccination_carnet_source(
                 patient,
                 &session.vaccinations,
                 &Self::carnet_footer(config),
                 &config.doc_template_path("vaccination"),
-            );
+            )?;
             return crate::pdf::open_bundle(&[sheet, carnet], &format!("liasse_{}", patient.id));
         }
         let offers = crate::ordonnance::protocol_id(itv.kind)
@@ -31875,12 +31899,12 @@ impl App {
         }
         // **La liasse d'un TROD** : la feuille, puis le courrier au
         // médecin traitant — les deux documents qui sortent d'un test.
-        let sheet = crate::pdf::trod_source(&paper, &config.pharmacy, &path);
+        let sheet = crate::pdf::trod_source(&paper, &config.pharmacy, &path)?;
         let letter = crate::pdf::trod_letter_source(
             &paper,
             &config.pharmacy,
             &config.doc_template_path("trod_cr"),
-        );
+        )?;
         crate::pdf::open_bundle(&[sheet, letter], &format!("liasse_{}", patient.id))
     }
 
@@ -32644,10 +32668,13 @@ impl App {
                         Ok(fiche) => {
                             let bilan = Self::bilan_body(session, patient, config, &by, true);
                             let plan = Self::plan_body(session, patient, config, &by, true);
-                            crate::pdf::open_bundle(
-                                &[fiche, bilan, plan],
-                                &format!("liasse_{}", patient.id),
-                            )
+                            match (bilan, plan) {
+                                (Ok(bilan), Ok(plan)) => crate::pdf::open_bundle(
+                                    &[fiche, bilan, plan],
+                                    &format!("liasse_{}", patient.id),
+                                ),
+                                (Err(e), _) | (_, Err(e)) => Err(e),
+                            }
                         }
                         Err(e) => Err(e),
                     }
@@ -75522,14 +75549,10 @@ impl App {
             self.tpl_editor = if self.tpl_editor.is_some() {
                 None
             } else {
-                Some(TplEditor {
-                    key: "fiche",
-                    text: crate::pdf::template_source(
-                        "fiche",
-                        &self.config.doc_template_path("fiche"),
-                    ),
-                    message: None,
-                })
+                Some(TplEditor::open(
+                    "fiche",
+                    &self.config.doc_template_path("fiche"),
+                ))
             };
         }
     }
@@ -80228,7 +80251,13 @@ impl eframe::App for App {
         }
         let mut close_tpl = false;
         let mut switch_tpl: Option<&'static str> = None;
-        if let Some(TplEditor { key, text, message }) = &mut self.tpl_editor {
+        if let Some(TplEditor {
+            key,
+            text,
+            message,
+            unreadable,
+        }) = &mut self.tpl_editor
+        {
             let key: &'static str = key;
             let path = self.config.doc_template_path(key);
             // A Typst source is code: give it the screen. A fixed
@@ -80361,7 +80390,11 @@ impl eframe::App for App {
                     );
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
-                        if motif::button(ui, tr("form_save")).clicked() {
+                        let save = motif::button(ui, tr("form_save")).clicked();
+                        if save && *unreadable {
+                            *message = Some((true, trf("tpl_wont_overwrite", path.display())));
+                        }
+                        if save && !*unreadable {
                             match crate::pdf::check_doc(key, text) {
                                 Ok(()) => {
                                     let result = path
@@ -80424,12 +80457,7 @@ impl eframe::App for App {
         }
         if let Some(t) = switch_tpl {
             // Load the other template (unsaved edits are discarded).
-            let text = crate::pdf::template_source(t, &self.config.doc_template_path(t));
-            self.tpl_editor = Some(TplEditor {
-                key: t,
-                text,
-                message: None,
-            });
+            self.tpl_editor = Some(TplEditor::open(t, &self.config.doc_template_path(t)));
         }
 
         // Global options editor: edits config.toml from within the app.

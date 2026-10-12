@@ -306,7 +306,7 @@ pub fn interview_source(
     template_path: &std::path::Path,
 ) -> Result<String, String> {
     let template = if template_path.exists() {
-        std::fs::read_to_string(template_path)
+        read_template(template_path)
             .map_err(|e| format!("modèle {} illisible : {e}", template_path.display()))?
     } else {
         DEFAULT_TEMPLATE.to_owned()
@@ -341,7 +341,7 @@ pub fn open_bundle(parts: &[String], stem: &str) -> Result<PathBuf, String> {
 pub fn bundle_source(parts: &[String]) -> Result<String, String> {
     let joined = parts
         .iter()
-        .map(|p| p.trim())
+        .map(|p| p.trim_start_matches('\u{feff}').trim())
         .filter(|p| !p.is_empty())
         // **Chaque partie dans son bloc** : un `#set` de la fiche
         // d'entretien (l'espacement de ses blocs, ou ce qu'une officine
@@ -522,7 +522,7 @@ pub fn open_cr_letter(
     next_rdv: &str,
 ) -> Result<PathBuf, String> {
     let template = if template_path.exists() {
-        std::fs::read_to_string(template_path)
+        read_template(template_path)
             .map_err(|e| format!("modèle {} illisible : {e}", template_path.display()))?
     } else {
         DEFAULT_CR_TEMPLATE.to_owned()
@@ -712,7 +712,7 @@ pub fn open_drug_monograph(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("monographie", template_path),
+            &template_source("monographie", template_path)?,
             &monograph_values(d, posologies, sourced, routes),
         ),
         &format!("monographie_{}", d.id),
@@ -940,7 +940,7 @@ pub fn open_bilan(
     template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
     compile_and_open(
-        bilan_source(data, pharmacy, template_path),
+        bilan_source(data, pharmacy, template_path)?,
         &format!("bilan_{}", data.patient.id),
     )
 }
@@ -956,11 +956,11 @@ pub fn bilan_source(
     data: &BilanData,
     pharmacy: &PharmacyConfig,
     template_path: &std::path::Path,
-) -> String {
-    fill(
-        &template_source("bilan", template_path),
+) -> Result<String, String> {
+    Ok(fill(
+        &template_source("bilan", template_path)?,
         &bilan_values(data, pharmacy),
-    )
+    ))
 }
 
 fn bilan_values(data: &BilanData, pharmacy: &PharmacyConfig) -> Vec<(&'static str, String)> {
@@ -1160,7 +1160,7 @@ pub fn open_guide(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("guide", template_path),
+            &template_source("guide", template_path)?,
             &guide_values(pharmacy),
         ),
         "mode_emploi",
@@ -1355,7 +1355,7 @@ pub fn open_plan(
     template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
     compile_and_open(
-        plan_source(data, pharmacy, template_path),
+        plan_source(data, pharmacy, template_path)?,
         &format!("plan_{}", data.patient.id),
     )
 }
@@ -1366,11 +1366,11 @@ pub fn plan_source(
     data: &PlanData,
     pharmacy: &PharmacyConfig,
     template_path: &std::path::Path,
-) -> String {
-    fill(
-        &template_source("plan", template_path),
+) -> Result<String, String> {
+    Ok(fill(
+        &template_source("plan", template_path)?,
         &plan_values(data, pharmacy),
-    )
+    ))
 }
 
 const MARKERS_PLAN: &[&str] = &[
@@ -1575,11 +1575,11 @@ pub fn traitement_source(
     data: &FicheData,
     pharmacy: &PharmacyConfig,
     template_path: &std::path::Path,
-) -> String {
-    fill(
-        &template_source("traitement", template_path),
+) -> Result<String, String> {
+    Ok(fill(
+        &template_source("traitement", template_path)?,
         &traitement_values(data, pharmacy),
-    )
+    ))
 }
 
 /// La fiche de nouveau traitement, compilée et ouverte.
@@ -1589,7 +1589,7 @@ pub fn open_traitement(
     template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
     compile_and_open(
-        traitement_source(data, pharmacy, template_path),
+        traitement_source(data, pharmacy, template_path)?,
         &format!("traitement_{}", data.patient.id),
     )
 }
@@ -2006,7 +2006,7 @@ pub fn open_selfcheck(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("suivi", template_path),
+            &template_source("suivi", template_path)?,
             &selfcheck_values(sheet, patient, pharmacy, today_french),
         ),
         &format!("carnet_{}", sheet.key),
@@ -2162,7 +2162,7 @@ pub fn open_call_list(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("appels", template_path),
+            &template_source("appels", template_path)?,
             &call_list_values(rows, today, pharmacy),
         ),
         "liste_appel",
@@ -2233,7 +2233,7 @@ pub fn open_stock_check(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("controle", template_path),
+            &template_source("controle", template_path)?,
             &stock_check_values(rows, pharmacy, today),
         ),
         "controle_stock",
@@ -2261,7 +2261,7 @@ pub fn open_destruction_list(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("destruction", template_path),
+            &template_source("destruction", template_path)?,
             &destruction_list_values(rows, pharmacy, today),
         ),
         "proces_verbal_destruction",
@@ -2414,7 +2414,7 @@ pub fn open_stup_register(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("registre", template_path),
+            &template_source("registre", template_path)?,
             &stup_register_values(label, unit, rows, running, cancelled, pharmacy, today),
         ),
         "registre_stupefiant",
@@ -2607,7 +2607,7 @@ pub fn open_ordonnancier(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("ordonnancier", template_path),
+            &template_source("ordonnancier", template_path)?,
             &ordonnancier_values(sheet, pharmacy, today),
         ),
         &format!("ordonnancier_{}", sheet.year),
@@ -2736,7 +2736,7 @@ pub fn open_conciliation(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("conciliation", template_path),
+            &template_source("conciliation", template_path)?,
             &conciliation_values(data, pharmacy),
         ),
         &format!("conciliation_{}", data.patient.id),
@@ -2868,7 +2868,7 @@ pub fn open_preparation(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("preparation", template_path),
+            &template_source("preparation", template_path)?,
             &preparation_values(prep, target, lines, pharmacy, operator),
         ),
         &format!("preparation_{}", prep.id),
@@ -2998,7 +2998,7 @@ pub fn open_protocol(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("protocole", template_path),
+            &template_source("protocole", template_path)?,
             &protocol_values(title, subject, nodes),
         ),
         "protocole",
@@ -3022,7 +3022,7 @@ pub fn open_checklist(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("liste", template_path),
+            &template_source("liste", template_path)?,
             &checklist_values(title, subject, items),
         ),
         "liste",
@@ -3168,7 +3168,7 @@ pub fn open_week_plan(
     }
     compile_and_open(
         fill(
-            &template_source("semaine", template_path),
+            &template_source("semaine", template_path)?,
             &week_plan_values(week, appointments, events, today),
         ),
         "semaine",
@@ -3275,7 +3275,7 @@ pub fn open_conversion_tables(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("tables", template_path),
+            &template_source("tables", template_path)?,
             &conversion_tables_values(edits),
         ),
         "tables",
@@ -3290,7 +3290,7 @@ pub fn open_codex(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("codex", template_path),
+            &template_source("codex", template_path)?,
             &codex_values(preparations),
         ),
         "codex",
@@ -3387,7 +3387,7 @@ pub fn open_dispositif(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("dispositif", template_path),
+            &template_source("dispositif", template_path)?,
             &dispositif_values(dispo, pharmacy),
         ),
         "dispositif",
@@ -3469,7 +3469,7 @@ pub fn open_vaccination_register(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("registre_vaccins", template_path),
+            &template_source("registre_vaccins", template_path)?,
             &vaccination_register_values(paper, pharmacy),
         ),
         "registre_vaccins",
@@ -3555,7 +3555,7 @@ pub fn open_campaign_summary(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("bilan_campagne", template_path),
+            &template_source("bilan_campagne", template_path)?,
             &campaign_summary_values(paper, pharmacy),
         ),
         "bilan_campagne",
@@ -3677,7 +3677,7 @@ pub fn open_recalls(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("rappels", template_path),
+            &template_source("rappels", template_path)?,
             &recall_values(paper, pharmacy),
         ),
         "rappels",
@@ -3766,7 +3766,7 @@ pub fn open_couverture(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("couverture", template_path),
+            &template_source("couverture", template_path)?,
             &couverture_values(paper, pharmacy),
         ),
         "couverture",
@@ -3913,7 +3913,7 @@ pub fn open_conseil(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("conseil", template_path),
+            &template_source("conseil", template_path)?,
             &conseil_values(paper, pharmacy),
         ),
         "conseil",
@@ -4029,7 +4029,7 @@ pub fn open_dispositifs(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("dispositifs", template_path),
+            &template_source("dispositifs", template_path)?,
             &dispositifs_values(dispositifs, pharmacy),
         ),
         "dispositifs",
@@ -4112,7 +4112,7 @@ pub fn open_transmission_day(
     template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
     let template = if template_path.exists() {
-        std::fs::read_to_string(template_path)
+        read_template(template_path)
             .map_err(|e| format!("modèle {} illisible : {e}", template_path.display()))?
     } else {
         DEFAULT_TRANS_TEMPLATE.to_owned()
@@ -4628,7 +4628,7 @@ pub fn open_ordonnance(
         return Err("Rien à prescrire : choisissez au moins une ligne.".to_owned());
     }
     let template = if template_path.exists() {
-        std::fs::read_to_string(template_path)
+        read_template(template_path)
             .map_err(|e| format!("modèle {} illisible : {e}", template_path.display()))?
     } else {
         DEFAULT_ORDONNANCE_TEMPLATE.to_owned()
@@ -4670,7 +4670,7 @@ pub fn open_vaccination_carnet(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("vaccination", template_path),
+            &template_source("vaccination", template_path)?,
             &vaccination_carnet_values(patient, lines, mention),
         ),
         "carnet_vaccination",
@@ -4684,11 +4684,11 @@ pub fn vaccination_carnet_source(
     lines: &[crate::db::Vaccination],
     mention: &str,
     template_path: &std::path::Path,
-) -> String {
-    fill(
-        &template_source("vaccination", template_path),
+) -> Result<String, String> {
+    Ok(fill(
+        &template_source("vaccination", template_path)?,
         &vaccination_carnet_values(patient, lines, mention),
-    )
+    ))
 }
 
 fn vaccination_carnet_values(
@@ -4940,7 +4940,7 @@ pub fn open_billing_recap(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("facturation", template_path),
+            &template_source("facturation", template_path)?,
             &billing_recap_values(lines, rentals, period, today_french),
         ),
         "facturation",
@@ -4955,7 +4955,7 @@ pub fn open_appointment_list(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("rdv", template_path),
+            &template_source("rdv", template_path)?,
             &appointment_list_values(rdvs, today_french),
         ),
         "rdv",
@@ -5403,19 +5403,35 @@ pub fn fill(template: &str, values: &[(&str, String)]) -> String {
     out
 }
 
+/// Lire un modèle de l'officine. **Sans la marque d'ordre des octets**
+/// qu'un éditeur Windows pose en tête d'un fichier « UTF-8 avec BOM » :
+/// gardée, elle devenait du contenu avant le `#set page`, et Typst
+/// imprimait une page blanche en premier. Un fichier qui n'est pas de
+/// l'UTF-8 (enregistré en Windows-1252) est une erreur dite, jamais un
+/// retour muet au modèle livré.
+pub fn read_template(path: &std::path::Path) -> Result<String, String> {
+    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    let text = String::from_utf8(bytes)
+        .map_err(|_| crate::strings::trf("tpl_not_utf8", path.display()))?;
+    Ok(text
+        .strip_prefix('\u{feff}')
+        .map_or(text.clone(), str::to_owned))
+}
+
 /// Le modèle de ce document : celui du disque s'il existe, sinon celui
 /// qui est embarqué.
 ///
-/// Une erreur de lecture n'est pas silencieuse — mais elle ne doit pas
-/// empêcher d'imprimer : un modèle illisible rend le modèle par
-/// défaut, et l'éditeur, lui, dit pourquoi.
-#[must_use]
-pub fn template_source(key: &str, path: &std::path::Path) -> String {
+/// **Un modèle illisible est une erreur**, plus un retour muet au modèle
+/// livré : l'officine imprimait sans le savoir une autre mise en page
+/// que la sienne, et l'éditeur, ouvert sur le texte livré, l'écrasait au
+/// premier enregistrement.
+pub fn template_source(key: &str, path: &std::path::Path) -> Result<String, String> {
     let embedded = doc(key).map_or("", |d| d.default);
     if path.exists() {
-        std::fs::read_to_string(path).unwrap_or_else(|_| embedded.to_owned())
+        read_template(path)
+            .map_err(|e| crate::strings::trn("tpl_read_error", &[&path.display(), &e]))
     } else {
-        embedded.to_owned()
+        Ok(embedded.to_owned())
     }
 }
 
@@ -7135,7 +7151,7 @@ pub fn open_caisse(
     remark: &str,
     template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
-    let template = template_source("caisse", template_path);
+    let template = template_source("caisse", template_path)?;
     let values = caisse_values(
         &pharmacy.name,
         date_french,
@@ -7249,7 +7265,7 @@ fn caisse_history_values(
             "  {day}, [{} €], [{}], [{} €], [{} €], [{}], [{}], [#{}], [#text(8pt)[#{}]],\n",
             euros(r.cash),
             r.opening
-                .map_or_else(|| "—".to_owned(), |o| format!("- {} €", euros(o))),
+                .map_or_else(|| "—".to_owned(), |o| format!("\u{2212} {} €", euros(o))),
             euros(r.other),
             euros(r.takings),
             money(r.expected),
@@ -7371,7 +7387,7 @@ pub fn open_caisse_history(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("caisses", template_path),
+            &template_source("caisses", template_path)?,
             &caisse_history_values(rows, period, summary, &pharmacy.name, want_expected),
         ),
         "historique_caisse",
@@ -7484,7 +7500,7 @@ pub fn open_crush(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("ecraser", template_path),
+            &template_source("ecraser", template_path)?,
             &crush_values(rows, &patient.full_name(), today, &pharmacy.name),
         ),
         &format!("ecraser_{}", patient.id),
@@ -7549,7 +7565,7 @@ pub fn open_planning(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("planning", template_path),
+            &template_source("planning", template_path)?,
             &planning_values(week, heads, rows, total, &pharmacy.name),
         ),
         "planning",
@@ -7693,7 +7709,7 @@ pub fn open_labels(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("etiquettes", template_path),
+            &template_source("etiquettes", template_path)?,
             &label_sheet_values(data, pharmacy),
         ),
         "etiquettes",
@@ -7814,7 +7830,7 @@ pub fn open_watch_sheet(
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
-            &template_source("surveillance", template_path),
+            &template_source("surveillance", template_path)?,
             &watch_sheet_values(data, pharmacy),
         ),
         "surveillance",
@@ -8229,7 +8245,7 @@ pub fn open_trod_letter(
     template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
     compile_and_open(
-        trod_letter_source(paper, pharmacy, template_path),
+        trod_letter_source(paper, pharmacy, template_path)?,
         &format!("courrier_trod_{}", paper.patient.id),
     )
 }
@@ -8240,11 +8256,11 @@ pub fn trod_letter_source(
     paper: &TrodPaper,
     pharmacy: &PharmacyConfig,
     template_path: &std::path::Path,
-) -> String {
-    fill(
-        &template_source("trod_cr", template_path),
+) -> Result<String, String> {
+    Ok(fill(
+        &template_source("trod_cr", template_path)?,
         &trod_letter_values(paper, pharmacy),
-    )
+    ))
 }
 
 /// Ce que la fiche de vaccination reçoit.
@@ -8410,11 +8426,11 @@ pub fn vaccination_source(
     paper: &VaccinationPaper,
     pharmacy: &PharmacyConfig,
     template_path: &std::path::Path,
-) -> String {
-    fill(
-        &template_source("vaccin", template_path),
+) -> Result<String, String> {
+    Ok(fill(
+        &template_source("vaccin", template_path)?,
         &vaccination_values(paper, pharmacy),
-    )
+    ))
 }
 
 /// La fiche d'une vaccination à l'officine. Voir `vaccsheet.rs`.
@@ -8424,7 +8440,7 @@ pub fn open_vaccination_sheet(
     template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
     compile_and_open(
-        vaccination_source(paper, pharmacy, template_path),
+        vaccination_source(paper, pharmacy, template_path)?,
         &format!("vaccination_{}", paper.patient.id),
     )
 }
@@ -8435,11 +8451,11 @@ pub fn trod_source(
     paper: &TrodPaper,
     pharmacy: &PharmacyConfig,
     template_path: &std::path::Path,
-) -> String {
-    fill(
-        &template_source("trod", template_path),
+) -> Result<String, String> {
+    Ok(fill(
+        &template_source("trod", template_path)?,
         &trod_values(paper, pharmacy),
-    )
+    ))
 }
 
 /// La feuille d'un TROD : ce qui se vérifie, se lit et se trace, dans
@@ -8454,7 +8470,7 @@ pub fn open_trod_sheet(
         paper.patient.id,
         paper.kind.as_str().to_lowercase()
     );
-    compile_and_open(trod_source(paper, pharmacy, template_path), &stem)
+    compile_and_open(trod_source(paper, pharmacy, template_path)?, &stem)
 }
 
 #[cfg(test)]
@@ -8748,7 +8764,7 @@ mod tests {
             "seulement {checked} fonctions lues : l'analyse a décroché"
         );
         // Et chaque clé citée par une de ces signatures est bien au
-        // registre : `template_source(\"typo\", …)` rendrait
+        // registre : `template_source(\"typo\", …).unwrap()` rendrait
         // silencieusement une page vide.
         let mut rest = source;
         while let Some(at) = rest.find("template_source(\"") {
@@ -9278,9 +9294,12 @@ mod tests {
         let _ = std::fs::create_dir_all(&dir);
         let path = dir.join("caisse.typ");
         let _ = std::fs::remove_file(&path);
-        assert_eq!(template_source("caisse", &path), DEFAULT_CAISSE_TEMPLATE);
+        assert_eq!(
+            template_source("caisse", &path).unwrap(),
+            DEFAULT_CAISSE_TEMPLATE
+        );
         std::fs::write(&path, "#set page(paper: \"a5\")\n{{DATE}}\n").unwrap();
-        assert!(template_source("caisse", &path).contains("a5"));
+        assert!(template_source("caisse", &path).unwrap().contains("a5"));
         let _ = std::fs::remove_file(&path);
     }
 
@@ -9916,7 +9935,8 @@ mod tests {
             &paper(woman, crate::ordonnance::NEGATIF),
             &sample_pharmacy(),
             std::path::Path::new(""),
-        );
+        )
+        .unwrap();
         assert!(her.contains(&bind_french("Fosfomycine trométamol 3 g (Monuril)")));
         assert!(her.contains(&typst_str("36 ans")));
         assert!(!her.contains("{{"), "un marqueur est resté");
@@ -9928,7 +9948,8 @@ mod tests {
             &paper(man, ""),
             &sample_pharmacy(),
             std::path::Path::new(""),
-        );
+        )
+        .unwrap();
         assert!(
             !him.contains("Fosfomycine"),
             "une ligne réservée aux femmes"
@@ -10001,7 +10022,8 @@ mod tests {
             due: &due,
             content: &none,
         };
-        let source = vaccination_source(&paper, &sample_pharmacy(), std::path::Path::new(""));
+        let source =
+            vaccination_source(&paper, &sample_pharmacy(), std::path::Path::new("")).unwrap();
         assert!(!source.contains("{{"));
         let owed = due
             .iter()
@@ -10020,7 +10042,8 @@ mod tests {
         assert_eq!(document.pages.len(), 1);
         // À jour : la phrase qui le dit, pas une section vide.
         let paper = VaccinationPaper { due: &[], ..paper };
-        let source = vaccination_source(&paper, &sample_pharmacy(), std::path::Path::new(""));
+        let source =
+            vaccination_source(&paper, &sample_pharmacy(), std::path::Path::new("")).unwrap();
         assert!(source.contains(&typst_str(crate::strings::tr("vacc_pdf_due_none"))));
     }
 
@@ -10045,8 +10068,8 @@ mod tests {
         };
         let path = std::path::Path::new("");
         let parts = [
-            trod_source(&paper, &sample_pharmacy(), path),
-            trod_letter_source(&paper, &sample_pharmacy(), path),
+            trod_source(&paper, &sample_pharmacy(), path).unwrap(),
+            trod_letter_source(&paper, &sample_pharmacy(), path).unwrap(),
         ];
         let world = PdfWorld::new(bundle_source(&parts).unwrap());
         let document: PagedDocument = typst::compile(&world)
@@ -10814,7 +10837,7 @@ mod tests {
         };
         // Par `plan_source` : c'est ce que la liasse et le bouton
         // appellent tous les deux.
-        let source = plan_source(&data, &sample_pharmacy(), std::path::Path::new(""));
+        let source = plan_source(&data, &sample_pharmacy(), std::path::Path::new("")).unwrap();
         assert!(source.contains("Plan de prise"));
         assert!(source.contains("Dans les 6 heures"));
         assert!(source.contains("Questions à poser"));
@@ -10901,7 +10924,8 @@ mod tests {
                 mention: "Ce document ne remplace pas votre ordonnance.",
                 signature: "Claire Leroy",
             };
-            let source = traitement_source(&data, &sample_pharmacy(), std::path::Path::new(""));
+            let source =
+                traitement_source(&data, &sample_pharmacy(), std::path::Path::new("")).unwrap();
             // Chaque posologie du dossier passe en entier, quelle que
             // soit la façon dont la grille l'a lue.
             for p in posologies {
@@ -10951,7 +10975,8 @@ mod tests {
             mention: "",
             signature: "",
         };
-        let source = traitement_source(&empty, &sample_pharmacy(), std::path::Path::new(""));
+        let source =
+            traitement_source(&empty, &sample_pharmacy(), std::path::Path::new("")).unwrap();
         assert!(source.contains("Aucun traitement"));
         let world = PdfWorld::new(source);
         assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
@@ -11058,7 +11083,7 @@ mod tests {
         // Par `bilan_source`, qui est ce que la liasse et le bouton
         // appellent tous les deux : un test qui remplirait le modèle
         // lui-même prouverait que le test sait remplir.
-        let source = bilan_source(&data, &sample_pharmacy(), std::path::Path::new(""));
+        let source = bilan_source(&data, &sample_pharmacy(), std::path::Path::new("")).unwrap();
         assert!(source.contains("Interactions repérées"));
         assert!(source.contains("Revue de l'ordonnance"));
         assert!(source.contains("Plan d'action"));
@@ -11449,5 +11474,31 @@ mod tests {
         assert!(typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
             .expect("l'export PDF doit réussir")
             .starts_with(b"%PDF-"));
+    }
+
+    /// **Un modèle de l'officine illisible se dit**, et une marque d'ordre
+    /// des octets en tête ne devient pas une page blanche.
+    #[test]
+    fn an_officine_template_is_read_without_its_bom_or_refused() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-tpl-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = crate::db::Swept(dir.clone());
+        let bom = dir.join("bom.typ");
+        std::fs::write(&bom, "\u{feff}#set page(width: 10cm)\nBonjour").unwrap();
+        let text = template_source("caisse", &bom).unwrap();
+        assert!(text.starts_with("#set page"), "{text:?}");
+        // Enregistré en Windows-1252 : « é » est l'octet 0xE9.
+        let latin = dir.join("latin.typ");
+        std::fs::write(&latin, b"#set page(width: 10cm)\nCaf\xe9").unwrap();
+        assert!(template_source("caisse", &latin).is_err());
+        // Absent : le modèle livré.
+        let none = dir.join("absent.typ");
+        assert_eq!(
+            template_source("caisse", &none).unwrap(),
+            doc("caisse").unwrap().default
+        );
+        // Une liasse ne garde pas la marque non plus.
+        let joined = bundle_source(&["\u{feff}Un".to_owned(), "Deux".to_owned()]).unwrap();
+        assert!(!joined.contains('\u{feff}'));
     }
 }

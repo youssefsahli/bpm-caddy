@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `config.toml` does not read; a read error is said instead of an empty
   log; the period ends today, and a line with an unreadable file number
   no longer hides the whole log.
+- Printing: an officine template that cannot be read (saved in
+  Windows-1252, say) is reported instead of being silently replaced by
+  the shipped layout, and the template editor no longer overwrites it
+  with the shipped text on the first save; a template saved « UTF-8 with
+  BOM » no longer prints a blank first page; the cash history writes the
+  opening float with a minus sign, not as a bullet.
 - Action menus scroll within the screen like the other lists — sixty
   cards opened half-way down left the last ones out of reach; a long
   dashed band on a timeline is drawn only where it shows; a scale with a
