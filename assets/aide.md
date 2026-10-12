@@ -1222,6 +1222,11 @@ entrée qui diffère, pour adopter ou garder. Une fiche introuvable dans
 la recherche propose aussi « Chercher … en ligne ». Rien n'est demandé
 aux autres officines pendant la recherche : la liste se lit dans la base.
 
+Le bouton compte ce qui a bougé depuis la dernière ouverture sur ce
+poste : « En ligne (3)… », trois entrées nouvelles ou reprises par une
+autre officine. Ouvrir la fenêtre les marque vues ; ce qu'on écrit
+soi-même ne compte pas.
+
 # Ruptures
 
 Une rupture se déclare sur la fiche : « Signaler une rupture », dans la

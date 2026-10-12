@@ -2160,6 +2160,12 @@ pub struct Layout {
     /// redimensionne à chaque fois.
     pub companion_width: f32,
     pub companion_height: f32,
+    /// Ce que ce poste a déjà vu de « En ligne » : la dernière version
+    /// venue d'ailleurs de chaque offre (`enligne::unseen`). `None` :
+    /// jamais relevé — tout ce que le journal tient déjà passe pour vu,
+    /// plutôt qu'un bouton qui annonce trois cents nouveautés le jour de
+    /// la mise à jour.
+    pub online_seen: Option<std::collections::BTreeSet<String>>,
     /// The version of BPM-Caddy that wrote this file. Recorded so
     /// Options › À propos can say when the workspace was last laid out
     /// by another version, and so a future change of shape can tell a
@@ -2181,6 +2187,7 @@ impl Default for Layout {
             patient_band_folded: false,
             companion_width: 0.0,
             companion_height: 0.0,
+            online_seen: None,
             version: String::new(),
         }
     }

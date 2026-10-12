@@ -244,6 +244,19 @@ pub enum Kind {
 }
 
 impl Kind {
+    /// Toutes les sortes, dans l'ordre de l'énumération.
+    pub const ALL: [Kind; 9] = [
+        Kind::Fiche,
+        Kind::Codex,
+        Kind::Protocole,
+        Kind::Trod,
+        Kind::Vaccin,
+        Kind::Dispositif,
+        Kind::Liste,
+        Kind::Cascade,
+        Kind::Texte,
+    ];
+
     pub fn key(self) -> &'static str {
         match self {
             Kind::Fiche => "fiche",

@@ -5504,6 +5504,12 @@ struct Session {
     /// network's — read at opening, after each save and after a sync.
     card_edits: Vec<crate::versions::Edit>,
     edits_rev: u64,
+    /// « En ligne » : la dernière version d'ailleurs de chaque offre déjà
+    /// vue sur ce poste (`Layout::online_seen`), et ce qui reste à voir,
+    /// par sorte — lu contre `online_fresh_key`, jamais à chaque image.
+    online_seen: Option<std::collections::BTreeSet<String>>,
+    online_fresh: std::collections::HashMap<crate::versions::Kind, usize>,
+    online_fresh_key: Option<(u64, Option<crate::versions::Kind>)>,
     /// The history window, on this card.
     versions_open: Option<i64>,
     /// The history window, on a codex entry or a protocol, by name.
@@ -6483,6 +6489,9 @@ impl Session {
             pk_edit: None,
             card_edits: Vec::new(),
             edits_rev: 0,
+            online_seen: None,
+            online_fresh: std::collections::HashMap::new(),
+            online_fresh_key: None,
             versions_open: None,
             entry_versions: None,
             online: None,
@@ -10748,6 +10757,63 @@ impl Session {
                     self.content = over;
                 }
             }
+        }
+    }
+
+    /// What each « En ligne » button announces: per kind, the offers
+    /// that moved since this post last looked. The kind on screen in the
+    /// window counts as looked at, whatever arrives while it is open.
+    fn refresh_online_fresh(&mut self) {
+        use crate::versions::Kind;
+        let open = self.online.as_ref().map(|o| o.kind);
+        let key = (self.edits_rev, open);
+        if self.online_fresh_key == Some(key) {
+            return;
+        }
+        let phrases: std::collections::HashSet<String> = crate::content::documents()
+            .into_iter()
+            .flat_map(|d| d.phrases.into_iter().map(|(address, _, _)| address))
+            .collect();
+        let mut stamps: Vec<(Kind, String)> = Vec::new();
+        for kind in Kind::ALL {
+            for o in crate::enligne::offers(&self.card_edits, kind) {
+                // Ce que la fenêtre ne montre pas ne s'annonce pas.
+                if kind == Kind::Texte && !phrases.contains(&o.name) {
+                    continue;
+                }
+                stamps.push((kind, o.stamp));
+            }
+        }
+        let seen = self
+            .online_seen
+            .get_or_insert_with(|| stamps.iter().map(|(_, s)| s.clone()).collect());
+        if let Some(open) = open {
+            // Ce qui n'est plus au journal s'oublie : l'ensemble ne grossit
+            // pas d'une version à l'autre.
+            let current: std::collections::HashSet<&str> =
+                stamps.iter().map(|(_, s)| s.as_str()).collect();
+            seen.retain(|s| current.contains(s.as_str()));
+            seen.extend(
+                stamps
+                    .iter()
+                    .filter(|(k, _)| *k == open)
+                    .map(|(_, s)| s.clone()),
+            );
+        }
+        self.online_fresh.clear();
+        for (kind, stamp) in &stamps {
+            if !stamp.is_empty() && !seen.contains(stamp) {
+                *self.online_fresh.entry(*kind).or_default() += 1;
+            }
+        }
+        self.online_fresh_key = Some(key);
+    }
+
+    /// The « En ligne » button's text: with what is new, when there is.
+    fn online_label(&self, kind: crate::versions::Kind) -> String {
+        match self.online_fresh.get(&kind).copied().unwrap_or(0) {
+            0 => tr("online_open").to_owned(),
+            n => trf("online_open_fresh", n),
         }
     }
 
@@ -18809,6 +18875,7 @@ impl App {
                     }
                     // Le bandeau tel que le poste l'a laissé.
                     session.patient_band_folded = layout.patient_band_folded;
+                    session.online_seen.clone_from(&layout.online_seen);
                     state = State::Unlocked(Box::new(session));
                     remember_password = from_keyring;
                 }
@@ -21346,6 +21413,7 @@ impl App {
                         self.config.ui.caisse_expected,
                     );
                     session.patient_band_folded = self.layout.patient_band_folded;
+                    session.online_seen.clone_from(&self.layout.online_seen);
                     self.state = State::Unlocked(Box::new(session));
                     if let Some(entry) = keyring_entry() {
                         if self.remember_password {
@@ -31325,6 +31393,7 @@ impl App {
     /// vaccin qu'elle ne fait jamais retiré. Le calendrier lit les codes ;
     /// un vaccin qu'il ne connaît pas se range sans code, et se note.
     fn vacc_cat_editor(ctx: &egui::Context, session: &mut Session) {
+        let online_label = session.online_label(crate::versions::Kind::Vaccin);
         let Some(edit) = &mut session.vacc_cat_edit else {
             return;
         };
@@ -31373,7 +31442,7 @@ impl App {
                             if motif::button(ui, tr("vcat_add")).clicked() {
                                 add = true;
                             }
-                            if motif::button(ui, tr("online_open"))
+                            if motif::button(ui, online_label.as_str())
                                 .on_hover_text(tr("online_open_tooltip"))
                                 .clicked()
                             {
@@ -31574,6 +31643,7 @@ impl App {
     /// protocole change. Écrites dans la base, donc pour tous les postes,
     /// et comparées à ce que la fenêtre montrait.
     fn trod_editor(ctx: &egui::Context, session: &mut Session) {
+        let online_label = session.online_label(crate::versions::Kind::Trod);
         // Ouvert hors d'une ordonnance, l'éditeur n'a pas d'acte qui
         // fixe son protocole : il le laisse choisir.
         let standalone = session.ordonnance.is_none();
@@ -31642,7 +31712,7 @@ impl App {
                             if motif::button(ui, tr("trod_edit_add")).clicked() {
                                 add = true;
                             }
-                            if motif::button(ui, tr("online_open"))
+                            if motif::button(ui, online_label.as_str())
                                 .on_hover_text(tr("online_open_tooltip"))
                                 .clicked()
                             {
@@ -42961,6 +43031,7 @@ impl App {
     /// Carved in two: the list on the left, the open preparation on the
     /// right. The sheet is what gets printed as a fiche de fabrication.
     fn codex_view(ui: &mut egui::Ui, session: &mut Session, config: &Config, operator: &str) {
+        let online_label = session.online_label(crate::versions::Kind::Codex);
         let body = motif::visible_rect(ui);
         // At a counter width, with both docks out, the title and the
         // four controls do not fit on one line: they wrap, and the band
@@ -42972,7 +43043,7 @@ impl App {
             [
                 Self::heading_width(ui, tr("codex_title")),
                 Self::button_width(ui, tr("patient_back")),
-                Self::button_width(ui, tr("online_open")),
+                Self::button_width(ui, online_label.as_str()),
                 // La même expression que le champ lui-même, pas une
                 // seconde mesure du même besoin : deux mesures d'une
                 // chose divergent toujours.
@@ -46470,6 +46541,7 @@ impl App {
     /// est une liste que personne ne coche. Le codex a la même règle et
     /// pour la même raison.
     fn checklists_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
+        let online_label = session.online_label(crate::versions::Kind::Liste);
         let body = motif::visible_rect(ui);
         // **Une fois, et non à chaque image.** La condition d'avant
         // était « la liste est vide » : une officine qui n'a encore
@@ -46521,7 +46593,7 @@ impl App {
                             {
                                 make = true;
                             }
-                            if motif::button(ui, tr("online_open"))
+                            if motif::button(ui, online_label.as_str())
                                 .on_hover_text(tr("online_open_tooltip"))
                                 .clicked()
                             {
@@ -46907,13 +46979,14 @@ impl App {
     /// une case par molécule — mesuré ici et dessiné par
     /// `cascades_strip` dans le même ordre.
     fn cascades_strip_widths(ui: &egui::Ui, session: &Session, width: f32) -> Vec<f32> {
+        let online_label = session.online_label(crate::versions::Kind::Cascade);
         let titles = session.cascade_index.iter().map(|c| c.title.as_str());
         let mut out = vec![
             motif::select_width(ui, titles).min(width * 0.7),
             Self::button_width(ui, tr("cascades_new")),
             // À côté de « Nouvelle » : après le filtre, il passait sous le
             // pli de la bande, derrière sa barre.
-            Self::button_width(ui, tr("online_open")),
+            Self::button_width(ui, online_label.as_str()),
             // Le filtre du choix : cinquante-neuf titres ne se parcourent
             // pas dans une liste déroulante.
             Self::field_width(ui, std::iter::once(tr("cascades_filter_hint"))).min(width * 0.7),
@@ -46963,6 +47036,7 @@ impl App {
 
     /// La bande de l'écran étroit : la cascade, et ses molécules.
     fn cascades_strip(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect, now: f64) {
+        let online_label = session.online_label(crate::versions::Kind::Cascade);
         let mut open: Option<i64> = None;
         let mut make = false;
         let mut online = false;
@@ -47017,7 +47091,7 @@ impl App {
                         if motif::button(ui, tr("cascades_new")).clicked() {
                             make = true;
                         }
-                        if motif::button(ui, tr("online_open"))
+                        if motif::button(ui, online_label.as_str())
                             .on_hover_text(tr("online_open_tooltip"))
                             .clicked()
                         {
@@ -47241,6 +47315,7 @@ impl App {
 
     /// La liste des cascades, et les molécules de celle qui est ouverte.
     fn cascades_side(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect, now: f64) {
+        let online_label = session.online_label(crate::versions::Kind::Cascade);
         let mut open: Option<i64> = None;
         let mut make = false;
         let mut online = false;
@@ -47277,7 +47352,7 @@ impl App {
             // tiennent, sur sa rangée sinon : mesurés, pas devinés.
             let side_by_side = Self::button_width(ui, tr("cascades_new"))
                 + ui.spacing().item_spacing.x
-                + Self::button_width(ui, tr("online_open"))
+                + Self::button_width(ui, online_label.as_str())
                 <= inner.width();
             let heads: &[f32] = if side_by_side {
                 &[row_h, row_h, list_cap, 0.0]
@@ -47296,7 +47371,7 @@ impl App {
                         make = true;
                     }
                     if side_by_side
-                        && motif::button(ui, tr("online_open"))
+                        && motif::button(ui, online_label.as_str())
                             .on_hover_text(tr("online_open_tooltip"))
                             .clicked()
                     {
@@ -47306,7 +47381,7 @@ impl App {
             });
             if let Some(row) = buttons.get(1) {
                 motif::inside(ui, *row, |ui| {
-                    if motif::button(ui, tr("online_open"))
+                    if motif::button(ui, online_label.as_str())
                         .on_hover_text(tr("online_open_tooltip"))
                         .clicked()
                     {
@@ -59344,6 +59419,7 @@ impl App {
     }
 
     fn dispositifs_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
+        let online_label = session.online_label(crate::versions::Kind::Dispositif);
         let body = motif::visible_rect(ui);
         let band = Self::title_band_height(
             ui,
@@ -59351,7 +59427,7 @@ impl App {
             [
                 Self::heading_width(ui, tr("dispo_title")),
                 Self::button_width(ui, tr("patient_back")),
-                Self::button_width(ui, tr("online_open")),
+                Self::button_width(ui, online_label.as_str()),
                 Self::button_width(ui, tr("dash_print")),
                 // Le nom et le bouton qui le crée, **un seul article** : ils
                 // se dessinent d'un seul tenant.
@@ -59858,6 +59934,7 @@ impl App {
     /// held while there were five protocols and stopped holding at
     /// twenty, which is the shape this application is supposed to avoid.
     fn protocols_view(ui: &mut egui::Ui, session: &mut Session, operator: &str, config: &Config) {
+        let online_label = session.online_label(crate::versions::Kind::Protocole);
         let body = motif::visible_rect(ui);
         let band = Self::title_band_height(
             ui,
@@ -59865,7 +59942,7 @@ impl App {
             [
                 Self::heading_width(ui, tr("proto_title")),
                 Self::button_width(ui, tr("patient_back")),
-                Self::button_width(ui, tr("online_open")),
+                Self::button_width(ui, online_label.as_str()),
                 // Le nom et le bouton qui le crée, **un seul article** : ils
                 // se dessinent d'un seul tenant.
                 Self::group_width(
@@ -62198,7 +62275,7 @@ impl App {
     /// The « En ligne » button of a content tab: one gesture to what the
     /// network's officines hold of this kind.
     fn online_button(ui: &mut egui::Ui, session: &mut Session, kind: crate::versions::Kind) {
-        if motif::button(ui, tr("online_open"))
+        if motif::button(ui, &session.online_label(kind))
             .on_hover_text(tr("online_open_tooltip"))
             .clicked()
         {
@@ -63449,6 +63526,7 @@ impl App {
     /// écrans qui sauraient chacun composer la liste des phrases
     /// finiraient par en oublier chacun une autre.
     fn textes_view(ui: &mut egui::Ui, session: &mut Session, operator: &str) {
+        let online_label = session.online_label(crate::versions::Kind::Texte);
         let body = motif::visible_rect(ui);
         let docs = crate::content::documents();
         let note_size = motif::pt(ui, 11.5);
@@ -63458,7 +63536,7 @@ impl App {
             tr("textes_title"),
             [
                 Self::button_width(ui, tr("textes_close")),
-                Self::button_width(ui, tr("online_open")),
+                Self::button_width(ui, online_label.as_str()),
             ]
             .into_iter(),
             tr("textes_subtitle"),
@@ -80624,6 +80702,7 @@ impl eframe::App for App {
             if let State::Unlocked(session) = &self.state {
                 self.layout.view = session.view.as_key().to_owned();
                 self.layout.patient_band_folded = session.patient_band_folded;
+                self.layout.online_seen.clone_from(&session.online_seen);
             }
             if self.layout != self.layout_saved {
                 // A drag reports a new width every frame: wait until it
@@ -80729,6 +80808,7 @@ impl eframe::App for App {
             }
             Self::versions_window(ctx, session);
             Self::entry_versions_window(ctx, session);
+            session.refresh_online_fresh();
             Self::online_window(ctx, session);
             // The posts: their automatic synchronisation, polled every
             // frame, and their window wherever it was opened from.

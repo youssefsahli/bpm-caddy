@@ -31,6 +31,9 @@ pub struct Offer {
     pub from: Vec<String>,
     /// Le jour de sa dernière version, d'où qu'elle vienne.
     pub day: String,
+    /// L'identifiant de la dernière version venue d'ailleurs : l'offre a
+    /// bougé depuis qu'on l'a vue quand il change (`unseen`).
+    pub stamp: String,
     /// Chaque champ, à sa dernière version — ce que l'entrée est pour le
     /// journal, et ce qu'une adoption écrit.
     pub fields: Vec<(String, String)>,
@@ -58,6 +61,7 @@ pub fn offers(edits: &[Edit], kind: Kind) -> Vec<Offer> {
                     name: String::new(),
                     from: Vec::new(),
                     day: String::new(),
+                    stamp: String::new(),
                     fields: Vec::new(),
                 });
                 out.len() - 1
@@ -68,8 +72,11 @@ pub fn offers(edits: &[Edit], kind: Kind) -> Vec<Offer> {
             o.name = e.card_name.trim().to_owned();
         }
         let source = e.source.trim();
-        if !source.is_empty() && !o.from.iter().any(|f| f == source) {
-            o.from.push(source.to_owned());
+        if !source.is_empty() {
+            if !o.from.iter().any(|f| f == source) {
+                o.from.push(source.to_owned());
+            }
+            o.stamp.clone_from(&e.uid);
         }
         if e.day > o.day {
             o.day = e.day.clone();
@@ -108,6 +115,9 @@ pub fn offers(edits: &[Edit], kind: Kind) -> Vec<Offer> {
                     }
                     if old.day > o.day {
                         o.day = old.day;
+                        o.stamp = old.stamp;
+                    } else if o.stamp.is_empty() {
+                        o.stamp = old.stamp;
                     }
                     for (f, v) in old.fields {
                         if f != "name" && o.field(&f).is_none() {
@@ -216,6 +226,17 @@ pub fn here(offer: &Offer, local: Option<&[(&str, String)]>) -> Here {
     }
 }
 
+/// **Combien d'offres ont bougé depuis qu'on les a vues** : celles dont
+/// la dernière version venue d'ailleurs n'est pas dans `seen`. Une offre
+/// vue, puis reprise par un confrère, compte de nouveau — c'est ce qu'on
+/// veut savoir en passant devant le bouton.
+pub fn unseen(offers: &[Offer], seen: &std::collections::BTreeSet<String>) -> usize {
+    offers
+        .iter()
+        .filter(|o| !o.stamp.is_empty() && !seen.contains(&o.stamp))
+        .count()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -287,6 +308,43 @@ mod tests {
         // Dans l'ordre des champs de la sorte.
         assert_eq!(o[0].fields[0].0, "form");
         assert_eq!(o[0].fields[1].0, "indication");
+    }
+
+    /// **Une offre vue ne compte plus, jusqu'à sa prochaine version
+    /// d'ailleurs** ; ce qu'on écrit soi-même ne la remet pas en avant.
+    #[test]
+    fn an_offer_counts_as_new_until_seen_and_again_when_it_moves() {
+        let mut edits = vec![
+            edit(Kind::Codex, "Lugol", "form", "solution", "A", "2026-09-01"),
+            edit(Kind::Codex, "Méthadone", "form", "sirop", "B", "2026-09-01"),
+        ];
+        let o = offers(&edits, Kind::Codex);
+        let mut seen = std::collections::BTreeSet::new();
+        assert_eq!(unseen(&o, &seen), 2);
+        seen.extend(o.iter().map(|o| o.stamp.clone()));
+        assert_eq!(unseen(&o, &seen), 0);
+        edits.push(edit(
+            Kind::Codex,
+            "Lugol",
+            "form",
+            "à 5 %",
+            "",
+            "2026-09-02",
+        ));
+        assert_eq!(unseen(&offers(&edits, Kind::Codex), &seen), 0, "écrit ici");
+        edits.push(edit(
+            Kind::Codex,
+            "Lugol",
+            "form",
+            "à 1 %",
+            "B",
+            "2026-09-03",
+        ));
+        assert_eq!(
+            unseen(&offers(&edits, Kind::Codex), &seen),
+            1,
+            "repris par B"
+        );
     }
 
     /// Un champ que la sorte ne partage pas ne passe pas, même s'il est au

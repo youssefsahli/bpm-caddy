@@ -3970,6 +3970,7 @@ batch_col_ordo = "N° d'ordonnancier"
 # « En ligne » : ce que les officines du réseau partagent
 online_open = "En ligne…"
 online_open_tooltip = "Chercher ce que les officines du réseau ont écrit, et le prendre d'un geste."
+online_open_fresh = "En ligne ({})…"
 online_search = "Chercher « {} » en ligne"
 online_title = "En ligne : {}"
 online_kind_fiche = "fiches"
