@@ -20,6 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the morning was kept); the condition of an as-needed line starts at its
   marker (« 1 sachet au petit-déjeuner si besoin » printed « déjeuner si
   besoin »).
+- Rewritten texts: a field emptied in the editor goes back to the
+  shipped phrase instead of printing a blank title, alert or instruction
+  (and such a row from an older post is ignored); saving an outdated
+  rewrite as it stands accepts the new shipped text, where only
+  resetting the whole document cleared « à relire ».
+- Usage counts: locking the session (by hand or after the delay) or
+  moving the base keeps the day's counts — they were lost at every
+  auto-lock; clearing them no longer brings back what was counted just
+  before.
+- Patient timeline: a biology result, a rental, a scanned piece or a
+  narcotics delivery appears in the file's timeline at once, not when
+  the file is reopened.
 - Box scan: a lot written last in the DataMatrix — the common « 01 21 17
   10 » layout — is taken as certain when the read proves it swallowed
   nothing (a separator already passed, or the expiry and the serial are

@@ -51,6 +51,14 @@ conciliation, acte de vaccination, retour d'une case de table), ADELI,
 lanceur, relais.
 
 Laissé, relevé par les relectures (à trancher ou à vérifier) :
+- réécritures orphelines : une clé dérivée d'un libellé (âge, grossesse,
+  écrasement, rein, foie, revue, surveillance) qui change de libellé
+  laisse la réécriture en base, invisible et non comptée ; à montrer
+  dans « Textes » (« réécriture sans phrase ») et au rapport de
+  maintenance, avec une table de renommage ; « Rétablir » un document
+  n'est pas comparé à ce que l'écran montrait ;
+- fil du dossier : toutes les lignes dessinées à chaque image
+  (`show_rows` à prévoir pour un dossier de plusieurs années) ;
 - **mises à jour non signées** : le lanceur installe et exécute ce que
   GitHub Releases sert, vérifié par TLS, la taille annoncée par la même
   API et quatre octets magiques — aucune signature. Un accès en

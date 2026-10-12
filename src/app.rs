@@ -11930,6 +11930,8 @@ impl Session {
         // clicked on the previous patient means nothing here.
         self.bio_focus = None;
         self.refresh_bio_findings();
+        // Le fil du dossier dit « dernier résultat » : il suit.
+        self.refresh_fil();
     }
 
     /// (Re)read the patient's rentals, and forget whatever row was
@@ -11938,6 +11940,7 @@ impl Session {
         self.locations = self.db.locations_for(patient_id).unwrap_or_default();
         self.loc_return = None;
         self.loc_confirm_delete = None;
+        self.refresh_fil();
     }
 
     fn reload_interviews(&mut self, patient_id: i64) {
@@ -49099,6 +49102,7 @@ impl App {
                 Err(e) => session.scan_note = Some((true, e)),
             }
             session.scans_key = None;
+            session.refresh_fil();
         }
 
         if !(import || scan_now) {
@@ -49209,6 +49213,7 @@ impl App {
                     false,
                     trf("scan_added", crate::scans::human_size(bytes.len() as u64)),
                 ));
+                session.refresh_fil();
             }
             Err(e) => session.scan_note = Some((true, e)),
         }
@@ -51479,6 +51484,8 @@ impl App {
                 session.stup_file_pick = None;
                 session.stup_file_query.clear();
                 session.reload_stup();
+                // Une délivrance au dossier ouvert entre dans son fil.
+                session.refresh_fil();
                 session.stup_note = Some((false, trf("batch_written", ids.len())));
             }
             Err(e) => session.stup_note = Some((true, e)),
@@ -62103,7 +62110,13 @@ impl App {
             let (Some(value), Some(seen)) = (edit.typed.get(key), edit.seen.get(key)) else {
                 continue;
             };
-            if value == seen {
+            // Inchangé, rien à écrire — **sauf une réécriture périmée** :
+            // le texte livré a changé, l'écran montre le nouveau, et
+            // l'enregistrer tel quel est la façon de dire « le nouveau me
+            // va ». Sautée, la phrase restait « à relire » pour toujours,
+            // et seul « Rétablir » sur tout le document l'effaçait.
+            let outdated = session.content.state(key, shipped) == crate::content::State::Outdated;
+            if value == seen && !outdated {
                 continue;
             }
             match session.db.set_content(key, value, shipped, seen, &day, who) {
@@ -75466,6 +75479,10 @@ impl App {
         if let State::Unlocked(session) = &mut self.state {
             if motif::icon_button(ui, pict(motif::Pict::Lock), tr("toolbar_lock")).clicked() {
                 session.flush_date_edits();
+                // Les comptes du jour avant de fermer : la session part
+                // avec eux, et seule la fermeture de l'application les
+                // rendait.
+                session.flush_telemetry();
                 self.state = State::Locked {
                     password: String::new(),
                     error: None,
@@ -79392,6 +79409,7 @@ impl eframe::App for App {
             if timeout > 0 && self.last_activity.elapsed() > Duration::from_secs(timeout * 60) {
                 // Don't lose an RDV date typed but never tabbed out of.
                 session.flush_date_edits();
+                session.flush_telemetry();
                 self.state = State::Locked {
                     password: String::new(),
                     error: None,
@@ -82839,6 +82857,9 @@ impl eframe::App for App {
                 // juste après l'effacement ferait réapparaître la
                 // journée en cours, ce qui se lirait comme un bouton
                 // qui ne marche pas.
+                // Ce que les modules ont compté depuis la dernière passe
+                // d'abord, sinon il revenait juste après l'effacement.
+                session.telemetry.gather();
                 let _ = session.telemetry.take();
                 let _ = session.db.clear_telemetry();
             }
@@ -82904,8 +82925,10 @@ impl eframe::App for App {
             let result = if same || onto_live {
                 Err(tr("opts_db_same").to_owned())
             } else if let State::Unlocked(session) = &mut self.state {
-                // Une date tapée et pas encore quittée part avec la copie.
+                // Une date tapée et pas encore quittée part avec la copie,
+                // et les comptes du jour aussi.
                 session.flush_date_edits();
+                session.flush_telemetry();
                 // Un déplacement s'écrit **avant** la copie : la base que
                 // le poste va ouvrir en garde la trace.
                 if point {

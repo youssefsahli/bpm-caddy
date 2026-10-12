@@ -52841,7 +52841,8 @@ impl Db {
         if seen != expected {
             return Ok(false);
         }
-        if value.trim() == shipped.trim() {
+        // Vidé, c'est revenir au texte livré : jamais une phrase blanche.
+        if value.trim().is_empty() || value.trim() == shipped.trim() {
             self.conn
                 .execute("DELETE FROM content_overrides WHERE key = ?1", [key])
                 .map_err(|e| e.to_string())?;
@@ -61466,6 +61467,18 @@ mod tests {
         let o = db.content_overrides().unwrap();
         assert!(o.is_empty(), "la table ne porte que de vraies différences");
         assert_eq!(o.state(key, shipped), crate::content::State::Shipped);
+
+        // **Vider le champ, c'est revenir au texte livré** — jamais une
+        // phrase blanche sur le papier.
+        assert!(db
+            .set_content(key, "Appelez.", shipped, shipped, "2026-09-11", "CL")
+            .unwrap());
+        assert!(db
+            .set_content(key, "   ", shipped, "Appelez.", "2026-09-11", "CL")
+            .unwrap());
+        let o = db.content_overrides().unwrap();
+        assert!(o.is_empty());
+        assert_eq!(o.get(key, shipped), shipped);
 
         // Et le rétablissement d'un document entier, par son préfixe :
         // la clé elle-même et tout ce qui descend d'elle.

@@ -109,8 +109,13 @@ impl Overrides {
     /// réécriture posée sur autre chose que ce qu'elle visait serait
     /// pire que pas de réécriture du tout.
     pub fn get<'a>(&'a self, key: &str, shipped: &'a str) -> &'a str {
+        // **Une réécriture vide ne s'imprime pas** : un champ vidé dans
+        // l'éditeur — qui montre le texte livré en filigrane, et semble
+        // donc y revenir — rangeait « » et chaque document imprimait un
+        // titre, une alerte, une consigne blancs. Une telle ligne venue
+        // d'un poste plus ancien ne s'applique pas davantage.
         match self.map.get(key) {
-            Some(e) if e.shipped_seen == shipped => e.value.as_str(),
+            Some(e) if e.shipped_seen == shipped && !e.value.trim().is_empty() => e.value.as_str(),
             _ => shipped,
         }
     }
@@ -119,6 +124,7 @@ impl Overrides {
     pub fn state(&self, key: &str, shipped: &str) -> State {
         match self.map.get(key) {
             None => State::Shipped,
+            Some(e) if e.value.trim().is_empty() => State::Shipped,
             Some(e) if e.shipped_seen == shipped => State::Rewritten,
             Some(_) => State::Outdated,
         }
@@ -320,6 +326,21 @@ mod tests {
             State::Shipped
         );
         assert!(none.is_empty());
+    }
+
+    /// Une réécriture vide — venue d'un poste plus ancien — ne s'imprime
+    /// pas : c'est le texte livré qui part.
+    #[test]
+    fn an_empty_rewrite_never_prints() {
+        let o = one("carnet.tension.alerte", "  ", "Appelez le 15.");
+        assert_eq!(
+            o.get("carnet.tension.alerte", "Appelez le 15."),
+            "Appelez le 15."
+        );
+        assert_eq!(
+            o.state("carnet.tension.alerte", "Appelez le 15."),
+            State::Shipped
+        );
     }
 
     /// Une réécriture posée en face de la phrase qu'elle remplace est
