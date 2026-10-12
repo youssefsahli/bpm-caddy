@@ -71,6 +71,11 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
 - la 0.398.0 a passé le smoke et la CI ; l'étiquette n'a pas pu être
   posée d'ici (refusée par les permissions) : `git tag v0.398.0 277eaa3
   && git push origin v0.398.0` ;
+- registre : deux lignes du même jour pour une même délivrance en deux
+  lots se lisent comme deux délivrances (« rapprochement » à 0 jour) ;
+  c'est voulu par un test, mais une délivrance en deux lots y tombe —
+  à trancher ; l'ordonnancier imprimé donne le libellé actuel d'un produit
+  renommé ;
 - téléphone : la suppression d'un rendez-vous de l'agenda ne compare que
   le titre ; la base peut s'ouvrir deux fois (deux déverrouillages) et
   n'est jamais refermée en quittant par Retour. Le code Kotlin modifié le

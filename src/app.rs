@@ -53642,11 +53642,20 @@ impl App {
                 .on_hover_text(tr("stup_ordo_print_tooltip"))
                 .clicked()
                 {
+                    let units: std::collections::HashMap<i64, String> = session
+                        .stup_summary
+                        .iter()
+                        .map(|s| (s.product.id, s.product.unit.clone()))
+                        .collect();
                     if let Err(e) = crate::pdf::open_ordonnancier(
-                        &session.stup_dispensings,
-                        &session.stup_labels,
-                        &session.stup_cancelled,
-                        session.stup_year,
+                        &crate::pdf::OrdonnancierSheet {
+                            rows: &session.stup_dispensings,
+                            labels: &session.stup_labels,
+                            units: &units,
+                            cancelled: &session.stup_cancelled,
+                            pending: session.db.stup_unnumbered(session.stup_year).unwrap_or(0),
+                            year: session.stup_year,
+                        },
                         &config.pharmacy,
                         &session.today,
                         &config.doc_template_path("ordonnancier"),

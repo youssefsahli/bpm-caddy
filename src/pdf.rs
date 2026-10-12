@@ -2586,11 +2586,21 @@ const DEFAULT_REGISTRE_TEMPLATE: &str = r##"
 #text(8pt, style: "italic")[{{COUNT}} ligne(s) au registre, comptées en {{UNIT}}. Aucune ligne n'est raturée : une ligne annulée reste imprimée, barrée, et la ligne d'annulation qui la désigne en inverse l'effet sur le stock. Un inventaire *fixe* le solde au lieu de s'y ajouter : lorsqu'un comptage a trouvé un écart, les colonnes ne s'additionnent plus au solde final. Deux soldes : les retours de patients sont justifiés ici, ne sont jamais redélivrés et restent au compte « à détruire » jusqu'au procès-verbal. Le nom du patient figure dans le dossier dont le numéro est indiqué ci-dessus.]
 "##;
 
+/// Ce que l'ordonnancier d'une année imprime.
+pub struct OrdonnancierSheet<'a> {
+    pub rows: &'a [crate::db::StupMove],
+    /// Le libellé de chaque produit.
+    pub labels: &'a std::collections::HashMap<i64, String>,
+    /// Son unité, pour que « 5 » dise des gélules ou des patchs.
+    pub units: &'a std::collections::HashMap<i64, String>,
+    pub cancelled: &'a std::collections::HashSet<i64>,
+    /// Les délivrances de l'année qui attendent encore leur numéro.
+    pub pending: usize,
+    pub year: i64,
+}
+
 pub fn open_ordonnancier(
-    rows: &[crate::db::StupMove],
-    labels: &std::collections::HashMap<i64, String>,
-    cancelled: &std::collections::HashSet<i64>,
-    year: i64,
+    sheet: &OrdonnancierSheet,
     pharmacy: &PharmacyConfig,
     today: &str,
     template_path: &std::path::Path,
@@ -2598,20 +2608,25 @@ pub fn open_ordonnancier(
     compile_and_open(
         fill(
             &template_source("ordonnancier", template_path),
-            &ordonnancier_values(rows, labels, cancelled, year, pharmacy, today),
+            &ordonnancier_values(sheet, pharmacy, today),
         ),
-        &format!("ordonnancier_{year}"),
+        &format!("ordonnancier_{}", sheet.year),
     )
 }
 
 fn ordonnancier_values(
-    rows: &[crate::db::StupMove],
-    labels: &std::collections::HashMap<i64, String>,
-    cancelled: &std::collections::HashSet<i64>,
-    year: i64,
+    sheet: &OrdonnancierSheet,
     pharmacy: &PharmacyConfig,
     today: &str,
 ) -> Vec<(&'static str, String)> {
+    let OrdonnancierSheet {
+        rows,
+        labels,
+        units,
+        cancelled,
+        pending,
+        year,
+    } = *sheet;
     let mut body = String::new();
     for m in rows {
         let struck = cancelled.contains(&m.id);
@@ -2627,15 +2642,30 @@ fn ordonnancier_values(
             typst_str(&crate::ordonnancier::number_label(m.ordo_no as u32)),
             cell(&crate::db::format_french_date(&m.happened_on)),
             cell(labels.get(&m.stup_id).map_or("—", String::as_str)),
-            cell(&crate::codex::format_quantity(m.quantity)),
+            // Avec son unité : sur une même page, « 5 » est des gélules,
+            // des patchs ou des ampoules.
+            cell(
+                &match units.get(&m.stup_id).filter(|u| !u.trim().is_empty()) {
+                    Some(unit) => crate::ordonnancier::quantity_and_unit(m.quantity, unit),
+                    None => crate::codex::format_quantity(m.quantity),
+                }
+            ),
             cell(&format!("dossier {}", m.patient_id)),
             cell(&m.prescriber),
             cell(&m.operator),
             typst_str(if struck { "annulée" } else { "" }),
         ));
     }
-    if body.is_empty() {
+    if body.is_empty() && pending == 0 {
         body.push_str("[], [], [], [], [], [], [], [],\n");
+    }
+    // **Ce qui attend son numéro se dit** : la page le taisait, et son
+    // pied donnait le compte imprimé pour celui de l'année.
+    if pending > 0 {
+        body.push_str(&format!(
+            "table.cell(colspan: 8)[#text(style: \"italic\")[#{}]],\n",
+            typst_str(&crate::strings::trf("stup_ordo_pending_print", pending))
+        ));
     }
     vec![
         ("{{YEAR}}", format!("#{}", typst_str(&year.to_string()))),
@@ -6326,10 +6356,17 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
             cancelled.happened_on = "2026-08-29".to_owned();
             cancelled.quantity = 28.0;
             ordonnancier_values(
-                &[sample_stup_move(), cancelled],
-                &std::collections::HashMap::from([(1_i64, "Skenan LP 30 mg".to_owned())]),
-                &std::collections::HashSet::from([2_i64]),
-                2026,
+                &OrdonnancierSheet {
+                    rows: &[sample_stup_move(), cancelled],
+                    labels: &std::collections::HashMap::from([(
+                        1_i64,
+                        "Skenan LP 30 mg".to_owned(),
+                    )]),
+                    units: &std::collections::HashMap::from([(1_i64, "gélule".to_owned())]),
+                    cancelled: &std::collections::HashSet::from([2_i64]),
+                    pending: 0,
+                    year: 2026,
+                },
                 &pharmacy,
                 "2026-08-29",
             )
@@ -9340,10 +9377,14 @@ mod tests {
         let src = fill(
             DEFAULT_ORDONNANCIER_TEMPLATE,
             &ordonnancier_values(
-                &rows,
-                &labels,
-                &cancelled,
-                2026,
+                &OrdonnancierSheet {
+                    rows: &rows,
+                    labels: &labels,
+                    units: &std::collections::HashMap::from([(7_i64, "gélule".to_owned())]),
+                    cancelled: &cancelled,
+                    pending: 2,
+                    year: 2026,
+                },
                 &PharmacyConfig::default(),
                 "2026-08-30",
             ),
@@ -9359,6 +9400,10 @@ mod tests {
         );
         assert!(!src.contains("2026-0001"));
         assert!(src.contains("Skenan LP 30 mg"));
+        // La quantité avec son unité.
+        assert!(src.contains("14 gélules"), "{src}");
+        // Et ce qui attend son numéro est dit.
+        assert!(src.contains("2 délivrance"), "{src}");
         // Le dossier, et **jamais** le nom : une feuille imprimée sort
         // du logiciel, se pose sur un comptoir et se garde dix ans.
         assert!(src.contains("dossier 55") && src.contains("dossier 61"));
@@ -9371,10 +9416,14 @@ mod tests {
         let orphan = fill(
             DEFAULT_ORDONNANCIER_TEMPLATE,
             &ordonnancier_values(
-                &[line(3, 3, 99, 7.0, 55)],
-                &labels,
-                &std::collections::HashSet::new(),
-                2026,
+                &OrdonnancierSheet {
+                    rows: &[line(3, 3, 99, 7.0, 55)],
+                    labels: &labels,
+                    units: &std::collections::HashMap::new(),
+                    cancelled: &std::collections::HashSet::new(),
+                    pending: 0,
+                    year: 2026,
+                },
                 &PharmacyConfig::default(),
                 "2026-08-30",
             ),
@@ -9386,10 +9435,14 @@ mod tests {
         let empty = fill(
             DEFAULT_ORDONNANCIER_TEMPLATE,
             &ordonnancier_values(
-                &[],
-                &labels,
-                &std::collections::HashSet::new(),
-                2025,
+                &OrdonnancierSheet {
+                    rows: &[],
+                    labels: &labels,
+                    units: &std::collections::HashMap::new(),
+                    cancelled: &std::collections::HashSet::new(),
+                    pending: 0,
+                    year: 2025,
+                },
                 &PharmacyConfig::default(),
                 "2026-08-30",
             ),

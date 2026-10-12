@@ -715,8 +715,12 @@ pub struct Move<'a> {
     /// identifiants : une réception saisie le lendemain n'est pas une
     /// réception du lendemain.
     pub day: &'a str,
-    /// L'ordre de saisie, qui départage deux lignes du même jour. C'est
-    /// aussi l'identifiant par lequel une annulation la désigne.
+    /// L'identifiant par lequel une annulation la désigne. **Il ne
+    /// départage pas deux lignes du même jour** : chaque poste numérote
+    /// dans sa tranche, et toutes les lignes d'un poste passaient avant
+    /// celles d'un autre, quelle que soit l'heure. Ce qui départage, c'est
+    /// l'ordre où les lignes sont données — celui de la saisie, que la
+    /// base lit (`happened_on, created_at, id`).
     pub seq: i64,
     /// Le `seq` de la ligne que celle-ci annule, ou 0.
     pub cancels: i64,
@@ -783,6 +787,19 @@ pub fn balance(moves: &[Move]) -> Balance {
 /// la tranche ne fait **rien** — ne rien inventer est le seul choix
 /// honnête quand on ne sait pas ce qu'on annule.
 fn apply(b: &mut Balance, m: &Move, all: &[&Move]) {
+    // Sa place dans le registre : `all` est déjà dans l'ordre.
+    let at = |x: &Move| all.iter().position(|o| std::ptr::eq(*o, x));
+    let here = at(m);
+    // **Une ligne déjà annulée plus haut ne compte pas** : quand
+    // l'annulation passe avant sa cible (deux postes, deux tranches, ou une
+    // cible datée plus tard), la ligne barrée s'appliquait quand même.
+    if m.kind != Kind::Annulation
+        && all
+            .iter()
+            .any(|o| o.kind == Kind::Annulation && o.cancels == m.seq && at(o) < here)
+    {
+        return;
+    }
     // Ce qu'une ligne ordinaire fait, `sign` valant −1 pour l'annuler.
     // Écrit **une fois** : l'annulation défaisait ce que la ligne
     // faisait, dans un second `match` qui répétait le premier à
@@ -817,16 +834,19 @@ fn apply(b: &mut Balance, m: &Move, all: &[&Move]) {
             let Some(target) = all.iter().find(|t| t.seq == m.cancels) else {
                 return;
             };
+            // Sa cible vient plus bas : elle ne comptera pas (voir plus
+            // haut), il n'y a rien à défaire.
+            if at(target) > here {
+                return;
+            }
             // **Une ligne ne s'annule qu'une fois.** L'écriture le refuse
             // sur un même fichier, mais deux postes qui annulent la même
             // sortie avant de s'être joints écrivent chacun la sienne, et
             // le registre ne retire rien : la seconde ne fait rien, sans
             // quoi la sortie revenait deux fois au stock.
-            let first = all.iter().any(|o| {
-                o.kind == Kind::Annulation
-                    && o.cancels == m.cancels
-                    && (o.day, o.seq) < (m.day, m.seq)
-            });
+            let first = all
+                .iter()
+                .any(|o| o.kind == Kind::Annulation && o.cancels == m.cancels && at(o) < here);
             if first {
                 return;
             }
@@ -868,14 +888,11 @@ fn apply(b: &mut Balance, m: &Move, all: &[&Move]) {
 /// Le stock délivrable juste après `upto`, relu sans aucune des lignes
 /// que les annulations écrites jusque-là désignent — comptages compris.
 fn stock_without_cancelled(all: &[&Move], upto: &Move) -> f64 {
-    fn key<'a>(m: &Move<'a>) -> (&'a str, i64) {
-        (m.day, m.seq)
-    }
-    let before: Vec<&Move> = all
+    let end = all
         .iter()
-        .copied()
-        .filter(|m| key(m) <= key(upto))
-        .collect();
+        .position(|o| std::ptr::eq(*o, upto))
+        .unwrap_or(all.len().saturating_sub(1));
+    let before: Vec<&Move> = all.iter().take(end + 1).copied().collect();
     let dropped: Vec<i64> = before
         .iter()
         .filter(|m| m.kind == Kind::Annulation)
@@ -888,7 +905,7 @@ fn stock_without_cancelled(all: &[&Move], upto: &Move) -> f64 {
         })
         .collect();
     let mut b = Balance::default();
-    for m in before.iter().filter(|m| key(m) < key(upto)) {
+    for m in before.iter().take(end) {
         match m.kind {
             Kind::Annulation if dropped.contains(&m.cancels) => {}
             _ if dropped.contains(&m.seq) => {}
@@ -915,7 +932,9 @@ pub fn is_cancelled(moves: &[Move], seq: i64) -> bool {
 /// serait deux versions de la même règle, et un jour elles diffèrent.
 pub fn running(moves: &[Move]) -> Vec<Balance> {
     let mut ordered: Vec<&Move> = moves.iter().collect();
-    ordered.sort_by(|a, b| a.day.cmp(b.day).then(a.seq.cmp(&b.seq)));
+    // Par jour, et dans un jour l'ordre donné (celui de la saisie) : le
+    // tri est stable.
+    ordered.sort_by(|a, b| a.day.cmp(b.day));
     let mut b = Balance::default();
     let mut out = Vec::with_capacity(ordered.len());
     for m in &ordered {
@@ -938,7 +957,9 @@ pub fn running(moves: &[Move]) -> Vec<Balance> {
 /// échéance ne tombe, personne ne le réclame.
 pub fn waiting_since(moves: &[Move]) -> Option<String> {
     let mut ordered: Vec<&Move> = moves.iter().collect();
-    ordered.sort_by(|a, b| a.day.cmp(b.day).then(a.seq.cmp(&b.seq)));
+    // Par jour, et dans un jour l'ordre donné (celui de la saisie) : le
+    // tri est stable.
+    ordered.sort_by(|a, b| a.day.cmp(b.day));
     let mut b = Balance::default();
     let mut since: Option<String> = None;
     for m in &ordered {
@@ -1325,7 +1346,7 @@ pub struct Count {
 /// recalcul d'aujourd'hui donnerait le solde d'aujourd'hui.
 pub fn counts(moves: &[Move]) -> Vec<Count> {
     let mut sorted: Vec<&Move> = moves.iter().collect();
-    sorted.sort_by(|a, b| a.day.cmp(b.day).then(a.seq.cmp(&b.seq)));
+    sorted.sort_by(|a, b| a.day.cmp(b.day));
     sorted
         .into_iter()
         .filter(|m| m.kind == Kind::Inventaire)
@@ -1809,6 +1830,38 @@ mod tests {
             cancels: target,
             ..mv(Kind::Annulation, 0.0, day, seq)
         }
+    }
+
+    /// **Dans un jour, l'ordre de la saisie, pas celui des numéros** :
+    /// chaque poste numérote dans sa tranche. Une sortie du comptoir
+    /// (tranche haute) à 10 h puis un comptage de l'arrière-boutique
+    /// (tranche basse) à 18 h donnaient un solde de 2 pour 16 au coffre.
+    /// Et une annulation qui passe avant sa cible la retire quand même.
+    #[test]
+    fn a_day_reads_in_the_order_written_and_a_struck_line_never_counts() {
+        let moves = [
+            mv(Kind::Entree, 30.0, "2026-10-11", 1),
+            mv(Kind::Sortie, 14.0, "2026-10-12", 2005),
+            count(16.0, 16.0, "2026-10-12", 1010),
+        ];
+        assert!((balance(&moves).stock - 16.0).abs() < 1e-9);
+        let moves = [
+            mv(Kind::Entree, 30.0, "2026-10-11", 1),
+            cancel(2005, "2026-10-12", 1010),
+            mv(Kind::Sortie, 14.0, "2026-10-12", 2005),
+        ];
+        let after = running(&moves);
+        assert!((after[2].stock - 30.0).abs() < 1e-9, "{after:?}");
+        let moves = [
+            mv(Kind::Entree, 30.0, "2026-10-11", 1),
+            cancel(2005, "2026-10-12", 1010),
+            mv(Kind::Retour, 4.0, "2026-10-12", 2005),
+        ];
+        let b = balance(&moves);
+        assert!(
+            b.to_destroy.abs() < 1e-9 && (b.stock - 30.0).abs() < 1e-9,
+            "{b:?}"
+        );
     }
 
     /// Annuler une ligne qu'un comptage a constatée depuis ne rend pas

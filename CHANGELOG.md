@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   those fields is no longer cleared at once; a posology being typed in the
   conciliation view stays; an untouched pregnancy date follows the value
   read back.
+- Stupéfiants register: lines of one day read in the order they were
+  written, not by their numbers — each post numbers within its own block,
+  and a count made at 18:00 on one post read as made before a 10:00
+  delivery on another (a balance of 2 for 16 in the safe, then a false
+  gap written for good). A line already cancelled higher up no longer
+  counts. The printed ordonnancier gives each quantity its unit and says
+  how many of the year's deliveries still wait for their number.
 
 ## [0.399.0] - 2026-10-12
 

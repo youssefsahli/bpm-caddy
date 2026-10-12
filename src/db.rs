@@ -51449,7 +51449,7 @@ impl Db {
     /// réception du lendemain.
     pub fn stup_moves(&self, stup_id: i64) -> Result<Vec<StupMove>, String> {
         self.stup_rows(
-            "WHERE stup_id = ?1 ORDER BY happened_on ASC, id ASC",
+            "WHERE stup_id = ?1 ORDER BY happened_on ASC, created_at ASC, id ASC",
             rusqlite::params![stup_id],
         )
     }
@@ -51468,7 +51468,7 @@ impl Db {
     /// celui des jours — c'est l'ordre d'un journal de bord.
     pub fn stup_recent(&self, limit: usize) -> Result<Vec<StupMove>, String> {
         self.stup_rows(
-            "ORDER BY happened_on DESC, id DESC LIMIT ?1",
+            "ORDER BY happened_on DESC, created_at DESC, id DESC LIMIT ?1",
             rusqlite::params![limit as i64],
         )
     }
@@ -51513,6 +51513,21 @@ impl Db {
     /// C'est **le** document : la suite des numéros, sans trou visible
     /// et sans réattribution. Les annulations en font partie — un numéro
     /// annulé se lit annulé, il ne disparaît pas.
+    /// Les délivrances de l'année qui attendent encore leur numéro (le
+    /// poste de référence numérote) : l'ordonnancier imprimé les dit au
+    /// lieu de les taire.
+    pub fn stup_unnumbered(&self, year: i64) -> Result<usize, String> {
+        self.stups
+            .query_row(
+                "SELECT COUNT(*) FROM stup_moves
+                 WHERE kind = 'SORTIE' AND ordo_no = 0 AND substr(happened_on, 1, 4) = ?1",
+                [format!("{year:04}")],
+                |r| r.get::<_, i64>(0),
+            )
+            .map(|n| n.max(0) as usize)
+            .map_err(|e| e.to_string())
+    }
+
     pub fn stup_dispensings(&self, year: i64) -> Result<Vec<StupMove>, String> {
         self.stup_rows(
             "WHERE ordo_year = ?1 AND ordo_no > 0 ORDER BY ordo_no ASC",
@@ -51594,7 +51609,7 @@ impl Db {
             "WHERE kind IN ('RETOUR', 'DESTRUCTION')
                 OR (kind = 'ANNULATION' AND cancels IN
                     (SELECT id FROM stup_moves WHERE kind IN ('RETOUR', 'DESTRUCTION')))
-             ORDER BY happened_on DESC, id DESC",
+             ORDER BY happened_on DESC, created_at DESC, id DESC",
             rusqlite::params![],
         )
     }
@@ -51735,7 +51750,7 @@ impl Db {
             .prepare(
                 "SELECT kind, happened_on, quantity, id, cancels, expected
                  FROM stup_moves WHERE stup_id = ?1 AND happened_on <= ?2
-                 ORDER BY happened_on ASC, id ASC",
+                 ORDER BY happened_on ASC, created_at ASC, id ASC",
             )
             .map_err(|e| e.to_string())?;
         let lines: Vec<(String, String, f64, i64, i64, f64)> = stmt
@@ -52078,7 +52093,7 @@ impl Db {
             .stups
             .prepare(
                 "SELECT stup_id, kind, happened_on, quantity, id, cancels, expected
-                 FROM stup_moves WHERE happened_on <= ?1 ORDER BY happened_on ASC, id ASC",
+                 FROM stup_moves WHERE happened_on <= ?1 ORDER BY happened_on ASC, created_at ASC, id ASC",
             )
             .map_err(|e| e.to_string())?;
         type Row = (i64, String, String, f64, i64, i64, f64);
@@ -52123,7 +52138,7 @@ impl Db {
             .stups
             .prepare(
                 "SELECT stup_id, kind, happened_on, quantity, id, cancels, expected
-                 FROM stup_moves ORDER BY happened_on ASC, id ASC",
+                 FROM stup_moves ORDER BY happened_on ASC, created_at ASC, id ASC",
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt

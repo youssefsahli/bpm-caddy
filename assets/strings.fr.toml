@@ -2101,6 +2101,7 @@ stup_seq_whole ="Suite de {} à {} : {} numéros, aucun manquant."
 stup_seq_holes = "{} numéro(s) manquant(s) dans la suite : {}. Un numéro annulé conserve le sien ; un numéro absent correspond à une ligne non inscrite."
 stup_seq_doubled = "Numéro(s) portés deux fois : {}. Anomalie à signaler."
 stup_ordo_empty ="Aucune délivrance inscrite pour cette année."
+stup_ordo_pending_print = "{} délivrance(s) de l'année attendent leur numéro (le poste de référence numérote) et ne sont pas imprimées ici."
 stup_ordo_print = "Imprimer…"
 stup_ordo_print_tooltip = "Imprimer l'ordonnancier de l'année, ligne par ligne, annulations comprises"
 # Le premier numéro d'ordonnancier, déclaré une fois dans Options ›
