@@ -8616,6 +8616,42 @@ impl Session {
                     .into_iter()
                     .map(|(_, e)| (crate::versions::Kind::Trod, e)),
             );
+            // Les dispositifs, les listes et les cascades d'ici ; les
+            // phrases, par les adresses que le journal reçu nomme. Une
+            // liste ou une phrase reçue attend toujours qu'on l'adopte :
+            // sans elles ici, rien ne disait qu'elle attendait.
+            names.extend(
+                self.db
+                    .dispositifs()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|d| (crate::versions::Kind::Dispositif, d.name)),
+            );
+            names.extend(
+                self.db
+                    .checklists()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|l| (crate::versions::Kind::Liste, l.title)),
+            );
+            names.extend(
+                self.db
+                    .cascades()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|c| (crate::versions::Kind::Cascade, db::cascade_title(&c.text))),
+            );
+            {
+                let mut seen = std::collections::HashSet::new();
+                for e in &self.card_edits {
+                    if e.kind == crate::versions::Kind::Texte
+                        && !e.source.is_empty()
+                        && seen.insert(e.card.clone())
+                    {
+                        names.push((crate::versions::Kind::Texte, e.card_name.clone()));
+                    }
+                }
+            }
             for (kind, name) in names {
                 // Only entries some received version names: the others
                 // have nothing to settle, and reading a protocol's tree
@@ -62179,8 +62215,15 @@ impl App {
     fn offer_summary(o: &crate::enligne::Offer) -> String {
         o.fields
             .iter()
-            .filter(|(_, v)| !v.trim().is_empty())
+            .filter(|(f, v)| !v.trim().is_empty() || (f == "value" && v.is_empty()))
             .map(|(f, v)| {
+                if f == "value" && v.is_empty() {
+                    return format!(
+                        "{} : {}",
+                        Self::entry_field_label(f),
+                        tr("ver_shipped_text")
+                    );
+                }
                 let label = if o.kind == crate::versions::Kind::Fiche {
                     Self::field_label(f)
                 } else {
@@ -62473,7 +62516,11 @@ impl App {
         };
         let local = |f: &str| fields.iter().find(|(k, _)| *k == f).map(|(_, v)| v.clone());
         let shown = |field: &str, v: &str| -> String {
-            if v.trim().is_empty() || ((field == "arbre" || field == "lignes") && v == "[]") {
+            // Une phrase vide est la marque du texte livré, pas un blanc.
+            if field == "value" && v.is_empty() {
+                tr("ver_shipped_text").to_owned()
+            } else if v.trim().is_empty() || ((field == "arbre" || field == "lignes") && v == "[]")
+            {
                 tr("ver_empty").to_owned()
             } else if field == "arbre" {
                 crate::versions::tree_text(v)
