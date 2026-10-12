@@ -7876,7 +7876,27 @@ impl Session {
         let Ok(today) = self.db.today_iso() else {
             return;
         };
-        let Some(horizon) = crate::audit::horizon(&today, self.audit_keep_days) else {
+        // **La durée la plus longue que l'officine ait demandée**, et non
+        // celle de ce poste seul : sur une base partagée par un lecteur
+        // réseau, la purge d'un poste réglé à sept jours vidait le journal
+        // que l'officine garde un an. Chaque poste y inscrit la sienne ;
+        // zéro veut dire « toujours », et l'emporte.
+        let key = "audit_keep_days";
+        let stored = self.db.setting(key);
+        let theirs = stored.as_deref().and_then(|v| v.trim().parse::<u32>().ok());
+        let mine = self.audit_keep_days;
+        let longest = |a: u32, b: u32| if a == 0 || b == 0 { 0 } else { a.max(b) };
+        let keep = theirs.map_or(mine, |t| longest(t, mine));
+        if theirs != Some(keep) {
+            let _ = self.db.set_setting(
+                key,
+                &keep.to_string(),
+                stored.as_deref(),
+                &today,
+                &self.operator,
+            );
+        }
+        let Some(horizon) = crate::audit::horizon(&today, keep) else {
             return;
         };
         let _ = self.db.purge_accesses(&horizon, &self.operator);
@@ -7936,6 +7956,10 @@ impl Session {
             Ok(true) => {
                 self.officine_seen = Some(mine.clone());
                 self.officine_stale = false;
+                // Ce qu'un autre poste avait écrit avant est dépassé par ce
+                // qu'on vient d'enregistrer : gardé, il remplaçait la
+                // version de ce poste à la fermeture de la fenêtre.
+                self.officine_fresh = None;
                 (None, None)
             }
             Ok(false) => {
@@ -7964,6 +7988,9 @@ impl Session {
                     Ok(true) => {
                         self.officine_seen = Some(m.merged.clone());
                         self.officine_stale = false;
+                        // La fusion contient déjà ce que l'autre poste avait
+                        // écrit : rien d'autre à prendre en fermant.
+                        self.officine_fresh = None;
                         (
                             Some(m.merged),
                             Some((false, tr("opts_officine_merged").to_owned())),
@@ -20479,6 +20506,16 @@ impl App {
             if self.config.ui.seen_notes != crate::release::current() {
                 self.config.ui.seen_notes = crate::release::current().to_owned();
                 let _ = self.config.save();
+                // Les options ouvertes tiennent une copie de la
+                // configuration : enregistrées ensuite, elles remettaient
+                // l'ancienne valeur, et les nouveautés revenaient.
+                if let Some(editor) = &mut self.options {
+                    editor
+                        .cfg
+                        .ui
+                        .seen_notes
+                        .clone_from(&self.config.ui.seen_notes);
+                }
             }
         }
     }
@@ -80996,9 +81033,18 @@ impl eframe::App for App {
                                                 egui::TextEdit::singleline(&mut fee_text[i]),
                                             );
                                             if resp.lost_focus() {
-                                                f.fee = crate::codex::parse_amount(&fee_text[i])
-                                                    .map(|(v, _)| v)
-                                                    .unwrap_or(0.0);
+                                                // Illisible (« 4O »), le
+                                                // montant d'avant reste et
+                                                // le champ le remontre :
+                                                // il devenait 0 € sans un mot.
+                                                if fee_text[i].trim().is_empty() {
+                                                    f.fee = 0.0;
+                                                } else if let Some((v, _)) =
+                                                    crate::codex::parse_amount(&fee_text[i])
+                                                        .filter(|(v, _)| v.is_finite() && *v >= 0.0)
+                                                {
+                                                    f.fee = v;
+                                                }
                                                 fee_text[i] = crate::codex::format_quantity(f.fee);
                                             }
                                             let mut days = f.renewal_days.to_string();
@@ -83018,8 +83064,32 @@ impl eframe::App for App {
         }
         if let Some(cfg) = saved_cfg {
             // Live-apply everything except the database path (restart).
-            self.config = cfg;
+            let before = std::mem::replace(&mut self.config, cfg);
+            // **Ce qui s'ouvre au démarrage s'applique tout de suite** :
+            // la forme de la fenêtre est retenue dans `layout.toml` et
+            // l'emporte au lancement suivant, si bien qu'une case décochée
+            // ici ne changeait jamais rien après le premier lancement.
+            if self.config.ui.show_docs_on_start != before.ui.show_docs_on_start {
+                self.show_docs = self.config.ui.show_docs_on_start;
+            }
+            if self.config.ui.show_nav_on_start != before.ui.show_nav_on_start {
+                self.show_nav = self.config.ui.show_nav_on_start;
+            }
+            if self.config.ui.side_pane != before.ui.side_pane {
+                self.side_pane.clone_from(&self.config.ui.side_pane);
+            }
+            // L'opérateur aussi : il n'était repris qu'au déverrouillage,
+            // et le journal des accès et les fiches gardaient les anciennes
+            // initiales jusque-là.
+            let new_operator = self.config.ui.operator != before.ui.operator;
+            if new_operator {
+                self.operator.clone_from(&self.config.ui.operator);
+            }
             if let State::Unlocked(session) = &mut self.state {
+                if new_operator {
+                    session.operator.clone_from(&self.config.ui.operator);
+                }
+                session.audit_keep_days = self.config.audit.keep_days;
                 session.cycle_months = self.config.rules.cycle_months.max(1);
                 session.loc_notice_days = self.config.locations.notice_days;
                 session.scripts_dir = self.config.scripts_dir();
@@ -91781,6 +91851,8 @@ mod tests {
             ..start.clone()
         };
         assert!(other.set_officine(&there, Some(&start), day, "MB").unwrap());
+        // La relecture l'a vu, et attend la fermeture de la fenêtre.
+        session.officine_fresh = Some(there.clone());
         let here = crate::config::PharmacyConfig {
             phone: "02".to_owned(),
             ..start.clone()
@@ -91793,6 +91865,10 @@ mod tests {
         );
         assert_eq!(note.map(|n| n.0), Some(false), "fusionné sans alerte");
         assert_eq!(session.db.officine(), Some(shown.clone()), "et enregistré");
+        // **Et la version de l'autre poste n'est plus à prendre** : la
+        // fusion la contient, et la prendre en fermant aurait effacé le
+        // téléphone de ce poste.
+        assert_eq!(session.officine_fresh, None);
 
         // Le même champ, des deux côtés.
         let there = crate::config::PharmacyConfig {

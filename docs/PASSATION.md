@@ -53,6 +53,12 @@ conciliation, acte de vaccination, retour d'une case de table), ADELI,
 lanceur, relais.
 
 Laissé, relevé par les relectures (à trancher ou à vérifier) :
+- réglages par poste qui devraient être de l'officine : facturation,
+  règles (dont `enforcement = Block`), mentions et forfaits de location
+  vivent dans `config.toml` — deux postes peuvent facturer ou bloquer un
+  même patient autrement ; seule `[pharmacy]` est passée à la base ;
+- options ouvertes au verrouillage automatique : ce qui était tapé et
+  pas enregistré part sans un mot ;
 - réécritures orphelines : une clé dérivée d'un libellé (âge, grossesse,
   écrasement, rein, foie, revue, surveillance) qui change de libellé
   laisse la réécriture en base, invisible et non comptée ; à montrer

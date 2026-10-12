@@ -18,6 +18,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `config.toml` does not read; a read error is said instead of an empty
   log; the period ends today, and a line with an unreadable file number
   no longer hides the whole log.
+- Options: after a save merged with another post's officine change, this
+  post keeps the merged version (closing the window put back the other
+  post's older one, without this post's change, on every printed
+  header); a new operator applies at once to the access log and card
+  attributions; « open at start-up » choices take effect (the window's
+  remembered shape always won); the post-update notes no longer come back
+  when Options was open while they were read; a rental fee that does not
+  read keeps its previous amount instead of becoming 0 €.
+- Access log: on a base shared by several posts, the purge keeps the
+  longest retention any post asked for (a post set to seven days
+  emptied the year the officine keeps).
 - Printing: an officine template that cannot be read (saved in
   Windows-1252, say) is reported instead of being silently replaced by
   the shipped layout, and the template editor no longer overwrites it
