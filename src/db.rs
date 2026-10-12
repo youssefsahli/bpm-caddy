@@ -42046,23 +42046,36 @@ fn first_db_in(dirs: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
 /// écrivaient ensemble (un poste et la sauvegarde du lancement, deux
 /// postes). Immédiate, la seconde attend que la première ait fini.
 /// L'étiquette de la ligne `row` d'une table de référence livrée : sa
-/// première case, suivie de « #n » quand la même première case revient
-/// plus haut (la table des AVK en a quatre « Surdosage asymptomatique,
-/// cible 2 à 3 ») — une étiquette ne désigne qu'une ligne.
+/// première case. Quand la même première case revient (la table des AVK
+/// en a quatre « Surdosage asymptomatique, cible 2 à 3 »), elle s'y
+/// ajoute la première autre case qui distingue la ligne de ses
+/// homonymes (« 6 ≤ INR < 10 ») : un numéro d'ordre dans le groupe
+/// glisserait, lui, au premier homonyme inséré au-dessus. « #n » ne sert
+/// qu'en dernier recours.
 fn table_row_label(table_key: &str, row: usize) -> Option<String> {
     let table = crate::tables::TABLES
         .iter()
         .find(|t| t.short == table_key)?;
-    let first = *table.rows.get(row)?.first()?;
+    let line = table.rows.get(row)?;
+    let first = *line.first()?;
+    let group: Vec<&&[&str]> = table
+        .rows
+        .iter()
+        .filter(|r| r.first() == Some(&first))
+        .collect();
+    if group.len() == 1 {
+        return Some(first.to_owned());
+    }
+    for (j, cell) in line.iter().enumerate().skip(1) {
+        if group.iter().filter(|r| r.get(j) == Some(cell)).count() == 1 {
+            return Some(format!("{first} | {cell}"));
+        }
+    }
     let before = table.rows[..row]
         .iter()
         .filter(|r| r.first() == Some(&first))
         .count();
-    Some(if before == 0 {
-        first.to_owned()
-    } else {
-        format!("{first} #{before}")
-    })
+    Some(format!("{first} #{before}"))
 }
 
 /// La ligne d'une table livrée qui porte l'étiquette `label`.
@@ -52409,7 +52422,13 @@ impl Db {
     ) -> Result<std::collections::HashMap<(String, usize, usize), String>, String> {
         let mut stmt = self
             .conn
-            .prepare("SELECT table_key, row, col, value, row_label FROM table_cells")
+            // La plus récente en dernier : deux postes de versions
+            // différentes peuvent ranger la même case sous deux numéros,
+            // et c'est la dernière écrite qui vaut.
+            .prepare(
+                "SELECT table_key, row, col, value, row_label FROM table_cells
+                 ORDER BY updated_at, row",
+            )
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([], |r| {
