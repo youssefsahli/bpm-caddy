@@ -10976,25 +10976,17 @@ impl Session {
             return;
         }
         let (code_postal, commune) = self.carte.commune.clone().unwrap_or_default();
-        let mut next = crate::repertoire::Presence {
+        let next = crate::repertoire::Presence {
             adresse: self.carte.address.trim().to_owned(),
             paraitre: self.carte.paraitre,
             code_postal,
             commune,
             finess,
+            // Où une carte a été reçue : seul le fil l'écrit, quand le
+            // répertoire l'a reçue — jamais un répertoire qui ne l'a pas eue.
             parue: self.carte.presence.parue.clone(),
+            parue_le: self.carte.presence.parue_le,
         };
-        // Partir, ou changer de répertoire : le départ est dû à celui où
-        // l'officine paraissait, jusqu'à ce qu'il l'ait reçu.
-        let was = &self.carte.presence;
-        if let Some(old) = was.paraitre.then(|| was.address()).flatten() {
-            if !next.paraitre || next.address().as_ref() != Some(&old) {
-                next.parue = old;
-            }
-        }
-        if next.paraitre && next.address().as_deref() == Some(next.parue.as_str()) {
-            next.parue.clear();
-        }
         if next.paraitre && next.commune.is_empty() {
             self.carte.note = Some((true, tr("carte_need_commune").to_owned()));
             return;
@@ -11065,18 +11057,28 @@ impl Session {
                     self.carte.announcing = None;
                     let at = self.db.now_stamp().unwrap_or_default();
                     match (&said, present) {
-                        (Ok(()), true) => self.carte.appeared = Some(address),
+                        (Ok(()), true) => {
+                            self.carte.departure_failed = None;
+                            self.carte_received(&address);
+                            self.carte.appeared = Some(address);
+                        }
                         // Partie : ce qui reste à annoncer (une carte à un
                         // nouveau répertoire) part tout de suite.
                         (Ok(()), false) => {
                             self.carte.appeared = None;
+                            self.carte.departure_failed = None;
                             self.carte_departed(&address);
                             self.carte.next_announce = Some(Instant::now());
                         }
                         // Une minute plutôt que dix : un répertoire qui
                         // redémarre ne garde pas l'officine absente — sans
                         // retarder une annonce demandée entre-temps.
-                        (Err(_), _) => {
+                        (Err(_), present) => {
+                            if !present {
+                                // Le départ attendra : la carte du nouveau
+                                // répertoire passe la prochaine fois.
+                                self.carte.departure_failed = Some(Instant::now());
+                            }
                             let soon = Instant::now() + Duration::from_secs(60);
                             self.carte.next_announce =
                                 Some(self.carte.next_announce.map_or(soon, |t| t.min(soon)));
@@ -11098,17 +11100,45 @@ impl Session {
         }
     }
 
-    /// A departure the directory received: no longer owed, in the base —
-    /// written against what was just read, and shown when the screen had
-    /// not moved from it.
+    /// A departure the directory received: no longer owed.
     #[cfg(feature = "sync")]
     fn carte_departed(&mut self, address: &str) {
+        self.carte_mark(|p| {
+            if p.parue != address {
+                return false;
+            }
+            p.parue.clear();
+            p.parue_le = 0;
+            true
+        });
+    }
+
+    /// A card the directory received: where a departure will be owed —
+    /// written when the directory changes, and refreshed a few times a day
+    /// rather than every ten minutes (the setting travels to every post).
+    #[cfg(feature = "sync")]
+    fn carte_received(&mut self, address: &str) {
+        let now = crate::repertoire::unix_now();
+        self.carte_mark(|p| {
+            if p.parue == address && now.saturating_sub(p.parue_le) < 6 * 3600 {
+                return false;
+            }
+            p.parue = address.to_owned();
+            p.parue_le = now;
+            true
+        });
+    }
+
+    /// Change the officine's setting from the announcement thread's
+    /// answer, against what was just read; shown on screen when the
+    /// screen had not moved from it.
+    #[cfg(feature = "sync")]
+    fn carte_mark(&mut self, change: impl FnOnce(&mut crate::repertoire::Presence) -> bool) {
         let raw = self.db.setting(crate::repertoire::SETTING);
         let mut p = crate::repertoire::Presence::read(raw.as_deref());
-        if p.parue != address {
+        if !change(&mut p) {
             return;
         }
-        p.parue.clear();
         let text = p.text();
         let today = self.today.clone();
         if let Ok(true) = self.db.set_setting(
@@ -11157,6 +11187,7 @@ impl Session {
             let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
             match crate::repertoire::serve(port, std::sync::Arc::clone(&stop)) {
                 Ok(()) => {
+                    HOSTED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                     self.carte.hosting = Some((port, stop));
                     let (tx, rx) = std::sync::mpsc::channel();
                     std::thread::spawn(move || {
@@ -11186,16 +11217,26 @@ impl Session {
             self.db.setting(crate::repertoire::SETTING).as_deref(),
         );
         let wanted = p.paraitre.then(|| p.address()).flatten();
-        // Un départ dû, de cette session ou d'avant (la base le retient).
-        let owed = self
+        // Un départ dû : à un répertoire qui a reçu une carte (la base le
+        // retient, un jour au plus), ou à celui de cette session.
+        let owed = p.owed(crate::repertoire::unix_now()).or_else(|| {
+            self.carte
+                .appeared
+                .clone()
+                .filter(|a| wanted.as_ref() != Some(a))
+        });
+        // **Un départ manqué ne bloque pas la carte** : un répertoire
+        // éteint, ou mal écrit — souvent la raison même du changement —
+        // ne garde pas l'officine absente du nouveau.
+        let departure_waits = self
             .carte
-            .appeared
-            .clone()
-            .or_else(|| (!p.parue.is_empty()).then(|| p.parue.clone()));
+            .departure_failed
+            .is_some_and(|t| t.elapsed() < crate::repertoire::ANNOUNCE_EVERY);
         let (address, present) = match (&owed, &wanted) {
-            (Some(old), w) if w.as_ref() != Some(old) => (old.clone(), false),
-            (_, Some(w)) => (w.clone(), true),
-            (_, None) => return,
+            (Some(_), Some(w)) if departure_waits => (w.clone(), true),
+            (Some(old), _) => (old.clone(), false),
+            (None, Some(w)) => (w.clone(), true),
+            (None, None) => return,
         };
         let name = config.pharmacy.name.trim().to_owned();
         if present && name.is_empty() {
@@ -14683,6 +14724,9 @@ struct Carte {
     next_announce: Option<Instant>,
     announced: Option<(String, Result<(), String>)>,
     appeared: Option<String>,
+    /// Le dernier départ manqué : la carte passe avant lui pendant dix
+    /// minutes.
+    departure_failed: Option<Instant>,
     /// Le répertoire que ce poste héberge : son port, de quoi l'arrêter,
     /// et l'adresse publique que le routeur a donnée.
     hosting: Option<(u16, std::sync::Arc<std::sync::atomic::AtomicBool>)>,
@@ -14697,6 +14741,11 @@ struct Carte {
 /// et sa réponse.
 #[cfg(feature = "sync")]
 type Announced = (String, bool, Result<(), String>);
+
+/// Combien de fois ce processus a ouvert le répertoire : une fermeture de
+/// port en retard ne défait pas une ouverture plus récente.
+#[cfg(feature = "sync")]
+static HOSTED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// **Une session qui s'en va arrête le répertoire qu'elle hébergeait** —
 /// verrouillage, fermeture, changement de base : sans quoi le fil tenait
@@ -14719,11 +14768,17 @@ impl Carte {
         };
         stop.store(true, std::sync::atomic::Ordering::SeqCst);
         let pending = self.host_reach.take();
+        let generation = HOSTED.load(std::sync::atomic::Ordering::SeqCst);
         std::thread::spawn(move || {
             if let Some(rx) = pending {
                 let _ = rx.recv();
             }
-            crate::reach::close_mapping(port);
+            // Rouvert entre-temps — décoché puis recoché, verrouillé puis
+            // déverrouillé : le port est de nouveau le sien, on n'y touche
+            // pas.
+            if HOSTED.load(std::sync::atomic::Ordering::SeqCst) == generation {
+                crate::reach::close_mapping(port);
+            }
         });
         self.host_public = None;
     }

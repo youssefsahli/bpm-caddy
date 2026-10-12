@@ -137,11 +137,26 @@ pub struct Presence {
     pub code_postal: String,
     pub commune: String,
     pub finess: String,
-    /// **Le répertoire où l'officine a paru et doit encore annoncer son
-    /// départ** — retenu dans la base, pour qu'un départ manqué, un
-    /// redémarrage ou un autre poste le rattrape. Vide quand rien n'est
-    /// dû.
+    /// **Le répertoire qui a reçu la dernière carte de l'officine**, et
+    /// quand (heure Unix) — retenu dans la base : quitter ce répertoire
+    /// lui doit un départ, qu'un départ manqué, un redémarrage ou un autre
+    /// poste rattrape. Passé [`FORGET`], plus rien n'est dû : le
+    /// répertoire a oublié la carte, et [`FRESH`] l'empêche de revenir.
     pub parue: String,
+    pub parue_le: u64,
+}
+
+impl Presence {
+    /// Le départ encore dû, s'il l'est : à un répertoire qui a reçu une
+    /// carte, que l'officine ne veut plus — ou plus là —, depuis moins
+    /// d'un jour.
+    pub fn owed(&self, now: u64) -> Option<String> {
+        let wanted = self.paraitre.then(|| self.address()).flatten();
+        (!self.parue.is_empty()
+            && wanted.as_deref() != Some(self.parue.as_str())
+            && now.saturating_sub(self.parue_le) < FORGET.as_secs())
+        .then(|| self.parue.clone())
+    }
 }
 
 /// La clé du réglage.
@@ -1376,6 +1391,38 @@ mod tests {
         assert_eq!(Presence::read(Some("pas du json")), Presence::default());
         assert!(fingerprint(&hex(&device(1).id().0)).is_some());
         assert!(fingerprint("zz").is_none());
+    }
+
+    /// **Un départ n'est dû qu'à un répertoire qui a reçu une carte**,
+    /// que l'officine quitte, et pas au-delà d'un jour.
+    #[test]
+    fn a_departure_is_owed_only_where_a_card_was_received_and_for_a_day() {
+        let at = |paraitre: bool, adresse: &str, parue: &str, le: u64| Presence {
+            adresse: adresse.to_owned(),
+            paraitre,
+            parue: parue.to_owned(),
+            parue_le: le,
+            ..Presence::default()
+        };
+        assert_eq!(
+            at(true, "a", "a:7747", NOW).owed(NOW),
+            None,
+            "elle y paraît"
+        );
+        assert_eq!(
+            at(true, "b", "a:7747", NOW).owed(NOW),
+            Some("a:7747".to_owned())
+        );
+        assert_eq!(
+            at(false, "a", "a:7747", NOW).owed(NOW),
+            Some("a:7747".to_owned())
+        );
+        assert_eq!(at(false, "a", "", 0).owed(NOW), None, "aucune carte reçue");
+        assert_eq!(
+            at(false, "a", "a:7747", NOW).owed(NOW + FORGET.as_secs()),
+            None,
+            "le répertoire a oublié"
+        );
     }
 
     #[test]

@@ -896,9 +896,11 @@ clé de réseau n'y passe.
   publiques dont la dernière version est d'ici (`enligne::own_offers`) :
   jamais une liste, une phrase, ce qu'une officine appairée a réécrit, ni
   un patient, ni un nom qu'elle a reçu. Décochée, ou l'adresse changée,
-  une carte de départ la retire ; tant que le répertoire ne l'a pas
-  reçue, le départ dû reste dans le réglage (`parue`) et n'importe quel
-  poste le rattrape.
+  une carte de départ la retire. Le réglage retient le répertoire qui a
+  **reçu** la dernière carte (`parue`, `parue_le`) : un départ manqué,
+  un redémarrage ou un autre poste le rattrape, sans jamais retenir la
+  carte destinée au nouveau répertoire, et rien n'est plus dû passé un
+  jour — le répertoire a oublié la carte.
 * **Lire** : la liste des cartes, puis le catalogue d'une officine,
   vérifiés **par chaque poste** — la signature, l'empreinte du
   catalogue, et ce qui peut entrer (`versions::admissible`, sortes
