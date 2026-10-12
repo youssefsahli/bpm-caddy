@@ -1541,7 +1541,13 @@ copie de même puis bascule ce poste sur la copie : il se verrouille et se
 rouvre dessus ; l'ancien fichier reste celui des autres postes, à
 repointer un par un. « Réinitialiser » fait d'abord une copie des trois
 fichiers dans `backups/`, et n'efface rien si elle échoue. Le changement
-de mot de passe rechiffre les trois.
+de mot de passe redemande l'actuel, puis rechiffre les trois ; les
+autres postes sur la même base doivent alors être déverrouillés avec le
+nouveau.
+
+Une base dont le chemin est écrit dans `config.toml` et qui n'est pas
+là (partage non monté, chemin mal tapé) n'est jamais créée au
+déverrouillage : l'écran le dit.
 
 La suppression de pièces ne libère pas l'espace : seul « Compacter » le
 fait.
