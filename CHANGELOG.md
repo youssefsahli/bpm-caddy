@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.408.0] - 2026-10-12
+
 ### Fixed
 - Regressions found by reviewing the fixes of 0.404.0–0.406.0:
   conciliation counts the head of each DCI as its molecule, not its salt

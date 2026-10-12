@@ -25,7 +25,7 @@ périmées de tout le document, la conservation du journal ne redescendait
 jamais, une suppression refusée vidait quand même le dossier, le lot
 d'une boîte lue perdu, le code d'une dose corrigée effacé, un DFG
 arrondi qui taisait une contre-indication ; corrigées dans la 0.408.0,
-qui suit ; les étiquettes intermédiaires n'ont jamais été
+qui suit, smoke en cours ; les étiquettes intermédiaires n'ont jamais été
 posées, et **la 0.395.0 ne se publie pas** (elle lisait mal les doses de
 charge et les titrations, corrigé dans la 0.396.0).
 
