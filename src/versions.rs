@@ -441,8 +441,13 @@ pub fn pending_of<'a>(
             .filter(|e| !e.source.is_empty())
         {
             if let Some(value) = local(field) {
-                if applies(e, &value) == Applies::Conflict {
-                    out.push(e);
+                // Une liste ou une phrase reçue ne s'applique pas d'elle-
+                // même : même posée sur la valeur qu'elle remplace, elle
+                // attend qu'on l'adopte.
+                match applies(e, &value) {
+                    Applies::Conflict => out.push(e),
+                    Applies::Clean if kind.is_private() => out.push(e),
+                    _ => {}
                 }
             }
         }

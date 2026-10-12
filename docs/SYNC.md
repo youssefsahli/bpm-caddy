@@ -589,7 +589,18 @@ fiche, et les autres officines créaient une fiche au nom du pansement.
 Un texte de cascade livré avant la relecture de la 0.360.0
 (`shipped::CASCADES_REWORDED`) est rafraîchi s'il n'a pas été touché et
 ne se versionne jamais ; un dispositif livré retiré ici ne revient pas
-d'une version reçue. « En ligne »
+d'une version reçue. **Une liste ou une phrase reçue ne s'applique jamais
+d'elle-même** (`receive_card_edits` la range au journal seulement) :
+elle porterait les codes ou le nom et le téléphone de l'autre officine ;
+« En ligne » l'offre, et l'historique la propose à adopter même posée sur
+la valeur qu'elle remplace (`versions::pending_of`). Le texte livré d'une
+phrase voyage **vide** — une marque, non le texte mot pour mot, que deux
+versions de l'application ne livrent pas toujours pareil. Limite connue :
+une liste ou une phrase déjà versionnée, puis décochée, reste au journal
+des postes, et un poste d'une version antérieure à la 0.413 la publierait
+encore (les autres officines la refusent au décodage, mais elle est
+scellée dans le journal du réseau) : mettre tous les postes à jour avant
+de cocher. « En ligne »
 (`src/enligne.rs`) lit le journal reçu en offres par sorte ;
 `Db::adopt_offer` prend une offre d'un geste — une entrée livrée retirée
 ici revient alors entière (`entry_origin`), la dernière version

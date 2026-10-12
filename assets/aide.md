@@ -1258,7 +1258,8 @@ TROD, des vaccins du catalogue, des dispositifs et des cascades — et les
 listes de contrôle et les phrases imprimées réécrites si l'officine
 coche « listes de contrôle, phrases imprimées » (non par défaut : une
 liste porte parfois un code, une phrase le nom ou le téléphone de
-l'officine) — **jamais un
+l'officine ; reçues, elles ne s'appliquent pas d'elles-mêmes : « En
+ligne » les propose, à prendre ou à adopter) — **jamais un
 patient**, un dossier, le
 registre ou la caisse —, chiffrés et signés, sous une clé propre au
 réseau.

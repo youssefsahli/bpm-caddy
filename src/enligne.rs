@@ -171,7 +171,7 @@ impl Offer {
             Kind::Protocole => &["subject"][..],
             Kind::Trod => &["situation"][..],
             Kind::Vaccin => &["label", "code"][..],
-            Kind::Dispositif => &["family", "indication", "tags"][..],
+            Kind::Dispositif => &["family", "indication", "etiquettes"][..],
             Kind::Liste => &["subject"][..],
             Kind::Cascade => &["texte"][..],
             Kind::Texte => &["value"][..],
@@ -359,6 +359,17 @@ mod tests {
         assert!(o.matches("sirop"));
         assert!(o.matches("toux"));
         assert!(!o.matches("méthadone"));
+        // Un dispositif se cherche à ses étiquettes, sous leur nom de
+        // voyage.
+        let dispo = [edit(
+            Kind::Dispositif,
+            "Hydrocolloïde",
+            "etiquettes",
+            "escarre",
+            "A",
+            "2026-09-01",
+        )];
+        assert!(offers(&dispo, Kind::Dispositif)[0].matches("escarre"));
     }
 
     /// Absente, pareille, ou différente : comparée champ par champ, et un

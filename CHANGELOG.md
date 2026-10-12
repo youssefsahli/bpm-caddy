@@ -35,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   kept. Like checklists they are shared only when the network window's
   « listes de contrôle, phrases imprimées » box is ticked, since a
   rewrite can carry the officine's name or phone number.
+- **Received checklists and phrases are never applied automatically**,
+  whatever the receiver ticked: another officine's codes, name or phone
+  number would otherwise land in this base or on its papers. They are
+  offered in « En ligne » and proposed for adoption in their history. A
+  phrase restored to its shipped wording travels as a marker, so each
+  officine gets back its own shipped text rather than the sender's.
 
 ### Fixed
 - Taking back a shipped entry removed here (a vaccine, a TROD line, a

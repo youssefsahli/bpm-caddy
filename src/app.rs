@@ -14010,8 +14010,9 @@ enum MessagesTo {
 struct Online {
     kind: crate::versions::Kind,
     query: String,
-    /// The offers and what each is here, read against `rows_rev`.
-    rows: Vec<(crate::enligne::Offer, crate::enligne::Here)>,
+    /// The offers, what each is here, and what its hover says — read
+    /// against `rows_rev`, never per frame.
+    rows: Vec<(crate::enligne::Offer, crate::enligne::Here, String)>,
     /// The journal revision the rows were read at; `None` reads again.
     rows_rev: Option<u64>,
     /// Whether this base belongs to an officines' network.
@@ -62174,6 +62175,29 @@ impl App {
         }
     }
 
+    /// What an offer's hover says: each field it carries, shortened.
+    fn offer_summary(o: &crate::enligne::Offer) -> String {
+        o.fields
+            .iter()
+            .filter(|(_, v)| !v.trim().is_empty())
+            .map(|(f, v)| {
+                let label = if o.kind == crate::versions::Kind::Fiche {
+                    Self::field_label(f)
+                } else {
+                    Self::entry_field_label(f)
+                };
+                let v = match f.as_str() {
+                    "arbre" => crate::versions::tree_text(v),
+                    "lignes" => crate::versions::items_text(v),
+                    _ => v.clone(),
+                };
+                let v: String = v.chars().take(160).collect();
+                format!("{label} : {v}")
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     /// What one kind of entry is called in the window's title.
     fn online_kind_label(kind: crate::versions::Kind) -> &'static str {
         use crate::versions::Kind;
@@ -62203,15 +62227,6 @@ impl App {
             return;
         };
         if online.rows_rev != Some(session.edits_rev) {
-            let locals = session.db.offer_locals(online.kind).unwrap_or_default();
-            online.rows = crate::enligne::offers(&session.card_edits, online.kind)
-                .into_iter()
-                .map(|o| {
-                    let here = crate::enligne::here(&o, locals.get(&o.card).map(Vec::as_slice));
-                    (o, here)
-                })
-                .collect();
-            online.rows_rev = Some(session.edits_rev);
             if online.kind == crate::versions::Kind::Texte && online.labels.is_empty() {
                 for d in crate::content::documents() {
                     for (address, _, shipped) in d.phrases {
@@ -62222,6 +62237,21 @@ impl App {
                     }
                 }
             }
+            let kind = online.kind;
+            let labels = &online.labels;
+            let locals = session.db.offer_locals(kind).unwrap_or_default();
+            online.rows = crate::enligne::offers(&session.card_edits, kind)
+                .into_iter()
+                // Une phrase que cette version ne connaît pas ne se prend
+                // pas : elle n'a ici nulle part où s'imprimer.
+                .filter(|o| kind != crate::versions::Kind::Texte || labels.contains_key(&o.name))
+                .map(|o| {
+                    let here = crate::enligne::here(&o, locals.get(&o.card).map(Vec::as_slice));
+                    let summary = Self::offer_summary(&o);
+                    (o, here, summary)
+                })
+                .collect();
+            online.rows_rev = Some(session.edits_rev);
         }
         let kind = online.kind;
         let mut take: Option<usize> = None;
@@ -62289,39 +62319,19 @@ impl App {
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         let mut shown = 0_usize;
-                        for (i, (o, here)) in online.rows.iter().enumerate() {
+                        for (i, (o, here, summary)) in online.rows.iter().enumerate() {
                             if !o.matches(&online.query) {
                                 continue;
                             }
                             shown += 1;
                             ui.horizontal_wrapped(|ui| {
-                                let summary: String = o
-                                    .fields
-                                    .iter()
-                                    .filter(|(_, v)| !v.trim().is_empty())
-                                    .map(|(f, v)| {
-                                        let label = if kind == crate::versions::Kind::Fiche {
-                                            Self::field_label(f)
-                                        } else {
-                                            Self::entry_field_label(f)
-                                        };
-                                        let v = match f.as_str() {
-                                            "arbre" => crate::versions::tree_text(v),
-                                            "lignes" => crate::versions::items_text(v),
-                                            _ => v.clone(),
-                                        };
-                                        let v: String = v.chars().take(160).collect();
-                                        format!("{label} : {v}")
-                                    })
-                                    .collect::<Vec<_>>()
-                                    .join("\n");
                                 let shown = online.labels.get(&o.name).unwrap_or(&o.name);
                                 ui.label(
                                     egui::RichText::new(shown.as_str())
                                         .size(motif::pt(ui, 11.5))
                                         .strong(),
                                 )
-                                .on_hover_text(summary);
+                                .on_hover_text(summary.as_str());
                                 let state = match here {
                                     Here::Absent => tr("online_absent"),
                                     Here::Same => tr("online_same"),

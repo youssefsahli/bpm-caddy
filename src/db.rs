@@ -45490,6 +45490,14 @@ impl Db {
                 continue;
             }
             received += 1;
+            // **Une liste ou une phrase d'une autre officine ne s'applique
+            // pas d'elle-même** : elle porterait ses codes dans la base
+            // d'ici, son nom et son téléphone sur les papiers d'ici. Elle
+            // reste au journal, et « En ligne » la propose — prise ou
+            // comparée d'un geste.
+            if e.kind.is_private() {
+                continue;
+            }
             // A preparation or a protocol: its own table, the same rule.
             if e.kind != crate::versions::Kind::Fiche {
                 applied += usize::from(self.apply_entry_version(e)?);
@@ -54971,8 +54979,19 @@ impl Db {
                 let Some((rank, address, shipped)) = phrase_by_key(card) else {
                     return Ok(None);
                 };
-                let shown = self.content_overrides()?.get(address, shipped).to_owned();
-                Ok(Some((rank, address.to_owned(), vec![("value", shown)])))
+                // **Le texte livré voyage vide**, et non mot pour mot : deux
+                // versions de l'application ne livrent pas toujours la même
+                // phrase, et un retour au texte livré écrit en toutes
+                // lettres posait chez l'autre la formulation d'avant sa
+                // correction.
+                let over = self.content_overrides()?;
+                let shown = over.get(address, shipped);
+                let value = if shown == shipped {
+                    String::new()
+                } else {
+                    shown.to_owned()
+                };
+                Ok(Some((rank, address.to_owned(), vec![("value", value)])))
             }
         }
     }
@@ -55047,9 +55066,8 @@ impl Db {
                 .find(|t| cascade_title(t) == name)
                 .map(|t| (*t).to_owned())
                 .unwrap_or_default(),
-            Kind::Texte => phrase_by_key(name)
-                .map(|(_, _, shipped)| shipped.to_owned())
-                .unwrap_or_default(),
+            // Le texte livré, sous sa marque : vide.
+            Kind::Texte => String::new(),
         }
     }
 
@@ -55387,6 +55405,12 @@ impl Db {
                     return Ok(false);
                 };
                 let day = self.today_iso().unwrap_or_default();
+                // Vide, de part et d'autre, c'est le texte livré d'ici.
+                let expected = if expected.is_empty() {
+                    shipped
+                } else {
+                    expected
+                };
                 self.set_content_in(&address, value, shipped, expected, &day, "")
             }
             _ => Ok(false),
@@ -55594,10 +55618,13 @@ impl Db {
             Kind::Texte => {
                 let over = self.content_overrides()?;
                 for (address, shipped) in phrase_index() {
-                    out.insert(
-                        key(address),
-                        vec![("value", over.get(address, shipped).to_owned())],
-                    );
+                    let shown = over.get(address, shipped);
+                    let value = if shown == *shipped {
+                        String::new()
+                    } else {
+                        shown.to_owned()
+                    };
+                    out.insert(key(address), vec![("value", value)]);
                 }
             }
         }
@@ -58485,10 +58512,10 @@ mod tests {
         assert!(edits.iter().any(|e| e.kind == Kind::Texte));
     }
 
-    /// **Dispositifs, listes de contrôle et cascades voyagent** comme les
-    /// préparations : versionnés ici, reçus ailleurs, créés s'ils
-    /// manquent, et une liste modifiée ensuite ne s'applique que sur les
-    /// lignes qu'elle remplace.
+    /// **Dispositifs, listes de contrôle et cascades voyagent** :
+    /// dispositifs et cascades comme les préparations — reçus, créés s'ils
+    /// manquent ; une liste, elle, s'offre et se prend, et ses lignes
+    /// modifiées ensuite attendent qu'on les adopte.
     #[test]
     fn dispositifs_lists_and_cascades_travel_between_officines() {
         use crate::versions::Kind;
@@ -58547,12 +58574,25 @@ mod tests {
             (got.family.as_str(), got.renewal.as_str()),
             ("Pansement", "Tous les trois jours")
         );
+        // **Une liste reçue ne se crée pas d'elle-même** : elle porte la
+        // façon de faire de l'autre officine. Elle s'offre, et se prend.
+        assert!(!b
+            .checklists()
+            .unwrap()
+            .iter()
+            .any(|x| x.title == "Fermeture du Port"));
+        let offers = crate::enligne::offers(&b.card_edits().unwrap(), Kind::Liste);
+        let offer = offers
+            .iter()
+            .find(|o| o.name == "Fermeture du Port")
+            .unwrap();
+        assert!(b.adopt_offer(offer).unwrap());
         let list = b
             .checklists()
             .unwrap()
             .into_iter()
-            .find(|x| x.title == "Fermeture du Port");
-        let list = list.expect("liste reçue, créée");
+            .find(|x| x.title == "Fermeture du Port")
+            .expect("liste prise");
         assert_eq!(list.subject, "Le soir");
         let items: Vec<(String, String)> = b
             .checklist_items(list.id)
@@ -58569,35 +58609,42 @@ mod tests {
         );
         assert!(b.cascades().unwrap().iter().any(|c| c.text == text));
 
-        // Une ligne de plus, là-bas : elle arrive sur la liste d'ici, qui
-        // dit encore ce qu'elle remplaçait.
+        // Une ligne de plus, là-bas : elle attend ici qu'on l'adopte, même
+        // posée sur les lignes qu'elle remplace ; adoptée, elle s'écrit.
         a.add_checklist_item(l, "Lumières", "").unwrap();
         a.version_shared_entries("AB").unwrap();
         ship(&a, &b);
-        assert_eq!(b.checklist_items(list.id).unwrap().len(), 3);
-
-        // Modifiée ici entre-temps, elle attend : rien n'est écrasé.
-        b.add_checklist_item(list.id, "Ici seulement", "").unwrap();
-        a.add_checklist_item(l, "Volets", "").unwrap();
-        a.version_shared_entries("AB").unwrap();
-        ship(&a, &b);
-        let here: Vec<String> = b
-            .checklist_items(list.id)
+        assert_eq!(b.checklist_items(list.id).unwrap().len(), 2);
+        let (_, name, fields) = b
+            .entry_fields(Kind::Liste, "Fermeture du Port")
             .unwrap()
-            .into_iter()
-            .map(|i| i.text)
-            .collect();
-        assert!(here.contains(&"Ici seulement".to_owned()), "{here:?}");
-        assert!(!here.contains(&"Volets".to_owned()), "{here:?}");
+            .unwrap();
+        let local = |f: &str| fields.iter().find(|(k, _)| *k == f).map(|(_, v)| v.clone());
+        let edits = b.card_edits().unwrap();
+        let waiting = crate::versions::pending_of(&edits, Kind::Liste, &name, &local);
+        assert_eq!(waiting.len(), 1, "{waiting:?}");
+        let shown = local("lignes").unwrap();
+        assert!(b
+            .set_entry_field(
+                Kind::Liste,
+                &name,
+                "lignes",
+                &waiting[0].value,
+                &shown,
+                "CD",
+                false
+            )
+            .unwrap());
+        assert_eq!(b.checklist_items(list.id).unwrap().len(), 3);
         assert!(Kind::Liste.is_private() && !Kind::Dispositif.is_private());
     }
 
-    /// **Une phrase imprimée réécrite voyage**, sous son adresse : reçue,
-    /// elle s'imprime ailleurs ; rendue à son texte livré, ce retour
-    /// voyage aussi. Une phrase réécrite là-bas pendant qu'on la réécrit
-    /// ici attend.
+    /// **Une phrase imprimée réécrite voyage**, sous son adresse, et
+    /// attend ailleurs qu'on l'adopte ; rendue à son texte livré, ce retour
+    /// voyage comme une marque.
     #[test]
     fn a_rewritten_phrase_travels_under_its_address() {
+        use crate::versions::Kind;
         let dir = std::env::temp_dir().join(format!("bpm-caddy-texte-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let _swept = Swept(dir.clone());
@@ -58634,12 +58681,40 @@ mod tests {
             .unwrap());
         assert!(a.version_shared_entries("AB").unwrap() >= 1);
         ship(&a, &b);
+        // **Reçue, elle ne s'imprime pas d'elle-même** : elle porterait
+        // le nom et le téléphone de l'autre officine sur les papiers
+        // d'ici. Elle attend qu'on l'adopte.
+        assert_eq!(
+            b.content_overrides().unwrap().get(&address, shipped),
+            shipped
+        );
+        let adopt = |db: &Db| {
+            let (_, name, fields) = db.entry_fields(Kind::Texte, &address).unwrap().unwrap();
+            let local = |f: &str| fields.iter().find(|(k, _)| *k == f).map(|(_, v)| v.clone());
+            let edits = db.card_edits().unwrap();
+            let waiting = crate::versions::pending_of(&edits, Kind::Texte, &name, &local);
+            assert_eq!(waiting.len(), 1, "{waiting:?}");
+            let shown = local("value").unwrap();
+            assert!(db
+                .set_entry_field(
+                    Kind::Texte,
+                    &name,
+                    "value",
+                    &waiting[0].value,
+                    &shown,
+                    "CD",
+                    false
+                )
+                .unwrap());
+        };
+        adopt(&b);
         assert_eq!(
             b.content_overrides().unwrap().get(&address, shipped),
             "Notre phrase"
         );
 
-        // Rendue au texte livré là-bas : le retour arrive ici.
+        // Rendue au texte livré là-bas : le retour voyage **comme une
+        // marque**, et c'est le texte livré d'ici qu'il rétablit.
         assert!(a
             .set_content(
                 &address,
@@ -58651,25 +58726,18 @@ mod tests {
             )
             .unwrap());
         a.version_shared_entries("AB").unwrap();
+        assert!(a
+            .card_edits()
+            .unwrap()
+            .iter()
+            .any(|e| e.kind == Kind::Texte && e.value.is_empty()));
         ship(&a, &b);
+        adopt(&b);
         assert_eq!(
             b.content_overrides().unwrap().get(&address, shipped),
             shipped
         );
-
-        // Réécrite des deux côtés : celle d'ici reste.
-        assert!(b
-            .set_content(&address, "La nôtre", shipped, shipped, "2026-10-12", "CD")
-            .unwrap());
-        assert!(a
-            .set_content(&address, "La leur", shipped, shipped, "2026-10-12", "AB")
-            .unwrap());
-        a.version_shared_entries("AB").unwrap();
-        ship(&a, &b);
-        assert_eq!(
-            b.content_overrides().unwrap().get(&address, shipped),
-            "La nôtre"
-        );
+        assert!(b.content_overrides().unwrap().is_empty());
         assert!(crate::versions::Kind::Texte.is_private());
     }
 
