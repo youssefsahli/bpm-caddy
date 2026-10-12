@@ -46879,10 +46879,12 @@ impl App {
         let mut out = vec![
             motif::select_width(ui, titles).min(width * 0.7),
             Self::button_width(ui, tr("cascades_new")),
+            // À côté de « Nouvelle » : après le filtre, il passait sous le
+            // pli de la bande, derrière sa barre.
+            Self::button_width(ui, tr("online_open")),
             // Le filtre du choix : cinquante-neuf titres ne se parcourent
             // pas dans une liste déroulante.
             Self::field_width(ui, std::iter::once(tr("cascades_filter_hint"))).min(width * 0.7),
-            Self::button_width(ui, tr("online_open")),
         ];
         if let Some(read) = &session.cascade_read {
             if session.cascade_edit.is_none() {
@@ -46983,19 +46985,19 @@ impl App {
                         if motif::button(ui, tr("cascades_new")).clicked() {
                             make = true;
                         }
-                        motif::field(
-                            ui,
-                            widths[2],
-                            egui::TextEdit::singleline(&mut session.cascade_filter)
-                                .hint_text(motif::hint(tr("cascades_filter_hint"))),
-                        )
-                        .on_hover_text(tr("cascades_filter_tooltip"));
                         if motif::button(ui, tr("online_open"))
                             .on_hover_text(tr("online_open_tooltip"))
                             .clicked()
                         {
                             online = true;
                         }
+                        motif::field(
+                            ui,
+                            widths[3],
+                            egui::TextEdit::singleline(&mut session.cascade_filter)
+                                .hint_text(motif::hint(tr("cascades_filter_hint"))),
+                        )
+                        .on_hover_text(tr("cascades_filter_tooltip"));
                         if let Some(read) = read.as_ref() {
                             let stories = if session.cascade_edit.is_none() {
                                 read.parsed.scenarios.as_slice()
