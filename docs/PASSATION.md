@@ -26,7 +26,9 @@ vaccination, postes) a passé son smoke (1c07199) mais **ne se publie
 pas** : la relecture de ses corrections y a trouvé trois régressions —
 le lot d'une boîte lue à la douchette perdu au registre, le code d'une
 dose corrigée effacé, un DFG arrondi qui taisait une contre-indication
-— corrigées dans la suivante ; les étiquettes intermédiaires n'ont jamais été
+— corrigées dans la suivante ; la 0.407.0 (régressions, rein et calculs,
+programmes extérieurs, déverrouillage, paquets) suit, smoke en cours ;
+les étiquettes intermédiaires n'ont jamais été
 posées, et **la 0.395.0 ne se publie pas** (elle lisait mal les doses de
 charge et les titrations, corrigé dans la 0.396.0).
 

@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.407.0] - 2026-10-12
+
 ### Fixed
 - Fixes to fixes made earlier in this version: the lot of a scanned box
   is written with the product the scan opens (it was tied to the product
