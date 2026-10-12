@@ -51517,11 +51517,18 @@ impl Db {
     /// poste de référence numérote) : l'ordonnancier imprimé les dit au
     /// lieu de les taire.
     pub fn stup_unnumbered(&self, year: i64) -> Result<usize, String> {
+        // Par les numéros donnés **ailleurs** aussi : le poste de référence
+        // numérote les lignes des autres dans `stup_numbers`, et la ligne
+        // brute garde son zéro.
         self.stups
             .query_row(
-                "SELECT COUNT(*) FROM stup_moves
-                 WHERE kind = 'SORTIE' AND ordo_no = 0 AND substr(happened_on, 1, 4) = ?1",
-                [format!("{year:04}")],
+                &format!(
+                    "SELECT COUNT(*) FROM {NUMBERED_MOVES}
+                     WHERE kind = 'SORTIE' AND ordo_no = 0
+                       AND (ordo_year = ?1
+                            OR (ordo_year = 0 AND substr(happened_on, 1, 4) = ?2))"
+                ),
+                rusqlite::params![year, format!("{year:04}")],
                 |r| r.get::<_, i64>(0),
             )
             .map(|n| n.max(0) as usize)
@@ -57419,9 +57426,11 @@ mod tests {
         assert!(!b.numbers_here() && a.numbers_here());
         let out = b.add_stup_move(&sortie).unwrap();
         assert_eq!(b.stup_dispensings(2026).unwrap().len(), 0, "en attente");
+        assert_eq!(b.stup_unnumbered(2026).unwrap(), 1, "et dit en attente");
         ship(&b, &a, "b2");
         assert_eq!(a.number_pending("2026-09-23").unwrap(), 1);
         assert_eq!(a.number_pending("2026-09-23").unwrap(), 0, "une fois");
+        assert_eq!(a.stup_unnumbered(2026).unwrap(), 0, "numérotée ailleurs");
         let numbered = a.stup_dispensings(2026).unwrap();
         assert_eq!(numbered.len(), 1);
         assert_eq!(numbered[0].id, out);
@@ -57431,6 +57440,7 @@ mod tests {
             b.stup_dispensings(2026).unwrap()[0].ordo_no,
             numbered[0].ordo_no
         );
+        assert_eq!(b.stup_unnumbered(2026).unwrap(), 0, "plus en attente");
         // A's own dispensing follows on.
         let own = a
             .add_stup_move(&StupMove {

@@ -75,7 +75,10 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   lots se lisent comme deux délivrances (« rapprochement » à 0 jour) ;
   c'est voulu par un test, mais une délivrance en deux lots y tombe —
   à trancher ; l'ordonnancier imprimé donne le libellé actuel d'un produit
-  renommé ;
+  renommé ; dans un jour, l'ordre du registre suit l'heure d'écriture de
+  chaque poste (`created_at`) : il se fie aux horloges des postes, et un
+  poste en retard de quelques minutes place sa ligne avant une ligne
+  écrite plus tôt ailleurs ;
 - téléphone : la suppression d'un rendez-vous de l'agenda ne compare que
   le titre ; la base peut s'ouvrir deux fois (deux déverrouillages) et
   n'est jamais refermée en quittant par Retour. Le code Kotlin modifié le

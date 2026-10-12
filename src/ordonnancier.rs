@@ -786,18 +786,33 @@ pub fn balance(moves: &[Move]) -> Balance {
 /// doit donc être retrouvée. Une annulation dont la cible n'est pas dans
 /// la tranche ne fait **rien** — ne rien inventer est le seul choix
 /// honnête quand on ne sait pas ce qu'on annule.
-fn apply(b: &mut Balance, m: &Move, all: &[&Move]) {
-    // Sa place dans le registre : `all` est déjà dans l'ordre.
-    let at = |x: &Move| all.iter().position(|o| std::ptr::eq(*o, x));
-    let here = at(m);
+/// Où se trouve chaque ligne, et la première annulation qui la vise —
+/// calculé une fois par lecture : chercher à chaque ligne rendait la
+/// lecture d'un registre de quelques milliers de lignes quadratique, et
+/// la courbe la refait à chaque image.
+struct Places {
+    at: std::collections::HashMap<i64, usize>,
+    first_cancel: std::collections::HashMap<i64, usize>,
+}
+
+fn places(all: &[&Move]) -> Places {
+    let mut at = std::collections::HashMap::new();
+    let mut first_cancel = std::collections::HashMap::new();
+    for (i, m) in all.iter().enumerate() {
+        at.entry(m.seq).or_insert(i);
+        if m.kind == Kind::Annulation {
+            first_cancel.entry(m.cancels).or_insert(i);
+        }
+    }
+    Places { at, first_cancel }
+}
+
+fn apply(b: &mut Balance, here: usize, all: &[&Move], places: &Places) {
+    let m = all[here];
     // **Une ligne déjà annulée plus haut ne compte pas** : quand
     // l'annulation passe avant sa cible (deux postes, deux tranches, ou une
     // cible datée plus tard), la ligne barrée s'appliquait quand même.
-    if m.kind != Kind::Annulation
-        && all
-            .iter()
-            .any(|o| o.kind == Kind::Annulation && o.cancels == m.seq && at(o) < here)
-    {
+    if m.kind != Kind::Annulation && places.first_cancel.get(&m.seq).is_some_and(|&a| a < here) {
         return;
     }
     // Ce qu'une ligne ordinaire fait, `sign` valant −1 pour l'annuler.
@@ -831,12 +846,13 @@ fn apply(b: &mut Balance, m: &Move, all: &[&Move]) {
     match m.kind {
         Kind::Inventaire => b.stock = m.quantity,
         Kind::Annulation => {
-            let Some(target) = all.iter().find(|t| t.seq == m.cancels) else {
+            let Some(&target_at) = places.at.get(&m.cancels) else {
                 return;
             };
+            let target = all[target_at];
             // Sa cible vient plus bas : elle ne comptera pas (voir plus
             // haut), il n'y a rien à défaire.
-            if at(target) > here {
+            if target_at > here {
                 return;
             }
             // **Une ligne ne s'annule qu'une fois.** L'écriture le refuse
@@ -844,9 +860,10 @@ fn apply(b: &mut Balance, m: &Move, all: &[&Move]) {
             // sortie avant de s'être joints écrivent chacun la sienne, et
             // le registre ne retire rien : la seconde ne fait rien, sans
             // quoi la sortie revenait deux fois au stock.
-            let first = all
-                .iter()
-                .any(|o| o.kind == Kind::Annulation && o.cancels == m.cancels && at(o) < here);
+            let first = places
+                .first_cancel
+                .get(&m.cancels)
+                .is_some_and(|&a| a < here);
             if first {
                 return;
             }
@@ -879,7 +896,7 @@ fn apply(b: &mut Balance, m: &Move, all: &[&Move]) {
             if target.kind != Kind::Inventaire {
                 shift(b, target.kind, target.quantity, -1.0);
             }
-            b.stock = stock_without_cancelled(all, m);
+            b.stock = stock_without_cancelled(all, here, places);
         }
         kind => shift(b, kind, m.quantity, 1.0),
     }
@@ -887,29 +904,28 @@ fn apply(b: &mut Balance, m: &Move, all: &[&Move]) {
 
 /// Le stock délivrable juste après `upto`, relu sans aucune des lignes
 /// que les annulations écrites jusque-là désignent — comptages compris.
-fn stock_without_cancelled(all: &[&Move], upto: &Move) -> f64 {
-    let end = all
-        .iter()
-        .position(|o| std::ptr::eq(*o, upto))
-        .unwrap_or(all.len().saturating_sub(1));
+fn stock_without_cancelled(all: &[&Move], end: usize, places: &Places) -> f64 {
     let before: Vec<&Move> = all.iter().take(end + 1).copied().collect();
     let dropped: Vec<i64> = before
         .iter()
         .filter(|m| m.kind == Kind::Annulation)
         .filter_map(|m| {
-            all.iter()
-                .find(|t| {
-                    t.seq == m.cancels && !matches!(t.kind, Kind::Annulation | Kind::Peremption)
-                })
+            places
+                .at
+                .get(&m.cancels)
+                .map(|&t| all[t])
+                .filter(|t| !matches!(t.kind, Kind::Annulation | Kind::Peremption))
                 .map(|t| t.seq)
         })
+        .collect::<std::collections::HashSet<i64>>()
+        .into_iter()
         .collect();
     let mut b = Balance::default();
-    for m in before.iter().take(end) {
+    for (i, m) in before.iter().enumerate().take(end) {
         match m.kind {
             Kind::Annulation if dropped.contains(&m.cancels) => {}
             _ if dropped.contains(&m.seq) => {}
-            _ => apply(&mut b, m, all),
+            _ => apply(&mut b, i, all, places),
         }
     }
     b.stock
@@ -935,10 +951,11 @@ pub fn running(moves: &[Move]) -> Vec<Balance> {
     // Par jour, et dans un jour l'ordre donné (celui de la saisie) : le
     // tri est stable.
     ordered.sort_by(|a, b| a.day.cmp(b.day));
+    let places = places(&ordered);
     let mut b = Balance::default();
     let mut out = Vec::with_capacity(ordered.len());
-    for m in &ordered {
-        apply(&mut b, m, &ordered);
+    for i in 0..ordered.len() {
+        apply(&mut b, i, &ordered, &places);
         out.push(b);
     }
     out
@@ -962,9 +979,10 @@ pub fn waiting_since(moves: &[Move]) -> Option<String> {
     ordered.sort_by(|a, b| a.day.cmp(b.day));
     let mut b = Balance::default();
     let mut since: Option<String> = None;
-    for m in &ordered {
+    let places = places(&ordered);
+    for (i, m) in ordered.iter().enumerate() {
         let was = b.to_destroy;
-        apply(&mut b, m, &ordered);
+        apply(&mut b, i, &ordered, &places);
         if was.abs() <= 1e-6 && b.to_destroy.abs() > 1e-6 {
             since = Some(m.day.to_owned());
         } else if b.to_destroy.abs() <= 1e-6 {
