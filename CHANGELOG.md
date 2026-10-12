@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - « En ligne » buttons count what moved since this post last looked:
   « En ligne (3)… » means three entries are new or were changed by
   another officine. Opening the window marks them seen; the record is
-  kept per post in `layout.toml`, and on the first launch everything
+  kept per post and per base in `layout.toml`, and on the first launch everything
   already in the journal counts as seen.
 - The « En ligne » window lists new entries first, marked « nouvelle »,
   can show only what is missing here (« Absentes ici seulement »), and

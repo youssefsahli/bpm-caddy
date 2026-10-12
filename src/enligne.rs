@@ -34,6 +34,9 @@ pub struct Offer {
     /// L'identifiant de la dernière version venue d'ailleurs : l'offre a
     /// bougé depuis qu'on l'a vue quand il change (`unseen`).
     pub stamp: String,
+    /// Le jour de cette version-là — qui n'est pas `day` : celui-ci compte
+    /// aussi ce qu'on a écrit ici.
+    pub stamp_day: String,
     /// Chaque champ, à sa dernière version — ce que l'entrée est pour le
     /// journal, et ce qu'une adoption écrit.
     pub fields: Vec<(String, String)>,
@@ -62,6 +65,7 @@ pub fn offers(edits: &[Edit], kind: Kind) -> Vec<Offer> {
                     from: Vec::new(),
                     day: String::new(),
                     stamp: String::new(),
+                    stamp_day: String::new(),
                     fields: Vec::new(),
                 });
                 out.len() - 1
@@ -77,6 +81,7 @@ pub fn offers(edits: &[Edit], kind: Kind) -> Vec<Offer> {
                 o.from.push(source.to_owned());
             }
             o.stamp.clone_from(&e.uid);
+            o.stamp_day.clone_from(&e.day);
         }
         if e.day > o.day {
             o.day = e.day.clone();
@@ -115,9 +120,13 @@ pub fn offers(edits: &[Edit], kind: Kind) -> Vec<Offer> {
                     }
                     if old.day > o.day {
                         o.day = old.day;
+                    }
+                    // La dernière version d'ailleurs des deux, jamais
+                    // remplacée par l'absence d'une.
+                    if !old.stamp.is_empty() && (o.stamp.is_empty() || old.stamp_day > o.stamp_day)
+                    {
                         o.stamp = old.stamp;
-                    } else if o.stamp.is_empty() {
-                        o.stamp = old.stamp;
+                        o.stamp_day = old.stamp_day;
                     }
                     for (f, v) in old.fields {
                         if f != "name" && o.field(&f).is_none() {
@@ -345,6 +354,37 @@ mod tests {
             1,
             "repris par B"
         );
+    }
+
+    /// **Une fiche renommée garde la dernière version d'ailleurs** : ce
+    /// qu'on a écrit ici plus tard sous l'ancien nom ne la remplace pas
+    /// par une version plus ancienne, déjà vue.
+    #[test]
+    fn a_renamed_fiche_keeps_its_latest_stamp_from_elsewhere() {
+        let edits = [
+            edit(
+                Kind::Fiche,
+                "Molécule A",
+                "name",
+                "Molécule B",
+                "Port",
+                "2026-09-01",
+            ),
+            edit(
+                Kind::Fiche,
+                "Molécule B",
+                "dci",
+                "molécule",
+                "Lac",
+                "2026-09-03",
+            ),
+            edit(Kind::Fiche, "Molécule A", "class", "AINS", "", "2026-09-05"),
+        ];
+        let o = offers(&edits, Kind::Fiche);
+        assert_eq!(o.len(), 1, "{o:?}");
+        assert_eq!(o[0].stamp, edits[1].uid);
+        let seen = std::collections::BTreeSet::from([edits[0].uid.clone()]);
+        assert_eq!(unseen(&o, &seen), 1, "la version de Lac reste à voir");
     }
 
     /// Un champ que la sorte ne partage pas ne passe pas, même s'il est au

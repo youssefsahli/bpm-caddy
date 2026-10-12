@@ -5508,6 +5508,9 @@ struct Session {
     /// vue sur ce poste (`Layout::online_seen`), et ce qui reste à voir,
     /// par sorte — lu contre `online_fresh_key`, jamais à chaque image.
     online_seen: Option<std::collections::BTreeSet<String>>,
+    /// `online_seen` a changé depuis que `layout.toml` l'a recopié :
+    /// recopié alors seulement, jamais à chaque image.
+    online_seen_dirty: bool,
     online_fresh: std::collections::HashMap<crate::versions::Kind, usize>,
     online_fresh_key: Option<(u64, Option<crate::versions::Kind>)>,
     /// The history window, on this card.
@@ -6490,6 +6493,7 @@ impl Session {
             card_edits: Vec::new(),
             edits_rev: 0,
             online_seen: None,
+            online_seen_dirty: false,
             online_fresh: std::collections::HashMap::new(),
             online_fresh_key: None,
             versions_open: None,
@@ -10784,10 +10788,14 @@ impl Session {
                 stamps.push((kind, o.stamp));
             }
         }
+        if self.online_seen.is_none() {
+            self.online_seen_dirty = true;
+        }
         let seen = self
             .online_seen
             .get_or_insert_with(|| stamps.iter().map(|(_, s)| s.clone()).collect());
         if let Some(open) = open {
+            self.online_seen_dirty = true;
             // Ce qui n'est plus au journal s'oublie : l'ensemble ne grossit
             // pas d'une version à l'autre.
             let current: std::collections::HashSet<&str> =
@@ -10807,6 +10815,14 @@ impl Session {
             }
         }
         self.online_fresh_key = Some(key);
+    }
+
+    /// What names this base in the post's `layout.toml`: its file.
+    fn base_key(&self) -> String {
+        self.db
+            .path()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default()
     }
 
     /// The « En ligne » button's text: with what is new, when there is.
@@ -18894,7 +18910,7 @@ impl App {
                     }
                     // Le bandeau tel que le poste l'a laissé.
                     session.patient_band_folded = layout.patient_band_folded;
-                    session.online_seen.clone_from(&layout.online_seen);
+                    session.online_seen = layout.online_seen.get(&session.base_key()).cloned();
                     state = State::Unlocked(Box::new(session));
                     remember_password = from_keyring;
                 }
@@ -21432,7 +21448,7 @@ impl App {
                         self.config.ui.caisse_expected,
                     );
                     session.patient_band_folded = self.layout.patient_band_folded;
-                    session.online_seen.clone_from(&self.layout.online_seen);
+                    session.online_seen = self.layout.online_seen.get(&session.base_key()).cloned();
                     self.state = State::Unlocked(Box::new(session));
                     if let Some(entry) = keyring_entry() {
                         if self.remember_password {
@@ -80756,10 +80772,17 @@ impl eframe::App for App {
             self.layout.nav_open = Some(self.show_nav);
             self.layout.docs_open = Some(self.show_docs);
             self.layout.side_pane = self.side_pane.clone();
-            if let State::Unlocked(session) = &self.state {
+            if let State::Unlocked(session) = &mut self.state {
                 self.layout.view = session.view.as_key().to_owned();
                 self.layout.patient_band_folded = session.patient_band_folded;
-                self.layout.online_seen.clone_from(&session.online_seen);
+                if session.online_seen_dirty {
+                    if let Some(seen) = &session.online_seen {
+                        self.layout
+                            .online_seen
+                            .insert(session.base_key(), seen.clone());
+                    }
+                    session.online_seen_dirty = false;
+                }
             }
             if self.layout != self.layout_saved {
                 // A drag reports a new width every frame: wait until it
