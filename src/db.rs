@@ -307,7 +307,11 @@ CREATE TABLE IF NOT EXISTS card_edits (
     operator  TEXT NOT NULL DEFAULT '',
     source    TEXT NOT NULL DEFAULT '',
     -- `fiche`, `codex` ou `protocole` : ce que la version modifie.
-    kind      TEXT NOT NULL DEFAULT 'fiche'
+    kind      TEXT NOT NULL DEFAULT 'fiche',
+    -- Quand la ligne a été écrite (ou reçue) ici, à la milliseconde :
+    -- l'ordre de l'historique. L'identifiant ne le donne pas — chaque
+    -- poste numérote dans sa tranche.
+    at        TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS net_records (
     -- Le réseau d'officines (`src/network.rs`) : les enregistrements
@@ -1378,6 +1382,8 @@ const MIGRATIONS: &[&str] = &[
     )",
     // Les versions des préparations et des protocoles — voir `SCHEMA`.
     "ALTER TABLE card_edits ADD COLUMN kind TEXT NOT NULL DEFAULT 'fiche'",
+    // L'ordre de l'historique des versions — voir `SCHEMA`.
+    "ALTER TABLE card_edits ADD COLUMN at TEXT NOT NULL DEFAULT ''",
     // Le réseau d'officines — voir `SCHEMA`.
     "CREATE TABLE IF NOT EXISTS net_records (id TEXT PRIMARY KEY, bytes BLOB NOT NULL)",
     "CREATE TABLE IF NOT EXISTS net_peers (
@@ -42032,6 +42038,10 @@ fn first_db_in(dirs: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
 /// compare-and-set de la base échouaient ainsi dès que deux connexions
 /// écrivaient ensemble (un poste et la sauvegarde du lancement, deux
 /// postes). Immédiate, la seconde attend que la première ait fini.
+/// L'instant d'une écriture, à la milliseconde, en SQL : l'ordre d'un
+/// historique que plusieurs postes écrivent (`card_edits.at`).
+const AT_NOW: &str = "strftime('%Y-%m-%d %H:%M:%f', 'now')";
+
 fn write_tx(conn: &Connection) -> rusqlite::Result<rusqlite::Transaction<'_>> {
     rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
 }
@@ -45182,7 +45192,7 @@ impl Db {
                 .conn
                 .query_row(
                     "SELECT uid FROM card_edits WHERE kind = 'fiche' AND card = ?1 AND field = ?2
-                     ORDER BY id DESC LIMIT 1",
+                     ORDER BY at DESC, id DESC LIMIT 1",
                     (&card, field),
                     |r| r.get(0),
                 )
@@ -45203,8 +45213,8 @@ impl Db {
                     &format!(
                         "INSERT INTO card_edits
                         (id, uid, day, card, card_name, field, value, previous, corrects,
-                         revert, operator, source)
-                     VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, '')",
+                         revert, operator, source, at)
+                     VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, '', {AT_NOW})",
                         next = next_id("card_edits")
                     ),
                     rusqlite::params![
@@ -45257,8 +45267,8 @@ impl Db {
                 &format!(
                     "INSERT INTO card_edits
                     (id, uid, day, card, card_name, field, value, previous, corrects,
-                     revert, operator, source)
-                 VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, ?9, '')",
+                     revert, operator, source, at)
+                 VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, ?9, '', {AT_NOW})",
                     next = next_id("card_edits")
                 ),
                 rusqlite::params![
@@ -45285,7 +45295,7 @@ impl Db {
             .prepare(
                 "SELECT uid, day, card, card_name, field, value, previous, corrects, revert,
                         operator, source, kind
-                 FROM card_edits ORDER BY id",
+                 FROM card_edits ORDER BY at, id",
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
@@ -45330,8 +45340,8 @@ impl Db {
                     &format!(
                         "INSERT OR IGNORE INTO card_edits
                         (id, uid, day, card, card_name, field, value, previous, corrects,
-                         revert, operator, source, kind)
-                     VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                         revert, operator, source, kind, at)
+                     VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, {AT_NOW})",
                         next = next_id("card_edits")
                     ),
                     rusqlite::params![
@@ -54462,8 +54472,8 @@ impl Db {
                 &format!(
                     "INSERT INTO card_edits
                     (id, uid, day, card, card_name, field, value, previous, corrects,
-                     revert, operator, source, kind)
-                 VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, '', ?11)",
+                     revert, operator, source, kind, at)
+                 VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, '', ?11, {AT_NOW})",
                     next = next_id("card_edits")
                 ),
                 rusqlite::params![
@@ -57176,6 +57186,22 @@ mod tests {
         assert!(db.update_drug_by(&after, &before, "CL", false).unwrap());
         let edits = db.card_edits().unwrap();
         assert_eq!(edits.len(), 1, "une version, et pas pour les notes");
+        // **L'historique suit l'heure, pas la tranche** : une ligne d'un
+        // poste à la tranche haute, écrite avant, passe avant.
+        db.conn
+            .execute(
+                "INSERT INTO card_edits (id, uid, day, card, card_name, field, value, at)
+                 VALUES (1000000000000, 'zz:v1', '2026-01-01', 'zzautre', 'Zzautre', 'dci', 'x',
+                         '2000-01-01 00:00:00.000')",
+                [],
+            )
+            .unwrap();
+        let ordered = db.card_edits().unwrap();
+        assert_eq!(ordered.first().map(|e| e.uid.as_str()), Some("zz:v1"));
+        assert_eq!(
+            ordered.last().map(|e| e.uid.as_str()),
+            Some(edits[0].uid.as_str())
+        );
         assert_eq!(edits[0].field, "dosage");
         assert_eq!(edits[0].operator, "CL");
 

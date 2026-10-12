@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   history no longer lists a preparation's versions of the same name (and
   « revenir » no longer wrote them into the card); adopting or reverting
   a protocol tree is written with its version in one transaction.
+- The history of versions follows when each was written or received here,
+  not the posts' number blocks: « garder la mienne » written on the
+  founding post now closes a disagreement received on another post.
 
 ## [0.400.0] - 2026-10-12
 

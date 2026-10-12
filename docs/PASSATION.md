@@ -86,10 +86,8 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   pas d'état « abandonné » — à trancher (le rang ne compterait que les
   actes tenus, ou un état de plus) ;
 - versions entre officines (relevé le 12/10, à reprendre ensemble) :
-  l'historique se range par identifiant, donc par tranche de poste et
-  non par date (« garder la mienne » écrit sur le poste fondateur peut
-  passer avant la version reçue sur un autre, et l'arbitrage ne se ferme
-  pas) ; un poste autre que la référence reçoit sans versionner d'abord
+  l'historique se range maintenant à l'heure d'écriture (`card_edits.at`,
+  12/10) ; un poste autre que la référence reçoit sans versionner d'abord
   ce qu'il a changé, et une modification d'ici peut alors « répondre »
   à une version en attente sans clic ; renommer une fiche, une
   préparation ou un protocole les duplique chez les autres (pas
