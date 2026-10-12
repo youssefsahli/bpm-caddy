@@ -279,11 +279,11 @@ pub fn shortages(events: &[Event], today: &str) -> Vec<Shortage> {
 pub fn newly_short(before: &[Event], after: &[Event], today: &str) -> Vec<String> {
     let known: std::collections::HashSet<String> = shortages(before, today)
         .into_iter()
-        .map(|s| key(&s.product))
+        .map(|s| same_key(&s.product))
         .collect();
     shortages(after, today)
         .into_iter()
-        .filter(|s| !known.contains(&key(&s.product)))
+        .filter(|s| !known.contains(&same_key(&s.product)))
         .map(|s| s.product)
         .collect()
 }
@@ -314,18 +314,18 @@ impl Tried {
 /// souvent fait d'abord, puis le plus récent. **Un historique, pas une
 /// équivalence** — voir l'en-tête.
 pub fn tried(events: &[Event], product: &str) -> Vec<Tried> {
-    let k = key(product);
+    let k = same_key(product);
     let mut out: Vec<Tried> = Vec::new();
     let mut sources: Vec<std::collections::HashSet<String>> = Vec::new();
     for e in standing(events)
         .into_iter()
-        .filter(|e| e.kind == Kind::Substitution && key(&e.product) == k)
+        .filter(|e| e.kind == Kind::Substitution && same_key(&e.product) == k)
     {
-        let other = key(&e.other);
+        let other = same_key(&e.other);
         if other.is_empty() {
             continue;
         }
-        let at = match out.iter().position(|t| key(&t.other) == other) {
+        let at = match out.iter().position(|t| same_key(&t.other) == other) {
             Some(i) => i,
             None => {
                 out.push(Tried {

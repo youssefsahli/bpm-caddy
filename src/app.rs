@@ -75,9 +75,12 @@ fn typed_nir(text: &str) -> String {
         .collect()
 }
 
-/// Vide, ou un NIR dont la clé se vérifie.
+/// Vide, un NIR dont la clé se vérifie, ou ses treize chiffres sans la
+/// clé (un dossier peut ne garder que le corps, voir `vitale::same_nir`).
 fn nir_acceptable(nir: &str) -> bool {
-    nir.is_empty() || crate::vitale::nir_is_valid(nir)
+    nir.is_empty()
+        || crate::vitale::nir_is_valid(nir)
+        || (nir.len() == 13 && crate::vitale::nir_key(nir).is_some())
 }
 
 /// Les champs d'un formulaire de dossier que la frappe n'a pas touchés
@@ -10032,7 +10035,10 @@ impl Session {
         // so the « aucun patient trouvé » branch is the one that shows —
         // **nom et prénom**, sans quoi un parent ou un frère au même nom
         // remplissait la liste, et le formulaire pré-rempli ne venait pas.
-        self.query = format!("{} {}", who.surname.trim(), who.given.trim())
+        // Le premier prénom seul : « JEAN PIERRE » sur la carte trouve
+        // encore le « Jean » du dossier.
+        let first = who.given.split_whitespace().next().unwrap_or("");
+        self.query = format!("{} {}", who.surname.trim(), first)
             .trim()
             .to_owned();
         self.selected = 0;
@@ -11378,7 +11384,14 @@ impl Session {
                 .filter_map(|p| {
                     let by_birth = born.as_deref().is_some_and(|b| p.birth_date == b);
                     let by_nir = digits.len() >= 13 && crate::vitale::same_nir(&p.nir, &digits);
-                    let by_phone = digits.len() >= 4 && phone_digits(&p.phone).contains(&wanted);
+                    // Moins de quatre chiffres, le numéro se commence : la
+                    // lecture d'avant, éparse, les trouve encore pendant
+                    // qu'on tape (« 06 »).
+                    let by_phone = if digits.len() >= 4 {
+                        phone_digits(&p.phone).contains(&wanted)
+                    } else {
+                        !p.phone.is_empty() && fuzzy::score(q, &p.phone).is_some()
+                    };
                     match (by_nir, by_birth, by_phone) {
                         (true, ..) => Some((3, p)),
                         (_, true, _) => Some((2, p)),

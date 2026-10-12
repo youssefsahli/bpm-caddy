@@ -42045,22 +42045,32 @@ fn first_db_in(dirs: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
 /// compare-and-set de la base échouaient ainsi dès que deux connexions
 /// écrivaient ensemble (un poste et la sauvegarde du lancement, deux
 /// postes). Immédiate, la seconde attend que la première ait fini.
-/// La première case de la ligne `row` d'une table de référence livrée.
+/// L'étiquette de la ligne `row` d'une table de référence livrée : sa
+/// première case, suivie de « #n » quand la même première case revient
+/// plus haut (la table des AVK en a quatre « Surdosage asymptomatique,
+/// cible 2 à 3 ») — une étiquette ne désigne qu'une ligne.
 fn table_row_label(table_key: &str, row: usize) -> Option<String> {
-    crate::tables::TABLES
+    let table = crate::tables::TABLES
         .iter()
-        .find(|t| t.short == table_key)
-        .and_then(|t| t.rows.get(row))
-        .and_then(|r| r.first())
-        .map(|s| (*s).to_owned())
+        .find(|t| t.short == table_key)?;
+    let first = *table.rows.get(row)?.first()?;
+    let before = table.rows[..row]
+        .iter()
+        .filter(|r| r.first() == Some(&first))
+        .count();
+    Some(if before == 0 {
+        first.to_owned()
+    } else {
+        format!("{first} #{before}")
+    })
 }
 
-/// La ligne d'une table livrée dont la première case est `label`.
+/// La ligne d'une table livrée qui porte l'étiquette `label`.
 fn table_row_of(table_key: &str, label: &str) -> Option<usize> {
-    crate::tables::TABLES
+    let table = crate::tables::TABLES
         .iter()
-        .find(|t| t.short == table_key)
-        .and_then(|t| t.rows.iter().position(|r| r.first() == Some(&label)))
+        .find(|t| t.short == table_key)?;
+    (0..table.rows.len()).find(|&i| table_row_label(table_key, i).as_deref() == Some(label))
 }
 
 /// L'instant d'une écriture, à la milliseconde, en SQL : l'ordre d'un
@@ -52485,8 +52495,7 @@ impl Db {
         self.conn
             .execute(
                 "DELETE FROM table_cells WHERE table_key = ?1 AND col = ?3
-                   AND ((row = ?2 AND row_label IN ('', ?4))
-                        OR (row_label = ?4 AND ?4 <> ''))",
+                   AND (row = ?2 OR (row_label = ?4 AND ?4 <> ''))",
                 (table_key, row as i64, col as i64, &label),
             )
             .map_err(|e| e.to_string())?;
@@ -52532,20 +52541,11 @@ impl Db {
                 }
             }
         }
-        // Descendre d'abord ce qui va le plus bas : une suite décalée
-        // d'une ligne se range sans collision.
-        moves.sort_by_key(|m| std::cmp::Reverse(m.1));
+        // Tout relever, tout effacer, puis tout réécrire : rangés un à un,
+        // une ligne qui remontait tombait sur une autre pas encore partie,
+        // et la valeur se perdait.
+        let mut carried: Vec<(i64, i64, String, String)> = Vec::new();
         for (from, to, col) in moves {
-            self.conn
-                .execute(
-                    "DELETE FROM table_cells WHERE table_key = ?1 AND row = ?2 AND col = ?3
-                       AND row_label = ''",
-                    (table_key, to, col),
-                )
-                .map_err(|e| e.to_string())?;
-            // Effacée puis réécrite, et non renumérotée : ce que les
-            // postes se transmettent désigne une ligne par sa clé, et une
-            // clé qui change sous elle ne se suivrait pas.
             let moved: Option<(String, String)> = self
                 .conn
                 .query_row(
@@ -52555,18 +52555,31 @@ impl Db {
                     |r| Ok((r.get(0)?, r.get(1)?)),
                 )
                 .ok();
-            let Some((value, label)) = moved else {
-                continue;
-            };
+            if let Some((value, label)) = moved {
+                carried.push((to, col, value, label));
+            }
+            // Effacée puis réécrite, et non renumérotée : ce que les
+            // postes se transmettent désigne une ligne par sa clé, et une
+            // clé qui change sous elle ne se suivrait pas.
             self.conn
                 .execute(
                     "DELETE FROM table_cells WHERE table_key = ?1 AND row = ?2 AND col = ?3",
                     (table_key, from, col),
                 )
                 .map_err(|e| e.to_string())?;
+        }
+        for (to, col, value, label) in carried {
+            // Ce qui tient la place sans étiquette, ou une étiquette qui ne
+            // désigne plus rien, cède à la réécriture qui y revient.
             self.conn
                 .execute(
-                    "INSERT OR IGNORE INTO table_cells (table_key, row, col, value, row_label)
+                    "DELETE FROM table_cells WHERE table_key = ?1 AND row = ?2 AND col = ?3",
+                    (table_key, to, col),
+                )
+                .map_err(|e| e.to_string())?;
+            self.conn
+                .execute(
+                    "INSERT INTO table_cells (table_key, row, col, value, row_label)
                      VALUES (?1, ?2, ?3, ?4, ?5)",
                     (table_key, to, col, &value, &label),
                 )
@@ -63695,6 +63708,23 @@ mod tests {
         assert_eq!(db.class_note("").unwrap(), "");
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// Une étiquette ne désigne qu'une ligne, et la retrouve.
+    #[test]
+    fn every_table_line_has_its_own_label() {
+        for t in crate::tables::TABLES {
+            let mut seen = std::collections::HashSet::new();
+            for i in 0..t.rows.len() {
+                let label = super::table_row_label(t.short, i).unwrap();
+                assert!(
+                    seen.insert(label.clone()),
+                    "{} : {label} deux fois",
+                    t.short
+                );
+                assert_eq!(super::table_row_of(t.short, &label), Some(i));
+            }
+        }
     }
 
     #[test]
