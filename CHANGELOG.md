@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.412.0] - 2026-10-12
+
 ### Changed
 - **Batch dispensing sheet.** A missing or unreadable ordonnancier
   number, or one typed on two lines, is now said beside the line it
