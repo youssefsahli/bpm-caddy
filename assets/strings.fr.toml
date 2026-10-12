@@ -125,7 +125,7 @@ nav_letter_count = "{} fiches"
 # --- Carte Vitale ---
 config_unreadable = "Le fichier de réglages de ce poste ({}) ne se lit pas : {}. Rien n'y est réécrit tant qu'il n'est pas corrigé ; l'application démarre sur les réglages par défaut, le chemin de la base compris."
 vitale_read = "Carte Vitale"
-vitale_read_tooltip = "Lire la carte présentée : ouvre la fiche du patient, ou la crée pré-remplie"
+vitale_read_tooltip = "Lire la carte présentée : ouvre la fiche du patient (ou la liste si le numéro est partagé), ou la crée pré-remplie"
 vitale_pick = "Sur la carte :"
 vitale_no_birth = "Date de naissance non lue sur la carte"
 vitale_new = "Aucune fiche avec ce numéro : la création est pré-remplie, vérifiez avant d'enregistrer."

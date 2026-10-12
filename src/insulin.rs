@@ -7,7 +7,8 @@
 //! n'en a pas. C'est ce pic qui fait l'hypoglycémie de fin d'après-midi,
 //! et c'est un dessin qui l'explique, pas une phrase. La seconde est
 //! l'**arithmétique** de l'adaptation : règle des 500 pour les glucides,
-//! règle des 1800 pour la correction, titration de la basale.
+//! règle des 1800 pour la correction (450 et 1500 pour l'insuline
+//! humaine), titration de la basale.
 //!
 //! Pur et testé, sans horloge : le module donne une courbe et des
 //! nombres, l'application les dessine. Rien ici ne décide à la place du

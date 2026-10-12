@@ -806,7 +806,8 @@ par groupe, **refusées au-delà** — jamais mises à la place d'une autre ;
 une attente de cinq minutes, que le poste renouvelle toutes les quatre
 (une traduction d'adresse d'opérateur oublie une connexion muette) ;
 trente appels par adresse et par minute ; chaque conversation dix
-minutes, 256 Mio par sens, 90 s de silence. Le poste qui attend reçoit
+minutes, 256 Mio par sens, 90 s de silence des deux côtés (un relais
+plein lâche d'abord les attentes échues). Le poste qui attend reçoit
 une conversation relayée à la fois, au plus douze par minute, d'une
 minute chacune : qui connaît le nom du groupe ne tient pas son fil. Un
 inconnu qui se présenterait comme poste du groupe n'obtiendrait que
@@ -838,7 +839,8 @@ par officine devrait relayer : l'offre est un réglage de l'officine.
    font plus : le premier mot, § 7.8.)
 3. **L'ordre des lignes d'un même jour** se lit encore par numéro dans
    quelques vues ; entre deux postes, le bloc du second passe après celui
-   du premier.
+   du premier. Le registre des stupéfiants et l'historique des versions
+   suivent désormais l'heure d'écriture (`created_at`, `card_edits.at`).
 4. **Un relais qui garde** (une boîte chez une autre officine, pour
    échanger sans que les deux bouts soient en ligne en même temps) : pas
    construit, et pas sans décision — l'officine qui garderait, même

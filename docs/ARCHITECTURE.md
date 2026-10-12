@@ -324,12 +324,14 @@ The one that was missing — « combien de fois un autre poste avait
   shrank and a log somebody emptied read alike; it runs once per
   session, at unlock, because a deletion that repeats all day is a
   deletion nobody looks at. `the_access_log_is_only_added_to_and_purged_once`
-  reads `db.rs` and counts: exactly one deletion, no update. Three
+  reads `db.rs` and counts: exactly one deletion, no update. Four
   gestures are traced — opening a file, at the single door the twenty
-  call sites go through, exporting, and a console script reading the
+  call sites go through, exporting, a console script reading the
   patient list (`Act::Console`, file 0: it returns every name, and
   `print(patients())` was a way to read the whole base without a
-  line) — and what is **not** traced is
+  line), and a file named in a message to another officine
+  (`Act::Transmis`); an act a newer version wrote is counted apart
+  (`Act::Autre`) — and what is **not** traced is
   written where one would look: printing, because the one function all
   twenty-one printables pass through holds neither the operator nor the
   file. And the **report**: `bpm-caddy audit [--jours N]`, a decision
@@ -847,7 +849,8 @@ The one that was missing — « combien de fois un autre poste avait
   ordonnance runs out — pure, tested, no internal clock; the forfaits
   live in `[locations]` of config.toml and ship empty),
   `src/insulin.rs` (each insulin's action profile as a curve, and the
-  500 / 1800 / titration rules — static, pure, tested),
+  500 / 1800 rules, 450 / 1500 for human insulin, and the titration —
+  static, pure, tested),
   `src/release.rs` (what version this is, and — only on a button press,
   from Options › À propos — what GitHub says the newest release is; the
   **first** of the two network requests in the application — the other
@@ -2156,8 +2159,9 @@ add clicking and typing; it is not the price of entry.
   if somebody writes during the export. **Import overwrites nothing**:
   it refuses a directory that already holds one of the three names,
   writes beside instead, and the base points at it on restart — the
-  same arrangement as « Déplacer la base vers… », and the only one that
-  does not close a connection under somebody's fingers.
+  only arrangement that does not close a connection under somebody's
+  fingers. (« Déplacer la base vers… » no longer waits for a restart: it
+  locks this post and reopens it on the copy.)
 - **SQLite never shrinks a file.** Deleting 200 pieces frees pages and
   leaves the file at 56 MB. Only `VACUUM` gives the disk back — that is
   `Job::Compact`, which also moves any legacy bytes out and sweeps
@@ -2230,7 +2234,8 @@ add clicking and typing; it is not the price of entry.
 ## Env hooks (demo / e2e / screenshots)
 
 - `BPM_CADDY_DB=<path>` — database path override
-- `BPM_CADDY_PASSWORD=<pw>` — unlock silently at startup
+- `BPM_CADDY_PASSWORD=<pw>` — unlock silently at startup (not when
+  config.toml does not read)
 - `BPM_CADDY_NO_KEYRING=1` — skip the OS credential manager
 - `BPM_CADDY_START_VIEW=verrou|search|dashboard|patient|patient_edit|patient_new|drugs|drug_card|agenda|agenda_day|
   agenda_filtre|agenda_month|planning|planning_mois|protocols|protocol_open|template|options|about|tables|
@@ -2735,7 +2740,9 @@ a count. Computed once when the card opens, like the prose links.
 **Two lines on one cascade** (`cascade::meetings`, the crossing's
 chapter `DdiSection::Cascades`). For each shipped cascade, every pair of
 lines whose DCI — whole, or one component of a « A + B » association,
-never a substring — names two different molecules is settled three
+never a substring; a whole DCI the cascade names answers alone, and the
+naloxone of an association (Targinact, Suboxone) is not carried — names
+two different molecules is settled three
 times: each alone, then both. `together` keeps an effect only when the
 pair moves it otherwise than either alone: **opposes** (two contrary
 senses, or one that brings back toward rest what the other moved —
