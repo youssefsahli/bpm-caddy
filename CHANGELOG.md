@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.400.0] - 2026-10-12
+
 ### Fixed
 - Another post's write no longer undoes or erases what is on screen: an
   act's date, day held, initials or hour that was not touched follows the

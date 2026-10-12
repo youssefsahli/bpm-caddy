@@ -7,7 +7,9 @@
 La 0.397.0 est publiée (étiquette `v0.397.0` poussée le 11/10, versions
 construites par la CI) ; la 0.398.0 (relectures du 11 et du 12/10) a passé
 smoke et CI, son étiquette reste à poser ; la 0.399.0 (copies de la base)
-suit, étiquette à poser une fois son smoke passé ; les étiquettes intermédiaires n'ont jamais été
+a passé son smoke (fa33b51) ; la 0.400.0 (relecture et frappe, registre,
+actes) suit, étiquette à poser une fois son smoke passé — c'est la plus
+récente qui se publie, les autres n'ont pas besoin d'étiquette ; les étiquettes intermédiaires n'ont jamais été
 posées, et **la 0.395.0 ne se publie pas** (elle lisait mal les doses de
 charge et les titrations, corrigé dans la 0.396.0).
 
