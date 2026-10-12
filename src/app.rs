@@ -56,6 +56,82 @@ fn adopt_officine(config: &mut Config, session: &mut Session) {
     }
 }
 
+/// Œ et æ écrits en deux lettres : « Lecœur » se cherche « lecoeur », et
+/// l'inverse. La recherche floue compare lettre à lettre, et la ligature
+/// n'en était aucune.
+fn ligatures(text: &str) -> String {
+    text.replace('œ', "oe")
+        .replace('Œ', "OE")
+        .replace('æ', "ae")
+        .replace('Æ', "AE")
+}
+
+/// Un NIR tel qu'on le tape, rangé : sans espaces, points ni tirets —
+/// tapé avec, il ne se retrouvait plus à la lecture de la carte.
+fn typed_nir(text: &str) -> String {
+    text.chars()
+        .filter(|c| !matches!(c, ' ' | '.' | '-' | '\u{a0}'))
+        .map(|c| c.to_ascii_uppercase())
+        .collect()
+}
+
+/// Vide, ou un NIR dont la clé se vérifie.
+fn nir_acceptable(nir: &str) -> bool {
+    nir.is_empty() || crate::vitale::nir_is_valid(nir)
+}
+
+/// Les champs d'un formulaire de dossier que la frappe n'a pas touchés
+/// (ils disent encore `old`) prennent la valeur de `new`.
+fn follow_untouched(form: &mut PatientForm, old: &Patient, new: &Patient) {
+    let pairs: [(&mut String, &str, &str); 11] = [
+        (&mut form.last_name, &old.last_name, &new.last_name),
+        (&mut form.first_name, &old.first_name, &new.first_name),
+        (&mut form.phone, &old.phone, &new.phone),
+        (&mut form.notes, &old.notes, &new.notes),
+        (&mut form.physician, &old.physician, &new.physician),
+        (&mut form.email, &old.email, &new.email),
+        (&mut form.address, &old.address, &new.address),
+        (&mut form.situation, &old.situation, &new.situation),
+        (&mut form.nir, &old.nir, &new.nir),
+        (&mut form.regime, &old.regime, &new.regime),
+        (&mut form.sex, &old.sex, &new.sex),
+    ];
+    for (field, was, now) in pairs {
+        if field.as_str() == was {
+            *field = now.to_owned();
+        }
+    }
+    if form.birth_date == db::format_french_date(&old.birth_date) {
+        form.birth_date = db::format_french_date(&new.birth_date);
+    }
+}
+
+/// Le dossier d'une même personne : nom et prénom repliés (casse,
+/// accents, traits d'union, dans un ordre ou l'autre) et même naissance.
+/// Sans date de naissance, les noms seuls ne suffisent pas à le dire.
+fn same_person<'a>(
+    patients: &'a [Patient],
+    last: &str,
+    first: &str,
+    birth: &str,
+) -> Option<&'a Patient> {
+    if birth.is_empty() {
+        return None;
+    }
+    let fold = |s: &str| {
+        fuzzy::sort_key(&s.replace('-', " "))
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let (l, f) = (fold(last), fold(first));
+    patients.iter().find(|p| {
+        p.birth_date == birth
+            && ((fold(&p.last_name) == l && fold(&p.first_name) == f)
+                || (fold(&p.last_name) == f && fold(&p.first_name) == l))
+    })
+}
+
 /// Les champs d'un acte que la liste tape, dans l'ordre de
 /// `keep_act_edits`.
 const ACT_DATE: usize = 0;
@@ -5956,6 +6032,9 @@ struct PatientForm {
     /// correction du collègue était réécrite sans un mot.
     base: Option<Patient>,
     error: Option<String>,
+    /// Le dossier déjà là sous ce nom et cette naissance, déjà montré :
+    /// le second clic crée quand même (un homonyme existe).
+    duplicate_shown: Option<i64>,
 }
 
 impl Session {
@@ -6924,8 +7003,9 @@ impl Session {
             }
             return menu;
         }
+        let lq = ligatures(q);
         for (p, (k1, k2)) in self.patients.iter().zip(self.search_keys.iter()) {
-            let sc = fuzzy::score(q, k1).max(fuzzy::score(q, k2));
+            let sc = fuzzy::score(&lq, k1).max(fuzzy::score(&lq, k2));
             if let Some(sc) = sc {
                 push(
                     sc + PATIENT_BONUS,
@@ -9949,8 +10029,12 @@ impl Session {
         }
         // Nobody with that NIR: the creation form opens already filled,
         // and the operator confirms it. The search box carries the name
-        // so the « aucun patient trouvé » branch is the one that shows.
-        self.query = who.surname.trim().to_owned();
+        // so the « aucun patient trouvé » branch is the one that shows —
+        // **nom et prénom**, sans quoi un parent ou un frère au même nom
+        // remplissait la liste, et le formulaire pré-rempli ne venait pas.
+        self.query = format!("{} {}", who.surname.trim(), who.given.trim())
+            .trim()
+            .to_owned();
         self.selected = 0;
         self.new_patient = Some(PatientForm {
             last_name: who.surname.trim().to_owned(),
@@ -11226,8 +11310,8 @@ impl Session {
             .iter()
             .map(|p| {
                 (
-                    format!("{} {}", p.first_name, p.last_name),
-                    format!("{} {}", p.last_name, p.first_name),
+                    ligatures(&format!("{} {}", p.first_name, p.last_name)),
+                    ligatures(&format!("{} {}", p.last_name, p.first_name)),
                 )
             })
             .collect();
@@ -11264,21 +11348,57 @@ impl Session {
     }
 
     /// Fuzzy-rank patients against the query (best first, capped at 20).
+    ///
+    /// **Des chiffres se lisent entiers** : un téléphone qui les contient,
+    /// une date de naissance (« 030758 », « 03/07/1958 »), un NIR. Lus en
+    /// correspondance éparse, « 030758 » trouvait le 06 30 47 05 58 et
+    /// jamais la personne née le 3 juillet 1958 — et Entrée ouvrait le
+    /// mauvais dossier.
     fn results(&self) -> Vec<&Patient> {
+        let q = self.query.trim();
+        let numeric = !q.is_empty()
+            && q.chars().any(|c| c.is_ascii_digit())
+            && q.chars()
+                .all(|c| c.is_ascii_digit() || matches!(c, ' ' | '.' | '/' | '-' | '+'));
+        if numeric {
+            let digits: String = q.chars().filter(char::is_ascii_digit).collect();
+            let phone_digits = |phone: &str| {
+                let d: String = phone.chars().filter(char::is_ascii_digit).collect();
+                // « +33 6… » et « 06… » sont le même numéro.
+                match d.strip_prefix("33") {
+                    Some(rest) if phone.trim_start().starts_with('+') => format!("0{rest}"),
+                    _ => d,
+                }
+            };
+            let wanted = phone_digits(q);
+            let born = db::parse_birth_date(q, &self.today).ok();
+            let mut scored: Vec<(i32, &Patient)> = self
+                .patients
+                .iter()
+                .filter_map(|p| {
+                    let by_birth = born.as_deref().is_some_and(|b| p.birth_date == b);
+                    let by_nir = digits.len() >= 13 && crate::vitale::same_nir(&p.nir, &digits);
+                    let by_phone = digits.len() >= 4 && phone_digits(&p.phone).contains(&wanted);
+                    match (by_nir, by_birth, by_phone) {
+                        (true, ..) => Some((3, p)),
+                        (_, true, _) => Some((2, p)),
+                        (.., true) => Some((1, p)),
+                        _ => None,
+                    }
+                })
+                .collect();
+            scored.sort_by_key(|&(s, _)| std::cmp::Reverse(s));
+            return scored.into_iter().take(20).map(|(_, p)| p).collect();
+        }
+        let query = ligatures(&self.query);
         let mut scored: Vec<(i32, &Patient)> = self
             .patients
             .iter()
             .zip(self.search_keys.iter())
             .filter_map(|(p, (k1, k2))| {
-                let a = fuzzy::score(&self.query, k1);
-                let b = fuzzy::score(&self.query, k2);
-                // Digits find patients by phone number too.
-                let c = if p.phone.is_empty() {
-                    None
-                } else {
-                    fuzzy::score(&self.query, &p.phone)
-                };
-                a.max(b).max(c).map(|s| (s, p))
+                let a = fuzzy::score(&query, k1);
+                let b = fuzzy::score(&query, k2);
+                a.max(b).map(|s| (s, p))
             })
             .collect();
         scored.sort_by_key(|&(s, _)| std::cmp::Reverse(s));
@@ -21067,12 +21187,36 @@ impl App {
                         if form.last_name.trim().is_empty() || form.first_name.trim().is_empty() {
                             return Err(tr("form_names_required").to_owned());
                         }
+                        let nir = typed_nir(&form.nir);
+                        if !nir_acceptable(&nir) {
+                            return Err(tr("patient_nir_invalid").to_owned());
+                        }
+                        // **Un dossier de plus pour la même personne se dit
+                        // d'abord** : une faute de frappe dans la recherche
+                        // ouvrait le formulaire, et le second dossier se
+                        // créait sans un mot. Le second clic crée quand
+                        // même : un homonyme né le même jour existe.
+                        if let Some(same) =
+                            same_person(&session.patients, &form.last_name, &form.first_name, &iso)
+                        {
+                            if form.duplicate_shown != Some(same.id) {
+                                form.duplicate_shown = Some(same.id);
+                                return Err(trf(
+                                    "patient_duplicate",
+                                    format!(
+                                        "{} {}",
+                                        same.last_name.to_uppercase(),
+                                        same.first_name
+                                    ),
+                                ));
+                            }
+                        }
                         session.db.add_patient_with_nir(
                             form.last_name.trim(),
                             form.first_name.trim(),
                             &iso,
                             &form.sex,
-                            &form.nir,
+                            &nir,
                         )
                     });
                     match outcome {
@@ -30422,6 +30566,12 @@ impl App {
                     if form.last_name.trim().is_empty() || form.first_name.trim().is_empty() {
                         return Err(tr("form_names_required").to_owned());
                     }
+                    // Un NIR changé se vérifie ; celui qui était déjà là, même
+                    // faux, n'empêche pas de corriger le reste.
+                    let nir = typed_nir(&form.nir);
+                    if nir != typed_nir(&patient.nir) && !nir_acceptable(&nir) {
+                        return Err(tr("patient_nir_invalid").to_owned());
+                    }
                     let updated = Patient {
                         id: patient.id,
                         last_name: form.last_name.trim().to_owned(),
@@ -30433,7 +30583,7 @@ impl App {
                         email: form.email.trim().to_owned(),
                         address: form.address.trim().to_owned(),
                         situation: form.situation.trim().to_owned(),
-                        nir: form.nir.trim().to_owned(),
+                        nir,
                         regime: form.regime.trim().to_owned(),
                         sex: form.sex.clone(),
                         // Not on the identity form: kept as it is.
@@ -30478,7 +30628,13 @@ impl App {
                         if let Some(form) = &mut session.edit_patient {
                             form.error = Some(said);
                             // Ce que l'écran montre désormais : le prochain
-                            // enregistrement se compare à lui.
+                            // enregistrement se compare à lui. Et ce qu'on
+                            // n'a pas touché prend la valeur relue : gardé,
+                            // le second enregistrement réécrivait l'ancien
+                            // téléphone par-dessus la correction du collègue.
+                            if let (Some(old), Some(new)) = (form.base.clone(), fresh.as_ref()) {
+                                follow_untouched(form, &old, new);
+                            }
                             form.base = fresh;
                         }
                     }
@@ -31117,6 +31273,7 @@ impl App {
             sex: patient.sex.clone(),
             base: Some(patient.clone()),
             error: None,
+            duplicate_shown: None,
         });
     }
 
@@ -91512,6 +91669,84 @@ mod tests {
         assert_eq!(t("", "10h"), Err("agenda_end_before"));
     }
 
+    /// Un NIR tapé avec des points se range sans, et sa clé se vérifie.
+    #[test]
+    fn a_typed_nir_is_tidied_and_its_key_checked() {
+        assert_eq!(super::typed_nir("1 55 08 75 116 001 25"), "155087511600125");
+        assert_eq!(super::typed_nir("1.55.08-75"), "1550875");
+        assert!(super::nir_acceptable(""));
+        assert!(super::nir_acceptable(&super::typed_nir(
+            "1 55 08 75 116 001 25"
+        )));
+        assert!(!super::nir_acceptable("155087511600126"), "clé fausse");
+        assert!(
+            !super::nir_acceptable("15508751160012"),
+            "quatorze chiffres"
+        );
+    }
+
+    /// Le même nom et la même naissance, quelle qu'en soit l'écriture,
+    /// désignent un dossier qui existe déjà.
+    #[test]
+    fn a_second_file_for_one_person_is_noticed() {
+        let p = crate::db::Patient {
+            id: 7,
+            last_name: "Dupont-Martin".to_owned(),
+            first_name: "Hélène".to_owned(),
+            birth_date: "1952-09-27".to_owned(),
+            ..crate::db::Patient::default()
+        };
+        let list = [p];
+        let same = |l: &str, f: &str, b: &str| super::same_person(&list, l, f, b).map(|p| p.id);
+        assert_eq!(same("DUPONT MARTIN", "helene", "1952-09-27"), Some(7));
+        assert_eq!(
+            same("Hélène", "Dupont-Martin", "1952-09-27"),
+            Some(7),
+            "inversés"
+        );
+        assert_eq!(same("Dupont-Martin", "Hélène", "1952-09-28"), None);
+        assert_eq!(same("Dupont-Martin", "Hélène", ""), None);
+    }
+
+    /// **Des chiffres se cherchent entiers** : une naissance, un
+    /// téléphone, un NIR — pas une suite éparse dans un numéro.
+    #[test]
+    fn digits_find_a_birth_a_phone_or_a_nir_whole() {
+        let (mut s, _swept) = scratch_session("search_digits");
+        let born = s.db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let other = s.db.add_patient("Martin", "Claire", "1970-01-01").unwrap();
+        let p =
+            s.db.patients()
+                .unwrap()
+                .into_iter()
+                .find(|p| p.id == other)
+                .unwrap();
+        let mut with = p.clone();
+        with.phone = "06 30 47 05 58".to_owned();
+        with.nir = "270017511600139".to_owned();
+        assert!(s.db.update_patient(&with, &p).unwrap());
+        s.set_patients(s.db.patients().unwrap());
+        let ids = |s: &mut Session, q: &str| {
+            s.query = q.to_owned();
+            s.results().iter().map(|p| p.id).collect::<Vec<_>>()
+        };
+        let by_birth = ids(&mut s, "030758");
+        assert!(
+            by_birth.contains(&born) && !by_birth.contains(&other),
+            "la naissance, pas le 06 30 47 05 58"
+        );
+        assert!(ids(&mut s, "03/07/1958").contains(&born));
+        assert_eq!(ids(&mut s, "0630"), [other]);
+        assert_eq!(ids(&mut s, "+33 6 30 47"), [other]);
+        assert_eq!(ids(&mut s, "2700175116001"), [other], "le NIR");
+        assert!(ids(&mut s, "999999").is_empty());
+        // Une ligature se cherche en deux lettres, et l'inverse.
+        let heart = s.db.add_patient("Lecœur", "Anne", "1980-02-02").unwrap();
+        s.set_patients(s.db.patients().unwrap());
+        assert!(ids(&mut s, "lecoeur").contains(&heart));
+        assert!(ids(&mut s, "lecœur").contains(&heart));
+    }
+
     /// **La fin d'un poste qui revient** : illisible, elle est refusée
     /// (elle valait « sans fin ») ; sans année et avant le début, c'est
     /// l'an prochain ; avant le début avec son année, refusée.
@@ -91656,6 +91891,13 @@ mod tests {
             !s.db.update_patient(&mine, &base).unwrap(),
             "refusé : périmé"
         );
+        // Après le refus, le champ qu'on n'a pas touché prend la valeur
+        // relue, celui qu'on a tapé reste.
+        let mut form = s.edit_patient.clone().unwrap();
+        form.address = "1 rue Neuve".to_owned();
+        super::follow_untouched(&mut form, &opened, &theirs);
+        assert_eq!(form.phone, "0622");
+        assert_eq!(form.address, "1 rue Neuve");
     }
 
     /// **Une saisie illisible n'est pas un zéro**, au fond laissé et à

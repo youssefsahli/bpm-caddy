@@ -46,6 +46,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   running when the session locks is stopped; its access-log line names
   whoever started it; arrays and maps are bounded at a hundred thousand
   elements.
+- Patient search: digits are read whole — a birth date (« 030758 »), a
+  phone number (« +33 6… » and « 06… » alike) or a NIR — instead of a
+  scattered sequence (« 030758 » found the 06 30 47 05 58 and never the
+  person born on 3 July 1958); « Lecœur » is found by « lecoeur » and the
+  other way round.
+- New file: one with the same names (any case, accents, hyphens, order)
+  and birth date asks a second click first; a NIR typed with spaces,
+  dots or dashes is stored without them, and one whose key does not
+  check is refused (an existing one, even wrong, does not block other
+  corrections).
+- Identity form: after a « modifié ailleurs » refusal, the fields not
+  touched take the value read back — the second save wrote the old phone
+  over the colleague's correction.
+- Vitale card: a new beneficiary sharing a surname with another file
+  gets its pre-filled form (the search now carries the given name too).
 
 ## [0.401.0] - 2026-10-12
 
