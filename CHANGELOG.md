@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.416.0] - 2026-10-13
+
 ### Added
 
 - « Carte des officines »: a map of France where officines that choose
