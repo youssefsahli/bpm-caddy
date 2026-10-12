@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- External programs: a scanner that never answers is stopped after two
+  minutes instead of freezing the application for good; its output goes
+  to a private folder, not a predictable name in the shared temporary
+  folder where another account could plant a file; the base password is
+  not passed to it; « look this card up » no longer waits for the
+  browser to close; a message attachment chosen by mistake is no longer
+  read whole before being refused as too big.
 - Bundle import: the imported base's path is proposed in Options, and
   saving is what switches — it used to be taken in memory only, so the
   next lock opened the imported base and the next launch the old one,

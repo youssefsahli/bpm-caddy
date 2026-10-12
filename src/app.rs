@@ -277,6 +277,21 @@ fn missing_base(config: &Config) -> Option<String> {
     (!path.exists()).then(|| trf("lock_db_missing", path.display()))
 }
 
+/// Lire un fichier, **au plus `limit` octets et un de plus** : assez
+/// pour savoir qu'il est trop gros sans le charger en entier.
+fn read_at_most(path: &std::path::Path, limit: usize) -> std::io::Result<Vec<u8>> {
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)?
+        .take(limit as u64 + 1)
+        .read_to_end(&mut bytes)?;
+    Ok(bytes)
+}
+
+/// Le temps qu'un scanner a pour rendre sa pièce : deux minutes, une
+/// numérisation recto verso en haute définition comprise.
+const SCANNER_PATIENCE: std::time::Duration = std::time::Duration::from_secs(120);
+
 /// Deux secrets égaux, comparés en temps constant.
 fn same_secret(a: &str, b: &str) -> bool {
     let (a, b) = (a.as_bytes(), b.as_bytes());
@@ -49496,6 +49511,10 @@ impl App {
         // restait lisible dans le dossier temporaire partagé.
         if from_scanner {
             let _ = std::fs::remove_file(&path);
+            // Et le dossier à soi qui l'abritait.
+            if let Some(dir) = path.parent() {
+                let _ = std::fs::remove_dir(dir);
+            }
         }
         let bytes = match read {
             Ok(b) => b,
@@ -49581,17 +49600,58 @@ impl App {
     /// scanner. La fenêtre reste figée le temps du scan, ce que
     /// l'opérateur attend.
     fn run_scanner(template: &str) -> Result<std::path::PathBuf, String> {
-        let out = std::env::temp_dir().join(format!("bpm-caddy-scan-{}.out", std::process::id()));
-        let _ = std::fs::remove_file(&out);
+        // **Un dossier à soi** pour la sortie, et non un nom prévisible
+        // dans le `/tmp` commun : un autre compte du poste pouvait y
+        // poser le fichier d'avance, et un scanner qui sort sans écrire
+        // le faisait ranger au dossier du patient.
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos());
+        let dir =
+            std::env::temp_dir().join(format!("bpm-caddy-scan-{}-{nanos}", std::process::id()));
+        {
+            let mut builder = std::fs::DirBuilder::new();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::DirBuilderExt;
+                builder.mode(0o700);
+            }
+            builder.create(&dir).map_err(|e| trf("scan_err_spawn", e))?;
+        }
+        let out = dir.join("piece.out");
         let argv = crate::scans::scanner_command(template, &out)?;
-        let status = std::process::Command::new(&argv[0])
+        // La clé de la base n'a rien à faire dans l'environnement d'un
+        // programme tiers.
+        let mut child = std::process::Command::new(&argv[0])
             .args(&argv[1..])
-            .status()
+            .env_remove("BPM_CADDY_PASSWORD")
+            .spawn()
             .map_err(|e| trf("scan_err_spawn", e))?;
+        // **Jamais pour toujours** : un scanner bloqué (USB coincé, pilote
+        // qui attend une fenêtre) figeait l'application jusqu'à ce qu'on
+        // la tue, avec ce qui était en train de s'écrire.
+        let deadline = std::time::Instant::now() + SCANNER_PATIENCE;
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(status)) => break status,
+                Ok(None) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+                Ok(None) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    let _ = std::fs::remove_dir_all(&dir);
+                    return Err(tr("scan_err_timeout").to_owned());
+                }
+                Err(e) => return Err(trf("scan_err_spawn", e)),
+            }
+        };
         if !status.success() {
+            let _ = std::fs::remove_dir_all(&dir);
             return Err(trf("scan_err_failed", status));
         }
         if !out.is_file() {
+            let _ = std::fs::remove_dir_all(&dir);
             return Err(tr("scan_err_nothing").to_owned());
         }
         Ok(out)
@@ -64290,7 +64350,10 @@ impl App {
                 // est cette molécule » ; PubMed answers « qu'a-t-on
                 // publié dessus », newest first.
                 if let Some(card) = session.drug_form.as_ref() {
-                    if let Err(e) = open::that(source.url(card)) {
+                    // Détaché, comme partout : `that` attend que le
+                    // lanceur rende la main, c'est-à-dire parfois que le
+                    // navigateur soit fermé.
+                    if let Err(e) = open::that_detached(source.url(card)) {
                         session.error = Some(trf("drug_lookup_error", e));
                     }
                 }
@@ -67889,7 +67952,10 @@ impl App {
         }
         if pick_file {
             if let Some(path) = rfd::FileDialog::new().pick_file() {
-                match std::fs::read(&path) {
+                // Un octet de plus que la limite suffit à refuser : un
+                // fichier de plusieurs gigaoctets choisi par erreur ne se
+                // lit plus en entier avant de l'être.
+                match read_at_most(&path, crate::messages::MAX_FILE) {
                     Ok(bytes) if bytes.len() > crate::messages::MAX_FILE => {
                         session.msg.note = Some((
                             true,
@@ -69995,7 +70061,10 @@ impl App {
         // une conversation d'équipe peut-être.
         if file_net.is_some_and(|d| session.write_to_officine(&d).is_some()) {
             if let Some(path) = rfd::FileDialog::new().pick_file() {
-                match std::fs::read(&path) {
+                // Un octet de plus que la limite suffit à refuser : un
+                // fichier de plusieurs gigaoctets choisi par erreur ne se
+                // lit plus en entier avant de l'être.
+                match read_at_most(&path, crate::messages::MAX_FILE) {
                     Ok(bytes) if bytes.len() <= crate::messages::MAX_FILE => {
                         let name = path
                             .file_name()
