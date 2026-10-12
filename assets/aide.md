@@ -1118,6 +1118,15 @@ numéro. Un numéro porté par deux délivrances en vigueur — deux postes
 qui ont tapé le même avant de se synchroniser — est signalé dans
 l'ordonnancier ; les deux lignes sont gardées.
 
+Une ordonnance de plusieurs stupéfiants se délivre en une fois par la
+« Saisie groupée », nature « Délivrance » : une quantité et un numéro
+par produit. Le numéro manquant ou tapé sur deux lignes est dit en face
+de la case, et rien n'est inscrit tant qu'il en reste un. « Numéroter à
+la suite » donne aux lignes sans numéro les suivants du plus haut déjà
+tapé, dans l'ordre de la feuille : à relire, le logiciel a pu les
+numéroter autrement. Une quantité supérieure au solde est signalée
+« Au-delà du solde » mais s'inscrit.
+
 Les touches 1 à 8 choisissent la nature, dans l'ordre de la bande ;
 Entrée inscrit la ligne depuis le formulaire. La quantité s'écrit en
 unités : « 1/2 », « 3 boîtes » ou « 2 x 14 » sont refusés. Un lot lu ou

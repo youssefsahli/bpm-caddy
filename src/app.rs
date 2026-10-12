@@ -51297,11 +51297,27 @@ impl App {
                     typed: batch.typed.get(&s.product.id).map_or("", String::as_str),
                     expected: sheet_stock(s),
                     reason: batch.reasons.get(&s.product.id).map_or("", String::as_str),
+                    number: batch.numbers.get(&s.product.id).map_or("", String::as_str),
                 })
                 .collect();
             crate::ordonnancier::plan(batch.kind, &slots)
         };
         let kind = batch.kind;
+        // Les numéros que « Numéroter à la suite » donnerait : calculés
+        // avant la rangée du bas, qui se mesure avec son bouton — et le
+        // bouton ne s'y montre que s'il a quelque chose à faire.
+        let onwards = if kind.is_dispensing() {
+            let rows: Vec<(i64, &str)> = session
+                .stup_summary
+                .iter()
+                .map(|s| s.product.id)
+                .filter(|id| batch.typed.get(id).is_some_and(|t| !t.trim().is_empty()))
+                .map(|id| (id, batch.numbers.get(&id).map_or("", String::as_str)))
+                .collect();
+            crate::ordonnancier::number_onwards(&rows)
+        } else {
+            Vec::new()
+        };
 
         // --- Ce que la bande du haut demande, mesuré avant d'être carvé
         //
@@ -51613,15 +51629,18 @@ impl App {
             // en texte 1,6 le compte n'entrait plus et se lisait
             // « 1 case(s) à » — la seule chose que cette rangée existe
             // pour dire, coupée en son milieu.
+            let onwards_w =
+                (!onwards.is_empty()).then(|| Self::button_width(ui, tr("batch_number_onwards")));
             let btn_h = Self::wrapped_band_height(
                 ui,
                 inner.width(),
                 [
                     Self::button_width(ui, tr("batch_write")),
                     Self::button_width(ui, tr("batch_clear")),
-                    Self::widest(ui, 11.0, [status.as_str()].into_iter()),
                 ]
-                .into_iter(),
+                .into_iter()
+                .chain(onwards_w)
+                .chain([Self::widest(ui, 11.0, [status.as_str()].into_iter())]),
             ) + 6.0;
             let split = motif::split_rows(inner, &[0.0, btn_h], 4.0);
             motif::inside(ui, split[0], |ui| {
@@ -51755,7 +51774,28 @@ impl App {
                                                         crate::codex::format_quantity(d.gap()),
                                                     )
                                                 });
+                                            // Seize tapés pour six au
+                                            // registre : écrit quand même
+                                            // — le coffre peut porter une
+                                            // boîte que le registre ignore
+                                            // —, mais dit en face.
+                                            let beyond = batch
+                                                .typed
+                                                .get(&id)
+                                                .and_then(|t| crate::ordonnancier::read_count(t))
+                                                .is_some_and(|v| {
+                                                    crate::ordonnancier::beyond_stock(
+                                                        kind,
+                                                        sheet_stock(s),
+                                                        v,
+                                                    )
+                                                });
                                             match gap_txt {
+                                                _ if beyond => {
+                                                    egui::RichText::new(tr("batch_beyond_stock"))
+                                                        .size(motif::pt(ui, 11.0))
+                                                        .color(motif::alert())
+                                                }
                                                 Some(t) => egui::RichText::new(t)
                                                     .size(motif::pt(ui, 11.0))
                                                     .color(motif::accent()),
@@ -51820,7 +51860,7 @@ impl App {
                                             egui::TextEdit::singleline(
                                                 batch.numbers.entry(id).or_default(),
                                             )
-                                            .hint_text(motif::hint(tr("stup_ordo_hint"))),
+                                            .hint_text(motif::hint(tr("batch_ordo_hint"))),
                                         )
                                         .on_hover_text(tr("stup_ordo_tooltip"));
                                     } else if filled {
@@ -51914,6 +51954,15 @@ impl App {
                     {
                         clear = true;
                     }
+                    if onwards_w.is_some()
+                        && motif::button(ui, tr("batch_number_onwards"))
+                            .on_hover_text(tr("batch_number_onwards_tooltip"))
+                            .clicked()
+                    {
+                        for (id, n) in &onwards {
+                            batch.numbers.insert(*id, n.to_string());
+                        }
+                    }
                     // La phrase que la rangée a été mesurée pour tenir,
                     // et insécable parce que la mesure la compte comme
                     // un seul élément : laissée libre,
@@ -51999,11 +52048,13 @@ impl App {
         let state = Self::widest(
             ui,
             11.0,
-            std::iter::once(tr("batch_col_stock")).chain(
-                crate::ordonnancier::Snag::ALL
-                    .iter()
-                    .map(|s| tr(s.label_key())),
-            ),
+            [tr("batch_col_stock"), tr("batch_beyond_stock")]
+                .into_iter()
+                .chain(
+                    crate::ordonnancier::Snag::ALL
+                        .iter()
+                        .map(|s| tr(s.label_key())),
+                ),
         )
         .max(widest_unit + chars_wide(ui, 6.0));
         let name_floor =
@@ -52071,27 +52122,9 @@ impl App {
             return;
         }
         // Chaque délivrance de la feuille porte son numéro, celui du
-        // logiciel de l'officine : exigé ligne par ligne, et deux lignes
-        // ne portent pas le même (la base refuse aussi un numéro déjà
-        // inscrit, et toute la feuille retombe avec lui).
-        let mut numbers: std::collections::HashMap<i64, i64> = std::collections::HashMap::new();
-        if kind.is_dispensing() {
-            for l in &plan.lines {
-                let read = batch
-                    .numbers
-                    .get(&l.stup_id)
-                    .and_then(|t| crate::ordonnancier::read_number(t));
-                let Some(n) = read else {
-                    session.stup_note = Some((true, tr("stup_err_no_number").to_owned()));
-                    return;
-                };
-                if numbers.values().any(|m| *m == n) {
-                    session.stup_note = Some((true, trf("stup_err_number_twice", n)));
-                    return;
-                }
-                numbers.insert(l.stup_id, n);
-            }
-        }
+        // logiciel de l'officine : le plan l'a exigé ligne par ligne et
+        // refusé deux fois sur la feuille (la base refuse aussi un numéro
+        // déjà inscrit, et toute la feuille retombe avec lui).
         let moves: Vec<db::StupMove> = plan
             .lines
             .iter()
@@ -52102,7 +52135,7 @@ impl App {
                 happened_on: day.clone(),
                 quantity: l.quantity,
                 ordo_year: 0,
-                ordo_no: numbers.get(&l.stup_id).copied().unwrap_or(0),
+                ordo_no: l.ordo_no,
                 patient_id: file.unwrap_or(0),
                 prescriber: batch.prescriber.clone(),
                 // Le grossiste et le bon de livraison ne valent que pour

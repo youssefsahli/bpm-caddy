@@ -1529,6 +1529,9 @@ pub struct Slot<'a> {
     pub expected: f64,
     /// Le motif tapé sur cette ligne.
     pub reason: &'a str,
+    /// Le numéro d'ordonnancier tapé en face, sur une feuille de
+    /// délivrance — celui du logiciel de l'officine. Ignoré ailleurs.
+    pub number: &'a str,
 }
 
 /// Ce qui empêche une case de partir au registre.
@@ -1542,6 +1545,12 @@ pub enum Snag {
     GapWithoutReason,
     /// Une destruction sans sa pièce — voir [`Kind::needs_record`].
     RecordRequired,
+    /// Une délivrance sans son numéro d'ordonnancier, ou un numéro qui
+    /// ne se lit pas.
+    NoNumber,
+    /// Le même numéro tapé sur deux lignes de la feuille : chaque
+    /// délivrance porte le sien.
+    NumberTwice,
 }
 
 impl Snag {
@@ -1558,6 +1567,8 @@ impl Snag {
         Snag::NotPositive,
         Snag::GapWithoutReason,
         Snag::RecordRequired,
+        Snag::NoNumber,
+        Snag::NumberTwice,
     ];
 
     pub fn label_key(self) -> &'static str {
@@ -1566,6 +1577,8 @@ impl Snag {
             Snag::NotPositive => "batch_snag_zero",
             Snag::GapWithoutReason => "batch_snag_gap",
             Snag::RecordRequired => "batch_snag_record",
+            Snag::NoNumber => "batch_snag_no_number",
+            Snag::NumberTwice => "batch_snag_number_twice",
         }
     }
 }
@@ -1578,6 +1591,8 @@ pub struct Planned {
     /// Le solde d'avant, qu'un inventaire range pour que son annulation
     /// puisse le rendre — voir `add_stup_move`.
     pub expected: f64,
+    /// Le numéro d'ordonnancier d'une délivrance, `0` ailleurs.
+    pub ordo_no: i64,
 }
 
 /// Ce qu'une feuille de saisie donnerait si on l'inscrivait maintenant.
@@ -1723,13 +1738,82 @@ pub fn plan(kind: Kind, slots: &[Slot]) -> Plan {
                 continue;
             }
         }
+        let ordo_no = if kind.is_dispensing() {
+            match read_number(slot.number) {
+                Some(n) => n,
+                None => {
+                    out.snags.push((slot.stup_id, Snag::NoNumber));
+                    continue;
+                }
+            }
+        } else {
+            0
+        };
         out.lines.push(Planned {
             stup_id: slot.stup_id,
             quantity,
             expected: slot.expected,
+            ordo_no,
         });
     }
+    // **Un numéro tapé deux fois coince sur ses deux lignes**, pas sur
+    // la seconde : rien ne dit laquelle des deux porte le bon, et c'est
+    // en face des deux qu'on vient le relire.
+    if kind.is_dispensing() {
+        let twice: Vec<i64> = out
+            .lines
+            .iter()
+            .filter(|l| out.lines.iter().filter(|m| m.ordo_no == l.ordo_no).count() > 1)
+            .map(|l| l.stup_id)
+            .collect();
+        out.lines.retain(|l| !twice.contains(&l.stup_id));
+        out.snags
+            .extend(twice.into_iter().map(|id| (id, Snag::NumberTwice)));
+    }
     out
+}
+
+/// **La suite des numéros d'ordonnancier, sur les lignes qui n'en ont
+/// pas encore.**
+///
+/// Le logiciel de l'officine numérote ses lignes d'une ordonnance à la
+/// suite — 18400, 18401, 18402. Taper le premier suffit donc à proposer
+/// les autres : chaque ligne remplie dont le numéro est vide reçoit le
+/// suivant du plus haut déjà tapé, dans l'ordre de la feuille, en
+/// sautant ceux qui sont déjà pris. Rien n'est proposé tant qu'aucun
+/// numéro n'est tapé : la suite part d'un numéro du logiciel, jamais
+/// d'un numéro inventé.
+///
+/// `rows` : chaque ligne **remplie** de la feuille, dans l'ordre, avec
+/// son numéro tel qu'il est tapé. Rend les numéros à écrire, par
+/// produit. L'ordre du logiciel peut différer de celui de la feuille :
+/// c'est un geste qu'on demande, et la ligne se relit avant d'inscrire.
+pub fn number_onwards(rows: &[(i64, &str)]) -> Vec<(i64, i64)> {
+    let typed: Vec<i64> = rows.iter().filter_map(|(_, t)| read_number(t)).collect();
+    let Some(mut next) = typed.iter().max().copied() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for (id, t) in rows {
+        if !t.trim().is_empty() {
+            continue;
+        }
+        next += 1;
+        while typed.contains(&next) {
+            next += 1;
+        }
+        out.push((*id, next));
+    }
+    out
+}
+
+/// **Une délivrance au-delà du solde.** Le registre l'écrit — le coffre
+/// peut porter une boîte que le registre ignore encore, et la vigilance
+/// relèvera le solde négatif —, mais la feuille le dit en face de la
+/// case avant qu'on inscrive : seize tapés pour six est le plus souvent
+/// une faute de frappe.
+pub fn beyond_stock(kind: Kind, expected: f64, quantity: f64) -> bool {
+    kind.is_dispensing() && quantity > expected + 1e-9
 }
 
 #[cfg(test)]
@@ -1747,6 +1831,84 @@ mod tests {
     /// ce qu'un patient rapporte et ce qui a périmé au coffre ne
     /// suivent pas le même chemin, et « quarante à détruire » là où il
     /// y a deux sacs scellés ne veut rien dire.
+    /// **Une délivrance de la feuille porte son numéro, et le sien.**
+    ///
+    /// Le numéro manquant et le numéro tapé deux fois coincent en face
+    /// de leur case — sur les deux cases pour un doublon —, au lieu d'un
+    /// refus après coup qui ne nommait pas la ligne. Et une feuille qui
+    /// n'est pas une délivrance ignore le champ.
+    #[test]
+    fn a_dispensing_sheet_holds_one_number_per_line() {
+        let with = |id: i64, typed: &'static str, number: &'static str| Slot {
+            stup_id: id,
+            typed,
+            expected: 40.0,
+            reason: "",
+            number,
+        };
+        let p = plan(
+            Kind::Sortie,
+            &[
+                with(1, "14", "18 400"),
+                with(2, "7", ""),
+                with(3, "28", "x1"),
+            ],
+        );
+        assert_eq!(p.lines.len(), 1);
+        assert_eq!(p.lines[0].ordo_no, 18_400);
+        assert_eq!(p.snag(2), Some(Snag::NoNumber));
+        assert_eq!(p.snag(3), Some(Snag::NoNumber), "illisible");
+
+        let twice = plan(
+            Kind::Sortie,
+            &[
+                with(1, "14", "18400"),
+                with(2, "7", "18400"),
+                with(3, "2", "18401"),
+            ],
+        );
+        assert_eq!(twice.snag(1), Some(Snag::NumberTwice));
+        assert_eq!(twice.snag(2), Some(Snag::NumberTwice));
+        assert_eq!(twice.lines.len(), 1);
+        assert!(!twice.ready());
+
+        // Une case vide n'écrit rien, numéro ou pas.
+        assert!(plan(Kind::Sortie, &[with(1, "", "18400")]).lines.is_empty());
+
+        let counted = plan(Kind::Entree, &[with(1, "28", "")]);
+        assert!(counted.ready());
+        assert_eq!(counted.lines[0].ordo_no, 0);
+    }
+
+    /// **La suite part d'un numéro tapé**, dans l'ordre de la feuille,
+    /// sans toucher un numéro déjà là ni en reprendre un.
+    #[test]
+    fn numbers_follow_on_from_the_highest_typed() {
+        assert!(
+            number_onwards(&[(1, ""), (2, "")]).is_empty(),
+            "rien d'inventé"
+        );
+        assert_eq!(
+            number_onwards(&[(1, "18400"), (2, ""), (3, "")]),
+            vec![(2, 18_401), (3, 18_402)]
+        );
+        // Les vides avant le premier tapé suivent aussi le plus haut, et
+        // un numéro déjà pris est sauté.
+        assert_eq!(
+            number_onwards(&[(1, ""), (2, "18400"), (3, "18401"), (4, "")]),
+            vec![(1, 18_402), (4, 18_403)]
+        );
+        // Un numéro illisible n'est pas vide : on ne l'écrase pas.
+        assert_eq!(number_onwards(&[(1, "18400"), (2, "184OO")]), vec![]);
+    }
+
+    #[test]
+    fn a_dispensing_beyond_the_stock_is_said() {
+        assert!(beyond_stock(Kind::Sortie, 6.0, 16.0));
+        assert!(!beyond_stock(Kind::Sortie, 16.0, 16.0));
+        assert!(!beyond_stock(Kind::Inventaire, 6.0, 16.0));
+    }
+
     #[test]
     fn an_expired_box_leaves_the_shelf_but_not_the_safe() {
         let line = |seq: i64, kind: super::Kind, quantity: f64| super::Move {
@@ -2956,6 +3118,7 @@ mod tests {
             typed,
             expected,
             reason,
+            number: "",
         }
     }
 
@@ -2993,10 +3156,24 @@ mod tests {
     fn an_unreadable_box_is_named_rather_than_read_as_zero() {
         let p = plan(
             Kind::Sortie,
-            &[slot(1, "O", 40.0, ""), slot(2, "5", 9.0, "")],
+            &[
+                slot(1, "O", 40.0, ""),
+                Slot {
+                    number: "18401",
+                    ..slot(2, "5", 9.0, "")
+                },
+            ],
         );
         assert_eq!(
-            plan(Kind::Sortie, &[slot(9, "16 gélules", 40.0, "")]).lines[0].quantity,
+            plan(
+                Kind::Sortie,
+                &[Slot {
+                    number: "18400",
+                    ..slot(9, "16 gélules", 40.0, "")
+                }]
+            )
+            .lines[0]
+                .quantity,
             16.0,
             "l'unité écrite à la suite ne rend pas la case illisible"
         );

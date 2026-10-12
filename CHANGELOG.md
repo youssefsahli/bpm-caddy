@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Batch dispensing sheet.** A missing or unreadable ordonnancier
+  number, or one typed on two lines, is now said beside the line it
+  concerns (both lines for a duplicate) and counted in the sheet's
+  « case(s) à corriger », instead of a single refusal after clicking
+  that named no line. A « Numéroter à la suite » button gives the lines
+  still without a number the ones following the highest typed, in sheet
+  order, since the pharmacy software numbers a prescription's lines
+  consecutively. A quantity above the register's balance reads « Au-delà
+  du solde » (still written). The number cell's hint no longer elides.
+
 ## [0.411.0] - 2026-10-12
 
 ### Changed
