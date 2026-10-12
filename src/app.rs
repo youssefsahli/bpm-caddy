@@ -40212,7 +40212,12 @@ impl App {
                 ui.label(
                     egui::RichText::new(trn(
                         "calc_perkg_result",
-                        &[&format!("{per_take:.0}"), &format!("{daily:.0}")],
+                        // Au dixième sous dix milligrammes : « 0 mg » pour
+                        // 0,3, ou 2 pour 1,5, n'est pas une dose.
+                        &[
+                            &crate::dosing::milligrams(per_take),
+                            &crate::dosing::milligrams(daily),
+                        ],
                     ))
                     .strong()
                     .color(motif::accent()),
@@ -40402,9 +40407,13 @@ impl App {
                     if motif::button(ui, tr("calc_renal_take")).clicked() {
                         let k = if session.calc_female { 1.04 } else { 1.23 };
                         if session.calc_creat > 0.0 && session.calc_age >= 18.0 {
+                            // Arrondie comme l'écran l'affiche : 29,8 copié
+                            // tel quel lisait le palier « < 30 » sous un
+                            // « 30 mL/min » affiché.
                             session.calc_renal_dfg =
                                 ((140.0 - session.calc_age) * session.calc_weight * k
                                     / session.calc_creat)
+                                    .round()
                                     .clamp(3.0, 140.0);
                         }
                     }

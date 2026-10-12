@@ -18,6 +18,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one page by a test.
 - Nutrition sheet: the weight and the protein of a half portion are
   written the French way, to the tenth.
+- Reference tables: the opioid column reads « puissance relative
+  (morphine orale = 1) » — « x 3 » under morphine IV read as a multiplier
+  gave nine times the dose — and a « Rotation » line says to reduce the
+  calculated dose by 25 to 50 %; codeine's example says it is above the
+  maximum; oxazepam ≈ diazepam 10 mg is 20 mg, as its cited source gives;
+  the children's ibuprofen and amoxicillin lines no longer allow more than
+  their own daily maximum.
+- Calculations: the per-kilo dose is labelled per dose, and its result is
+  given to the tenth under 10 mg (0.3 mg showed « 0 mg »); « Reprendre la
+  clairance estimée » copies the rounded value the screen shows.
 
 ## [0.401.0] - 2026-10-12
 

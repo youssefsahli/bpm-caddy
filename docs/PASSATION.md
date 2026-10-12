@@ -122,6 +122,18 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   s'impriment sans être réécrivables (`conseils::phrases` ne les liste
   pas) ; le carnet de glycémie n'a pas de ligne pour l'hyperglycémie
   (un seuil à prendre dans la source SFD avant de l'écrire) ;
+- **tables de référence : les cases réécrites sont rangées par numéro de
+  ligne** (`table_cells (table_key,row,col)`). Une ligne livrée insérée
+  au milieu décale toutes les réécritures suivantes : la 0.371.0 a inséré
+  « Anticorps contre le VRS (nourrisson) » en 8e ligne de « Vaccins », et
+  une réécriture plus ancienne de la ligne HPV s'affiche depuis sur la
+  ligne VRS, celle de ROR sur la suivante… Il faudrait les ranger par
+  le texte de la première colonne, avec le texte livré vu (comme
+  `content_overrides`), et relire les réécritures de « Vaccins » des
+  officines concernées. Les lignes ajoutées aujourd'hui l'ont été en fin
+  de table pour ne rien décaler ;
+- l'insuline NPH et NovoMix durent 24 h sur la courbe et 12 à 16 h (10 à
+  16 h) dans la table « Insulines » ;
 - téléphone : la suppression d'un rendez-vous de l'agenda ne compare que
   le titre ; la base peut s'ouvrir deux fois (deux déverrouillages) et
   n'est jamais refermée en quittant par Retour. Le code Kotlin modifié le
