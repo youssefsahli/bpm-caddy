@@ -5291,6 +5291,11 @@ struct Session {
     /// ou le jour changent, pas à chaque image.
     dash_shortages: Vec<(crate::ruptures::Shortage, Option<crate::ruptures::Tried>)>,
     dash_shortages_key: Option<(u64, String)>,
+    /// La vue des ruptures, lue une fois par journal et par jour : les
+    /// ruptures en cours et, pour chacune, les trois remplacements les
+    /// plus donnés. Refaite à chaque image, elle relisait tout le journal
+    /// du réseau par produit, soixante fois par seconde.
+    rupt_view: Option<((u64, String), Vec<(crate::ruptures::Shortage, Vec<String>)>)>,
     /// Ce qu'une synchronisation automatique du réseau vient d'apprendre,
     /// et quand : la barre d'état le dit un moment.
     net_news: Option<(Instant, String)>,
@@ -6258,6 +6263,7 @@ impl Session {
             supply_rev: 0,
             dash_shortages: Vec::new(),
             dash_shortages_key: None,
+            rupt_view: None,
             net_news: None,
             near_news: None,
             drug_supply: DrugSupply::default(),
@@ -66360,9 +66366,28 @@ impl App {
                 .wrap(),
             );
         });
+        let key = (session.supply_rev, session.today.clone());
+        if session.rupt_view.as_ref().map(|(k, _)| k) != Some(&key) {
+            let events = &session.supply_events;
+            let read = crate::ruptures::shortages(events, &session.today)
+                .into_iter()
+                .map(|s| {
+                    let top: Vec<String> = crate::ruptures::tried(events, &s.product)
+                        .iter()
+                        .take(3)
+                        .map(|t| format!("{} ×{}", t.other, t.times))
+                        .collect();
+                    (s, top)
+                })
+                .collect();
+            session.rupt_view = Some((key, read));
+        }
+        let current = session
+            .rupt_view
+            .as_ref()
+            .map(|(_, v)| v.clone())
+            .unwrap_or_default();
         let events = &session.supply_events;
-        let today = &session.today;
-        let current = crate::ruptures::shortages(events, today);
         let wide = rows[1].width() >= chars_wide(ui, 90.0);
         let panes = if wide {
             motif::split_columns(rows[1], 2, 8.0)
@@ -66396,7 +66421,7 @@ impl App {
                         );
                         return;
                     }
-                    for s in &current {
+                    for (s, top) in &current {
                         let since = if s.sources > 1 {
                             trn(
                                 "rupt_since_many",
@@ -66411,12 +66436,6 @@ impl App {
                         {
                             open = Some(s.product.clone());
                         }
-                        let tried = crate::ruptures::tried(events, &s.product);
-                        let top: Vec<String> = tried
-                            .iter()
-                            .take(3)
-                            .map(|t| format!("{} ×{}", t.other, t.times))
-                            .collect();
                         ui.label(
                             egui::RichText::new(if top.is_empty() {
                                 tr("rupt_tried_none").to_owned()

@@ -149,6 +149,19 @@ pub fn key(name: &str) -> String {
     crate::fuzzy::sort_key(name.trim())
 }
 
+/// Le même produit, écrit de deux façons : la clé, espaces et ponctuation
+/// en plus repliés — « Diprosone  crème » et « Diprosone crème »,
+/// « 0,05% » et « 0,05 % » comptaient pour deux produits.
+fn same_key(name: &str) -> String {
+    key(name)
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { ' ' })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// Combien de jours une rupture signalée reste « en cours » sans avoir été
 /// levée.
 pub const HORIZON_DAYS: i64 = 90;
@@ -196,17 +209,33 @@ pub struct Shortage {
 /// signalement, la rupture n'est plus en cours : quelqu'un a oublié de la
 /// lever, et le dire encore serait un mensonge qui dure.
 pub fn shortage(events: &[Event], product: &str, today: &str) -> Option<Shortage> {
-    let k = key(product);
+    let k = same_key(product);
+    // Rien de daté après aujourd'hui : une levée datée de 2099 fermait
+    // tous les épisodes, un signalement à venir cachait celui en cours.
     let mut mine: Vec<&Event> = standing(events)
         .into_iter()
-        .filter(|e| matches!(e.kind, Kind::Rupture | Kind::Levee) && key(&e.product) == k)
+        .filter(|e| matches!(e.kind, Kind::Rupture | Kind::Levee) && same_key(&e.product) == k)
+        .filter(|e| e.day.as_str() <= today)
         .collect();
-    mine.sort_by(|a, b| a.day.cmp(&b.day).then(a.uid.cmp(&b.uid)));
-    // L'épisode en cours : ce qui suit la dernière levée.
+    // Par jour, et **le même jour, la levée après le signalement** : trié
+    // par `uid` en texte, « base:1000005 » passait avant « base:5 », et
+    // un produit levé le jour même restait en rupture.
+    let rank = |e: &Event| u8::from(e.kind == Kind::Levee);
+    mine.sort_by(|a, b| a.day.cmp(&b.day).then(rank(a).cmp(&rank(b))));
+    // L'épisode en cours : ce qui suit la dernière levée — ou le dernier
+    // silence plus long que l'horizon, après lequel un ancien signalement
+    // ne parle plus.
     let start = mine
         .iter()
-        .rposition(|e| e.kind == Kind::Levee)
-        .map_or(0, |i| i + 1);
+        .enumerate()
+        .rev()
+        .find(|(i, e)| {
+            e.kind == Kind::Levee
+                || mine.get(i + 1).is_some_and(|next| {
+                    crate::date::days_between(&e.day, &next.day).is_some_and(|d| d > HORIZON_DAYS)
+                })
+        })
+        .map_or(0, |(i, _)| i + 1);
     let open: Vec<&&Event> = mine[start..].iter().collect();
     let first = open.first()?;
     let last = open.last()?;
@@ -229,7 +258,7 @@ pub fn shortages(events: &[Event], today: &str) -> Vec<Shortage> {
     let mut out: Vec<Shortage> = standing(events)
         .into_iter()
         .filter(|e| e.kind == Kind::Rupture)
-        .filter(|e| seen.insert(key(&e.product)))
+        .filter(|e| seen.insert(same_key(&e.product)))
         .filter_map(|e| shortage(events, &e.product, today))
         .collect();
     out.sort_by(|a, b| {
@@ -370,17 +399,31 @@ pub fn decode(bytes: &[u8]) -> Option<Event> {
     if uid.is_empty() || crate::date::parse_iso(&day).is_none() {
         return None;
     }
+    // **Ce qui vient d'ailleurs se vérifie** : un produit nommé pour ce qui
+    // en parle, une substitution qui dit par quoi, et des textes de taille
+    // raisonnable — rien de cela n'entre sinon dans la base.
+    let kind = Kind::from_key(&text("kind"))?;
+    let (product, other, note) = (text("product"), text("other"), text("note"));
+    let named = |t: &str| !t.trim().is_empty() && t.chars().count() <= 200;
+    match kind {
+        Kind::Rupture | Kind::Levee if !named(&product) => return None,
+        Kind::Substitution if !named(&product) || !named(&other) => return None,
+        _ => {}
+    }
+    if other.chars().count() > 200 || note.chars().count() > 2000 {
+        return None;
+    }
     let officine = text("officine");
     Some(Event {
         uid,
         day,
-        kind: Kind::from_key(&text("kind"))?,
-        product: text("product"),
+        kind,
+        product,
         product_dci: text("product_dci"),
-        other: text("other"),
+        other,
         other_dci: text("other_dci"),
         outcome: Outcome::from_key(&text("outcome")),
-        note: text("note"),
+        note,
         operator: text("operator"),
         // Une officine qui ne s'est pas nommée reste une autre officine :
         // vide voudrait dire « celle-ci ».
@@ -426,6 +469,67 @@ mod tests {
         // Levée : rien de neuf à annoncer.
         after.push(ev("a:4", "Locoid", Kind::Levee, "2026-09-24"));
         assert!(newly_short(&before, &after, "2026-09-24").is_empty());
+    }
+
+    /// Le même jour, la levée clôt ; ce qui est daté après aujourd'hui ne
+    /// compte pas ; un vieux signalement oublié n'ouvre pas l'épisode
+    /// d'un nouveau ; deux graphies d'un produit en font un.
+    #[test]
+    fn a_shortage_reads_the_day_the_future_and_the_gaps_rightly() {
+        let today = "2026-10-12";
+        let same_day = [
+            ev("b:1000005", today, Kind::Levee, "Diprosone", "", "Port"),
+            ev("b:5", today, Kind::Rupture, "Diprosone", "", ""),
+        ];
+        assert!(
+            shortage(&same_day, "Diprosone", today).is_none(),
+            "levée le jour même"
+        );
+        let future = [
+            ev("a:1", "2026-10-01", Kind::Rupture, "Diprosone", "", ""),
+            ev("c:1", "2099-01-01", Kind::Levee, "Diprosone", "", "Lac"),
+        ];
+        assert!(
+            shortage(&future, "Diprosone", today).is_some(),
+            "2099 ne ferme rien"
+        );
+        let gap = [
+            ev(
+                "a:1",
+                "2026-01-05",
+                Kind::Rupture,
+                "Diprosone crème",
+                "",
+                "Port",
+            ),
+            ev(
+                "a:2",
+                "2026-10-01",
+                Kind::Rupture,
+                "Diprosone  crème",
+                "",
+                "",
+            ),
+        ];
+        let s = shortage(&gap, "Diprosone crème", today).unwrap();
+        assert_eq!((s.since.as_str(), s.sources), ("2026-10-01", 1));
+    }
+
+    /// Ce qui vient d'ailleurs se vérifie.
+    #[test]
+    fn a_received_event_must_name_what_it_speaks_of() {
+        let raw = |kind: &str, product: &str, other: &str| {
+            serde_json::json!({
+                "v": 1, "uid": "x:1", "day": "2026-10-12", "kind": kind,
+                "product": product, "other": other, "officine": "Port"
+            })
+            .to_string()
+            .into_bytes()
+        };
+        assert!(decode(&raw("RUPTURE", "", "")).is_none());
+        assert!(decode(&raw("SUBSTITUTION", "Diprosone", "")).is_none());
+        assert!(decode(&raw("RUPTURE", &"x".repeat(300), "")).is_none());
+        assert!(decode(&raw("RUPTURE", "Diprosone", "")).is_some());
     }
 
     fn ev(uid: &str, day: &str, kind: Kind, product: &str, other: &str, source: &str) -> Event {

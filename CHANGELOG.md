@@ -32,6 +32,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   line, and follows that line when a shipped line is inserted above it
   (it moved to the next line). Rewrites made before this version keep
   their line number.
+- Supply shortages: a lift on the same day as a report closes it (they
+  were ordered by identifier as text, « base:1000005 » before « base:5 »);
+  events dated after today no longer count; a report older than the
+  horizon no longer opens the episode of a new one; two spellings of a
+  product (spaces, « 0,05% » and « 0,05 % ») are one; an event received
+  without a product, a substitution without its replacement, or oversized
+  texts are not taken in; an identifier of this base received from
+  elsewhere is set aside; the shortages view no longer reads the whole
+  journal on every frame.
 
 ## [0.401.0] - 2026-10-12
 

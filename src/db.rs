@@ -46936,9 +46936,14 @@ impl Db {
         &self,
         events: &[crate::ruptures::Event],
     ) -> Result<usize, String> {
+        // **Un identifiant de cette base n'arrive pas d'ailleurs** : reçu,
+        // il prenait la place d'un numéro que cette officine n'a pas encore
+        // écrit, et le jour où elle l'écrivait, l'écriture échouait — pour
+        // toujours, puisque le numéro n'avance plus.
+        let ours = format!("{}:", self.base_uid()?);
         let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let mut added = 0;
-        for e in events {
+        for e in events.iter().filter(|e| !e.uid.starts_with(&ours)) {
             added += tx
                 .execute(
                     &format!(
@@ -60292,6 +60297,14 @@ mod tests {
             1
         );
         assert_eq!(db.receive_supply_events(&[theirs]).unwrap(), 0);
+        // Un identifiant de cette base venu d'ailleurs est écarté : il
+        // aurait pris la place d'un numéro à venir d'ici.
+        let forged = crate::ruptures::Event {
+            uid: format!("{base}:999"),
+            source: "Pharmacie du Port".to_owned(),
+            ..e.clone()
+        };
+        assert_eq!(db.receive_supply_events(&[forged]).unwrap(), 0);
         let tried = crate::ruptures::tried(&db.supply_events().unwrap(), "Diprosone");
         assert_eq!(tried[0].times, 2);
         assert_eq!(tried[0].sources, 2);

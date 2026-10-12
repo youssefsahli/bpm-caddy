@@ -136,6 +136,9 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   restent décalées d'une ligne : à relire chez les officines qui en ont ;
 - l'insuline NPH et NovoMix durent 24 h sur la courbe et 12 à 16 h (10 à
   16 h) dans la table « Insulines » ;
+- ruptures : aucun écran n'écrit de retrait (une substitution cliquée
+  par erreur compte pour toujours) ; une rupture « Diprosone » ne se voit
+  pas sur la fiche « bétaméthasone » (la DCI voyage mais n'est pas lue) ;
 - téléphone : la suppression d'un rendez-vous de l'agenda ne compare que
   le titre ; la base peut s'ouvrir deux fois (deux déverrouillages) et
   n'est jamais refermée en quittant par Retour. Le code Kotlin modifié le
