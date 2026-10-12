@@ -107,6 +107,16 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   une dose saisie sans code compte au bilan sous son libellé mais laisse
   le patient dans la liste de rappel ; l'éditeur accepte doses « 0 »
   (lu 1), âge au-delà de 120, flacon « 0 » sans le dire ;
+- biologie (contenu clinique, à relire avant de toucher) : la règle du
+  TP bas sous paracétamol sonne l'alerte chez tout patient sous AVK, pour
+  qui un TP bas est attendu (il faudrait une exclusion) ; trois paires de
+  règles se recouvrent à des seuils différents (CRP > 100 et > 50, Hb
+  < 10 et < 11, PNE > 1,5 et > 0,5) et répondent deux fois — le test
+  n'écarte que les seuils égaux ; « au-dessus » inclut la borne haute de
+  l'intervalle (K 5,0 « normal » au tableau, « élevée » à la lecture) ;
+  le sexe du patient n'est pas lu pour les intervalles (Hb, créatinine,
+  hématocrite) ; les signaux de la carte (`companion_signals`) et la
+  veille du tableau de bord donnent la phrase livrée, pas la réécrite ;
 - téléphone : la suppression d'un rendez-vous de l'agenda ne compare que
   le titre ; la base peut s'ouvrir deux fois (deux déverrouillages) et
   n'est jamais refermée en quittant par Retour. Le code Kotlin modifié le

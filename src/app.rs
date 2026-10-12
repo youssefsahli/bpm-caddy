@@ -14479,9 +14479,12 @@ fn loc_watch(db: &Db, today: &str, notice_days: u32) -> Vec<LocWatch> {
 fn bio_watch(db: &Db, today: &str) -> Vec<BioWatch> {
     let mut out: Vec<BioWatch> = Vec::new();
     for row in db.watchlist().unwrap_or_default() {
+        // Du plus récent au plus ancien, comme `biology::read` les attend
+        // (la liste vient dans l'ordre des jours).
         let readings: Vec<crate::biology::Reading> = row
             .readings
             .iter()
+            .rev()
             .map(|(code, value, date)| crate::biology::Reading {
                 code: code.as_str(),
                 value: *value,
@@ -26196,9 +26199,23 @@ impl App {
             session.error = Some(tr("bio_needs_analyte").to_owned());
             return;
         }
-        let Some((value, _)) = crate::codex::parse_amount(&session.bio_new_value) else {
-            session.error = Some(tr("bio_needs_value").to_owned());
-            return;
+        // An analyte chosen from the catalogue keeps its code and its
+        // unit; one typed by hand is stored as written and reads as
+        // written.
+        let code = session.bio_new_code.clone();
+        let unit = if session.bio_new_unit.trim().is_empty() {
+            crate::biology::find(&code)
+                .map(|a| a.unit.to_owned())
+                .unwrap_or_default()
+        } else {
+            session.bio_new_unit.clone()
+        };
+        let (value, bound) = match crate::biology::read_typed(&session.bio_new_value, &unit) {
+            Ok(read) => read,
+            Err(key) => {
+                session.error = Some(tr(key).to_owned());
+                return;
+            }
         };
         let today = session.today.clone();
         let year = session.db.current_year();
@@ -26213,16 +26230,11 @@ impl App {
                 }
             }
         };
-        // An analyte chosen from the catalogue keeps its code and its
-        // unit; one typed by hand is stored as written and reads as
-        // written.
-        let code = session.bio_new_code.clone();
-        let unit = if session.bio_new_unit.trim().is_empty() {
-            crate::biology::find(&code)
-                .map(|a| a.unit.to_owned())
-                .unwrap_or_default()
+        // « <0,5 » : le nombre se range, la borne se dit en remarque.
+        let remark = if bound.is_empty() {
+            String::new()
         } else {
-            session.bio_new_unit.clone()
+            session.bio_new_value.trim().to_owned()
         };
         let row = db::BioResult {
             id: 0,
@@ -26231,7 +26243,7 @@ impl App {
             value,
             unit,
             taken_on,
-            remark: String::new(),
+            remark,
         };
         match session.db.add_bio_result(patient.id, &row) {
             Ok(_) => {
@@ -26253,10 +26265,17 @@ impl App {
         let Some(mut edited) = session.bio_edit.clone() else {
             return;
         };
-        let Some((value, _)) = crate::codex::parse_amount(&session.bio_edit_value) else {
-            session.error = Some(tr("bio_needs_value").to_owned());
-            return;
+        let (value, bound) = match crate::biology::read_typed(&session.bio_edit_value, &edited.unit)
+        {
+            Ok(read) => read,
+            Err(key) => {
+                session.error = Some(tr(key).to_owned());
+                return;
+            }
         };
+        if !bound.is_empty() {
+            edited.remark = session.bio_edit_value.trim().to_owned();
+        }
         let year = session.db.current_year();
         let taken_on = if session.bio_edit_date.trim().is_empty() {
             String::new()
@@ -27418,17 +27437,20 @@ impl App {
                 tags: &d.tags,
             })
             .collect();
-        let findings: Vec<(String, String)> = crate::biology::read(&readings, &words)
-            .into_iter()
-            .map(|f| {
-                let level = match f.severity {
-                    crate::biology::Severity::Alert => tr("bio_alert"),
-                    crate::biology::Severity::Warn => tr("bio_warn"),
-                    crate::biology::Severity::Info => tr("bio_info"),
-                };
-                (level.to_owned(), f.text)
-            })
-            .collect();
+        // Les mots de l'officine, comme à l'écran : la feuille imprimait la
+        // phrase livrée là où l'écran montrait sa réécriture.
+        let findings: Vec<(String, String)> =
+            crate::biology::resolve(crate::biology::read(&readings, &words), &session.content)
+                .into_iter()
+                .map(|f| {
+                    let level = match f.severity {
+                        crate::biology::Severity::Alert => tr("bio_alert"),
+                        crate::biology::Severity::Warn => tr("bio_warn"),
+                        crate::biology::Severity::Info => tr("bio_info"),
+                    };
+                    (level.to_owned(), f.text)
+                })
+                .collect();
         // What the calendrier still owes, in the same words as the
         // carnet's own panel.
         let doses: Vec<crate::vaccines::Dose> = session

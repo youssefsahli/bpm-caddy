@@ -91,6 +91,38 @@ pub fn find(code: &str) -> Option<&'static Analyte> {
     CATALOGUE.iter().find(|a| a.code == code)
 }
 
+/// Une valeur telle qu'on la tape au comptoir, pour une analyse rangée en
+/// `unit` : le nombre, et le signe d'une borne de laboratoire
+/// (« <0,5 ») quand il y en a un.
+///
+/// **L'unité tapée est vérifiée, jamais jetée** : « 7 mmol/L » sous une
+/// glycémie en g/L se rangeait 7 g/L, lu « très élevé » ; « 25 mg/L »
+/// sous une créatinine en µmol/L, 25 µmol/L, lu « bas » pour un rein qui
+/// défaille. Une unité qui n'est pas celle de l'analyse est refusée (la
+/// clé du message) ; une analyse sans unité connue prend ce qui vient.
+pub fn read_typed(text: &str, unit: &str) -> Result<(f64, String), &'static str> {
+    let text = text.trim();
+    let (sign, rest) = match text.chars().next() {
+        Some(c @ ('<' | '>' | '≤' | '≥')) => (c.to_string(), text[c.len_utf8()..].trim_start()),
+        _ => (String::new(), text),
+    };
+    let Some((value, tail)) = crate::codex::parse_amount(rest) else {
+        return Err("bio_needs_value");
+    };
+    let fold = |s: &str| {
+        crate::fuzzy::sort_key(s)
+            .replace(['µ', 'μ'], "u")
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect::<String>()
+    };
+    let tail = tail.trim();
+    if !tail.is_empty() && !unit.trim().is_empty() && fold(tail) != fold(unit) {
+        return Err("bio_unit_mismatch");
+    }
+    Ok((value, sign))
+}
+
 /// The analytes matching what is being typed, best first.
 pub fn search(query: &str) -> Vec<&'static Analyte> {
     if query.trim().is_empty() {
@@ -204,12 +236,16 @@ pub fn read(readings: &[Reading], treatments: &[crate::revue::Treatment]) -> Vec
             .iter()
             .any(|t| crate::fuzzy::contains_folded(t, needle))
     };
+    // **À date égale, la première donnée** : les appelants donnent les
+    // résultats du plus récent au plus ancien (`bio_results`). Un contrôle
+    // du même jour — K 6,2 le matin, 4,8 l'après-midi — laissait lire le
+    // premier, et l'alerte restait.
     let mut latest: std::collections::HashMap<&str, &Reading> = std::collections::HashMap::new();
     for r in readings {
         latest
             .entry(r.code)
             .and_modify(|kept| {
-                if r.date >= kept.date {
+                if r.date > kept.date {
                     *kept = r;
                 }
             })
@@ -1887,6 +1923,21 @@ const RULES: &[Rule] = &[
 
 #[cfg(test)]
 mod tests {
+
+    /// L'unité tapée est vérifiée, et une borne de laboratoire se lit.
+    #[test]
+    fn a_typed_value_keeps_its_unit_honest() {
+        assert_eq!(read_typed("1,2", "g/L"), Ok((1.2, String::new())));
+        assert_eq!(read_typed("1,2 g/l", "g/L"), Ok((1.2, String::new())));
+        assert_eq!(read_typed("7 mmol/L", "g/L"), Err("bio_unit_mismatch"));
+        assert_eq!(read_typed("25 mg/L", "µmol/L"), Err("bio_unit_mismatch"));
+        assert_eq!(read_typed("88 umol/l", "µmol/L"), Ok((88.0, String::new())));
+        assert_eq!(read_typed("<0,5", "mUI/L"), Ok((0.5, "<".to_owned())));
+        assert_eq!(read_typed("≥ 90", ""), Ok((90.0, "≥".to_owned())));
+        assert_eq!(read_typed("12 mg", ""), Ok((12.0, String::new())));
+        assert_eq!(read_typed("abc", "g/L"), Err("bio_needs_value"));
+    }
+
     use super::*;
 
     /// **Une adresse par phrase, et la même des deux côtés.**
@@ -2075,6 +2126,21 @@ mod tests {
             },
         ];
         let found = read(&readings, &[treat("Coversyl", "périndopril", "IEC", "")]);
+        assert!(found.is_empty(), "{found:?}");
+        // Le même jour, le plus récent est donné d'abord, et c'est lui.
+        let same_day = [
+            Reading {
+                code: "K",
+                value: 4.8,
+                date: "2026-08-20",
+            },
+            Reading {
+                code: "K",
+                value: 6.2,
+                date: "2026-08-20",
+            },
+        ];
+        let found = read(&same_day, &[treat("Coversyl", "périndopril", "IEC", "")]);
         assert!(found.is_empty(), "{found:?}");
     }
 

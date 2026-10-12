@@ -31,6 +31,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   campaign compares the whole row; the printed summary counts a dose
   whose file is gone, as the screen does; the age shown is read on the
   same day as the reason given.
+- Biology: a unit typed with the value must be the analyte's (« 7
+  mmol/L » under a glycaemia in g/L was stored as 7 g/L, « 25 mg/L »
+  under a creatinine in µmol/L as 25 µmol/L); a laboratory bound
+  (« <0,5 ») is read and kept in the remark; of two results of one day,
+  the later one is read; the printed bilan uses the officine's
+  rewritten readings, as the screen does.
 
 ## [0.400.0] - 2026-10-12
 

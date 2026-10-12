@@ -401,6 +401,7 @@ mod tests {
             // Et la lecture des doses au poids, dont la cadence nomme
             // son libellé : « par prise » n'est pas « par jour ».
             include_str!("dosing.rs"),
+            include_str!("biology.rs"),
             // La campagne dit en clair une péremption mal tapée.
             include_str!("campagne.rs"),
             // Les erreurs des couches du dessous, dites en clair

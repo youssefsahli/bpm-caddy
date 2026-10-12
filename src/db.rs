@@ -49503,7 +49503,7 @@ impl Db {
                             b.code, b.value, b.taken_on
                      FROM biology b JOIN patients p ON p.id = b.patient_id
                      WHERE b.code <> ''
-                     ORDER BY b.taken_on",
+                     ORDER BY b.taken_on, b.id",
                 )
                 .map_err(|e| e.to_string())?;
             let found = stmt
