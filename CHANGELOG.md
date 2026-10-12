@@ -20,7 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is ignored; a DFG typed in the calculator is rounded as shown; correcting a
   vaccination line without a code gives it one; conciliation refuses to
   match a combination to one of its molecules only when the combination
-  is written with « + » or « / »; the attempts to also catch combinations
+  is written with « + » (or with « / » on the card — typed, « matin/soir »
+  is a rhythm, not a second molecule); the attempts to also catch combinations
   written with spaces each broke other cards (a salt read as a second
   molecule, or « amoxicilline acide clavulanique » taken for amoxicillin)
   and are withdrawn — that case is back to 0.403.0's behaviour.

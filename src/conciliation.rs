@@ -283,7 +283,8 @@ fn scored_match(name: &str, base: &[Known]) -> Option<(i32, usize)> {
 /// Le plus long des deux noms porte-t-il **une molécule de plus** que
 /// le plus court ? Une association écrite (« + », « / ») ou un mot qui
 /// nomme une autre molécule connue.
-fn adds_a_molecule(a: &str, b: &str) -> bool {
+fn adds_a_molecule(a: &str, card: &str) -> bool {
+    let b = card;
     let (short, long) = if a.len() <= b.len() { (a, b) } else { (b, a) };
     if short == long || short.is_empty() {
         return false;
@@ -303,7 +304,12 @@ fn adds_a_molecule(a: &str, b: &str) -> bool {
     // produit seul (« amoxicilline acide clavulanique » pris pour
     // l'amoxicilline). Une association écrite sans signe reste le cas
     // ouvert — voir PASSATION.
-    let joined = long.contains('+') || long.contains('/') && !short.contains('/');
+    //
+    // « / » ne vaut association que **sur la fiche** : tapé, il écrit
+    // aussi un rythme (« Doliprane matin/soir »), qui n'est pas une
+    // seconde molécule. Sur la ligne tapée, seul « + » en est une.
+    let card_is_long = long == card;
+    let joined = long.contains('+') || (card_is_long && long.contains('/') && !short.contains('/'));
     joined && extra.iter().any(|w| w.chars().any(char::is_alphabetic))
 }
 
@@ -1133,7 +1139,7 @@ Vogalène lyoc si nausées
         }];
         let rows = compare(
             &held,
-            "Amlodipine/valsartan 5 mg/80 mg : 1 cp le matin",
+            "Amlodipine + valsartan 5 mg/80 mg : 1 cp le matin",
             &base,
         );
         assert!(rows
@@ -1230,6 +1236,26 @@ Vogalène lyoc si nausées
         assert!(
             scored_match("Amlodipine + valsartan", std::slice::from_ref(&k)).is_none(),
             "l'Amlor ne répond pas à une association écrite"
+        );
+    }
+
+    /// Un rythme écrit avec une barre n'est pas une association.
+    #[test]
+    fn a_slash_in_a_rhythm_is_not_a_combination() {
+        let held = vec![Held {
+            name: "Doliprane",
+            dci: "paracétamol",
+            class: "antalgique",
+            posology: "1 g matin et soir",
+            strength: "",
+        }];
+        let base: Vec<Known> = Vec::new();
+        let rows = compare(&held, "Doliprane matin/soir", &base);
+        assert!(
+            rows.iter()
+                .all(|r| r.kind != Change::Stopped && r.kind != Change::Unmatched),
+            "{:?}",
+            rows.iter().map(|r| (&r.label, r.kind)).collect::<Vec<_>>()
         );
     }
 }
