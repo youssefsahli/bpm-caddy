@@ -3434,9 +3434,10 @@ fn dispositif_values(
             typst_str(&sources.join(" · "))
         ));
     }
-    src.push_str(
-        "#v(2mm)\n#text(8pt, style: \"italic\")[Ligne LPP et tarif à vérifier lors de la délivrance : cette fiche indique les conditions de prise en charge, non le prix.]\n",
-    );
+    src.push_str(&format!(
+        "#v(2mm)\n#text(8pt, style: \"italic\")[#{}]\n",
+        typst_str(crate::strings::tr("dispo_lpp_notice"))
+    ));
     vec![("{{BODY}}", src)]
 }
 
@@ -4069,10 +4070,17 @@ fn dispositifs_values(
             "{{PHARMACY_NAME}}",
             format!(
                 "#{}",
-                typst_str(if pharmacy.name.trim().is_empty() {
-                    "La ligne LPP et son tarif se vérifient au moment de la délivrance."
+                // **La réserve LPP toujours**, l'officine nommée ou non :
+                // elle ne s'imprimait que sans nom d'officine, c'est-à-dire
+                // presque jamais.
+                typst_str(&if pharmacy.name.trim().is_empty() {
+                    crate::strings::tr("dispo_lpp_notice").to_owned()
                 } else {
-                    pharmacy.name.trim()
+                    format!(
+                        "{} — {}",
+                        pharmacy.name.trim(),
+                        crate::strings::tr("dispo_lpp_notice")
+                    )
                 })
             ),
         ),

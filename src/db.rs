@@ -49305,12 +49305,30 @@ impl Db {
     }
 
     /// Remove a dispositif. Compare-and-set on the name displayed.
-    pub fn delete_dispositif(&self, id: i64, expected_name: &str) -> Result<bool, String> {
+    ///
+    /// Comparée sur **toute** la fiche, comme la réécriture : une ligne LPP
+    /// corrigée ailleurs ne part pas avec la fiche sans un mot.
+    pub fn delete_dispositif(&self, expected: &Dispositif) -> Result<bool, String> {
         let changed = self
             .conn
             .execute(
-                "DELETE FROM dispositifs WHERE id = ?1 AND name = ?2",
-                (id, expected_name),
+                "DELETE FROM dispositifs WHERE id = ?1
+                   AND name = ?2 AND family = ?3 AND indication = ?4
+                   AND sizes = ?5 AND application = ?6 AND renewal = ?7
+                   AND lpp = ?8 AND caution = ?9 AND tags = ?10 AND sources = ?11",
+                rusqlite::params![
+                    expected.id,
+                    &expected.name,
+                    &expected.family,
+                    &expected.indication,
+                    &expected.sizes,
+                    &expected.application,
+                    &expected.renewal,
+                    &expected.lpp,
+                    &expected.caution,
+                    &expected.tags,
+                    &expected.sources,
+                ],
             )
             .map_err(|e| e.to_string())?;
         Ok(changed == 1)
@@ -63351,12 +63369,31 @@ mod tests {
         // One added by hand behaves like any other, deletion included.
         let id = db.add_dispositif("Attelle de l'officine").unwrap();
         assert!(db.dispositifs().unwrap().iter().any(|d| d.id == id));
-        assert!(!db.delete_dispositif(id, "Autre nom").unwrap());
-        assert!(db.delete_dispositif(id, "Attelle de l'officine").unwrap());
+        let mine = db
+            .dispositifs()
+            .unwrap()
+            .into_iter()
+            .find(|d| d.id == id)
+            .unwrap();
+        let other = Dispositif {
+            name: "Autre nom".to_owned(),
+            ..mine.clone()
+        };
+        assert!(!db.delete_dispositif(&other).unwrap());
+        let corrected = Dispositif {
+            lpp: "Titre I, chapitre 2".to_owned(),
+            ..mine.clone()
+        };
+        assert!(db.update_dispositif(&corrected, &mine).unwrap());
+        assert!(
+            !db.delete_dispositif(&mine).unwrap(),
+            "la ligne LPP a changé ailleurs"
+        );
+        assert!(db.delete_dispositif(&corrected).unwrap());
         // A base emptied on purpose stays empty: the seed mark says the
         // pass has run here, so the fiches do not come back to argue.
         for d in db.dispositifs().unwrap() {
-            assert!(db.delete_dispositif(d.id, &d.name).unwrap());
+            assert!(db.delete_dispositif(&d).unwrap());
         }
         assert_eq!(db.seed_dispositifs().unwrap(), 0);
         assert!(db.dispositifs().unwrap().is_empty());

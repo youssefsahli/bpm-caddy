@@ -82,6 +82,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   calculators read « 1.000 » as a thousand, and the calculators keep a
   trace quantity instead of printing 0; deleting a preparation compares
   the whole formula.
+- Compression: the renewal counts a delivery whatever the case or spaces
+  of its class and size (« m » and « M » were two sizes, and a second
+  delivery opened a right it did not have); a delivery whose pairs do not
+  read, or without a size, is refused rather than saved as zero or as
+  nothing; a measurement on the limit of two sizes shows both.
+- Dispositifs: deleting compares the whole fiche; after a « modifié
+  ailleurs » refusal the form (and the codex's) rebases on the row read
+  back, the untouched fields following it — every later save was refused
+  and only closing, which lost the typing, got out; the LPP caveat is
+  printed on the booklet even when the officine has a name, from the
+  strings file.
 
 ## [0.401.0] - 2026-10-12
 

@@ -42845,6 +42845,37 @@ impl App {
                 Ok(false) => {
                     session.stale("codex_stale");
                     session.reload_codex();
+                    // Rebasée sur la formule relue, ce que la frappe n'a pas
+                    // touché la suivant (comme pour les dispositifs).
+                    if let Some(fresh) = session.preparation(base.id) {
+                        if let Some(form) = &mut session.codex_edit {
+                            for (field, was, now) in [
+                                (&mut form.name, &base.name, &fresh.name),
+                                (&mut form.form, &base.form, &fresh.form),
+                                (&mut form.indication, &base.indication, &fresh.indication),
+                                (&mut form.formula, &base.formula, &fresh.formula),
+                                (
+                                    &mut form.yield_amount,
+                                    &base.yield_amount,
+                                    &fresh.yield_amount,
+                                ),
+                                (&mut form.method, &base.method, &fresh.method),
+                                (
+                                    &mut form.conservation,
+                                    &base.conservation,
+                                    &fresh.conservation,
+                                ),
+                                (&mut form.caution, &base.caution, &fresh.caution),
+                                (&mut form.tags, &base.tags, &fresh.tags),
+                                (&mut form.sources, &base.sources, &fresh.sources),
+                            ] {
+                                if field == was {
+                                    field.clone_from(now);
+                                }
+                            }
+                        }
+                        session.codex_base = Some(fresh);
+                    }
                 }
                 Err(e) => session.error = Some(e),
             }
@@ -56800,14 +56831,32 @@ impl App {
                             let leg = Self::conseil_side_label(side);
                             match fits.first() {
                                 Some(f) if f.fits() => {
+                                    // **Toutes les tailles qui vont**, pas la
+                                    // première : une mesure sur la limite de
+                                    // deux tailles allait aux deux, et la plus
+                                    // petite s'affichait seule.
+                                    let all: Vec<&String> =
+                                        fits.iter().filter(|x| x.fits()).map(|x| &x.size).collect();
                                     ui.horizontal_wrapped(|ui| {
+                                        let sizes = all
+                                            .iter()
+                                            .map(|s| s.as_str())
+                                            .collect::<Vec<_>>()
+                                            .join(tr("conseil_fit_or"));
                                         Self::conseil_line(
                                             ui,
-                                            &trn("conseil_fit", &[&leg, &f.size]),
+                                            &trn("conseil_fit", &[&leg, &sizes]),
                                             false,
                                         );
-                                        if motif::button(ui, tr("conseil_fit_take")).clicked() {
-                                            state.size = f.size.clone();
+                                        for size in &all {
+                                            let label = if all.len() > 1 {
+                                                format!("{} {size}", tr("conseil_fit_take"))
+                                            } else {
+                                                tr("conseil_fit_take").to_owned()
+                                            };
+                                            if motif::button(ui, &label).clicked() {
+                                                state.size = (*size).clone();
+                                            }
                                         }
                                     });
                                 }
@@ -56967,7 +57016,23 @@ impl App {
         }
         if save {
             if let Some(pid) = pid {
-                let pairs: u32 = state.pairs.trim().parse().unwrap_or(0);
+                // **Une délivrance se compte** : des paires illisibles
+                // (« deux », « 2 paires ») s'enregistraient zéro, et une
+                // délivrance sans taille ne comptait pour aucune — la
+                // suivante ouvrait un droit qu'elle n'avait pas.
+                let typed = state.pairs.trim();
+                let Ok(pairs) = (if typed.is_empty() {
+                    Ok(0)
+                } else {
+                    typed.parse::<u32>()
+                }) else {
+                    state.error = Some(tr("conseil_pairs_unreadable").to_owned());
+                    return;
+                };
+                if pairs > 0 && state.size.trim().is_empty() {
+                    state.error = Some(tr("conseil_size_needed").to_owned());
+                    return;
+                }
                 let mut kept = Self::conseil_measures(state);
                 // Seules les jambes mesurées, et seuls les points de
                 // l'article : un champ d'un autre article resté rempli
@@ -58505,7 +58570,7 @@ impl App {
         }
         if delete {
             session.dispo_confirm_delete = false;
-            match session.db.delete_dispositif(dispo.id, &dispo.name) {
+            match session.db.delete_dispositif(dispo) {
                 Ok(true) => {
                     session.dispo_open = None;
                     session.reload_dispositifs();
@@ -58609,6 +58674,36 @@ impl App {
                 Ok(false) => {
                     session.stale("dispo_stale");
                     session.reload_dispositifs();
+                    // La fiche relue devient la base, et ce que la frappe
+                    // n'a pas touché la suit : sans quoi chaque
+                    // « Enregistrer » se refusait de nouveau, et le seul
+                    // moyen d'en sortir perdait la saisie.
+                    if let Some(fresh) = session
+                        .dispositifs
+                        .iter()
+                        .find(|d| d.id == base.id)
+                        .cloned()
+                    {
+                        if let Some(form) = &mut session.dispo_edit {
+                            for (field, was, now) in [
+                                (&mut form.name, &base.name, &fresh.name),
+                                (&mut form.family, &base.family, &fresh.family),
+                                (&mut form.indication, &base.indication, &fresh.indication),
+                                (&mut form.sizes, &base.sizes, &fresh.sizes),
+                                (&mut form.application, &base.application, &fresh.application),
+                                (&mut form.renewal, &base.renewal, &fresh.renewal),
+                                (&mut form.lpp, &base.lpp, &fresh.lpp),
+                                (&mut form.caution, &base.caution, &fresh.caution),
+                                (&mut form.tags, &base.tags, &fresh.tags),
+                                (&mut form.sources, &base.sources, &fresh.sources),
+                            ] {
+                                if field == was {
+                                    field.clone_from(now);
+                                }
+                            }
+                        }
+                        session.dispo_base = Some(fresh);
+                    }
                 }
                 Err(e) => session.error = Some(e),
             }

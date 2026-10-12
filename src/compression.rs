@@ -503,6 +503,14 @@ pub struct Renewal {
     pub next: Option<String>,
 }
 
+/// La même classe et la même taille, écrites comme on les écrit : « m » et
+/// « M », « 2 » et « 2 » suivi d'une espace comptaient pour deux tailles,
+/// et une seconde délivrance ouvrait un droit qu'elle n'avait pas.
+fn same_item(d: &Delivery, class: &str, size: &str) -> bool {
+    let fold = |s: &str| s.trim().to_lowercase();
+    fold(&d.class) == fold(class) && fold(&d.size) == fold(size)
+}
+
 /// Les paires accordées le jour `day`, sans chercher la date suivante.
 fn renewal_allowed(history: &[Delivery], class: &str, size: &str, day: &str) -> u32 {
     let six = crate::date::add_months(day, -6).unwrap_or_default();
@@ -510,7 +518,7 @@ fn renewal_allowed(history: &[Delivery], class: &str, size: &str, day: &str) -> 
     let within = |from: &str| -> u32 {
         history
             .iter()
-            .filter(|d| d.class == class && d.size == size && d.on.as_str() <= day)
+            .filter(|d| same_item(d, class, size) && d.on.as_str() <= day)
             .filter(|d| d.on.as_str() > from)
             .map(|d| d.pairs)
             .sum()
@@ -527,7 +535,7 @@ pub fn renewal(history: &[Delivery], class: &str, size: &str, today: &str) -> Re
     let twelve = crate::date::add_months(today, -12).unwrap_or_default();
     let same: Vec<&Delivery> = history
         .iter()
-        .filter(|d| d.class == class && d.size == size && d.on.as_str() <= today)
+        .filter(|d| same_item(d, class, size) && d.on.as_str() <= today)
         .collect();
     let half_year: u32 = same
         .iter()
@@ -706,6 +714,8 @@ mod tests {
         assert_eq!(r.next.as_deref(), Some("2026-11-01"));
         // Un changement de taille ouvre un nouveau droit.
         assert_eq!(renewal(&h, "II", "3", today).allowed, 2);
+        // Mais pas une autre écriture de la même taille.
+        assert_eq!(renewal(&h, "ii", " 2 ", today).allowed, 0);
         // Fin de mois : deux paires le 31 août ne libèrent rien le
         // 28 février, et la date annoncée est celle où la règle accorde
         // vraiment une paire.
