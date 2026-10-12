@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Regressions found by reviewing the 0.408.0 fixes: a deletion refused
+  because the register cites the file keeps the file's identity only —
+  holding its acts and notes from here also held ordinary single
+  deletions, and missed most real ones, which arrive in earlier records;
+  creating a base at a missing written path needs the same password typed
+  twice, the field cleared in between (pressing Enter again, the natural
+  retry before a share is mounted, created it); the access-log retention
+  uses a new settings key, so the ratcheted value written by 0.404–0.407
+  is ignored, and Options writes it whenever it differs from the stored
+  one; a DFG typed in the calculator is rounded as shown; correcting a
+  vaccination line without a code gives it one; conciliation skips
+  generic heads (« insuline », « carbonate ») and keeps glargine, lispro
+  or calcium as molecules.
+
 ## [0.408.0] - 2026-10-12
 
 ### Fixed

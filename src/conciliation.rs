@@ -300,13 +300,36 @@ fn molecule_words<'a>(dcis: impl Iterator<Item = &'a str>) -> Vec<String> {
     // la Dépakine (« sodium » de plus), qui se lisait arrêtée — de même
     // la fluticasone contre « fluticasone furoate ». Une association se
     // coupe à ses « + » et « / », et chaque part donne sa tête.
+    const GENERIC_HEADS: [&str; 14] = [
+        "insuline",
+        "vaccin",
+        "carbonate",
+        "chlorure",
+        "sulfate",
+        "citrate",
+        "acetate",
+        "bromure",
+        "gluconate",
+        "lactate",
+        "phosphate",
+        "oxyde",
+        "hydroxyde",
+        "fumarate",
+    ];
     let mut out: Vec<String> = dcis
         .flat_map(|d| {
             crate::fuzzy::sort_key(d)
                 .split(['+', '/'])
                 .filter_map(|part| {
+                    // Une tête générique ou un anion ne nomme pas la
+                    // molécule : « insuline glargine » est la glargine,
+                    // « carbonate de calcium » le calcium.
                     part.split(|c: char| !c.is_alphanumeric())
-                        .find(|w| w.chars().count() >= 5 && !NOT_A_MOLECULE.contains(w))
+                        .find(|w| {
+                            w.chars().count() >= 5
+                                && !NOT_A_MOLECULE.contains(w)
+                                && !GENERIC_HEADS.contains(w)
+                        })
                         .map(str::to_owned)
                 })
                 .collect::<Vec<_>>()
@@ -1229,5 +1252,24 @@ Vogalène lyoc si nausées
             "{:?}",
             rows.iter().map(|r| (&r.label, r.kind)).collect::<Vec<_>>()
         );
+    }
+
+    /// Une tête générique ne nomme pas la molécule : la glargine, la
+    /// lispro, le calcium restent des molécules.
+    #[test]
+    fn generic_heads_give_way_to_the_molecule() {
+        let words = molecule_words(
+            [
+                "insuline glargine",
+                "insuline lispro",
+                "carbonate de calcium",
+                "valproate de sodium",
+            ]
+            .into_iter(),
+        );
+        for w in ["glargine", "lispro", "calcium", "valproate"] {
+            assert!(words.iter().any(|m| m == w), "{w} manque : {words:?}");
+        }
+        assert!(!words.iter().any(|m| m == "insuline" || m == "carbonate"));
     }
 }

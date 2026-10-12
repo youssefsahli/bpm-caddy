@@ -61,6 +61,14 @@ conciliation, acte de vaccination, retour d'une case de table), ADELI,
 lanceur, relais.
 
 Laissé, relevé par les relectures (à trancher ou à vérifier) :
+- suppression d'un dossier cité au registre, reçue d'un autre poste :
+  seule l'identité est gardée ; ses actes, sa biologie et ses notes
+  partent avant elle, dans des envois antérieurs (la suppression se
+  découpe au changement de flux et à 40 Ko) — les garder demande que
+  `delete_patient` émette la suppression du dossier d'abord, ou que le
+  receveur regarde plus loin dans les envois de l'auteur ;
+- Options montre la durée de conservation du poste, pas celle que la
+  base tient pour l'officine ;
 - dossier d'échange : un fichier `.bpmposte` de plus d'un gigaoctet
   (le poste fondateur, avec ses pièces jointes) est sauté sans un mot —
   à dire, ou à découper à l'écriture ; une réécriture périmée ne

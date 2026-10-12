@@ -319,7 +319,11 @@ fn renal_dfg_text(v: f64) -> String {
 }
 
 /// La durée de conservation du journal des accès, pour toute l'officine.
-const AUDIT_KEEP_KEY: &str = "audit_keep_days";
+///
+/// Une clé neuve : `audit_keep_days`, que des versions intermédiaires
+/// écrivaient en maximum qui ne redescendait jamais (et en zéro qui
+/// arrêtait la purge), reste ignorée.
+const AUDIT_KEEP_KEY: &str = "audit_keep_days_officine";
 
 /// Deux secrets égaux, comparés en temps constant.
 fn same_secret(a: &str, b: &str) -> bool {
@@ -16366,7 +16370,7 @@ pub struct App {
     tpl_editor: Option<TplEditor>,
     /// La base absente qu'une seconde tentative créera : voir le
     /// déverrouillage.
-    create_armed: Option<std::path::PathBuf>,
+    create_armed: Option<(std::path::PathBuf, String)>,
     /// Global options editor, when open.
     options: Option<OptionsEditor>,
     /// A base found rather than configured, on a first launch. Kept so
@@ -21125,12 +21129,21 @@ impl App {
         let attempt = match (attempt, missing_base(&self.config)) {
             (Some(pw), Some(why)) => {
                 let here = self.config.db_path();
-                if self.create_armed.as_ref() == Some(&here) {
+                // **Le même mot de passe, retapé** — pas Entrée une seconde
+                // fois : le champ se vide, et la seconde saisie doit être la
+                // première. Le geste naturel devant un partage pas encore
+                // monté, réessayer, ne crée donc rien.
+                let confirmed = self
+                    .create_armed
+                    .as_ref()
+                    .is_some_and(|(at, first)| *at == here && same_secret(first, &pw));
+                if confirmed {
                     self.create_armed = None;
                     Some(pw)
                 } else {
-                    self.create_armed = Some(here);
-                    if let State::Locked { error, .. } = &mut self.state {
+                    self.create_armed = Some((here, pw));
+                    if let State::Locked { error, password } = &mut self.state {
+                        password.clear();
                         *error = Some(format!("{why} {}", tr("lock_db_create_again")));
                     }
                     None
@@ -23612,7 +23625,10 @@ impl App {
                         // (« dTcaP — rappel »), pas celui du catalogue, et
                         // la recalculer à chaque correction lui retirait
                         // son code — la dose restait « due ».
-                        if line.label != session.vacc_edit_base.label.trim() {
+                        // Ou s'il manque : une ligne inscrite sans code par
+                        // une version d'avant le retrouve en se corrigeant.
+                        if line.label != session.vacc_edit_base.label.trim() || line.code.is_empty()
+                        {
                             line.code = Self::catalogue_code(
                                 &session.vacc_catalogue,
                                 &line.code,
@@ -41190,6 +41206,10 @@ impl App {
                         )
                         .changed()
                     {
+                        // Tapé, il n'est pas arrondi par le champ (seul le
+                        // glisser l'est) : 29,6 s'affichait « 30 » et se
+                        // lisait « sous 30 ».
+                        session.calc_renal_dfg = session.calc_renal_dfg.round();
                         session.calc_renal_set = true;
                     }
                     // Les deux outils sont côte à côte : calculer une
@@ -83692,9 +83712,13 @@ impl eframe::App for App {
                     session.operator.clone_from(&self.config.ui.operator);
                 }
                 session.audit_keep_days = self.config.audit.keep_days;
-                // Changée ici, elle vaut pour l'officine entière.
-                if self.config.audit.keep_days != before.audit.keep_days {
-                    let was = session.db.setting(AUDIT_KEEP_KEY);
+                // Enregistrée ici, elle vaut pour l'officine entière — dès
+                // qu'elle diffère de ce que la base tient, et pas seulement
+                // de ce que ce poste avait.
+                let was = session.db.setting(AUDIT_KEEP_KEY);
+                if was.as_deref().map(str::trim)
+                    != Some(self.config.audit.keep_days.to_string().as_str())
+                {
                     let _ = session.db.set_setting(
                         AUDIT_KEEP_KEY,
                         &self.config.audit.keep_days.to_string(),

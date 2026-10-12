@@ -1633,8 +1633,8 @@ dossier. Un acte écrit par une version
 plus récente de l'application est compté à part. L'impression n'est pas
 tracée.
 
-Durée de conservation : `[audit] keep_days` de `config.toml`, un an par
-défaut ; au-delà, les lignes sont purgées à l'ouverture de session, et
+Durée de conservation : choisie dans Options (`[audit] keep_days`), un
+an par défaut ; au-delà, les lignes sont purgées à l'ouverture de session, et
 la purge est elle-même journalisée. `0` désactive la purge. La
 durée choisie dans Options vaut pour toute l'officine : elle est rangée
 dans la base, et tous les postes purgent à la même.
