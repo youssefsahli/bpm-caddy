@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.414.0] - 2026-10-12
+
 ### Fixed
 - Renaming a dispositif, a checklist or a cascade no longer creates a
   second one at the other officines: like vaccines and TROD lines, they

@@ -33,10 +33,13 @@ chaque commit relu) a passé son smoke dans les quatre formes (4e6fa5b) ;
 la 0.412.0 (saisie groupée de délivrance : numéro manquant ou tapé deux
 fois dit sur sa ligne, « Numéroter à la suite », quantité au-delà du
 solde — relue, corrigée, relue) a passé son smoke dans les quatre formes
-(bdceec1) : **c'est elle à publier** —
-`git tag v0.412.0 bdceec1 && git push origin v0.412.0` (à défaut, la
-0.411.0 : `git tag v0.411.0 4e6fa5b`) ; « En ligne » (après la 0.412.0,
-non publié) attend sa relecture finale et son smoke ; les étiquettes intermédiaires n'ont jamais été
+(bdceec1) ; la 0.413.0 (« En ligne » : chercher et prendre ce que les
+officines du réseau partagent ; dispositifs, cascades, listes et phrases
+imprimées voyagent, les deux dernières sur demande et jamais appliquées
+d'elles-mêmes — chaque commit relu, quatre relectures) a passé son smoke
+dans les quatre formes (810cb49) : **c'est elle à publier** —
+`git tag v0.413.0 810cb49 && git push origin v0.413.0` (à défaut, la
+0.412.0 : `git tag v0.412.0 bdceec1`) ; les étiquettes intermédiaires n'ont jamais été
 posées, et **la 0.395.0 ne se publie pas** (elle lisait mal les doses de
 charge et les titrations, corrigé dans la 0.396.0).
 
