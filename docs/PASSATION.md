@@ -16,11 +16,13 @@ téléphone, codex, dispositifs, tableau de bord, pièces, caisse,
 nutrition) a passé son smoke dans les quatre formes (bac8fce) ; la
 0.404.0 (ordonnance, conciliation, surveillance, postes, lanceur,
 lecture des boîtes, textes réécrits) a passé son smoke dans les quatre
-formes (eaf52c7) : c'est elle à publier —
-`git tag v0.404.0 eaf52c7 && git push origin v0.404.0` ; les autres
-n'ont pas besoin d'étiquette ; la 0.405.0 (registre et journal, audit,
-menus, impression, options, suppression d'un dossier) suit, smoke en
-cours ; les étiquettes intermédiaires n'ont jamais été
+formes (eaf52c7) ; la 0.405.0 (registre et journal, audit, menus,
+impression, options, suppression d'un dossier) a passé son smoke dans
+les quatre formes (efc9a3c) : c'est elle à publier —
+`git tag v0.405.0 efc9a3c && git push origin v0.405.0` ; les autres
+n'ont pas besoin d'étiquette ; la 0.406.0 (registre des stupéfiants,
+tables et « Aller à… », notes, entretiens imprimés, carnet de
+vaccination, postes) suit, smoke en cours ; les étiquettes intermédiaires n'ont jamais été
 posées, et **la 0.395.0 ne se publie pas** (elle lisait mal les doses de
 charge et les titrations, corrigé dans la 0.396.0).
 

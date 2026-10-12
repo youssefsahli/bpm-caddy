@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.406.0] - 2026-10-12
+
 ### Fixed
 - Posts: the reference post can no longer be retired, nor leave while
   others remain, and a retired or unknown post cannot be designated —
