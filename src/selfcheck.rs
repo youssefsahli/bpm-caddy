@@ -91,7 +91,7 @@ pub const SHEETS: &[Sheet] = &[
         target: "En automesure, l'objectif habituel est une moyenne inférieure à 135/85. Votre médecin fixe le vôtre, qui peut être différent.",
         columns: &["Matin 1", "Matin 2", "Matin 3", "Soir 1", "Soir 2", "Soir 3"],
         rows: 3,
-        alert: "Une tension supérieure à 180/110, un mal de tête violent et inhabituel, des troubles de la vue, de la parole ou de la force d'un côté : appelez le 15 sans attendre la consultation.",
+        alert: "Un mal de tête violent et inhabituel, des troubles de la vue, de la parole ou de la force d'un côté : appelez le 15 sans attendre la consultation. Une tension supérieure à 180/110 sans aucun de ces signes : appelez votre médecin dans la journée.",
         bring_back: "Rapportez cette feuille à la consultation, même si vous n'avez pas pu tout remplir.",
         totals: &[
             "Moyenne des neuf mesures du matin",
@@ -120,7 +120,7 @@ pub const SHEETS: &[Sheet] = &[
             "Coucher",
         ],
         rows: 7,
-        alert: "Sueurs, tremblements, faim brutale, vue trouble, confusion : c'est une hypoglycémie. Prenez tout de suite l'équivalent de trois morceaux de sucre ou un petit verre de jus de fruits, recontrôlez un quart d'heure après, puis mangez. Traitez une glycémie basse avant de la noter. Si elles se répètent, appelez votre médecin : le traitement est à revoir. Une personne qui perd connaissance ou ne peut pas avaler : appelez le 15, sans rien lui donner par la bouche.",
+        alert: "Sueurs, tremblements, faim brutale, vue trouble, confusion, ou une glycémie inférieure à 0,70 g/L : c'est une hypoglycémie. Prenez tout de suite l'équivalent de trois morceaux de sucre ou un petit verre de jus de fruits — sous acarbose (Glucor) associé à un sulfamide ou à l'insuline, du glucose pur seulement, en pastilles ou en gel —, recontrôlez un quart d'heure après, puis mangez. Traitez une glycémie basse avant de la noter. Si elles se répètent, appelez votre médecin : le traitement est à revoir. Une personne qui perd connaissance ou ne peut pas avaler : appelez le 15, sans rien lui donner par la bouche.",
         bring_back: "Rapportez ce carnet à chaque consultation et à chaque renouvellement.",
         totals: &[],
     },
@@ -177,7 +177,7 @@ pub const SHEETS: &[Sheet] = &[
         target: "Votre zone cible est fixée par le médecin, et elle dépend de la raison du traitement. Notez la vôtre ici :",
         columns: &["INR", "Dose fixée", "Prochain contrôle", "Remarque"],
         rows: 14,
-        alert: "INR supérieur à 5, saignement qui ne s'arrête pas, selles noires, urines rouges, hématome important, ou chute avec choc à la tête même sans douleur : appelez sans attendre le prochain contrôle.",
+        alert: "INR au-dessus de la zone notée ci-dessus, saignement qui ne s'arrête pas, selles noires, urines rouges, hématome important, ou chute avec choc à la tête même sans douleur : appelez sans attendre le prochain contrôle.",
         bring_back: "Gardez ce carnet sur vous, avec votre carte de porteur d'anticoagulant.",
         totals: &[],
     },
@@ -427,6 +427,17 @@ mod tests {
                 || s.key == "douleur";
             assert!(says_who, "{} : la cible ne dit pas qui la fixe", s.key);
         }
+        // L'alerte de l'INR non plus ne chiffre pas : « supérieur à 5 »
+        // laissait muette une fibrillation atriale à 4,6.
+        let inr = SHEETS.iter().find(|s| s.key == "inr").unwrap();
+        assert!(
+            !inr.alert.chars().any(|c| c.is_ascii_digit()),
+            "{}",
+            inr.alert
+        );
+        // Le resucrage dit l'exception de l'acarbose, que sa fiche donne.
+        let glycemie = SHEETS.iter().find(|s| s.key == "glycemie").unwrap();
+        assert!(glycemie.alert.contains("acarbose") && glycemie.alert.contains("glucose pur"));
     }
 
     /// Les clés sont **stables et uniques** : elles voyagent dans le nom

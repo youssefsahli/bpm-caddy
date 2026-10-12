@@ -57823,7 +57823,7 @@ impl App {
                     let r = crate::nutrition::assess(&a);
                     facts.push((
                         tr("conseil_fact_weight").to_owned(),
-                        format!("{} kg", state.nut.weight.trim()),
+                        format!("{} kg", state.nut.weight.trim().replace('.', ",")),
                     ));
                     if let Some(b) = r.bmi {
                         facts.push((
@@ -57842,7 +57842,10 @@ impl App {
                             format!("{u}").replace('.', ","),
                             format!("{:.0} {}", p.portion, p.unit),
                             format!("{:.0}", p.kcal * u),
-                            format!("{:.0}", p.protein * u).replace('.', ","),
+                            // Au gramme près, et au demi-gramme quand la
+                            // demi-portion le donne : « 4 » pour 4,25 g
+                            // perdait ce qu'on compte.
+                            crate::codex::format_quantity((p.protein * u * 10.0).round() / 10.0),
                         ])
                     })
                     .collect();

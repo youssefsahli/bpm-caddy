@@ -118,6 +118,10 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   le sexe du patient n'est pas lu pour les intervalles (Hb, créatinine,
   hématocrite) ; les signaux de la carte (`companion_signals`) et la
   veille du tableau de bord donnent la phrase livrée, pas la réécrite ;
+- feuilles de conseil : le titre de la feuille et les titres de section
+  s'impriment sans être réécrivables (`conseils::phrases` ne les liste
+  pas) ; le carnet de glycémie n'a pas de ligne pour l'hyperglycémie
+  (un seuil à prendre dans la source SFD avant de l'écrire) ;
 - téléphone : la suppression d'un rendez-vous de l'agenda ne compare que
   le titre ; la base peut s'ouvrir deux fois (deux déverrouillages) et
   n'est jamais refermée en quittant par Retour. Le code Kotlin modifié le

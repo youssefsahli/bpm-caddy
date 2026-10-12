@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Self-monitoring sheets: the glucose carnet says what a low reading is
+  (below 0.70 g/L) and that under acarbose with a sulfonylurea or
+  insulin only pure glucose corrects it, as the acarbose card says; a
+  blood pressure above 180/110 without warning signs calls the doctor the
+  same day, the warning signs call the 15; the INR carnet no longer
+  prints « above 5 » but the patient's own zone. Each sheet is held to
+  one page by a test.
+- Nutrition sheet: the weight and the protein of a half portion are
+  written the French way, to the tenth.
+
 ## [0.401.0] - 2026-10-12
 
 ### Fixed

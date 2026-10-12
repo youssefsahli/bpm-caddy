@@ -10524,6 +10524,9 @@ mod tests {
             let document: PagedDocument = typst::compile(&world)
                 .output
                 .unwrap_or_else(|e| panic!("« {} » doit compiler : {e:?}", sheet.title));
+            // Une feuille d'automesure tient sur **une** page : elle se
+            // pose sur le frigo, et la seconde page se perd.
+            assert_eq!(document.pages.len(), 1, "{} : plus d'une page", sheet.key);
             let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
                 .expect("l'export PDF doit réussir");
             assert!(pdf.starts_with(b"%PDF-"));
