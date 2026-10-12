@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.402.0] - 2026-10-12
+
 ### Fixed
 - Self-monitoring sheets: the glucose carnet says what a low reading is
   (below 0.70 g/L) and that under acarbose with a sulfonylurea or

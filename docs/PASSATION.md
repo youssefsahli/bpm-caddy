@@ -11,7 +11,8 @@ a passé son smoke (fa33b51) ; la 0.400.0 (relecture et frappe, registre,
 actes) a passé son smoke dans les quatre formes (bfffa2d) : c'est elle à
 publier — `git tag v0.400.0 bfffa2d && git push origin v0.400.0` ; les
 autres n'ont pas besoin d'étiquette ; la 0.401.0 (versions, agenda,
-campagne, biologie) a passé son smoke (43d0bd8) ; les étiquettes intermédiaires n'ont jamais été
+campagne, biologie) a passé son smoke (43d0bd8) ; la 0.402.0 (automesure,
+tables, ruptures, console, dossiers) suit, smoke en cours ; les étiquettes intermédiaires n'ont jamais été
 posées, et **la 0.395.0 ne se publie pas** (elle lisait mal les doses de
 charge et les titrations, corrigé dans la 0.396.0).
 
