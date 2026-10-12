@@ -60746,6 +60746,8 @@ mod tests {
         })
         .unwrap();
 
+        // Un poste d'un groupe : son paquet en sortira à l'import.
+        db.set_sync_local("post", "2").unwrap();
         let pack = dir.join("officine.bpmpack");
         db.export_bundle(&pack, "secret").unwrap();
         assert!(pack.exists(), "le paquet est un fichier");
@@ -60781,6 +60783,7 @@ mod tests {
         // Et ce qui revient est bien la même officine : le dossier et
         // la ligne de registre sont là, lisibles du même mot de passe.
         let back = Db::open(&base, "secret").unwrap();
+        assert_eq!(back.sync_post(), None, "sorti du groupe : il se rejoint");
         assert_eq!(back.patients().unwrap().len(), 1);
         assert_eq!(back.stup_moves(sid).unwrap().len(), 1);
         assert_eq!(back.patients().unwrap()[0].id, pid);
