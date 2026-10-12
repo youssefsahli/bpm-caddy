@@ -79,6 +79,9 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
 - ordonnance après TROD : la nitrofurantoïne en 3e intention de la
   cystite simple, et l'amoxicilline de l'enfant « maximum 50 mg/kg/j »
   sans plafond adulte — à relire contre le texte du protocole ;
+- messages du lecteur de carte (`vitale.rs`, `winscard.rs`) et du
+  bulletin (`bulletin.rs`, `pdf.rs` « écriture du bulletin impossible »)
+  écrits en dur, hors `strings.fr.toml` ;
 - textes imprimés hors `strings.fr.toml` : en-têtes de la grille de
   prises (« Médicament », « Indication », moments, repas), « Conseils »
   et « Relu en » dans `pdf.rs`, l'intitulé du protocole sur

@@ -219,6 +219,7 @@ fn read_element_string(
     let is_sep = |c: char| c == '\u{1d}' || separators.contains(&c);
     let mut rest = body;
     let mut seen_code = false;
+    let mut sep_seen = false;
     while !rest.is_empty() {
         rest = rest.trim_start_matches(is_sep);
         if rest.is_empty() {
@@ -266,7 +267,17 @@ fn read_element_string(
                 };
                 if ai == "10" {
                     out.lot = value.to_owned();
-                    out.lot_certain = closed;
+                    // **Le dernier champ n'a pas de séparateur** : GS1 n'en
+                    // met pas après lui. Un lot en dernier est donc fermé
+                    // par la fin, quand la lecture prouve qu'elle n'a rien
+                    // pu avaler — la douchette a déjà fait passer un
+                    // séparateur, ou la péremption et le numéro de série
+                    // sont déjà lus. Sans quoi chaque boîte « 01 21 17
+                    // 10 », la disposition courante, laissait le lot vide
+                    // au registre.
+                    out.lot_certain = closed
+                        || (tail.is_empty()
+                            && (sep_seen || (!out.expiry.is_empty() && !out.serial.is_empty())));
                 } else {
                     out.serial = value.to_owned();
                 }
@@ -286,6 +297,7 @@ fn read_element_string(
                 if !closed && (out.expiry.is_empty() || (ai == "21" && out.lot.is_empty())) {
                     out.read_to_end = false;
                 }
+                sep_seen |= closed;
                 rest = tail;
             }
             // Un AI que cette version ne connaît pas arrête la lecture.
@@ -463,6 +475,28 @@ mod tests {
         assert!(closed.lot_certain);
         assert!(!open.lot_certain, "rien ne l'a fermé, et il le dit");
         assert_eq!(open.lot, "ABC21SER9", "lu au plus large plutôt que coupé");
+    }
+
+    /// Un lot en dernier est fermé par la fin quand rien n'a pu être
+    /// avalé : un séparateur est déjà passé, ou la péremption et le
+    /// numéro sont lus. Sans séparateur ni numéro, il reste incertain.
+    #[test]
+    fn a_lot_written_last_is_closed_by_the_end() {
+        let s = read(
+            &format!("01{GTIN14}21SER9\u{1d}1727053110LOT42"),
+            "2026-10-10",
+        )
+        .unwrap();
+        assert_eq!(s.lot, "LOT42");
+        assert!(s.lot_certain && s.read_to_end);
+        let s = read(
+            &format!("01{GTIN14}1727053121SER9\u{1d}10LOT42"),
+            "2026-10-10",
+        )
+        .unwrap();
+        assert!(s.lot_certain);
+        let s = read(&format!("01{GTIN14}1727053110LOT42"), "2026-10-10").unwrap();
+        assert!(!s.lot_certain, "rien ne prouve qu'il n'a rien avalé");
     }
 
     /// Une douchette réglée sur un autre séparateur se déclare.

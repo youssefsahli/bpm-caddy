@@ -381,7 +381,12 @@ fn birth_around(
             // Le jour borné par le mois lui-même : un « 31 février »
             // s'écrivait dans le dossier.
             let last = crate::date::end_of_month(i64::from(y), i64::from(m)).unwrap_or(31);
-            if y == year && m == month && d >= 1 && i64::from(d) <= last {
+            // Le siècle, la carte le dit et le NIR non : né en 1925, le
+            // NIR « 25 » se lisait 2025, et la date écrite en entier sur
+            // la carte était refusée. Les deux chiffres du NIR, et pas
+            // d'année à venir.
+            let same_year = y % 100 == year % 100 && y <= this_year && y + 130 > this_year;
+            if same_year && m == month && d >= 1 && i64::from(d) <= last {
                 let mut out = String::new();
                 let _ = write!(out, "{y:04}-{m:02}-{d:02}");
                 return out;
@@ -617,6 +622,19 @@ mod tests {
         assert_eq!(found.len(), 2);
         assert_eq!(found[1].birth_date, "1955-08-17");
         assert_eq!(found[0].birth_date, "", "{:?}", found[0]);
+    }
+
+    /// **Né il y a cent ans** : le NIR dit « 25 », la carte écrit 1925 en
+    /// entier — le siècle vient de la carte, et la date se garde.
+    #[test]
+    fn a_birth_a_century_ago_keeps_its_date() {
+        let raw = b"\x00MARTIN\x00ROSE\x00225087511600187\x0015081925\x00";
+        let found = beneficiaries(raw, 2026);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].birth_date, "1925-08-15");
+        // Une année à venir n'est pas une naissance.
+        let ahead = b"\x00MARTIN\x00ROSE\x00225087511600187\x0015082125\x00";
+        assert!(beneficiaries(ahead, 2026)[0].birth_date.is_empty());
     }
 
     /// What must never happen: a number that is not a NIR read as one,

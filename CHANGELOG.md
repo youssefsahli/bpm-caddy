@@ -20,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the morning was kept); the condition of an as-needed line starts at its
   marker (« 1 sachet au petit-déjeuner si besoin » printed « déjeuner si
   besoin »).
+- Box scan: a lot written last in the DataMatrix — the common « 01 21 17
+  10 » layout — is taken as certain when the read proves it swallowed
+  nothing (a separator already passed, or the expiry and the serial are
+  read); the narcotics register left it empty on every such box.
+- Patient search: a NIR born in Corsica (2A, 2B) is found as typed.
+- Vitale card: a beneficiary born a century ago keeps the birth date the
+  card writes in full (the NIR's « 25 » read as 2025 refused 1925).
 - Launcher: a final release is installed over its own pre-release (a
   « -rc » tag read as the same version kept the final one from ever
   arriving); a failed replacement on Windows keeps the installed copy's

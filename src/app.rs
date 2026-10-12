@@ -11408,10 +11408,17 @@ impl Session {
         let q = self.query.trim();
         let numeric = !q.is_empty()
             && q.chars().any(|c| c.is_ascii_digit())
-            && q.chars()
-                .all(|c| c.is_ascii_digit() || matches!(c, ' ' | '.' | '/' | '-' | '+'));
+            && q.chars().all(|c| {
+                c.is_ascii_digit()
+                    || matches!(c, ' ' | '.' | '/' | '-' | '+')
+                    // Le 2A et le 2B des NIR nés en Corse.
+                    || matches!(c, 'A' | 'B' | 'a' | 'b')
+            });
         if numeric {
             let digits: String = q.chars().filter(char::is_ascii_digit).collect();
+            // Le NIR se lit lettres comprises : réduit à ses chiffres,
+            // « 1 55 08 2A 116 001 » ne retrouvait jamais son dossier.
+            let nir = typed_nir(q);
             let phone_digits = |phone: &str| {
                 let d: String = phone.chars().filter(char::is_ascii_digit).collect();
                 // « +33 6… » et « 06… » sont le même numéro.
@@ -11427,7 +11434,7 @@ impl Session {
                 .iter()
                 .filter_map(|p| {
                     let by_birth = born.as_deref().is_some_and(|b| p.birth_date == b);
-                    let by_nir = digits.len() >= 13 && crate::vitale::same_nir(&p.nir, &digits);
+                    let by_nir = nir.len() >= 13 && crate::vitale::same_nir(&p.nir, &nir);
                     // Moins de quatre chiffres, le numéro se commence : la
                     // lecture d'avant, éparse, les trouve encore pendant
                     // qu'on tape (« 06 »).
@@ -92145,6 +92152,20 @@ mod tests {
         assert_eq!(ids(&mut s, "+33 6 30 47"), [other]);
         assert_eq!(ids(&mut s, "2700175116001"), [other], "le NIR");
         assert!(ids(&mut s, "999999").is_empty());
+        // Né en Corse : le NIR se cherche avec son 2A.
+        let corse = s.db.add_patient("Santoni", "Paul", "1955-08-01").unwrap();
+        let p =
+            s.db.patients()
+                .unwrap()
+                .into_iter()
+                .find(|p| p.id == corse)
+                .unwrap();
+        let mut with = p.clone();
+        with.nir = "155082A116001".to_owned();
+        assert!(s.db.update_patient(&with, &p).unwrap());
+        s.set_patients(s.db.patients().unwrap());
+        assert_eq!(ids(&mut s, "1 55 08 2A 116 001"), [corse]);
+        assert_eq!(ids(&mut s, "155082a116001"), [corse]);
         // Une ligature se cherche en deux lettres, et l'inverse.
         let heart = s.db.add_patient("Lecœur", "Anne", "1980-02-02").unwrap();
         s.set_patients(s.db.patients().unwrap());
