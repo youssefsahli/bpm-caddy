@@ -62,9 +62,12 @@ fn read_version_file(path: &std::path::Path) -> Option<String> {
 /// does not understand never claims to be ahead of what is installed,
 /// so nobody is told to update to something that does not exist.
 fn parts(tag: &str) -> Vec<u64> {
-    tag.trim()
-        .trim_start_matches(['v', 'V'])
-        .split('.')
+    let tag = tag.trim().trim_start_matches(['v', 'V']);
+    // Le suffixe d'une préversion s'arrête au premier « - » ou « + » :
+    // `0.107.0-rc.1` coupé seulement aux points se lisait 0.107.0.1, plus
+    // récent que la finale.
+    let tag = tag.split(['-', '+']).next().unwrap_or("");
+    tag.split('.')
         .map(|p| {
             let digits: String = p.chars().take_while(char::is_ascii_digit).collect();
             digits.parse::<u64>().unwrap_or(0)
@@ -328,6 +331,7 @@ mod tests {
         // A pre-release suffix is read off: v0.107.0-rc1 is 0.107.0,
         // and nobody is told to update to a tag that is not a release.
         assert!(!is_newer("v0.107.0-rc1", "0.107.0"));
+        assert!(!is_newer("v0.107.0-rc.1", "0.107.0"));
         assert!(is_newer("v0.108.0-rc1", "0.107.0"));
     }
 

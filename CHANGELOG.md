@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the morning was kept); the condition of an as-needed line starts at its
   marker (« 1 sachet au petit-déjeuner si besoin » printed « déjeuner si
   besoin »).
+- Launcher: a final release is installed over its own pre-release (a
+  « -rc » tag read as the same version kept the final one from ever
+  arriving); a failed replacement on Windows keeps the installed copy's
+  size check; the application folder never falls back to the current
+  directory. The « latest version » check no longer reads « -rc.1 » as
+  newer than the final.
 - Companion bar: its hover on pregnancy, kidney, crushing and age says
   the officine's rewritten phrases, as the panels do, instead of the
   shipped ones.

@@ -40,9 +40,19 @@ struct Shared {
     total: AtomicU64,
 }
 
+/// Jamais le dossier courant : un raccourci lancé depuis un partage
+/// téléchargeait, puis exécutait, ce que n'importe qui pouvait y
+/// déposer. Sans dossier de données, le dossier personnel ; sans lui,
+/// celui du lanceur lui-même.
 fn app_dir() -> PathBuf {
     dirs::data_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
+        .or_else(|| dirs::home_dir().map(|h| h.join(".local").join("share")))
+        .or_else(|| {
+            std::env::current_exe()
+                .ok()
+                .and_then(|e| e.parent().map(PathBuf::from))
+        })
+        .unwrap_or_else(std::env::temp_dir)
         .join("bpm-caddy")
 }
 
@@ -114,13 +124,23 @@ fn installed_whole() -> bool {
 }
 
 /// Les nombres d'une étiquette `v0.257.0`, pour comparer des versions
-/// comme des nombres : « 0.100 » est après « 0.99 ».
+/// comme des nombres : « 0.100 » est après « 0.99 ». **Et la version
+/// finale après ses préversions** : `v0.405.0-rc1` se lit `[0, 405, 0]`
+/// suivi de 0, `v0.405.0` suivi de 1. Lues pareilles, la préversion
+/// installée tenait la finale pour « à jour », jamais installée ; et
+/// `v0.405.0-1` passait devant elle.
 fn version_parts(tag: &str) -> Vec<u64> {
-    tag.trim()
-        .trim_start_matches('v')
-        .split(['.', '-'])
-        .map_while(|p| p.parse().ok())
-        .collect()
+    let tag = tag.trim().trim_start_matches('v');
+    let (core, suffix) = match tag.find(['-', '+']) {
+        Some(at) => (&tag[..at], true),
+        None => (tag, false),
+    };
+    let mut parts: Vec<u64> = core.split('.').map_while(|p| p.parse().ok()).collect();
+    if !parts.is_empty() {
+        parts.resize(3, 0);
+        parts.push(u64::from(!suffix));
+    }
+    parts
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -315,11 +335,17 @@ fn check_and_update(shared: &Shared) -> Result<String, Box<dyn std::error::Error
     // réécriture échoue ensuite (disque plein), une taille restée de la
     // version d'avant déclarait abîmé le binaire neuf, retéléchargé à
     // chaque lancement — et refusé hors ligne.
+    let kept_size = std::fs::read_to_string(size_file()).ok();
     let _ = std::fs::remove_file(size_file());
     if let Err(e) = std::fs::rename(&tmp, &bin) {
         // Sous Windows, un binaire en cours d'exécution ne se remplace
-        // pas : la version installée reste, et le temporaire part.
+        // pas : la version installée reste, et le temporaire part. **Sa
+        // taille revient avec elle** : sans elle, un binaire tronqué
+        // passait pour entier jusqu'à la prochaine installation.
         let _ = std::fs::remove_file(&tmp);
+        if let Some(size) = kept_size {
+            let _ = std::fs::write(size_file(), size);
+        }
         return Err(e.into());
     }
     std::fs::write(size_file(), written.to_string())?;
@@ -667,5 +693,17 @@ mod tests {
         assert!(super::version_parts("v0.257.0") > super::version_parts("0.256.3"));
         assert!(super::version_parts("v0.256.0") <= super::version_parts("v0.257.0"));
         assert!(super::version_parts("v0.1.0") > super::version_parts(""));
+        // Une préversion avant sa finale, jamais après.
+        assert!(super::version_parts("v0.405.0") > super::version_parts("v0.405.0-rc1"));
+        assert!(super::version_parts("v0.405.0") > super::version_parts("v0.405.0-1"));
+        assert!(super::version_parts("v0.405.0-rc1") > super::version_parts("v0.404.0"));
+        assert_eq!(
+            super::decide("v0.405.0", "v0.405.0-rc1", true),
+            super::Decision::Install
+        );
+        assert_eq!(
+            super::version_parts("0.405"),
+            super::version_parts("v0.405.0")
+        );
     }
 }

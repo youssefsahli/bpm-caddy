@@ -51,6 +51,20 @@ conciliation, acte de vaccination, retour d'une case de table), ADELI,
 lanceur, relais.
 
 Laissé, relevé par les relectures (à trancher ou à vérifier) :
+- **mises à jour non signées** : le lanceur installe et exécute ce que
+  GitHub Releases sert, vérifié par TLS, la taille annoncée par la même
+  API et quatre octets magiques — aucune signature. Un accès en
+  écriture aux publications (jeton fuité, action épinglée sur une
+  étiquette mobile — `softprops/action-gh-release@v2`,
+  `Swatinem/rust-cache@v2` — ou cache empoisonné) atteint chaque
+  officine. À faire, avec une clé hors ligne à créer par Youssef :
+  signer les binaires (minisign/ed25519), embarquer la clé publique
+  dans le lanceur, refuser sans signature ; épingler les actions par
+  empreinte ; pas de cache dans la tâche qui publie ;
+- `release.yml` : chaque tâche de la matrice publie seule, la
+  publication devient « latest » avant que les trois binaires soient
+  là ; une tâche finale (ou un brouillon publié en dernier) ; et
+  `prerelease` pour une étiquette à suffixe ;
 - postes : retirer un poste ne change pas la clé — un poste retiré (ou
   un téléphone retiré, avec sa part) qui se tire une identité neuve
   écrit encore, et peut inscrire sa propre ligne de `sync_posts` ; la
