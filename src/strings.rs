@@ -402,6 +402,8 @@ mod tests {
             // son libellé : « par prise » n'est pas « par jour ».
             include_str!("dosing.rs"),
             include_str!("biology.rs"),
+            // L'âge tapé sur l'ordonnance qui ne se lit pas.
+            include_str!("ordonnance.rs"),
             // La campagne dit en clair une péremption mal tapée.
             include_str!("campagne.rs"),
             // Les erreurs des couches du dessous, dites en clair

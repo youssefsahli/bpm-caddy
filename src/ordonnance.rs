@@ -446,6 +446,29 @@ pub struct Choice {
     pub extra: String,
 }
 
+/// L'âge tapé dans l'encadré de l'ordonnance. Vide : inconnu, `Ok(None)`
+/// — un âge inconnu ne lève ni ne pose de borne, c'est la règle de
+/// [`Offer::barrier`]. « 12 », « 12 ans », « 12a » : `Ok(Some(12))`.
+/// Tout le reste — « douze », « 1 2 », « 200 » — est **illisible**,
+/// `Err` avec la clé de la phrase à dire : ce n'est pas un âge inconnu, c'est un âge mal écrit, et
+/// l'ordonnance ne s'imprime pas dessus.
+pub fn read_age(text: &str) -> Result<Option<u32>, &'static str> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Ok(None);
+    }
+    let digits: String = text.chars().take_while(char::is_ascii_digit).collect();
+    let rest = crate::fuzzy::sort_key(&text[digits.len()..]);
+    let rest = rest.trim();
+    if digits.is_empty() || !matches!(rest, "" | "a" | "an" | "ans") {
+        return Err("ord_age_unread");
+    }
+    match digits.parse::<u32>() {
+        Ok(age) if age <= 130 => Ok(Some(age)),
+        _ => Err("ord_age_unread"),
+    }
+}
+
 impl Choice {
     /// The prescribed lines, in the order they are printed. Empty when
     /// nothing has been chosen — the caller refuses to print then.
@@ -748,5 +771,17 @@ mod tests {
             listed.len(),
             "toutes les phrases listées doivent atteindre la page"
         );
+    }
+
+    #[test]
+    fn a_typed_age_reads_or_is_refused() {
+        assert_eq!(read_age(""), Ok(None));
+        assert_eq!(read_age(" 12 "), Ok(Some(12)));
+        assert_eq!(read_age("12 ans"), Ok(Some(12)));
+        assert_eq!(read_age("12a"), Ok(Some(12)));
+        assert_eq!(read_age("douze"), Err("ord_age_unread"));
+        assert_eq!(read_age("1 2"), Err("ord_age_unread"));
+        assert_eq!(read_age("200"), Err("ord_age_unread"));
+        assert_eq!(read_age("12 mois"), Err("ord_age_unread"));
     }
 }

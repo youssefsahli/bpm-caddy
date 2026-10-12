@@ -489,7 +489,27 @@ fn normalize(folded: &str) -> String {
             s.replace_range(i..i + from.len(), to);
         }
     }
-    s.replace(['(', ')', ';', ':'], " ")
+    let s = s.replace(['(', ')', ';', ':'], " ");
+    // « matin/soir », « matin-midi-soir » : des moments joints par un
+    // trait ou une barre sont autant de moments. Le jeton entier se
+    // lisait sur son premier mot — « matin » — et la grille imprimée
+    // perdait le midi et le soir. Seulement quand **chaque** morceau
+    // est un moment : « 1/2 », « 1-0-1 » restent la notation.
+    s.split(' ')
+        .map(|tok| {
+            let parts: Vec<&str> = tok.split(['-', '/']).collect();
+            if parts.len() > 1
+                && parts
+                    .iter()
+                    .all(|p| !p.is_empty() && moment_of(p).is_some())
+            {
+                parts.join(" ")
+            } else {
+                tok.to_owned()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Ce que porte la ligne d'un traitement à la demande : sa condition,
@@ -500,7 +520,11 @@ fn normalize(folded: &str) -> String {
 /// dépasse 38,5 » — et une condition résumée est une condition que le
 /// patient applique de travers.
 fn condition(raw: &str, marker: &str) -> String {
-    let folded = normalize(&crate::fuzzy::sort_key(raw));
+    // Le repère se cherche dans le texte **seulement plié**, pas
+    // normalisé : la normalisation raccourcit (« petit-déjeuner » devient
+    // « matin »), et la condition imprimée commençait neuf caractères
+    // trop loin — « déjeuner si besoin ».
+    let folded = crate::fuzzy::sort_key(raw);
     let Some(byte) = folded.find(marker) else {
         return raw.to_owned();
     };
@@ -1657,5 +1681,33 @@ mod tests {
         );
         let r = read("Diminution progressive, en espaçant les prises une nuit sur deux");
         assert_eq!(r.kind, Kind::Cyclic, "{r:?}");
+    }
+
+    /// Des moments joints par un trait ou une barre sont autant de
+    /// prises : la grille ne gardait que le matin.
+    #[test]
+    fn moments_joined_by_a_slash_or_a_dash_are_all_taken() {
+        for text in ["1 cp matin/soir", "1 cp matin-soir"] {
+            let r = read(text);
+            assert!(r.doses[0].is_some() && r.doses[2].is_some(), "{text}");
+            assert!(r.doses[1].is_none(), "{text}");
+        }
+        let r = read("1 cp matin-midi-soir");
+        assert!(r.doses[..3].iter().all(Option::is_some));
+        // La notation chiffrée reste la notation.
+        let r = read("1-0-1");
+        assert!(r.doses[0].is_some() && r.doses[1].is_none() && r.doses[2].is_some());
+    }
+
+    /// La condition d'une prise à la demande commence au repère, même
+    /// quand la phrase porte un « petit-déjeuner » ou un « soir au
+    /// coucher » avant lui.
+    #[test]
+    fn the_condition_starts_at_its_marker() {
+        let r = read("1 sachet au petit-déjeuner si besoin");
+        assert_eq!(r.kind, Kind::OnDemand);
+        assert_eq!(r.note, "si besoin");
+        let r = read("1 cp le soir au coucher si douleur");
+        assert!(r.note.starts_with("si "), "{}", r.note);
     }
 }

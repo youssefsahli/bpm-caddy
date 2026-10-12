@@ -11622,7 +11622,11 @@ impl Session {
                     name: &d.name,
                     dci: &d.dci,
                     class: &d.class,
-                    posology: self.dose_of(d.id),
+                    // Ce qui est rangé, pas ce qui se tape : la clé du
+                    // mémo ne suit pas la frappe, et une posologie à
+                    // moitié écrite s'affichait comme celle du dossier.
+                    posology: self.dose_base_of(d.id),
+                    strength: self.strength_of(d.id),
                 })
                 .collect();
             // The whole base, because the sheet names products the file
@@ -21781,6 +21785,20 @@ impl App {
         if session.ord_offers_key != Some(offers_key) {
             session.ord_offers = session.db.trod_lines(pid).unwrap_or_default();
             session.ord_offers_key = Some(offers_key);
+            // La ligne choisie retirée depuis (ici ou ailleurs) : le choix
+            // tombe avec sa posologie. Gardé, il disparaissait de
+            // l'ordonnance imprimée sans un mot, qui partait sans
+            // antibiotique.
+            if let Some(open) = session.ordonnance.as_mut() {
+                let gone = open
+                    .choice
+                    .antibiotic
+                    .is_some_and(|id| !session.ord_offers.iter().any(|o| o.id == id));
+                if gone {
+                    open.choice.antibiotic = None;
+                    open.choice.posology.clear();
+                }
+            }
         }
         let offers = std::mem::take(&mut session.ord_offers);
         let mut close = false;
@@ -21881,7 +21899,7 @@ impl App {
                                     );
                                 },
                             );
-                            who.age = age_text.trim().parse::<u32>().ok().filter(|a| *a <= 130);
+                            who.age = crate::ordonnance::read_age(age_text).ok().flatten();
                             let mut sex_key = who.sex.map_or(String::new(), |s| s.key().to_owned());
                             Self::sex_choice(ui, &mut sex_key);
                             who.sex = crate::ordonnance::Sex::from_key(&sex_key);
@@ -22165,12 +22183,22 @@ impl App {
                 .map(|o| o.who)
                 .unwrap_or_default();
             let lines = choice.lines(&session.ord_offers);
+            let age_unread = session
+                .ordonnance
+                .as_ref()
+                .and_then(|o| crate::ordonnance::read_age(&o.age_text).err());
             let blocked = choice
                 .antibiotic
                 .and_then(|id| session.ord_offers.iter().find(|o| o.id == id))
                 .and_then(|o| o.barrier(&who));
             if lines.is_empty() {
                 session.error = Some(tr("ord_empty").to_owned());
+            } else if let Some(key) = age_unread {
+                // « 12 a », « douze » : un âge tapé qui ne se lit pas
+                // n'est pas un âge inconnu — compté inconnu, il levait
+                // toutes les bornes, et l'amoxicilline adulte partait
+                // pour un enfant.
+                session.error = Some(tr(key).to_owned());
             } else if let Some(b) = blocked {
                 // Choisie avant qu'on corrige l'âge ou le sexe : la ligne
                 // ne s'imprime pas pour quelqu'un que le protocole exclut.
@@ -22181,6 +22209,15 @@ impl App {
                 // la molécule et ne dit ni la dose, ni le rythme, ni la
                 // durée.
                 session.error = Some(tr("ord_no_posology").to_owned());
+            } else if choice
+                .adjuvant
+                .as_ref()
+                .is_some_and(|n| !n.trim().is_empty())
+                && choice.adjuvant_posology.trim().is_empty()
+            {
+                // Même règle pour l'adjuvant : « 2. Lactéol » sans dose
+                // ni durée n'est pas une ligne d'ordonnance.
+                session.error = Some(tr("ord_no_adjuvant_posology").to_owned());
             } else {
                 let today = session
                     .db

@@ -51,6 +51,15 @@ conciliation, acte de vaccination, retour d'une case de table), ADELI,
 lanceur, relais.
 
 Laissé, relevé par les relectures (à trancher ou à vérifier) :
+- ordonnance après TROD : la nitrofurantoïne en 3e intention de la
+  cystite simple, et l'amoxicilline de l'enfant « maximum 50 mg/kg/j »
+  sans plafond adulte — à relire contre le texte du protocole ;
+- textes imprimés hors `strings.fr.toml` : en-têtes de la grille de
+  prises (« Médicament », « Indication », moments, repas), « Conseils »
+  et « Relu en » dans `pdf.rs`, l'intitulé du protocole sur
+  l'ordonnance, les manques du renouvellement ;
+- conciliation : « 1 000 mg matin et soir » contre « 1 g matin et soir »
+  se lit « dose changée » (sens sûr, mais bruyant) ;
 - location au mois : une location commencée le 29, le 30 ou le 31
   janvier atteint son mois le 28 février (`add_months` borne au dernier
   jour) — du 31/01 au 28/02, deux forfaits ; règle à trancher ;

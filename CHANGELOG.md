@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- TROD ordonnance: an antibiotic line deleted or replaced after it was
+  chosen drops the choice instead of vanishing from the printed
+  prescription; a typed age that does not read (« douze », « 12 mois »)
+  refuses the print instead of lifting every age bound; an adjuvant
+  without a posology is refused like the antibiotic; a new protocol line
+  takes the bounds all the protocol's lines share (a line added to the
+  cystitis protocol was offered to men, children and pregnant women).
+- Pill grid: « matin/soir » and « matin-midi-soir » place every dose (only
+  the morning was kept); the condition of an as-needed line starts at its
+  marker (« 1 sachet au petit-déjeuner si besoin » printed « déjeuner si
+  besoin »).
+- Conciliation: the strength the file keeps is compared (Triatec 5 mg
+  against « Ramipril 10 mg : 1 cp le soir » read as kept); a combination
+  is not matched to one of its molecules (« Amlodipine valsartan » was
+  Amlor with a new dose, the valsartan never named; « Ramipril » took
+  the Cotriatec and hid the hydrochlorothiazide stop); the table reads
+  the saved posology, not the one being typed.
+
 ## [0.403.0] - 2026-10-12
 
 ### Fixed

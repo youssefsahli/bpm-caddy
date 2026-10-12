@@ -48709,18 +48709,36 @@ impl Db {
     }
 
     /// Ajouter une ligne vide à un protocole, en dernier.
+    ///
+    /// **Avec les bornes que toutes les lignes du protocole partagent** :
+    /// créée sans bornes et permise pendant la grossesse, une ligne
+    /// ajoutée à la cystite (femme, 16 à 65 ans, hors grossesse) était
+    /// proposée à un homme, à un enfant, à une femme enceinte, jusqu'à ce
+    /// que quelqu'un pense à la corriger. Le silence n'est pas une
+    /// permission : la grossesse n'est permise que si toutes les lignes
+    /// la permettent.
     pub fn add_trod_line(&self, protocol: &str, name: &str) -> Result<i64, String> {
-        let rank = self
-            .trod_lines(protocol)?
-            .iter()
-            .map(|o| o.rank)
-            .max()
-            .map_or(0, |r| r + 1);
+        let lines = self.trod_lines(protocol)?;
+        let rank = lines.iter().map(|o| o.rank).max().map_or(0, |r| r + 1);
+        fn shared<T: PartialEq + Copy>(
+            lines: &[crate::ordonnance::Offer],
+            f: impl Fn(&crate::ordonnance::Offer) -> Option<T>,
+        ) -> Option<T> {
+            let first = f(lines.first()?);
+            lines
+                .iter()
+                .all(|o| f(o) == first)
+                .then_some(first)
+                .flatten()
+        }
         self.insert_trod_line(&crate::ordonnance::Offer {
             protocol: protocol.to_owned(),
             rank,
             name: name.to_owned(),
-            pregnancy: true,
+            min_age: shared(&lines, |o| o.min_age),
+            max_age: shared(&lines, |o| o.max_age),
+            sex: shared(&lines, |o| o.sex),
+            pregnancy: !lines.is_empty() && lines.iter().all(|o| o.pregnancy),
             ..Default::default()
         })
     }
@@ -57399,11 +57417,20 @@ mod tests {
             .iter()
             .all(|o| o.name != first.name));
 
-        // Ajoutée : en dernier, délivrable pendant la grossesse par défaut.
+        // Ajoutée : en dernier, avec les bornes que les lignes du
+        // protocole partagent — pas une ligne ouverte à tous.
+        let before = db.trod_lines("cystite").unwrap();
         let id = db.add_trod_line("cystite", "Nouveau").unwrap();
         let cystite = db.trod_lines("cystite").unwrap();
-        assert_eq!(cystite.last().map(|o| o.id), Some(id));
-        assert!(cystite.last().is_some_and(|o| o.pregnancy));
+        let added = cystite.last().unwrap();
+        assert_eq!(added.id, id);
+        assert_eq!(added.pregnancy, before.iter().all(|o| o.pregnancy));
+        if before.iter().all(|o| o.sex == before[0].sex) {
+            assert_eq!(added.sex, before[0].sex);
+        }
+        if before.iter().all(|o| o.min_age == before[0].min_age) {
+            assert_eq!(added.min_age, before[0].min_age);
+        }
     }
 
     #[test]

@@ -31,6 +31,8 @@ pub struct Held<'a> {
     pub dci: &'a str,
     pub class: &'a str,
     pub posology: &'a str,
+    /// Le dosage que le dossier retient (« 5 mg »), ou rien.
+    pub strength: &'a str,
 }
 
 /// Ce que la comparaison dit d'un traitement.
@@ -234,7 +236,7 @@ fn word_starts(line: &str) -> Vec<(usize, &str)> {
 ///
 /// Rend l'index **et la qualité** du rapprochement : `compare` en a
 /// besoin pour préférer un exact de la base à un partiel du dossier.
-fn scored_match(name: &str, base: &[Known]) -> Option<(i32, usize)> {
+fn scored_match(name: &str, base: &[Known], molecules: &[String]) -> Option<(i32, usize)> {
     let needle = crate::fuzzy::sort_key(name.trim());
     if needle.chars().filter(|c| c.is_alphanumeric()).count() < 3 {
         return None;
@@ -249,6 +251,12 @@ fn scored_match(name: &str, base: &[Known]) -> Option<(i32, usize)> {
             let hay = crate::fuzzy::sort_key(field.trim());
             let s = if hay == needle {
                 weight
+            } else if adds_a_molecule(&needle, &hay, molecules) {
+                // « Amlodipine valsartan » n'est pas l'Amlor, et
+                // « Ramipril » n'est pas le Cotriatec : rapprochés par
+                // préfixe, l'ajout du valsartan ou l'arrêt de
+                // l'hydrochlorothiazide ne se disaient nulle part.
+                0
             } else if hay.starts_with(&needle) || needle.starts_with(&hay) {
                 // Le plus court des deux décide de la qualité : « ramipril »
                 // contre « ramipril hydrochlorothiazide » est un moins bon
@@ -270,6 +278,60 @@ fn scored_match(name: &str, base: &[Known]) -> Option<(i32, usize)> {
         }
     }
     best
+}
+
+/// Les mots qui nomment une molécule, lus dans les DCI connues : ceux
+/// de cinq lettres et plus, moins les sels et les mots de liaison.
+fn molecule_words<'a>(dcis: impl Iterator<Item = &'a str>) -> Vec<String> {
+    const NOT_A_MOLECULE: [&str; 9] = [
+        "acide",
+        "sodique",
+        "potassique",
+        "calcique",
+        "magnesique",
+        "chlorhydrate",
+        "monohydrate",
+        "anhydre",
+        "lysine",
+    ];
+    let mut out: Vec<String> = dcis
+        .flat_map(|d| {
+            crate::fuzzy::sort_key(d)
+                .split(|c: char| !c.is_alphanumeric())
+                .filter(|w| w.chars().count() >= 5 && !NOT_A_MOLECULE.contains(w))
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// Le plus long des deux noms porte-t-il **une molécule de plus** que
+/// le plus court ? Une association écrite (« + », « / ») ou un mot qui
+/// nomme une autre molécule connue.
+fn adds_a_molecule(a: &str, b: &str, molecules: &[String]) -> bool {
+    let (short, long) = if a.len() <= b.len() { (a, b) } else { (b, a) };
+    if short == long || short.is_empty() {
+        return false;
+    }
+    let mine: Vec<&str> = short
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
+    let extra: Vec<&str> = long
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty() && !mine.contains(w))
+        .collect();
+    if extra.is_empty() {
+        return false;
+    }
+    let joined = long.contains('+') || long.contains('/') && !short.contains('/');
+    joined && extra.iter().any(|w| w.chars().any(char::is_alphabetic))
+        || extra
+            .iter()
+            .any(|w| molecules.binary_search_by(|m| m.as_str().cmp(w)).is_ok())
 }
 
 /// Comparer l'ordonnance du dossier à une liste tapée ou collée.
@@ -317,6 +379,7 @@ pub fn compare(held: &[Held], list: &str, base: &[Known]) -> Vec<Divergence> {
             > 1
     };
     let product = |id: &str, name: &str| format!("{id}\u{1}{}", crate::fuzzy::sort_key(name));
+    let molecules = molecule_words(held.iter().map(|h| h.dci).chain(base.iter().map(|k| k.dci)));
     let mut entries: Vec<Entry> = Vec::new();
     for raw in list.lines() {
         let raw = raw.trim();
@@ -334,7 +397,10 @@ pub fn compare(held: &[Held], list: &str, base: &[Known]) -> Vec<Divergence> {
         // exactement : la ligne se lisait « dose changée » et l'arrêt
         // de la codéine n'était dit nulle part. À égalité, le dossier
         // garde la main — c'est la raison de le lire en premier.
-        let found = match (scored_match(name, &from_file), scored_match(name, base)) {
+        let found = match (
+            scored_match(name, &from_file, &molecules),
+            scored_match(name, base, &molecules),
+        ) {
             (Some((f, i)), Some((b, _))) if f >= b => Some((&from_file[i], true)),
             (Some((_, i)), None) => Some((&from_file[i], true)),
             (_, Some((_, j))) => Some((&base[j], false)),
@@ -404,7 +470,17 @@ pub fn compare(held: &[Held], list: &str, base: &[Known]) -> Vec<Divergence> {
             Some(i) => {
                 taken[i] = true;
                 let e = &entries[i];
-                let kind = if same_dose(h.posology, &e.detail) {
+                // **Le dosage aussi.** Le dossier note « 1 cp le soir »
+                // et retient 5 mg à part ; la feuille écrit « 10 mg : 1 cp
+                // le soir ». La posologie seule se lisait reconduite, et
+                // la dose doublée passait sans un mot.
+                let mine = first_amount(h.posology).or_else(|| first_amount(h.strength));
+                let theirs = first_amount(&e.detail);
+                let other_strength = matches!(
+                    (mine, theirs),
+                    (Some((a, ua)), Some((b, ub))) if ua == ub && (a - b).abs() > 1e-9
+                );
+                let kind = if !other_strength && same_dose(h.posology, &e.detail) {
                     Change::Kept
                 } else {
                     Change::DoseChanged
@@ -556,6 +632,43 @@ fn same_dose(before: &str, after: &str) -> bool {
             .all(|w| strength(w) || !takes(w))
 }
 
+/// La première quantité d'un texte, ramenée à son unité de base : les
+/// masses en microgrammes, les unités et les millilitres à part.
+/// « 1 g » et « 1000 mg » sont la même ; « 5mg », « 2,5 mg » se lisent.
+fn first_amount(text: &str) -> Option<(f64, &'static str)> {
+    let folded = crate::fuzzy::sort_key(text).replace(',', ".");
+    let words: Vec<&str> = folded.split_whitespace().collect();
+    for (i, w) in words.iter().enumerate() {
+        let digits: String = w
+            .chars()
+            .take_while(|c| c.is_ascii_digit() || *c == '.')
+            .collect();
+        let Ok(value) = digits.parse::<f64>() else {
+            continue;
+        };
+        let glued = &w[digits.len()..];
+        let unit = if glued.is_empty() {
+            words.get(i + 1).copied().unwrap_or("")
+        } else {
+            glued
+        };
+        let unit = unit.split('/').next().unwrap_or("");
+        let unit = unit.trim_end_matches(|c: char| !c.is_alphanumeric());
+        let found = match unit {
+            "g" | "gramme" | "grammes" => Some((value * 1e6, "masse")),
+            "mg" | "milligramme" | "milligrammes" => Some((value * 1e3, "masse")),
+            "µg" | "ug" | "mcg" | "microgramme" | "microgrammes" => Some((value, "masse")),
+            "ui" | "unite" | "unites" => Some((value, "unite")),
+            "ml" => Some((value, "volume")),
+            _ => None,
+        };
+        if found.is_some() {
+            return found;
+        }
+    }
+    None
+}
+
 /// Un mot qui dit **une prise** : un moment, une liaison, une fréquence
 /// ou une grille (« 1-0-1 »).
 fn takes(word: &str) -> bool {
@@ -673,7 +786,8 @@ mod tests {
     #[test]
     fn a_line_finds_its_fiche_by_brand_or_by_molecule() {
         let base = base();
-        let by = |n: &str| scored_match(n, &base).map(|(_, i)| base[i].name);
+        let molecules = molecule_words(base.iter().map(|k| k.dci));
+        let by = |n: &str| scored_match(n, &base, &molecules).map(|(_, i)| base[i].name);
         assert_eq!(by("Kardegic"), Some("Kardegic 75"));
         assert_eq!(by("KARDEGIC 75"), Some("Kardegic 75"));
         // Par la DCI, que la feuille de l'hôpital écrit plus volontiers
@@ -697,18 +811,21 @@ mod tests {
                 dci: "acétylsalicylate de lysine",
                 class: "antiagrégant",
                 posology: "1 sachet le matin",
+                strength: "",
             },
             Held {
                 name: "Triatec",
                 dci: "ramipril",
                 class: "IEC",
                 posology: "5 mg le soir",
+                strength: "",
             },
             Held {
                 name: "Lévothyrox",
                 dci: "lévothyroxine",
                 class: "hormone thyroïdienne",
                 posology: "75 µg à jeun",
+                strength: "",
             },
         ];
         let list = "\
@@ -767,12 +884,14 @@ Vogalène lyoc si nausées
                 dci: "morphine",
                 class: "opioïde",
                 posology: "30 mg matin et soir",
+                strength: "",
             },
             Held {
                 name: "Sevredol",
                 dci: "morphine",
                 class: "opioïde",
                 posology: "10 mg si douleur",
+                strength: "",
             },
         ];
         let out = compare(
@@ -819,6 +938,7 @@ Vogalène lyoc si nausées
             dci: "ramipril",
             class: "IEC",
             posology: "5 mg le soir",
+            strength: "",
         }];
         let out = compare(&held, "Coversyl 5 mg le matin", &base);
         assert_eq!(out.len(), 1, "un remplacement n'est pas deux lignes");
@@ -838,6 +958,7 @@ Vogalène lyoc si nausées
             dci: "paracétamol",
             class: "antalgique",
             posology: "",
+            strength: "",
         }];
         // La DCI rapproche, et le dossier muet sur la posologie ne
         // conteste pas celle de la feuille.
@@ -871,6 +992,7 @@ Vogalène lyoc si nausées
             dci: "ramipril",
             class: "IEC",
             posology: "5 mg",
+            strength: "",
         }];
         // Rien de collé : le tableau ne prétend pas que tout est arrêté
         // par accident — il le dit, et le compte le montre.
@@ -909,6 +1031,7 @@ Vogalène lyoc si nausées
             dci: "",
             class: "",
             posology: "",
+            strength: "",
         }];
         let out = compare(&held, "Triatec 10 mg : 1 cp le soir", &base);
         assert_eq!(out.len(), 1, "un traitement, pas un arrêt et un ajout");
@@ -933,12 +1056,14 @@ Vogalène lyoc si nausées
                 dci: "ramipril",
                 class: "IEC",
                 posology: "5 mg",
+                strength: "",
             },
             Held {
                 name: "Kardegic 75",
                 dci: "acétylsalicylate de lysine",
                 class: "antiagrégant",
                 posology: "",
+                strength: "",
             },
         ];
         let list = "Coversyl 5 mg\nEliquis 5 mg x2\nMachin 3 gouttes\nKardegic 75 mg";
@@ -976,6 +1101,7 @@ Vogalène lyoc si nausées
             dci: "paracétamol + codéine",
             class: "antalgique palier 2",
             posology: "2 cp 3 fois par jour",
+            strength: "",
         }];
         let out = compare(&held, "Paracétamol 1 g 1-0-1", &base);
         assert!(
@@ -989,6 +1115,7 @@ Vogalène lyoc si nausées
             dci: "adalimumab",
             class: "anti-TNF alpha",
             posology: "40 mg tous les 14 jours",
+            strength: "",
         }];
         let out = compare(&held, "Remicade 5 mg/kg toutes les 8 semaines", &base);
         assert_eq!(out.len(), 1, "{out:?}");
@@ -997,5 +1124,68 @@ Vogalène lyoc si nausées
         let out = compare(&[], "1 - Kardegic 75 mg : 1 sachet", &base);
         assert_eq!(out[0].label, "Kardegic", "{out:?}");
         assert_eq!(out[0].kind, Change::Added);
+    }
+
+    /// Le dosage que le dossier retient compte : 5 mg au dossier, 10 mg
+    /// sur la feuille, la même posologie — la dose a changé.
+    #[test]
+    fn a_new_strength_is_a_dose_change() {
+        let base = base();
+        let held = vec![Held {
+            name: "Triatec",
+            dci: "ramipril",
+            class: "IEC",
+            posology: "1 cp le soir",
+            strength: "5 mg",
+        }];
+        let rows = compare(&held, "Ramipril 10 mg : 1 cp le soir", &base);
+        assert_eq!(rows[0].kind, Change::DoseChanged);
+        let rows = compare(&held, "Ramipril 5 mg : 1 cp le soir", &base);
+        assert_eq!(rows[0].kind, Change::Kept);
+        // Un gramme, ce sont mille milligrammes.
+        assert_eq!(first_amount("1 g matin"), first_amount("1000mg matin"));
+    }
+
+    /// Une association n'est pas l'une de ses molécules : l'Amlor ne
+    /// répond pas à « Amlodipine valsartan ».
+    #[test]
+    fn a_combination_is_not_one_of_its_molecules() {
+        let mut base = base();
+        base.push(Known {
+            name: "Tareg",
+            dci: "valsartan",
+            class: "ARA II",
+        });
+        let held = vec![Held {
+            name: "Amlor",
+            dci: "amlodipine",
+            class: "inhibiteur calcique",
+            posology: "1 cp le matin",
+            strength: "",
+        }];
+        let rows = compare(
+            &held,
+            "Amlodipine valsartan 5 mg/80 mg : 1 cp le matin",
+            &base,
+        );
+        assert!(rows
+            .iter()
+            .any(|r| r.kind == Change::Stopped && r.label == "Amlor"));
+        assert!(rows
+            .iter()
+            .all(|r| r.kind != Change::Kept && r.kind != Change::DoseChanged));
+        // Et l'inverse : « Ramipril » ne répond pas au Cotriatec.
+        let held = vec![Held {
+            name: "Cotriatec",
+            dci: "ramipril + hydrochlorothiazide",
+            class: "IEC + diurétique",
+            posology: "1 cp le matin",
+            strength: "",
+        }];
+        let base: Vec<Known> = Vec::new();
+        let rows = compare(&held, "Ramipril 5 mg : 1 cp le matin", &base);
+        assert!(rows
+            .iter()
+            .any(|r| r.kind == Change::Stopped && r.label == "Cotriatec"));
     }
 }
