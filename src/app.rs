@@ -70663,7 +70663,17 @@ impl App {
         if reread {
             w.summary = PostsSummary::read(&session.db).ok();
         }
-        if leave {
+        // Le poste de référence ne quitte pas un groupe où d'autres
+        // restent : ils le gardaient comme référence, et plus rien ne se
+        // numérotait.
+        let others = session.db.sync_posts().unwrap_or_default().iter().any(|p| {
+            p.left_on.is_empty() && !p.companion && Some(p.post) != session.db.sync_post()
+        });
+        if leave && session.db.sync_post() == Some(session.db.sync_reference()) && others {
+            if let Some(w) = &mut session.posts_window {
+                w.note = Some((true, tr("posts_err_leave_reference").to_owned()));
+            }
+        } else if leave {
             session.stop_posts_auto();
             let said = match session.db.leave_posts() {
                 Ok(()) => (false, tr("posts_left").to_owned()),

@@ -499,6 +499,11 @@ impl Caddy {
             });
         }
         let sent = posts.publish(&db, &today)?;
+        // Une copie locale que l'application tient : la créer ici est
+        // juste, contrairement à un partage qu'un poste trouverait démonté.
+        std::fs::create_dir_all(&dir).map_err(|e| CaddyError::Failed {
+            reason: e.to_string(),
+        })?;
         let added = posts.exchange_folder(&db, std::path::Path::new(&dir))?;
         let report = posts.absorb(&db, &today)?;
         drop(db);

@@ -56,6 +56,13 @@ conciliation, acte de vaccination, retour d'une case de table), ADELI,
 lanceur, relais.
 
 Laissé, relevé par les relectures (à trancher ou à vérifier) :
+- postes : deux postes invités en même temps par deux postes différents
+  reçoivent le même numéro, donc les mêmes blocs d'identifiants (ne
+  laisser inviter que la référence ?) ; deux postes qui se désignent
+  référence avant de se parler numérotent tous deux ; verrouiller
+  pendant une invitation laisse la porte ouverte jusqu'à six minutes,
+  sans bouton pour l'annuler ; « × » (retirer) et « Fonder un autre
+  groupe » partent d'un clic ;
 - carnet : le lot proposé par un vaccin reste quand on en choisit un
   autre, et un lot connu mais périmé ou d'un autre vaccin s'inscrit sans
   avertissement ; un lot reçu avec une péremption passée est accepté ;

@@ -502,7 +502,12 @@ impl Posts {
         let Some(trousseau) = self.trousseau.clone() else {
             return Ok(0);
         };
-        std::fs::create_dir_all(folder).map_err(|e| e.to_string())?;
+        // **Un dossier qui existe**, jamais créé ici : un partage démonté
+        // devenait un dossier local tout neuf, où l'on déposait et d'où
+        // l'on ne recevait rien — et l'échange se disait réussi.
+        if !folder.is_absolute() || !folder.is_dir() {
+            return Err(crate::strings::tr("posts_err_folder_missing").to_owned());
+        }
         self.trust_known(db);
         let me = self.device.id();
         let known = self.known(db);
@@ -1952,6 +1957,10 @@ fn auto(
                 .pending_ops()
                 .map(|(o, _)| !o.is_empty())
                 .unwrap_or(false);
+            // Ce qui n'a pas répondu à ce tour, pour le dire quand on a
+            // demandé : « Synchronisé » s'affichait partage démonté et
+            // tous les postes éteints.
+            let mut failed: Vec<String> = Vec::new();
             if pending || now_asked || talked || last_talk.elapsed() >= pace.talk {
                 let sent = posts.publish(&db, today)?;
                 if sent > 0 || now_asked || last_talk.elapsed() >= pace.talk {
@@ -1961,12 +1970,17 @@ fn auto(
                             .is_ok();
                         x.talked = Some(ok);
                         talked |= ok;
+                        if !ok {
+                            failed.push(x.heard.address.clone());
+                        }
                     }
                     for a in addresses.iter().filter(|a| !a.trim().is_empty()) {
-                        if !seen.iter().any(|x| x.heard.address == *a)
-                            && posts.sync_with(&db, a.trim(), TALK_PATIENCE).is_ok()
-                        {
-                            talked = true;
+                        if !seen.iter().any(|x| x.heard.address == *a) {
+                            if posts.sync_with(&db, a.trim(), TALK_PATIENCE).is_ok() {
+                                talked = true;
+                            } else {
+                                failed.push(a.trim().to_owned());
+                            }
                         }
                     }
                     last_talk = Instant::now();
@@ -1974,15 +1988,24 @@ fn auto(
             }
             if let Some(f) = &folder {
                 if now_asked || last_folder.elapsed() >= pace.folder {
-                    let _ = posts.exchange_folder(&db, f);
+                    match posts.exchange_folder(&db, f) {
+                        Ok(_) => talked = true,
+                        Err(e) => failed.push(format!("{} : {e}", f.display())),
+                    }
                     last_folder = Instant::now();
-                    talked = true;
                 }
             }
             if talked || now_asked {
                 let report = posts.absorb(&db, today)?;
                 if report.received.written > 0 || report.received.conflicts > 0 || now_asked {
-                    let _ = tx.send(Progress::Status(said_synced(&report)));
+                    let mut said = said_synced(&report);
+                    if now_asked && !failed.is_empty() {
+                        said.push_str(&crate::strings::trf(
+                            "posts_done_unreached",
+                            failed.join(", "),
+                        ));
+                    }
+                    let _ = tx.send(Progress::Status(said));
                 }
             }
         }
@@ -2283,6 +2306,7 @@ mod tests {
 
         // Both write; a folder carries it.
         let folder = dir_a.join("echange");
+        std::fs::create_dir_all(&folder).unwrap();
         let from_b = b.add_patient("Grand", "Eve", "1980-03-03").unwrap();
         a.conn_for_tests()
             .execute("UPDATE patients SET phone = '0611' WHERE id = ?1", [file])
@@ -2515,6 +2539,7 @@ mod tests {
         }
         // And what the phone writes to the team crosses a folder too.
         let folder = dir_a.join("echange-compagnon");
+        std::fs::create_dir_all(&folder).unwrap();
         phone
             .post_message(talks[0].id, "m2", "CD", "Reçu", None, "", None)
             .unwrap();

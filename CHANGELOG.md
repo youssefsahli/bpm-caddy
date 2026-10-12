@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Posts: the reference post can no longer be retired, nor leave while
+  others remain, and a retired or unknown post cannot be designated —
+  nobody numbered the ordonnancier any more; joining a group first makes
+  a whole copy of the three files (the join erases this post's files and
+  its narcotics register); « Synchroniser » names the posts and the
+  folder it could not reach instead of saying « Synchronisé »; an
+  exchange folder that does not exist (an unmounted share) is reported,
+  never created locally.
 - Interview printing: the export window belongs to its file and its act —
   left open while another file was opened, it printed the first file's
   act (type, date, theme, points, signer) under the second patient's

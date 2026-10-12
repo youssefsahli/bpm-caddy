@@ -42617,6 +42617,12 @@ impl Db {
     /// reconnaît pas. Rend 1. Une base sans fichier (en mémoire) n'en a
     /// pas besoin.
     pub fn snapshot_before_reset(&self) -> Result<usize, String> {
+        self.snapshot_named("avant-remise-a-zero")
+    }
+
+    /// Une copie entière des trois fichiers, datée et nommée, dans le
+    /// dossier des sauvegardes — avant un geste qui remplace la base.
+    pub fn snapshot_named(&self, what: &str) -> Result<usize, String> {
         let Some(path) = self.path() else {
             return Ok(0);
         };
@@ -42632,7 +42638,7 @@ impl Db {
             .map(|d| d.as_secs())
             .unwrap_or(0);
         let day = self.today_iso().unwrap_or_default();
-        self.copy_whole_to(&dir.join(format!("{stem}-avant-remise-a-zero-{day}-{stamp}.db")))?;
+        self.copy_whole_to(&dir.join(format!("{stem}-{what}-{day}-{stamp}.db")))?;
         Ok(1)
     }
 
@@ -55387,6 +55393,14 @@ impl Db {
         {
             return Err(crate::strings::tr("posts_err_companion_reference").to_owned());
         }
+        // Ni un poste retiré, ni un numéro que le groupe ne connaît pas.
+        if !self
+            .sync_posts()?
+            .iter()
+            .any(|p| p.post == post && p.left_on.is_empty())
+        {
+            return Err(crate::strings::tr("posts_err_reference_unknown").to_owned());
+        }
         self.conn
             .execute(
                 "INSERT INTO settings (key, value, updated_on, updated_by)
@@ -55612,6 +55626,13 @@ impl Db {
     /// rangé, et son numéro ne se redonne pas. Capturé : tous les postes
     /// le retirent.
     pub fn retire_post(&self, post: i64, day: &str) -> Result<(), String> {
+        // **Pas le poste de référence** : retiré, plus personne ne
+        // numérotait l'ordonnancier ni ne semait le contenu livré, et
+        // l'écran le disait encore référence. Un autre se désigne
+        // d'abord.
+        if post == self.sync_reference() {
+            return Err(crate::strings::tr("posts_err_retire_reference").to_owned());
+        }
         self.conn
             .execute(
                 "UPDATE sync_posts SET left_on = ?2 WHERE post = ?1 AND left_on = ''",
@@ -55871,6 +55892,11 @@ impl Db {
     /// est remplacé** par ce que le groupe lui enverra. Tout ce qui voyage
     /// est vidé, sans capture ; ce qui est propre au poste reste.
     pub fn prepare_join(&self) -> Result<(), String> {
+        // **Une copie entière d'abord** : rejoindre efface ce que ce poste
+        // tenait — ses dossiers, et le registre des stupéfiants qui ne
+        // s'efface jamais (R. 5132-36). Un avertissement rouge était la
+        // seule protection. La copie échoue : rien n'est effacé.
+        self.snapshot_named("avant-adhesion")?;
         use crate::replica::{File, TABLES};
         if self.sync_post().is_some() {
             return Err(crate::strings::tr("posts_err_already").to_owned());
