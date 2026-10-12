@@ -534,12 +534,7 @@ fn interviews_csv(rows: &[db::ExportRow], config: &Config) -> String {
 /// de facturation ».
 fn billing_lines(rows: &[db::ExportRow], config: &Config) -> Vec<crate::pdf::BillingLine> {
     rows.iter()
-        .filter(|r| {
-            matches!(
-                r.state,
-                InterviewState::Performed | InterviewState::ReportSent
-            )
-        })
+        .filter(|r| r.state.awaits_billing())
         .map(|r| crate::pdf::BillingLine {
             date: r
                 .scheduled_date
@@ -8060,6 +8055,7 @@ impl Session {
                 self.refresh_dashboard();
                 self.refresh_bio_findings();
                 self.refresh_vacc_due();
+                self.reread_campagne_if_shown();
             }
         }
         // Les compteurs d'usage suivent cette même cadence, divisée :
@@ -8198,6 +8194,7 @@ impl Session {
         if self.view == MainView::Transmissions {
             self.load_transmissions();
         }
+        self.reread_campagne_if_shown();
         // Le dossier ouvert : ses onglets sont des lectures, et ce sont
         // eux qu'on a sous les yeux quand quelqu'un d'autre écrit
         // dessus.
@@ -10647,6 +10644,20 @@ impl Session {
         self.conseil.loaded_for = Some((pid, page));
     }
 
+    /// La campagne à l'écran relue après l'écriture d'un autre poste ou
+    /// le passage de minuit : elle n'était lue qu'à l'ouverture de la
+    /// vue et après un geste, et une dose notée au comptoir voisin
+    /// laissait le compte et la liste des rappels en arrière. Le message
+    /// affiché reste : c'est une relecture, pas un geste.
+    fn reread_campagne_if_shown(&mut self) {
+        if self.view != MainView::Campagne {
+            return;
+        }
+        let notice = self.camp.notice.take();
+        self.reload_campagne();
+        self.camp.notice = notice;
+    }
+
     /// Relire la campagne : les campagnes proposées et celle qu'on lit,
     /// les lots et ce que le carnet en a utilisé, le compte de chaque
     /// sujet, la courbe du sujet choisi, et la liste des rappels. Appelé à
@@ -11922,7 +11933,26 @@ impl Session {
         if let Ok(counts) = self.db.pending_counts() {
             self.pending = counts;
         }
+        self.refresh_counts();
         self.refresh_fil();
+    }
+
+    /// The counts the status bar and the home panels show, re-read after
+    /// a write made here: they were only re-read on a foreign write or a
+    /// tab switch, and an act marked « Réalisé » left « à facturer »
+    /// behind until then. Queries only — no pass over the base.
+    fn refresh_counts(&mut self) {
+        if let Ok(s) = self.db.interview_summaries(self.cycle_months) {
+            self.summaries = s;
+        }
+        if let Ok(a) = self.db.upcoming_appointments() {
+            self.appointments = a;
+        }
+        self.vacc_today = self.db.vaccinations_on(&self.today).unwrap_or(0);
+        self.to_schedule = to_schedule(
+            &self.db.export_rows(self.cycle_months).unwrap_or_default(),
+            &self.today,
+        );
     }
 
     /// Load everything the dashboard shows: summaries, appointments, today.
@@ -14516,7 +14546,10 @@ fn to_schedule(rows: &[db::ExportRow], today: &str) -> Vec<ToSchedule> {
             entry.done = 0;
             entry.last = String::new();
         }
-        if r.fee_year == entry.year {
+        // Fait, c'est réalisé : un acte seulement repéré ou planifié
+        // n'avance pas la séquence — il la comptait faite, et le
+        // dossier sortait de la liste avant le rendez-vous.
+        if r.fee_year == entry.year && r.state >= InterviewState::Performed {
             entry.done += 1;
             if r.created_date > entry.last {
                 entry.last = r.created_date.clone();
@@ -23210,6 +23243,7 @@ impl App {
                 Ok(true) => {
                     session.error = None;
                     session.load_carnet(patient.id);
+                    session.refresh_counts();
                 }
                 Ok(false) => {
                     session.stale("vacc_stale");
@@ -26915,6 +26949,7 @@ impl App {
             }
             if written > 0 {
                 session.load_carnet(patient.id);
+                session.refresh_counts();
             }
         }
         if open_catalogue && session.vacc_cat_edit.is_none() {
@@ -31342,6 +31377,7 @@ impl App {
                 }
                 // `viewing` is now None: patient_view checks it and
                 // skips the acts and journal panes.
+                session.refresh_dashboard();
             }
             Err(e) => session.error = Some(e),
         }
@@ -71621,12 +71657,7 @@ impl App {
         let to_bill = session
             .summaries
             .iter()
-            .filter(|s| {
-                matches!(
-                    s.state,
-                    InterviewState::Performed | InterviewState::ReportSent
-                )
-            })
+            .filter(|s| s.state.awaits_billing())
             .count();
         let minutes: i64 = session
             .summaries
@@ -79560,7 +79591,7 @@ impl eframe::App for App {
             let unbilled = session
                 .summaries
                 .iter()
-                .filter(|s| s.state == InterviewState::ReportSent)
+                .filter(|s| s.state.awaits_billing())
                 .count();
             let unread_msgs = session.unread_total();
             let operator = self.operator.trim().to_owned();
@@ -91260,6 +91291,13 @@ mod tests {
             Some("2026-02-01"),
         )];
         assert_eq!(super::to_schedule(&stale, "2026-08-27").len(), 1);
+        // Un acte seulement repéré n'est pas fait : Moreau n'a que deux
+        // AOD réalisés sur trois et attend son rendez-vous.
+        let mut noted = rows.clone();
+        noted[5].state = InterviewState::Identified;
+        let waiting = super::to_schedule(&noted, "2026-08-27");
+        let moreau = waiting.iter().find(|w| w.name == "Lucie Moreau");
+        assert_eq!(moreau.map(|w| w.done), Some(2));
     }
 
     #[test]

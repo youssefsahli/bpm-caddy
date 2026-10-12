@@ -1850,6 +1850,13 @@ impl InterviewState {
         Self::ALL.get(i + 1).copied()
     }
 
+    /// Done and not yet billed: « Réalisé » or « CR envoyé ». One rule
+    /// for the status bar, the tile and the printed recap — they used
+    /// to count two different things under the same words.
+    pub fn awaits_billing(self) -> bool {
+        matches!(self, Self::Performed | Self::ReportSent)
+    }
+
     /// The previous pipeline step, so a misclicked advance can be undone.
     pub fn prev(self) -> Option<Self> {
         let i = Self::ALL.iter().position(|s| *s == self)?;

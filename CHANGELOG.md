@@ -8,6 +8,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Messages: a message and its attachment are written together (a network
+  sync between the two sent the message without its file, for good); a
+  patient named to another officine is written in the access log only
+  once the message is written, and the patient line no longer stays in
+  the draft after a refusal; a received file name loses bidirectional
+  marks and an executable extension gets « .txt » (« ordonnance.pdf.exe »
+  showed as a PDF); a time received from another officine that does not
+  read, or is in the future, takes the arrival time (« 9999-… » froze the
+  read mark); the conversation on screen counts as read when messages
+  arrive; a file chosen for an officine whose conversation failed to open
+  no longer sticks to the previous one.
+- Codex: « 1.000,5 g » is read as a thousand grams and a half, and « q. s.
+  p. 100 g » or « qsp : 100 g » as a qsp line — both stayed at their
+  written quantity while the rest of the formula was scaled; « 1 gélule »
+  scales to « 30 gélules » (singular and plural were two units); a yield
+  written « qsp 100 g » can be printed; the Titre column and the
+  calculators read « 1.000 » as a thousand, and the calculators keep a
+  trace quantity instead of printing 0; deleting a preparation compares
+  the whole formula.
+- Compression: the renewal counts a delivery whatever the case or spaces
+  of its class and size (« m » and « M » were two sizes, and a second
+  delivery opened a right it did not have); a delivery whose pairs do not
+  read, or without a size, is refused rather than saved as zero or as
+  nothing; a measurement on the limit of two sizes shows both.
+- Dispositifs: deleting compares the whole fiche; after a « modifié
+  ailleurs » refusal the form (and the codex's) rebases on the row read
+  back, the untouched fields following it — every later save was refused
+  and only closing, which lost the typing, got out; the LPP caveat is
+  printed on the booklet even when the officine has a name, from the
+  strings file.
+- Dashboard: « à facturer » counts the same acts in the status bar, the
+  tile and the printed recap (done or « CR envoyé », not yet billed — the
+  status bar left the « Réalisé » ones out); the counts follow what this
+  post writes (an act advanced, a vaccination added or deleted, a file
+  deleted) instead of waiting for a tab switch; « à planifier » counts
+  only acts actually done, a noted act no longer took a file off the
+  list; the campaign on screen is read again after another post writes
+  and at midnight.
+- Companion phone: a received file saved under a name already taken gets
+  « (2) » instead of replacing the other one; a message and its file are
+  written together.
+
 ## [0.402.0] - 2026-10-12
 
 ### Fixed
@@ -63,36 +106,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   over the colleague's correction.
 - Vitale card: a new beneficiary sharing a surname with another file
   gets its pre-filled form (the search now carries the given name too).
-- Messages: a message and its attachment are written together (a network
-  sync between the two sent the message without its file, for good); a
-  patient named to another officine is written in the access log only
-  once the message is written, and the patient line no longer stays in
-  the draft after a refusal; a received file name loses bidirectional
-  marks and an executable extension gets « .txt » (« ordonnance.pdf.exe »
-  showed as a PDF); a time received from another officine that does not
-  read, or is in the future, takes the arrival time (« 9999-… » froze the
-  read mark); the conversation on screen counts as read when messages
-  arrive; a file chosen for an officine whose conversation failed to open
-  no longer sticks to the previous one.
-- Codex: « 1.000,5 g » is read as a thousand grams and a half, and « q. s.
-  p. 100 g » or « qsp : 100 g » as a qsp line — both stayed at their
-  written quantity while the rest of the formula was scaled; « 1 gélule »
-  scales to « 30 gélules » (singular and plural were two units); a yield
-  written « qsp 100 g » can be printed; the Titre column and the
-  calculators read « 1.000 » as a thousand, and the calculators keep a
-  trace quantity instead of printing 0; deleting a preparation compares
-  the whole formula.
-- Compression: the renewal counts a delivery whatever the case or spaces
-  of its class and size (« m » and « M » were two sizes, and a second
-  delivery opened a right it did not have); a delivery whose pairs do not
-  read, or without a size, is refused rather than saved as zero or as
-  nothing; a measurement on the limit of two sizes shows both.
-- Dispositifs: deleting compares the whole fiche; after a « modifié
-  ailleurs » refusal the form (and the codex's) rebases on the row read
-  back, the untouched fields following it — every later save was refused
-  and only closing, which lost the typing, got out; the LPP caveat is
-  printed on the booklet even when the officine has a name, from the
-  strings file.
 
 ## [0.401.0] - 2026-10-12
 
