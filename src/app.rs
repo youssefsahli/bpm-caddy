@@ -7214,6 +7214,15 @@ impl Session {
             Some(id) => self.db.conversation_files(id).unwrap_or_default(),
             None => Vec::new(),
         };
+        // La conversation qu'on a sous les yeux est lue : un message arrivé
+        // pendant qu'on la lisait levait le badge jusqu'à la réouverture.
+        if self.view == MainView::Messages {
+            if let (Some(id), Some(last)) = (self.msg.open, self.msg.thread.last()) {
+                if self.db.mark_read(id, &op, &last.sent_at).is_ok() {
+                    self.msg.unread = self.db.unread_counts(&op).unwrap_or_default();
+                }
+            }
+        }
         self.msg.loaded_for = Some(op);
         self.msg.dirty = false;
     }
@@ -7249,11 +7258,19 @@ impl Session {
     }
 
     /// Envoyer ce qui est tapé dans la conversation ouverte.
-    fn send_message(&mut self, patient: Option<i64>) {
+    /// Envoyer, avec en tête une ligne qui ne s'écrit pas au brouillon (le
+    /// patient nommé) : elle part avec le message, et **la sortie du
+    /// patient ne s'inscrit au journal que si le message est écrit** —
+    /// elle s'inscrivait avant, même quand l'envoi était refusé, et la
+    /// ligne restait au brouillon pour la tentative suivante.
+    fn send_message_with(&mut self, patient: Option<i64>, head: Option<String>) {
         let Some(id) = self.msg.open else {
             return;
         };
-        let body = self.msg.draft.trim().to_owned();
+        let body = match &head {
+            Some(line) => format!("{line}\n{}", self.msg.draft.trim()),
+            None => self.msg.draft.trim().to_owned(),
+        };
         if body.is_empty() && self.msg.attach.is_none() {
             return;
         }
@@ -7270,29 +7287,35 @@ impl Session {
             return;
         }
         let op = self.msg.loaded_for.clone().unwrap_or_default();
-        match self.db.post_message(id, "", &op, &body, patient, "", None) {
+        let file = self.msg.attach.take();
+        match self.db.post_message_with_file(
+            id,
+            &op,
+            &body,
+            patient,
+            file.as_ref().map(|(n, b)| (n.as_str(), b.as_slice())),
+        ) {
             Ok(posted) => {
-                if let (Some(mid), Some((name, bytes))) = (posted, self.msg.attach.take()) {
-                    if let Err(e) = self
-                        .db
-                        .message_uid(mid)
-                        .and_then(|uid| self.db.attach_file(&uid, &name, &bytes))
-                    {
-                        self.msg.note = Some((true, e));
-                    }
+                if let (Some(_), Some(pid), Some(_)) = (posted, patient, &head) {
+                    let _ = self.db.log_access(&op, crate::audit::Act::Transmis, pid);
                 }
                 self.msg.draft.clear();
                 self.msg.with_patient = false;
                 self.open_conversation(id);
                 self.reload_messages(&op);
             }
-            Err(e) => self.msg.note = Some((true, e)),
+            Err(e) => {
+                // Le fichier reste choisi pour la tentative suivante.
+                self.msg.attach = file;
+                self.msg.note = Some((true, e));
+            }
         }
     }
 
     /// Écrire à une officine du réseau : la conversation sans titre qui
     /// la réunit seule à celle-ci, ou une nouvelle.
-    fn write_to_officine(&mut self, device: &str) {
+    /// Rend la conversation ouverte, ou `None` quand elle n'a pu l'être.
+    fn write_to_officine(&mut self, device: &str) -> Option<i64> {
         let op = self.msg.loaded_for.clone().unwrap_or_default();
         let all = self.db.conversations().unwrap_or_default();
         let found = all.iter().find(|c| {
@@ -7320,6 +7343,7 @@ impl Session {
             self.reload_messages(&op);
             self.open_conversation(id);
         }
+        id
     }
 
     /// Écrire à ces collègues : leur conversation si elle existe, une
@@ -66897,7 +66921,7 @@ impl App {
             session.write_to(&[who]);
         }
         if let Some(device) = write_net {
-            session.write_to_officine(&device);
+            let _ = session.write_to_officine(&device);
         }
         match session.msg.pane {
             MessagesPane::Thread => Self::messages_thread(ui, session, pane_rect, config),
@@ -67055,7 +67079,12 @@ impl App {
             // correspond pas ne s'écrit nulle part.
             match session.db.file_bytes(&f) {
                 Ok(Some(bytes)) => {
-                    if let Some(path) = rfd::FileDialog::new().set_file_name(&f.name).save_file() {
+                    if let Some(path) = rfd::FileDialog::new()
+                        // Rangé de nouveau : une ligne venue d'un autre poste
+                        // n'est pas passée par l'écriture qui le range.
+                        .set_file_name(crate::messages::safe_name(&f.name))
+                        .save_file()
+                    {
                         if let Err(e) = std::fs::write(&path, &bytes) {
                             session.msg.note = Some((true, e.to_string()));
                         }
@@ -67217,25 +67246,18 @@ impl App {
                 session.msg.confirm_send = true;
                 return;
             }
-            if to_officines {
-                if let Some(pid) = patient {
-                    let line = session
-                        .viewing
-                        .as_ref()
-                        .map(|p| {
-                            trn(
-                                "msg_patient_line",
-                                &[&p.full_name(), &db::format_french_date(&p.birth_date)],
-                            )
-                        })
-                        .unwrap_or_default();
-                    session.msg.draft = format!("{line}\n{}", session.msg.draft.trim());
-                    let op = session.msg.loaded_for.clone().unwrap_or_default();
-                    let _ = session.db.log_access(&op, crate::audit::Act::Transmis, pid);
-                }
-            }
+            let head = if to_officines && patient.is_some() {
+                session.viewing.as_ref().map(|p| {
+                    trn(
+                        "msg_patient_line",
+                        &[&p.full_name(), &db::format_french_date(&p.birth_date)],
+                    )
+                })
+            } else {
+                None
+            };
             session.msg.confirm_send = false;
-            session.send_message(patient);
+            session.send_message_with(patient, head);
             // Le message part tout de suite : entre postes par le fil des
             // postes, entre officines par une synchronisation du réseau.
             #[cfg(feature = "sync")]
@@ -69280,11 +69302,13 @@ impl App {
             }
         }
         if let Some(device) = write_net {
-            session.write_to_officine(&device);
+            let _ = session.write_to_officine(&device);
             session.activate_tab(&WorkTab::Messages);
         }
-        if let Some(device) = file_net {
-            session.write_to_officine(&device);
+        // Un fichier ne se joint qu'à la conversation de cette officine :
+        // si elle n'a pu s'ouvrir, il serait resté sur celle d'avant,
+        // une conversation d'équipe peut-être.
+        if file_net.is_some_and(|d| session.write_to_officine(&d).is_some()) {
             if let Some(path) = rfd::FileDialog::new().pick_file() {
                 match std::fs::read(&path) {
                     Ok(bytes) if bytes.len() <= crate::messages::MAX_FILE => {
@@ -92311,6 +92335,49 @@ mod tests {
     /// rouvre sa conversation, le message lie le dossier ouvert, l'autre
     /// le voit non lu, un tiers ne voit pas la conversation.
     #[test]
+    fn a_patient_named_to_an_officine_is_logged_only_once_sent() {
+        let (mut s, _swept) = scratch_session("msg_transmis");
+        let pid = s.db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let conv =
+            s.db.create_conversation(
+                "",
+                crate::messages::Channel::Officines,
+                "Rupture",
+                &[],
+                None,
+                &["ffff".to_owned()],
+                "CL",
+            )
+            .unwrap();
+        s.reload_messages("CL");
+        s.msg.open = Some(conv);
+        let transmitted = |s: &Session| {
+            s.db.accesses_since("2000-01-01")
+                .unwrap()
+                .iter()
+                .filter(|a| a.act == crate::audit::Act::Transmis)
+                .count()
+        };
+        // Trop long : refusé, rien au journal, le brouillon intact.
+        s.msg.draft = "x".repeat(crate::messages::NET_BODY_MAX + 1);
+        s.send_message_with(Some(pid), Some("Patient : DUPONT Jean".to_owned()));
+        assert_eq!(transmitted(&s), 0);
+        assert!(
+            !s.msg.draft.starts_with("Patient"),
+            "la ligne n'entre pas au brouillon"
+        );
+        // Écrit : une ligne au journal, le message porte le patient.
+        s.msg.draft = "Il vous en reste ?".to_owned();
+        s.send_message_with(Some(pid), Some("Patient : DUPONT Jean".to_owned()));
+        assert_eq!(transmitted(&s), 1);
+        assert!(s
+            .msg
+            .thread
+            .iter()
+            .any(|m| m.body.starts_with("Patient : DUPONT Jean")));
+    }
+
+    #[test]
     fn a_team_message_reaches_its_colleague_only() {
         let (mut s, _swept) = scratch_session("msgs");
         s.reload_messages("CL");
@@ -92319,7 +92386,7 @@ mod tests {
         s.write_to(&["ys".to_owned()]);
         assert_eq!(s.msg.open, Some(first), "la même conversation rouvre");
         s.msg.draft = "Rappeler M. Dupont avant midi.".to_owned();
-        s.send_message(Some(42));
+        s.send_message_with(Some(42), None);
         assert!(s.msg.draft.is_empty());
         assert_eq!(s.msg.thread.len(), 1);
         assert_eq!(s.msg.thread[0].patient_id, Some(42));
@@ -92352,7 +92419,7 @@ mod tests {
         // Un fichier seul, sans texte : il part, entier, et se relit.
         s.open_conversation(first);
         s.msg.attach = Some(("releve frigo.csv".to_owned(), b"8,9,9,8".to_vec()));
-        s.send_message(None);
+        s.send_message_with(None, None);
         assert!(s.msg.attach.is_none());
         assert_eq!(s.msg.files.len(), 1);
         let (meta, have) = &s.msg.files[0];

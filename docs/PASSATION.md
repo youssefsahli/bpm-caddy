@@ -140,6 +140,16 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
 - ruptures : aucun écran n'écrit de retrait (une substitution cliquée
   par erreur compte pour toujours) ; une rupture « Diprosone » ne se voit
   pas sur la fiche « bétaméthasone » (la DCI voyage mais n'est pas lue) ;
+- **messagerie entre officines sur plusieurs postes** : deux postes qui
+  synchronisent le réseau avant de s'être répliqués rangent chacun le même
+  message reçu (sous deux numéros), et la réplication porte les deux : le
+  message s'affiche deux fois, une conversation nouvelle se dédouble, et
+  le second poste republie ce que le premier a écrit (`from_device` vide
+  voyage). Rien n'impose l'unicité de `uid` dans `conversations`,
+  `messages`, `message_files`. À trancher : réseau réservé à un poste
+  (comme `seeds_here`), ou dédoublonnage par `uid` à l'application —
+  l'index unique ne peut pas s'ajouter sans nettoyer les doublons déjà
+  rangés ;
 - téléphone : la suppression d'un rendez-vous de l'agenda ne compare que
   le titre ; la base peut s'ouvrir deux fois (deux déverrouillages) et
   n'est jamais refermée en quittant par Retour. Le code Kotlin modifié le

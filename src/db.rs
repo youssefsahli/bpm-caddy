@@ -43499,6 +43499,50 @@ impl Db {
         name: &str,
         bytes: &[u8],
     ) -> Result<crate::messages::FileMeta, String> {
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
+        let meta = self.file_rows(&tx, message_uid, name, bytes)?;
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(meta)
+    }
+
+    /// Un message et son fichier joint, **ensemble** : écrits l'un après
+    /// l'autre, une synchronisation du réseau passée entre les deux
+    /// publiait le message sans fichier, le marquait parti, et l'officine
+    /// destinataire ne recevait jamais la pièce.
+    pub fn post_message_with_file(
+        &self,
+        conversation_id: i64,
+        author: &str,
+        body: &str,
+        patient_id: Option<i64>,
+        file: Option<(&str, &[u8])>,
+    ) -> Result<Option<i64>, String> {
+        if let Some((_, bytes)) = file {
+            if bytes.len() > crate::messages::MAX_FILE {
+                return Err(crate::strings::trf(
+                    "msg_file_too_big",
+                    crate::messages::MAX_FILE / (1024 * 1024),
+                ));
+            }
+        }
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
+        let posted = self.post_message(conversation_id, "", author, body, patient_id, "", None)?;
+        if let (Some(mid), Some((name, bytes))) = (posted, file) {
+            let uid = self.message_uid(mid)?;
+            self.file_rows(&tx, &uid, name, bytes)?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(posted)
+    }
+
+    /// Les lignes d'un fichier joint, dans la transaction donnée.
+    fn file_rows(
+        &self,
+        tx: &rusqlite::Transaction<'_>,
+        message_uid: &str,
+        name: &str,
+        bytes: &[u8],
+    ) -> Result<crate::messages::FileMeta, String> {
         if bytes.len() > crate::messages::MAX_FILE {
             return Err(crate::strings::trf(
                 "msg_file_too_big",
@@ -43518,8 +43562,7 @@ impl Db {
             hash: crate::messages::hash_of(bytes),
             chunks: i64::try_from(parts.len()).unwrap_or(i64::MAX),
         };
-        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
-        self.insert_file_meta(&tx, &meta)?;
+        self.insert_file_meta(tx, &meta)?;
         for (n, d) in parts.iter().enumerate() {
             tx.execute(
                 &format!(
@@ -43530,7 +43573,6 @@ impl Db {
             )
             .map_err(|e| e.to_string())?;
         }
-        tx.commit().map_err(|e| e.to_string())?;
         Ok(meta)
     }
 
@@ -47189,6 +47231,22 @@ impl Db {
                 )?
             }
         };
+        // **L'heure d'une autre officine se vérifie** : « 9999-… » ou un
+        // texte quelconque devenait la marque de lecture, qui n'avance
+        // que vers l'avant — plus rien ne se comptait jamais non lu. Une
+        // heure illisible ou à venir prend celle de l'arrivée ici.
+        let now: String = self
+            .conn
+            .query_row("SELECT datetime('now', 'localtime')", [], |r| r.get(0))
+            .map_err(|e| e.to_string())?;
+        let readable = m.sent_at.len() == 19
+            && crate::date::parse_iso(m.sent_at.get(..10).unwrap_or("")).is_some()
+            && m.sent_at.as_bytes()[10] == b' ';
+        let sent_at = if readable && m.sent_at <= now {
+            m.sent_at.clone()
+        } else {
+            now
+        };
         let Some(id) = self.post_message(
             conv,
             &m.uid,
@@ -47196,7 +47254,7 @@ impl Db {
             &m.body,
             None,
             &source,
-            Some(&m.sent_at),
+            Some(&sent_at),
         )?
         else {
             return Ok(false);

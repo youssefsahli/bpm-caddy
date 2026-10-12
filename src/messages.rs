@@ -226,7 +226,11 @@ pub fn safe_name(name: &str) -> String {
     let clean: String = base
         .chars()
         .map(|c| {
-            if c.is_control() || "<>:\"|?*".contains(c) {
+            // Les caractères de mise en forme bidirectionnelle aussi : un
+            // « \u{202E} » écrit « ordonnanceexe.pdf » à l'écran pour un
+            // fichier qui se termine par « .exe ».
+            let format = matches!(c, '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{FEFF}');
+            if c.is_control() || format || "<>:\"|?*".contains(c) {
                 '_'
             } else {
                 c
@@ -245,10 +249,22 @@ pub fn safe_name(name: &str) -> String {
     let stem = clean.split('.').next().unwrap_or("").to_uppercase();
     let reserved = ["CON", "PRN", "AUX", "NUL"].contains(&stem.as_str())
         || ((stem.starts_with("COM") || stem.starts_with("LPT"))
-            && stem.len() == 4
-            && stem.as_bytes()[3].is_ascii_digit());
-    if reserved {
-        format!("_{clean}")
+            && stem.chars().count() == 4
+            && stem
+                .chars()
+                .nth(3)
+                .is_some_and(|c| c.is_ascii_digit() || "¹²³".contains(c)));
+    let clean = if reserved { format!("_{clean}") } else { clean };
+    // **Un exécutable ne s'enregistre pas comme tel** : « ordonnance.pdf.exe »
+    // s'affiche « ordonnance.pdf » quand les extensions connues sont
+    // masquées. L'extension finale reste lisible, et ne lance plus rien.
+    const RUNS: &[&str] = &[
+        "exe", "scr", "bat", "cmd", "com", "lnk", "js", "jse", "vbs", "vbe", "msi", "ps1", "hta",
+        "jar", "pif", "wsf", "reg", "cpl", "apk",
+    ];
+    let last = clean.rsplit('.').next().unwrap_or("").to_lowercase();
+    if clean.contains('.') && RUNS.contains(&last.as_str()) {
+        format!("{clean}.txt")
     } else {
         clean
     }
@@ -538,6 +554,13 @@ mod tests {
         assert_eq!(safe_name("C:\\Windows\\a.pdf"), "a.pdf");
         assert_eq!(safe_name(".bashrc"), "bashrc");
         assert_eq!(safe_name("a<b>.txt"), "a_b_.txt");
+        assert_eq!(
+            safe_name("ordonnance\u{202E}fdp.exe"),
+            "ordonnance_fdp.exe.txt"
+        );
+        assert_eq!(safe_name("ordonnance.pdf.exe"), "ordonnance.pdf.exe.txt");
+        assert_eq!(safe_name("compte rendu.pdf"), "compte rendu.pdf");
+        assert_eq!(safe_name("COM¹.txt"), "_COM¹.txt");
         assert_eq!(safe_name(""), "piece-jointe");
         assert_eq!(safe_name("CON.txt"), "_CON.txt");
         assert_eq!(safe_name("nul"), "_nul");

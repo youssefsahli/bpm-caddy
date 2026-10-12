@@ -63,6 +63,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   over the colleague's correction.
 - Vitale card: a new beneficiary sharing a surname with another file
   gets its pre-filled form (the search now carries the given name too).
+- Messages: a message and its attachment are written together (a network
+  sync between the two sent the message without its file, for good); a
+  patient named to another officine is written in the access log only
+  once the message is written, and the patient line no longer stays in
+  the draft after a refusal; a received file name loses bidirectional
+  marks and an executable extension gets « .txt » (« ordonnance.pdf.exe »
+  showed as a PDF); a time received from another officine that does not
+  read, or is in the future, takes the arrival time (« 9999-… » froze the
+  read mark); the conversation on screen counts as read when messages
+  arrive; a file chosen for an officine whose conversation failed to open
+  no longer sticks to the previous one.
 
 ## [0.401.0] - 2026-10-12
 
