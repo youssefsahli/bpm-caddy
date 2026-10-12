@@ -4461,6 +4461,8 @@ impl CampaignEdit {
 
 /// Les propositions de l'annuaire mémorisées : `(tapé, révision,
 /// (écrit, affiché))`.
+/// Une rupture en cours et ses trois remplacements les plus donnés.
+type RuptRow = (crate::ruptures::Shortage, Vec<String>);
 type PrescriberHits = (String, u64, Vec<(String, String)>);
 
 /// Une ligne de la liste des rappels, avec ce que la vue affiche du
@@ -5295,7 +5297,7 @@ struct Session {
     /// ruptures en cours et, pour chacune, les trois remplacements les
     /// plus donnés. Refaite à chaque image, elle relisait tout le journal
     /// du réseau par produit, soixante fois par seconde.
-    rupt_view: Option<((u64, String), Vec<(crate::ruptures::Shortage, Vec<String>)>)>,
+    rupt_view: Option<((u64, String), Vec<RuptRow>)>,
     /// Ce qu'une synchronisation automatique du réseau vient d'apprendre,
     /// et quand : la barre d'état le dit un moment.
     net_news: Option<(Instant, String)>,
