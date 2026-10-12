@@ -1225,7 +1225,10 @@ aux autres officines pendant la recherche : la liste se lit dans la base.
 Le bouton compte ce qui a bougé depuis la dernière ouverture sur ce
 poste : « En ligne (3)… », trois entrées nouvelles ou reprises par une
 autre officine. Ouvrir la fenêtre les marque vues ; ce qu'on écrit
-soi-même ne compte pas.
+soi-même ne compte pas. Dans la fenêtre, elles viennent en tête, marquées
+« nouvelle ». « Absentes ici seulement » ne garde que ce qu'on peut
+prendre ; quand plusieurs officines partagent, la liste de choix
+parcourt le partage d'une seule.
 
 # Ruptures
 

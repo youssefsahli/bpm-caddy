@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   another officine. Opening the window marks them seen; the record is
   kept per post in `layout.toml`, and on the first launch everything
   already in the journal counts as seen.
+- The « En ligne » window lists new entries first, marked « nouvelle »,
+  can show only what is missing here (« Absentes ici seulement »), and
+  browses one officine's shares when several share.
 
 ## [0.414.0] - 2026-10-12
 

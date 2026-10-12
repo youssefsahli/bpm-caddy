@@ -10820,10 +10820,20 @@ impl Session {
     /// Open « En ligne » on one kind of entry, searched for `query`.
     fn open_online(&mut self, kind: crate::versions::Kind, query: &str) {
         self.reload_card_edits();
+        // Lu avant que l'ouverture ne les marque vues.
+        let fresh = match &self.online_seen {
+            Some(seen) => crate::enligne::offers(&self.card_edits, kind)
+                .into_iter()
+                .map(|o| o.stamp)
+                .filter(|s| !s.is_empty() && !seen.contains(s))
+                .collect(),
+            None => std::collections::HashSet::new(),
+        };
         self.online = Some(Online {
             kind,
             query: query.trim().to_owned(),
             network: self.db.setting("net_trousseau").is_some(),
+            fresh,
             ..Online::default()
         });
     }
@@ -14118,6 +14128,15 @@ struct Online {
     /// start of its shipped text — an address says nothing to a reader.
     labels: std::collections::HashMap<String, String>,
     note: Option<(bool, String)>,
+    /// L'officine dont on parcourt le partage (vide : toutes), et les
+    /// officines que les offres nomment — lues avec elles.
+    from: String,
+    sources: Vec<String>,
+    /// Ne montrer que ce qui manque ici : ce qu'on peut prendre.
+    only_absent: bool,
+    /// Ce qui n'avait pas encore été vu à l'ouverture (`Offer::stamp`) :
+    /// marqué « nouveau », et en tête.
+    fresh: std::collections::HashSet<String>,
 }
 
 /// La fenêtre du réseau d'officines : ce que la base en dit, une tâche
@@ -62366,6 +62385,22 @@ impl App {
                     (o, here, summary)
                 })
                 .collect();
+            // Le nouveau d'abord, chacun dans l'ordre des noms.
+            let fresh = &online.fresh;
+            online
+                .rows
+                .sort_by_key(|(o, _, _)| !fresh.contains(&o.stamp));
+            let mut sources: Vec<String> = online
+                .rows
+                .iter()
+                .flat_map(|(o, _, _)| o.from.iter().cloned())
+                .collect();
+            sources.sort_by_key(|s| crate::versions::key(s));
+            sources.dedup();
+            if !online.from.is_empty() && !sources.contains(&online.from) {
+                online.from.clear();
+            }
+            online.sources = sources;
             online.rows_rev = Some(session.edits_rev);
         }
         let kind = online.kind;
@@ -62408,6 +62443,17 @@ impl App {
                         egui::TextEdit::singleline(&mut online.query)
                             .hint_text(motif::hint(tr("online_hint"))),
                     );
+                    // Le partage d'une officine, parcouru seul.
+                    if online.sources.len() > 1 {
+                        let options: Vec<(String, String)> =
+                            std::iter::once((String::new(), tr("online_from_all").to_owned()))
+                                .chain(online.sources.iter().map(|s| (s.clone(), s.clone())))
+                                .collect();
+                        let w = motif::select_width(ui, options.iter().map(|(_, l)| l.as_str()))
+                            .min(chars_wide(ui, 32.0));
+                        motif::select(ui, "online_from", w, &mut online.from, &options);
+                    }
+                    motif::checkbox(ui, &mut online.only_absent, tr("online_only_absent"));
                     #[cfg(feature = "sync")]
                     if motif::button(ui, tr("online_network")).clicked() {
                         network = true;
@@ -62435,7 +62481,10 @@ impl App {
                     .show(ui, |ui| {
                         let mut shown = 0_usize;
                         for (i, (o, here, summary)) in online.rows.iter().enumerate() {
-                            if !o.matches(&online.query) {
+                            if !o.matches(&online.query)
+                                || (!online.from.is_empty() && !o.from.contains(&online.from))
+                                || (online.only_absent && *here != Here::Absent)
+                            {
                                 continue;
                             }
                             shown += 1;
@@ -62467,6 +62516,14 @@ impl App {
                                     Here::Same => tr("online_same"),
                                     Here::Differs => tr("online_differs"),
                                 };
+                                if online.fresh.contains(&o.stamp) {
+                                    ui.label(
+                                        egui::RichText::new(tr("online_fresh"))
+                                            .size(motif::pt(ui, 10.5))
+                                            .color(motif::accent())
+                                            .strong(),
+                                    );
+                                }
                                 ui.label(
                                     egui::RichText::new(state)
                                         .size(motif::pt(ui, 10.5))
