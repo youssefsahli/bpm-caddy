@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.410.0] - 2026-10-12
+
 ### Fixed
 - Narcotics register: a lot typed for one product leaves the form when
   another product is opened — it stayed displayed and was dropped at
