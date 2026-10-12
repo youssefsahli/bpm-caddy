@@ -42,9 +42,12 @@ cascades renommés suivis sous une identité figée, unique — relue,
 corrigée) a passé son smoke dans les quatre formes (db9d2da) ; la
 0.415.0 (« En ligne » compte ce qui a bougé, met le nouveau en tête,
 filtre ce qui manque ici, parcourt une officine — deux relectures,
-corrigées) a passé son smoke dans les quatre formes (634ea4b) : **c'est
-elle à publier** — `git tag v0.415.0 634ea4b && git push origin
-v0.415.0` (à défaut, la 0.414.0 : `git tag v0.414.0 db9d2da`) ; les étiquettes intermédiaires n'ont jamais été
+corrigées) a passé son smoke dans les quatre formes (634ea4b) ; la
+0.416.0 (la carte des officines : un répertoire qu'une officine
+héberge, sans appairage — cinq relectures dont deux de sécurité,
+corrigées) a passé son smoke dans les quatre formes (309fddd) : **c'est
+elle à publier** — `git tag v0.416.0 309fddd && git push origin
+v0.416.0` (à défaut, la 0.415.0 : `git tag v0.415.0 634ea4b`) ; les étiquettes intermédiaires n'ont jamais été
 posées, et **la 0.395.0 ne se publie pas** (elle lisait mal les doses de
 charge et les titrations, corrigé dans la 0.396.0).
 
