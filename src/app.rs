@@ -4463,6 +4463,24 @@ impl CampaignEdit {
 /// (écrit, affiché))`.
 /// Une rupture en cours et ses trois remplacements les plus donnés.
 type RuptRow = (crate::ruptures::Shortage, Vec<String>);
+/// Un script en cours sur son fil : ce qu'il rendra, le drapeau qui
+/// l'arrête, et qui l'a lancé (le journal d'accès le nomme).
+///
+/// **Arrêté quand il est lâché** : verrouiller la session la remplaçait,
+/// et le fil continuait seul jusqu'à sa borne d'opérations, avec sa copie
+/// de chaque nom de patient.
+struct ScriptJob {
+    rx: std::sync::mpsc::Receiver<crate::script::Outcome>,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    operator: String,
+}
+
+impl Drop for ScriptJob {
+    fn drop(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 type PrescriberHits = (String, u64, Vec<(String, String)>);
 
 /// Une ligne de la liste des rappels, avec ce que la vue affiche du
@@ -4910,10 +4928,7 @@ struct Session {
     script_out: Option<crate::script::Outcome>,
     /// Un script en cours, sur son propre fil : ce qu'il rendra, et le
     /// drapeau qui l'arrête.
-    script_job: Option<(
-        std::sync::mpsc::Receiver<crate::script::Outcome>,
-        std::sync::Arc<std::sync::atomic::AtomicBool>,
-    )>,
+    script_job: Option<ScriptJob>,
     script_note: Option<(bool, String)>,
     script_name: String,
     /// Ce que l'éditeur propose : la portion du mot commencé, les
@@ -8175,7 +8190,11 @@ impl Session {
         std::thread::spawn(move || {
             let _ = tx.send(crate::script::run_until(&source, &data, flag));
         });
-        self.script_job = Some((rx, stop));
+        self.script_job = Some(ScriptJob {
+            rx,
+            stop,
+            operator: self.operator.clone(),
+        });
         self.script_note = Some((false, tr("script_running").to_owned()));
     }
 
@@ -8684,16 +8703,16 @@ impl Session {
     /// Ce qu'un script en cours a rendu, relevé à chaque image — un
     /// `try_recv` quand rien ne tourne.
     fn poll_script(&mut self, ctx: &egui::Context) {
-        let Some((rx, _)) = &self.script_job else {
+        let Some(job) = &self.script_job else {
             return;
         };
-        match rx.try_recv() {
+        match job.rx.try_recv() {
             Ok(out) => {
+                // Au nom de qui l'a lancé, pas de qui est là à la fin.
+                let operator = job.operator.clone();
                 self.script_job = None;
                 if out.read_patients {
-                    let _ = self
-                        .db
-                        .log_access(&self.operator, crate::audit::Act::Console, 0);
+                    let _ = self.db.log_access(&operator, crate::audit::Act::Console, 0);
                 }
                 self.script_note = match &out.error {
                     Some(_) => Some((true, tr("script_failed").to_owned())),
@@ -64563,7 +64582,7 @@ impl App {
         let mut save = false;
         motif::inside(ui, rows[0], |ui| {
             ui.horizontal_wrapped(|ui| {
-                if let Some((_, stop)) = &session.script_job {
+                if let Some(ScriptJob { stop, .. }) = &session.script_job {
                     if motif::button(ui, tr("script_stop"))
                         .on_hover_text(tr("script_stop_tooltip"))
                         .clicked()

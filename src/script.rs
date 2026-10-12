@@ -136,6 +136,30 @@ pub struct Outcome {
 /// poste.
 const MAX_PRINTED: usize = 1_000_000;
 
+/// Et au plus tant de lignes : `print("")` ne pèse rien, et un million
+/// de lignes vides figeait le volet qui les dessine.
+const MAX_LINES: usize = 10_000;
+
+/// La valeur rendue, au plus tant de caractères : un tableau d'un million
+/// d'éléments s'écrivait en une étiquette de plusieurs mégaoctets.
+const MAX_VALUE_CHARS: usize = 20_000;
+
+/// Garder une ligne imprimée, dans les deux bornes.
+fn keep_line(
+    lines: &std::sync::Mutex<Vec<String>>,
+    bytes: &std::sync::atomic::AtomicUsize,
+    line: String,
+) {
+    let total = bytes.fetch_add(line.len().max(1), std::sync::atomic::Ordering::Relaxed);
+    if total <= MAX_PRINTED {
+        if let Ok(mut lines) = lines.lock() {
+            if lines.len() < MAX_LINES {
+                lines.push(line);
+            }
+        }
+    }
+}
+
 /// Exécuter un script contre un instantané.
 ///
 /// Ne panique jamais : une erreur de syntaxe, un dépassement de compte,
@@ -224,34 +248,23 @@ fn engine_run(source: &str, data: &Snapshot, stop: Arc<std::sync::atomic::Atomic
     engine.set_max_expr_depths(64, 64);
     engine.set_max_call_levels(16);
     engine.set_max_string_size(1_000_000);
-    engine.set_max_array_size(1_000_000);
-    engine.set_max_map_size(1_000_000);
+    // Cent mille : plus que la base n'a de fiches ou de dossiers, et des
+    // copies successives d'un tableau d'un million faisaient tomber le
+    // poste faute de mémoire.
+    engine.set_max_array_size(100_000);
+    engine.set_max_map_size(100_000);
     // Ce qu'un script écrit va dans le volet et nulle part ailleurs.
     {
         let sink = Arc::clone(&printed);
         let bytes = Arc::clone(&printed_bytes);
-        engine.on_print(move |text| {
-            let total = bytes.fetch_add(text.len(), std::sync::atomic::Ordering::Relaxed);
-            if total <= MAX_PRINTED {
-                if let Ok(mut lines) = sink.lock() {
-                    lines.push(text.to_owned());
-                }
-            }
-        });
+        engine.on_print(move |text| keep_line(&sink, &bytes, text.to_owned()));
     }
     // `debug` aussi : sans cela il écrit sur la sortie standard, qu'une
     // application de bureau n'a pas.
     {
         let sink = Arc::clone(&printed);
         let bytes = Arc::clone(&printed_bytes);
-        engine.on_debug(move |text, _, pos| {
-            let total = bytes.fetch_add(text.len(), std::sync::atomic::Ordering::Relaxed);
-            if total <= MAX_PRINTED {
-                if let Ok(mut lines) = sink.lock() {
-                    lines.push(format!("{pos:?} {text}"));
-                }
-            }
-        });
+        engine.on_debug(move |text, _, pos| keep_line(&sink, &bytes, format!("{pos:?} {text}")));
     }
 
     // --- Ce que le script peut lire ---------------------------------
@@ -353,7 +366,13 @@ fn engine_run(source: &str, data: &Snapshot, stop: Arc<std::sync::atomic::Atomic
             value: if value.is_unit() {
                 String::new()
             } else {
-                value.to_string()
+                let text = value.to_string();
+                if text.chars().count() > MAX_VALUE_CHARS {
+                    let cut: String = text.chars().take(MAX_VALUE_CHARS).collect();
+                    format!("{cut}…")
+                } else {
+                    text
+                }
             },
             error: None,
             read_patients,
@@ -811,6 +830,18 @@ mod tests {
             .join()
             .unwrap();
         assert!(out.error.is_some());
+    }
+
+    /// **Ce qu'un script rend se dessine** : des lignes vides par
+    /// millions s'arrêtent à la borne, et une valeur énorme est coupée.
+    #[test]
+    fn what_a_script_gives_back_stays_drawable() {
+        let out = run("for i in 0..50000 { print(\"\") }", &Snapshot::default());
+        assert!(out.printed.len() <= MAX_LINES, "{}", out.printed.len());
+        let out = run("let a = []; a.pad(90000, 0); a", &Snapshot::default());
+        assert!(out.value.chars().count() <= MAX_VALUE_CHARS + 1);
+        let out = run("let a = []; a.pad(200000, 0); a", &Snapshot::default());
+        assert!(out.error.is_some(), "au-delà de cent mille éléments");
     }
 
     fn sample() -> Snapshot {

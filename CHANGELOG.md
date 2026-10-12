@@ -41,6 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   texts are not taken in; an identifier of this base received from
   elsewhere is set aside; the shortages view no longer reads the whole
   journal on every frame.
+- Console: what a script prints is bounded in lines too (a million empty
+  lines froze the pane) and a huge final value is cut; a script still
+  running when the session locks is stopped; its access-log line names
+  whoever started it; arrays and maps are bounded at a hundred thousand
+  elements.
 
 ## [0.401.0] - 2026-10-12
 
