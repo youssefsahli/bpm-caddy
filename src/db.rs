@@ -55801,13 +55801,33 @@ impl Db {
                 }
                 Action::Nothing => {}
                 Action::Insert => {
-                    let known: Vec<(&String, &serde_json::Value)> =
-                        op.new.iter().filter(|(c, _)| cols.contains(c)).collect();
-                    let names: Vec<String> =
+                    // Une version venue d'un poste d'avant la colonne `at`
+                    // est datée à son arrivée, plutôt que rangée avant
+                    // toutes les autres.
+                    let undated = op.table == "card_edits"
+                        && cols.iter().any(|c| c == "at")
+                        && !op
+                            .new
+                            .get("at")
+                            .and_then(|v| v.as_str())
+                            .is_some_and(|a| !a.is_empty());
+                    let known: Vec<(&String, &serde_json::Value)> = op
+                        .new
+                        .iter()
+                        .filter(|(c, _)| cols.contains(c) && !(undated && c.as_str() == "at"))
+                        .collect();
+                    let mut names: Vec<String> =
                         known.iter().map(|(c, _)| format!("\"{c}\"")).collect();
-                    let marks: Vec<String> = (1..=known.len()).map(|i| format!("?{i}")).collect();
-                    let values: Vec<rusqlite::types::Value> =
+                    let mut values: Vec<rusqlite::types::Value> =
                         known.iter().map(|(_, v)| sql_value(v)).collect();
+                    if undated {
+                        let now: String = conn
+                            .query_row(&format!("SELECT {AT_NOW}"), [], |r| r.get(0))
+                            .map_err(|e| e.to_string())?;
+                        names.push("\"at\"".to_owned());
+                        values.push(rusqlite::types::Value::Text(now));
+                    }
+                    let marks: Vec<String> = (1..=names.len()).map(|i| format!("?{i}")).collect();
                     match conn.execute(
                         &format!(
                             "INSERT INTO \"{}\" ({}) VALUES ({})",
@@ -57570,6 +57590,41 @@ mod tests {
             .unwrap()
             .iter()
             .any(|c| c.kind == "REFUS"));
+
+        // Une version venue d'un poste d'avant la colonne `at` est datée à
+        // son arrivée : rangée sans date, elle passait avant toutes.
+        let old_post = crate::replica::Op {
+            file: crate::replica::File::Main,
+            table: "card_edits".to_owned(),
+            kind: crate::replica::Kind::Insert,
+            key: serde_json::json!({ "id": crate::replica::ROW_BLOCK + 77 })
+                .as_object()
+                .unwrap()
+                .clone(),
+            old: serde_json::Map::new(),
+            new: serde_json::json!({
+                "id": crate::replica::ROW_BLOCK + 77,
+                "uid": "bb:v77",
+                "day": "2026-09-23",
+                "card": "zzancien",
+                "card_name": "Zzancien",
+                "field": "dci",
+                "value": "x",
+                "kind": "fiche"
+            })
+            .as_object()
+            .unwrap()
+            .clone(),
+        };
+        a.apply_record("old", "bb", "2026-09-23", &[old_post])
+            .unwrap();
+        let at: String = a
+            .conn
+            .query_row("SELECT at FROM card_edits WHERE uid = 'bb:v77'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert!(!at.is_empty(), "datée à l'arrivée");
 
         // **Seul le poste de référence numérote.** B délivre : sa ligne
         // part sans numéro ; A, la référence, la numérote en la recevant,

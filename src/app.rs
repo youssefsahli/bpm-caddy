@@ -10683,14 +10683,11 @@ impl Session {
         }
         drop(people);
         self.camp.counts = counts;
-        let read_on = self
-            .camp
-            .campaigns
-            .iter()
-            .find(|c| c.key == self.camp.key)
-            .map(|c| c.starts_on.clone())
-            .filter(|start| start.as_str() > today.as_str())
-            .unwrap_or_else(|| today.clone());
+        let read_on = if campaign.starts_on > today {
+            campaign.starts_on.clone()
+        } else {
+            today.clone()
+        };
         self.camp.recalls = chosen
             .into_iter()
             .filter_map(|r| {
@@ -10850,6 +10847,7 @@ impl Session {
     /// its notes. Called on selection, on refresh and after a write.
     fn load_day(&mut self) {
         self.grid_events_memo = None;
+        self.confirm_delete_event = None;
         if self.agenda_day.is_empty() {
             self.agenda_day = self.today.clone();
         }
