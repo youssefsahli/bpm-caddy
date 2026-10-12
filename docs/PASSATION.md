@@ -56,6 +56,12 @@ conciliation, acte de vaccination, retour d'une case de table), ADELI,
 lanceur, relais.
 
 Laissé, relevé par les relectures (à trancher ou à vérifier) :
+- tables de référence : `edited_table_keys` et `all_table_cells`
+  relus à chaque image (à mémoriser contre `table_rev`) ; survol de la
+  carte : la mémoire `GraphPairKey` ne suit ni la biologie ni la fiche
+  modifiées ici ; la note de pied de la carte est mesurée avec 99 et
+  sans `graph_hidden_ring` ; infobulles des arêtes pendant un
+  glissement ;
 - suppression d'un dossier entre postes : une ligne (biologie, dose,
   note…) écrite ailleurs avant que la suppression arrive est rangée
   quand même, orpheline ; une modification du patient arrivée après la

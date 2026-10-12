@@ -6917,15 +6917,23 @@ impl Session {
     fn goto_results(&self, limit: usize) -> Vec<GotoHit> {
         let q = self.goto_query.trim();
         let mut out: Vec<(i32, GotoHit)> = Vec::new();
-        let mut push = |score: i32, dest: Goto, label: String, kind: &'static str| {
-            out.push((score, GotoHit { dest, label, kind }));
-        };
         // Each kind is scored on its own text, then a bonus decides the
         // ties: at equal text score a patient outranks a fiche, and a
         // fiche outranks a reference table. It is the order in which the
-        // counter means them.
-        const PATIENT_BONUS: i32 = 20;
-        const DRUG_BONUS: i32 = 10;
+        // counter means them. **Only the ties** : added to the text
+        // score, a bonus of twenty outranked whole letters of match, and
+        // « doli » put a patient met letter by letter above Doliprane.
+        // **Et un mot qui commence par la question passe devant** des
+        // lettres trouvées éparses : « doli » est le Doliprane, pas une
+        // patiente dont le prénom et le nom en portent les quatre.
+        let typed = q.chars().filter(|c| !c.is_whitespace()).count();
+        let mut push = |score: i32, bonus: i32, dest: Goto, label: String, kind: &'static str| {
+            let word = typed > 0 && fuzzy::starts_a_word(&label, q, typed);
+            let lead = if word { 100_000 } else { 0 };
+            out.push((lead + score * 10 + bonus, GotoHit { dest, label, kind }));
+        };
+        const PATIENT_BONUS: i32 = 2;
+        const DRUG_BONUS: i32 = 1;
         // The standing views come first on an empty box and stay
         // reachable by name ("agenda", "carte").
         for tab in [
@@ -6954,7 +6962,7 @@ impl Session {
                 fuzzy::score(q, &label)
             };
             if let Some(sc) = score {
-                push(sc, Goto::Tab(tab), label, tr("goto_kind_view"));
+                push(sc, 0, Goto::Tab(tab), label, tr("goto_kind_view"));
             }
         }
         // Les recettes se rejoignent **par leur nom seulement**. Elles
@@ -6967,6 +6975,7 @@ impl Session {
             if let Some(sc) = fuzzy::score(q, &label) {
                 push(
                     sc,
+                    0,
                     Goto::Tab(WorkTab::Finances),
                     label,
                     tr("goto_kind_view"),
@@ -7023,7 +7032,8 @@ impl Session {
             let sc = fuzzy::score(&lq, k1).max(fuzzy::score(&lq, k2));
             if let Some(sc) = sc {
                 push(
-                    sc + PATIENT_BONUS,
+                    sc,
+                    PATIENT_BONUS,
                     Goto::Patient(p.id),
                     format!("{} {}", p.first_name, p.last_name),
                     tr("goto_kind_patient"),
@@ -7044,7 +7054,8 @@ impl Session {
                     format!("{} — {}", d.name, d.dci)
                 };
                 push(
-                    sc + DRUG_BONUS,
+                    sc,
+                    DRUG_BONUS,
                     Goto::Drug(d.id),
                     label,
                     tr("goto_kind_drug"),
@@ -7056,6 +7067,7 @@ impl Session {
             if let Some(sc) = sc {
                 push(
                     sc,
+                    0,
                     Goto::Table(i),
                     t.title.to_owned(),
                     tr("goto_kind_table"),
@@ -7066,6 +7078,7 @@ impl Session {
             if let Some(sc) = fuzzy::score(q, &prep.name) {
                 push(
                     sc,
+                    0,
                     Goto::Preparation(prep.id),
                     prep.name.clone(),
                     tr("goto_kind_prep"),
@@ -7081,6 +7094,7 @@ impl Session {
             if let Some(sc) = sc {
                 push(
                     sc,
+                    0,
                     Goto::Dispositif(dispo.id),
                     dispo.name.clone(),
                     tr("goto_kind_dispositif"),
@@ -7092,7 +7106,7 @@ impl Session {
         for p in &self.conseil.products {
             let sc = fuzzy::score(q, &p.name).max(fuzzy::score(q, &p.maker));
             if let Some(sc) = sc {
-                push(sc, Goto::Cno(p.id), p.name.clone(), tr("goto_kind_cno"));
+                push(sc, 0, Goto::Cno(p.id), p.name.clone(), tr("goto_kind_cno"));
             }
         }
         for proto in &self.protocols {
@@ -7104,6 +7118,7 @@ impl Session {
             if let Some(sc) = sc {
                 push(
                     sc,
+                    0,
                     Goto::Protocol(proto.id),
                     proto.title.clone(),
                     tr("goto_kind_protocol"),
@@ -7122,6 +7137,7 @@ impl Session {
             if let Some(sc) = fuzzy::score(q, &st.product.label) {
                 push(
                     sc,
+                    0,
                     Goto::Stupefiant(st.product.id),
                     st.product.label.clone(),
                     tr("goto_kind_stup"),
@@ -7135,7 +7151,7 @@ impl Session {
         for (title, purpose) in App::calc_tools() {
             let sc = fuzzy::score(q, title).max(fuzzy::score(q, purpose));
             if let Some(sc) = sc {
-                push(sc, Goto::Calc, title.to_owned(), tr("goto_kind_tool"));
+                push(sc, 0, Goto::Calc, title.to_owned(), tr("goto_kind_tool"));
             }
         }
         for tool in Tool::ALL.into_iter().filter(|t| t.available()) {
@@ -7143,6 +7159,7 @@ impl Session {
             if let Some(sc) = sc {
                 push(
                     sc,
+                    0,
                     Goto::Tool(tool),
                     tool.title().to_owned(),
                     tr("goto_kind_tool"),
@@ -7158,6 +7175,7 @@ impl Session {
             if let Some(sc) = sc {
                 push(
                     sc,
+                    0,
                     Goto::Carnet(sheet.key),
                     sheet.title.to_owned(),
                     tr("goto_kind_carnet"),
@@ -7168,6 +7186,7 @@ impl Session {
             if let Some(sc) = fuzzy::score(q, name) {
                 push(
                     sc,
+                    0,
                     Goto::Script(name.clone()),
                     name.clone(),
                     tr("goto_kind_script"),
@@ -7509,6 +7528,11 @@ impl Session {
                 self.show_tables = true;
                 self.table_selected = i;
                 self.table_query.clear();
+                // Une case en cours ou une annulation de l'autre table ne
+                // s'applique pas à celle-ci — l'annulation écrivait la
+                // valeur d'avant de A dans la même case de B.
+                self.table_edit = None;
+                self.table_undo = None;
                 self.table_cells = self
                     .db
                     .table_cells(crate::tables::TABLES[i].short)
@@ -8911,6 +8935,8 @@ impl Session {
     /// par image : le résumé lit le registre entier pour en tirer un
     /// solde par produit.
     fn reload_stup(&mut self) {
+        // « Aller à… » les liste : sa mémoire suit.
+        self.catalog_rev = self.catalog_rev.wrapping_add(1);
         self.stup_summary = self.db.stup_summary().unwrap_or_default();
         self.batch_stocks = None;
         // « Trois de quatorze » : le quatorze vient du produit, et il
@@ -9044,6 +9070,8 @@ impl Session {
     /// c'est très bien : la console s'ouvre sur les exemples livrés, et
     /// « aucun script » n'est pas une erreur.
     fn refresh_scripts(&mut self) {
+        // « Aller à… » les liste : sa mémoire suit.
+        self.catalog_rev = self.catalog_rev.wrapping_add(1);
         self.scripts.clear();
         let Ok(dir) = std::fs::read_dir(self.scripts_dir.clone()) else {
             return;
@@ -10652,6 +10680,8 @@ impl Session {
     /// la page affichée, les grilles de tailles et les compléments. Au
     /// changement de dossier, les formulaires repartent de ce dossier.
     fn reload_conseil(&mut self) {
+        // « Aller à… » les liste : sa mémoire suit.
+        self.catalog_rev = self.catalog_rev.wrapping_add(1);
         let pid = self.viewing.as_ref().map(|p| p.id);
         let page = self.conseil.page;
         let changed_patient = self.conseil.loaded_for.map(|(p, _)| p) != Some(pid);
@@ -15685,7 +15715,8 @@ fn goto_window(ctx: &egui::Context, session: &mut Session) -> Option<Goto> {
         )
     });
     session.refresh_goto_hits(12);
-    let hits = std::mem::take(&mut session.goto_hits);
+    let mut hits = std::mem::take(&mut session.goto_hits);
+    let mut query_changed = false;
     if hits.is_empty() {
         session.goto_selected = 0;
     } else {
@@ -15723,6 +15754,7 @@ fn goto_window(ctx: &egui::Context, session: &mut Session) -> Option<Goto> {
             }
             if field.changed() {
                 session.goto_selected = 0;
+                query_changed = true;
             }
             ui.add_space(6.0);
             if hits.is_empty() {
@@ -15801,6 +15833,15 @@ fn goto_window(ctx: &egui::Context, session: &mut Session) -> Option<Goto> {
             }
         });
     motif::dialog_relief(ctx, &shown);
+    // **La dernière lettre et Entrée dans la même image** : la liste
+    // calculée avant que le champ ne prenne la lettre était celle de la
+    // question d'avant, et Entrée ouvrait sa première ligne — « dupon »
+    // plutôt que « dupont ». Relue avant de choisir.
+    if query_changed && (enter || pin) {
+        session.goto_hits = hits;
+        session.refresh_goto_hits(12);
+        hits = std::mem::take(&mut session.goto_hits);
+    }
     if enter {
         if let Some(hit) = hits.get(session.goto_selected) {
             chosen = Some(hit.dest.clone());
@@ -20508,7 +20549,7 @@ impl App {
             });
         motif::dialog_relief(ctx, &shown);
         self.whatsnew = Some(notes);
-        if close || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+        if close || ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
             self.whatsnew = None;
             // Vu : la prochaine mise à jour montrera ce qui la suit.
             if self.config.ui.seen_notes != crate::release::current() {
@@ -20957,7 +20998,7 @@ impl App {
         // the navigator open the search is right there, so the key just
         // puts the cursor in it — closing the open file to reach a
         // search bar was the old shape of the app, not this one.
-        let focus_search = ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::F));
+        let focus_search = ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::F));
         // With one of the carved lists open, the search that matters is
         // that list's own — arrows and Enter walk it, but only once the
         // cursor is in the field, and putting it there was the one step
@@ -30581,7 +30622,7 @@ impl App {
                 session.act_picker = true;
             }
         });
-        let ctrl_n = ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::N));
+        let ctrl_n = ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::N));
         // (kind, thematic): the direct buttons create a themeless
         // act, the picker attaches the theme chosen with it.
         let mut new_act: Option<(InterviewKind, String)> = None;
@@ -60199,7 +60240,13 @@ impl App {
         // wider than the pane, centred, starts to the *left* of it, and
         // the first column — the one naming the row — goes off the
         // screen with no way back to it.
-        let left = (avail.center().x - w / 2.0).max(avail.left());
+        //
+        // **Posée dans le contenu, mesurée sur ce qui se voit.** Le coin
+        // visible ne bouge pas quand la barre défile : la table, placée
+        // sur lui, restait au même pixel à chaque image, et les dernières
+        // colonnes ne se rejoignaient jamais.
+        let origin = ui.available_rect_before_wrap().min;
+        let left = origin.x + ((avail.width() - w) / 2.0).max(0.0);
         // **The row's name must not scroll away.** A table wider than
         // its pane scrolls sideways — that is what the bar is for, and
         // six columns of prose have no other honest shape. But the
@@ -60217,7 +60264,7 @@ impl App {
         let mut commit: Option<(usize, usize, String)> = None;
         let bg = ui.painter().add(egui::Shape::Noop);
         let content = egui::Rect::from_min_size(
-            egui::pos2(left + PAD, avail.top() + PAD),
+            egui::pos2(left + PAD, origin.y + PAD),
             egui::vec2(w - 2.0 * PAD, avail.height().max(1.0)),
         );
         let used = ui
@@ -79642,7 +79689,7 @@ impl eframe::App for App {
         }
         // Ctrl+K: one box over every view. Consumed, so the letter never
         // reaches a field behind it.
-        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::K)) {
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::K)) {
             if let State::Unlocked(session) = &mut self.state {
                 session.goto_open = !session.goto_open;
                 session.goto_query.clear();
@@ -79667,7 +79714,11 @@ impl eframe::App for App {
         if ctx.input(|i| i.key_pressed(egui::Key::F12)) {
             self.show_keys = !self.show_keys;
         }
-        if self.show_keys && ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+        // Consommée : laissée, la même Échap fermait aussi le dossier
+        // ouvert derrière — ou une fiche en cours de correction.
+        if self.show_keys
+            && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
+        {
             self.show_keys = false;
         }
         // F9 : le compagnon. Voir `App::companion` — la fenêtre se
@@ -79790,14 +79841,18 @@ impl eframe::App for App {
         // where you were.
         if matches!(self.state, State::Unlocked(_)) {
             // Ctrl+Tab walks the strip; Ctrl+W closes the open file.
-            let (cycle, back, close) = ctx.input_mut(|i| {
+            // Ctrl+Maj+Tab **d'abord** : `consume_key` ne regarde pas une
+            // Maj de trop, et Ctrl+Tab prenait les deux — on n'allait
+            // jamais en arrière.
+            let (back, cycle, close) = ctx.input_mut(|i| {
+                let back = i.consume_key(
+                    egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+                    egui::Key::Tab,
+                );
                 (
+                    back,
                     i.consume_key(egui::Modifiers::CTRL, egui::Key::Tab),
-                    i.consume_key(
-                        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
-                        egui::Key::Tab,
-                    ),
-                    i.consume_key(egui::Modifiers::CTRL, egui::Key::W),
+                    i.consume_key(egui::Modifiers::COMMAND, egui::Key::W),
                 )
             });
             egui::TopBottomPanel::top("notebook")
@@ -89981,6 +90036,67 @@ mod tests {
     ///
     /// On le vérifie comme on vérifie une bande : en dessinant, avec un
     /// décalage horizontal imposé, et en regardant où la galée atterrit.
+    /// **Une table plus large que son volet défile pour de vrai** : posée
+    /// sur le coin visible, elle restait au même pixel quand la barre
+    /// bougeait, et le contenu s'allongeait du décalage à chaque image —
+    /// les dernières colonnes ne se rejoignaient jamais.
+    #[test]
+    fn a_wide_reference_table_slides_under_its_scroll_bar() {
+        let (mut s, _swept) = scratch_session("tables_slide");
+        let config = crate::config::Config::default();
+        // La table la plus large, dans un volet étroit à l'échelle 1,6.
+        let widest = crate::tables::TABLES
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, t)| t.columns.len())
+            .map(|(i, _)| i)
+            .unwrap();
+        s.table_selected = widest;
+        s.table_cells =
+            s.db.table_cells(crate::tables::TABLES[widest].short)
+                .unwrap_or_default();
+        // Les textes dessinés à un décalage donné : les cases hors de la
+        // vue ne se dessinent pas, si bien qu'une table qui glisse en
+        // montre d'autres.
+        let mut seen = |offset: f32| -> std::collections::BTreeSet<String> {
+            let ctx = egui::Context::default();
+            motif::apply_scale(&ctx, 1.6, motif::Density::Comfortable);
+            let mut texts = std::collections::BTreeSet::new();
+            for _ in 0..3 {
+                let out = ctx.run(Default::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let view =
+                            egui::Rect::from_min_size(ui.max_rect().min, egui::vec2(420.0, 400.0));
+                        ui.allocate_new_ui(egui::UiBuilder::new().max_rect(view), |ui| {
+                            egui::ScrollArea::both()
+                                .id_salt("tables_detail_test")
+                                .horizontal_scroll_offset(offset)
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| {
+                                    super::App::tables_body(ui, &mut s, &config);
+                                });
+                        });
+                    });
+                });
+                texts = out
+                    .shapes
+                    .iter()
+                    .filter_map(|c| match &c.shape {
+                        egui::Shape::Text(t) => Some(t.galley.text().to_owned()),
+                        _ => None,
+                    })
+                    .collect();
+            }
+            texts
+        };
+        let at_rest = seen(0.0);
+        let scrolled = seen(300.0);
+        assert!(
+            scrolled.difference(&at_rest).next().is_some(),
+            "la barre défile, et la table montre d'autres colonnes"
+        );
+    }
+
     #[test]
     fn the_column_that_names_the_row_never_scrolls_away() {
         use super::{frozen_cell, frozen_left};
@@ -93034,6 +93150,24 @@ mod tests {
         // Trop lourd : refusé, et dit.
         let big = vec![0u8; crate::messages::MAX_FILE + 1];
         assert!(s.db.attach_file("x", "gros.bin", &big).is_err());
+    }
+
+    /// **Le texte classe, la nature départage** : « doli » trouve le
+    /// Doliprane avant un patient dont les lettres sont éparses dans le
+    /// nom — le bonus d'un patient passait devant des lettres entières.
+    #[test]
+    fn the_jump_box_ranks_on_the_text_before_the_kind() {
+        let (mut s, _swept) = scratch_session("goto_rank_text");
+        s.db.add_patient("Lise", "Dominique", "1960-01-01").unwrap();
+        s.set_patients(s.db.patients().unwrap());
+        s.goto_query = "doli".to_owned();
+        let hits = s.goto_results(10);
+        assert!(
+            hits.first()
+                .is_some_and(|h| h.label.starts_with("Doliprane")),
+            "{:?}",
+            hits.iter().map(|h| &h.label).collect::<Vec<_>>()
+        );
     }
 
     /// **Un favori passe en tête de « Aller à… »**, pour la personne au

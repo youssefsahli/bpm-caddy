@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Reference tables: a table wider than its pane slides under the
+  horizontal bar — it stayed put and its last columns could not be
+  reached; a cell being edited or an undo pending in one table is
+  dropped when another is opened from « Aller à… » (the undo wrote the
+  first table's old value into the second).
+- Jump box and shortcuts: a word that starts with what was typed comes
+  before letters found scattered (« doli » gave a patient before
+  Doliprane), the kind only breaks ties; Enter pressed with the last
+  letter opens the right line; Ctrl+Shift+Tab goes back; Escape that
+  closes the keys or « what's new » window no longer also closes the
+  file behind it; on a Mac, Cmd works for the jump box, search, new act
+  and closing a file; the box notices narcotics, oral supplements and
+  scripts changed meanwhile.
 - Narcotics register: a lot read from one product's box is never written
   on another product's line (scanning box A then choosing B wrote A's
   lot and expiry, never shown, on B); the number keys, the « détruire »
