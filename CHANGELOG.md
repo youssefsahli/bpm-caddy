@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Bundle import: the imported base's path is proposed in Options, and
+  saving is what switches — it used to be taken in memory only, so the
+  next lock opened the imported base and the next launch the old one,
+  and whatever was written in between, register included, vanished from
+  view; a bundle from a post of a group leaves the group (it carried the
+  post's identity and its number counters, cloning the post or handing
+  out numbers the others already hold); the three files are renamed
+  register first and base last, so an interruption never leaves a base
+  without its register.
 - Unlocking: a base named in `config.toml` and absent (a share mounted
   late, a mistyped path) is said on the lock screen and nothing is
   created in its place — the remembered password used to open a new,

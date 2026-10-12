@@ -83289,11 +83289,12 @@ impl eframe::App for App {
                 db::Db::import_bundle(pack, &session.password, into).map(|base| (base, about))
             }) {
                 Ok((base, (version, day, weight))) => {
-                    // La configuration pointe dessus, et l'officine
-                    // redémarre : rien n'est fermé sous les doigts de
-                    // personne, et le chemin d'avant reste écrit dans
-                    // le fichier tant qu'on n'a pas enregistré.
-                    self.config.database.path = Some(base.clone());
+                    // **Proposé, pas pris** : le chemin entre dans la page
+                    // des options, et c'est l'enregistrer qui bascule. Posé
+                    // dans la configuration en mémoire, il ouvrait la base
+                    // importée au verrouillage suivant, puis l'ancienne au
+                    // redémarrage — et ce qui était écrit entre les deux,
+                    // registre compris, disparaissait de la vue.
                     if let Some(editor) = &mut self.options {
                         editor.cfg.database.path = Some(base);
                         editor.db_path_text =

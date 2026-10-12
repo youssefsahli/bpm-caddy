@@ -43012,7 +43012,11 @@ impl Db {
                 }
                 f.sync_all().map_err(|e| e.to_string())?;
             }
-            for name in [BUNDLE_BASE, BUNDLE_SCANS, BUNDLE_STUPS] {
+            // **Le registre d'abord, la base en dernier**, comme la copie :
+            // interrompu entre deux, un dossier où la base porte déjà son
+            // nom sans son registre ouvrait un registre neuf, numéroté
+            // depuis un.
+            for name in [BUNDLE_STUPS, BUNDLE_SCANS, BUNDLE_BASE] {
                 std::fs::rename(part(name), into.join(name)).map_err(|e| e.to_string())?;
             }
             Ok(())
@@ -43025,6 +43029,16 @@ impl Db {
                 let _ = std::fs::remove_file(into.join(name));
             }
             return Err(e);
+        }
+        // **Le paquet d'un poste d'un groupe sort du groupe** : il portait
+        // l'identité du poste, sa clé et ses compteurs de numéros. Ouvert
+        // tel quel sur un autre poste, il en faisait le jumeau de celui
+        // d'origine ; restauré sur le même, il redonnait des numéros que
+        // les autres tiennent déjà. Il rejoindra le groupe comme un poste
+        // neuf.
+        let opened = Db::open(&target, password)?;
+        if opened.sync_post().is_some() || opened.sync_local("trousseau").is_some() {
+            opened.leave_posts()?;
         }
         Ok(target)
     }
