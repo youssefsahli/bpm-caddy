@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.409.0] - 2026-10-12
+
 ### Fixed
 - Regressions found by reviewing the 0.408.0 fixes: a deletion refused
   because the register cites the file keeps the file's identity only —
