@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Companion phone: « Effacer ce téléphone » and the lock remove the
+  attachments opened in clear from the cache (an ordonnance stayed
+  readable after a wipe); the wipe cannot be confirmed while an exchange
+  runs; an exchange-folder file over 1 GB is not copied onto the phone;
+  the exchange copy is removed even when the exchange fails.
+- Help: about a dozen passages brought in line with what the
+  application does since 0.404.0.
+
 ## [0.410.0] - 2026-10-12
 
 ### Fixed

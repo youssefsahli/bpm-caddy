@@ -697,10 +697,15 @@ private fun WipeButton(state: AppState) {
             title = { Text(T("mobile_wipe_confirm")) },
             text = { Text(T("mobile_wipe_hint")) },
             confirmButton = {
-                TextButton(onClick = {
-                    asking = false
-                    state.wipe()
-                }) { Text(T("mobile_wipe")) }
+                // Ni pendant un échange commencé depuis l'ouverture de la
+                // question : la boucle de la minute peut en lancer un.
+                TextButton(
+                    onClick = {
+                        asking = false
+                        state.wipe()
+                    },
+                    enabled = !state.busy,
+                ) { Text(T("mobile_wipe")) }
             },
             dismissButton = { TextButton(onClick = { asking = false }) { Text(T("mobile_cancel")) } },
         )

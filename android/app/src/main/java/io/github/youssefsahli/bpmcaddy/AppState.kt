@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import uniffi.bpm_caddy_mobile.Caddy
 import uniffi.bpm_caddy_mobile.CaddyException
 import uniffi.bpm_caddy_mobile.Status
@@ -56,7 +57,16 @@ class AppState(application: android.app.Application) : androidx.lifecycle.Androi
             ?.filter { it.name.startsWith("bpm-caddy") }
             ?.forEach { it.delete() }
         context.getSharedPreferences("reglages", Context.MODE_PRIVATE).edit().clear().apply()
+        // Et ce que le cache tient en clair : une pièce jointe ouverte (une
+        // ordonnance, parfois), la copie du dossier d'échange.
+        clearCache()
         note = T("mobile_wiped")
+    }
+
+    /** Les copies en clair du cache : pièces ouvertes, dossier d'échange. */
+    private fun clearCache() {
+        File(context.cacheDir, "fichiers").deleteRecursively()
+        File(context.cacheDir, "echange").deleteRecursively()
     }
 
     /**
@@ -68,6 +78,9 @@ class AppState(application: android.app.Application) : androidx.lifecycle.Androi
         caddy?.destroy()
         caddy = null
         status = null
+        // Une pièce jointe ouverte ne reste pas lisible derrière le
+        // verrouillage.
+        File(context.cacheDir, "fichiers").deleteRecursively()
     }
 
     /** Ce que l'écran a écrit lui-même (une conversation lue) : relire. */

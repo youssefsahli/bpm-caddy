@@ -15,6 +15,9 @@ import uniffi.bpm_caddy_mobile.Caddy
  * sont des enregistrements scellés.
  */
 object Folder {
+    /** Le plus gros fichier d'échange recopié : celui que la bibliothèque lit. */
+    private const val MOST_BYTES: Long = 1L shl 30
+
     fun exchange(context: Context, caddy: Caddy, tree: String, today: String): String {
         val root = DocumentFile.fromTreeUri(context, Uri.parse(tree))
             ?: return T("mobile_folder_none")
@@ -22,26 +25,33 @@ object Folder {
             deleteRecursively()
             mkdirs()
         }
-        root.listFiles()
-            .filter { it.isFile && (it.name ?: "").endsWith(".bpmposte") }
-            .forEach { doc ->
-                context.contentResolver.openInputStream(doc.uri)?.use { input ->
-                    File(local, doc.name!!).outputStream().use { input.copyTo(it) }
+        // Le cache se vide même quand l'échange échoue en route.
+        return try {
+            root.listFiles()
+                .filter { it.isFile && (it.name ?: "").endsWith(".bpmposte") }
+                // Au-delà d'un gigaoctet, la bibliothèque ne le lirait pas :
+                // ne pas le recopier d'abord, qui remplirait le téléphone.
+                .filter { it.length() <= MOST_BYTES }
+                .forEach { doc ->
+                    context.contentResolver.openInputStream(doc.uri)?.use { input ->
+                        File(local, doc.name!!).outputStream().use { input.copyTo(it) }
+                    }
+                }
+            val done = caddy.exchangeFolder(local.absolutePath, today)
+            val mine = File(local, done.mine)
+            if (mine.exists()) {
+                val target = root.findFile(done.mine)
+                    ?: root.createFile("application/octet-stream", done.mine)
+                target?.let { doc ->
+                    // « wt » : réécrit en entier, jamais ajouté à la suite.
+                    context.contentResolver.openOutputStream(doc.uri, "wt")?.use { out ->
+                        mine.inputStream().use { it.copyTo(out) }
+                    }
                 }
             }
-        val done = caddy.exchangeFolder(local.absolutePath, today)
-        val mine = File(local, done.mine)
-        if (mine.exists()) {
-            val target = root.findFile(done.mine)
-                ?: root.createFile("application/octet-stream", done.mine)
-            target?.let { doc ->
-                // « wt » : réécrit en entier, jamais ajouté à la suite.
-                context.contentResolver.openOutputStream(doc.uri, "wt")?.use { out ->
-                    mine.inputStream().use { it.copyTo(out) }
-                }
-            }
+            done.said
+        } finally {
+            local.deleteRecursively()
         }
-        local.deleteRecursively()
-        return done.said
     }
 }
