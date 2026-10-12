@@ -55405,12 +55405,25 @@ impl Db {
         }
         // Rien en attente — le cas ordinaire, après chaque
         // synchronisation : pas de verrou d'écriture sur le registre.
+        //
+        // **Seules les délivrances attendent un numéro** : toute entrée,
+        // tout inventaire porte `ordo_no = 0`, si bien que la question
+        // répondait oui dès le premier, et chaque tour prenait le verrou
+        // du registre contre les autres postes qui y écrivent.
+        let dispensing: Vec<String> = crate::ordonnancier::Kind::ALL
+            .into_iter()
+            .filter(|k| k.is_dispensing())
+            .map(|k| format!("'{}'", k.as_key()))
+            .collect();
         let any: bool = self
             .stups
             .query_row(
-                "SELECT EXISTS (SELECT 1 FROM stup_moves m
-                     WHERE m.ordo_no = 0
+                &format!(
+                    "SELECT EXISTS (SELECT 1 FROM stup_moves m
+                     WHERE m.ordo_no = 0 AND m.kind IN ({})
                        AND NOT EXISTS (SELECT 1 FROM stup_numbers n WHERE n.move_id = m.id))",
+                    dispensing.join(", ")
+                ),
                 [],
                 |r| r.get(0),
             )

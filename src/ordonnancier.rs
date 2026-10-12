@@ -595,9 +595,12 @@ impl Kind {
     /// C'est ce qui permettra à un rappel de l'ANSM de demander « ce
     /// lot est-il passé chez nous, et chez qui ».
     pub fn carries_lot(self) -> bool {
+        // Une péremption aussi : c'est une boîte en main, et le
+        // formulaire en demande le lot — tapé, il était perdu à
+        // l'écriture.
         matches!(
             self,
-            Kind::Entree | Kind::Sortie | Kind::Retour | Kind::Destruction
+            Kind::Entree | Kind::Sortie | Kind::Retour | Kind::Destruction | Kind::Peremption
         )
     }
 
@@ -1655,6 +1658,19 @@ pub fn read_count(typed: &str) -> Option<f64> {
     if glued && rest.starts_with(['O', 'o', 'I', 'l']) {
         return None;
     }
+    // **Une fraction ou des boîtes ne sont pas des unités.** « 1/2 » se
+    // lisait un, « 3 boîtes » de quatorze se lisaient trois — et
+    // s'écrivaient au registre comme une quantité juste. Les boîtes se
+    // comptent sur leur ligne à elles.
+    let tail = crate::fuzzy::sort_key(rest.trim_start());
+    if tail.starts_with(['/', '-', '*', '×', 'x'])
+        || tail.contains("boite")
+        || tail.starts_with("bte")
+        || tail.starts_with("bt ")
+        || tail == "bt"
+    {
+        return None;
+    }
     Some(value)
 }
 
@@ -1770,7 +1786,13 @@ mod tests {
     #[test]
     fn a_lot_belongs_only_to_the_lines_that_touch_a_box() {
         use super::Kind;
-        for k in [Kind::Entree, Kind::Sortie, Kind::Retour, Kind::Destruction] {
+        for k in [
+            Kind::Entree,
+            Kind::Sortie,
+            Kind::Retour,
+            Kind::Destruction,
+            Kind::Peremption,
+        ] {
             assert!(k.carries_lot(), "{k:?} passe par une boîte");
         }
         for k in [Kind::Inventaire, Kind::Perte, Kind::Annulation] {
@@ -3123,5 +3145,12 @@ mod tests {
         assert_eq!(read_count("15O"), None);
         assert_eq!(read_count("1 5"), None);
         assert_eq!(read_count("O"), None);
+        // Une fraction, des boîtes : pas des unités.
+        assert_eq!(read_count("1/2"), None);
+        assert_eq!(read_count("1/2 patch"), None);
+        assert_eq!(read_count("3 boîtes"), None);
+        assert_eq!(read_count("3 btes"), None);
+        assert_eq!(read_count("2 x 14"), None);
+        assert_eq!(read_count("14 comprimés"), Some(14.0));
     }
 }

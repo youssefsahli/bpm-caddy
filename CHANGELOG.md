@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Narcotics register: a lot read from one product's box is never written
+  on another product's line (scanning box A then choosing B wrote A's
+  lot and expiry, never shown, on B); the number keys, the « détruire »
+  button and the companion's shortcut change the line type through the
+  same reset as the type band — a delivery note no longer becomes the
+  record number of a destruction, nor a hidden lot stays behind; a lot
+  typed on an expiry line is kept; « 1/2 », « 3 boîtes » or « 2 x 14 » are
+  refused as a quantity instead of being read as 1, 3 or 2 units; a batch
+  destruction no longer writes the line form's supplier and delivery
+  note on every line; the reference post no longer takes the register's
+  write lock at every sync round when nothing waits for a number.
+
 ## [0.405.0] - 2026-10-12
 
 ### Fixed

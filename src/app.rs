@@ -5691,6 +5691,12 @@ struct Session {
     /// sur toutes les lignes reçues à la douchette.
     stup_new_lot: String,
     stup_new_expiry: String,
+    /// Le produit pour lequel le lot ci-dessus a été lu ou tapé : changer
+    /// de produit ne l'emporte pas, il ne s'écrit simplement pas.
+    stup_lot_for: Option<i64>,
+    /// La nature d'avant, pour qu'une référence ne passe pas de l'une à
+    /// l'autre.
+    stup_new_kind_was: crate::ordonnancier::Kind,
     stup_new_remark: String,
     /// La fiche ou le courrier en attente de ce qu'on veut y mettre.
     export_box: Option<ExportBox>,
@@ -6488,6 +6494,8 @@ impl Session {
             stup_new_reference: String::new(),
             stup_new_lot: String::new(),
             stup_new_expiry: String::new(),
+            stup_lot_for: None,
+            stup_new_kind_was: crate::ordonnancier::Kind::Sortie,
             stup_new_remark: String::new(),
             export_box: None,
             batch: Batch::default(),
@@ -49591,6 +49599,7 @@ impl App {
                                                 String::new()
                                             };
                                             session.stup_new_expiry = s.expiry.clone();
+                                            session.stup_lot_for = session.stup_open;
                                         }
                                         // L'application ne propose jamais un
                                         // produit pour un code : elle n'a rien
@@ -51543,8 +51552,21 @@ impl App {
                 ordo_no: 0,
                 patient_id: file.unwrap_or(0),
                 prescriber: batch.prescriber.clone(),
-                supplier: session.stup_new_supplier.clone(),
-                reference: session.stup_new_reference.clone(),
+                // Le grossiste et le bon de livraison ne valent que pour
+                // une feuille de réception : ceux restés dans le
+                // formulaire d'une ligne s'écrivaient, cachés, comme
+                // numéro de procès-verbal sur chaque ligne d'une
+                // destruction.
+                supplier: if kind == crate::ordonnancier::Kind::Entree {
+                    session.stup_new_supplier.clone()
+                } else {
+                    String::new()
+                },
+                reference: if kind == crate::ordonnancier::Kind::Entree {
+                    session.stup_new_reference.clone()
+                } else {
+                    String::new()
+                },
                 // Le solde d'avant, celui de cette ligne : c'est lui
                 // qu'une annulation d'inventaire rendra, et il n'est pas
                 // le même d'un produit à l'autre.
@@ -51822,10 +51844,19 @@ impl App {
         // bon de livraison écrit en face
         // d'une destruction serait un
         // procès-verbal qui n'existe pas.
-        if !matches!(k, Kind::Entree | Kind::Destruction) {
+        // Et elle ne passe pas d'une nature à l'autre : le bon de
+        // livraison d'une réception devenait le numéro du procès-verbal.
+        if session.stup_new_kind_was != k || !matches!(k, Kind::Entree | Kind::Destruction) {
             session.stup_new_reference.clear();
-            session.stup_new_lot.clear();
-            session.stup_new_expiry.clear();
+        }
+        session.stup_new_kind_was = k;
+        // Le lot ne reste qu'aux natures qui le montrent ou qu'une boîte
+        // lue à la douchette remplit (la délivrance, le retour) : une
+        // destruction ou un inventaire l'écrivaient sans qu'il se voie.
+        if !matches!(
+            k,
+            Kind::Entree | Kind::Peremption | Kind::Sortie | Kind::Retour
+        ) {
             session.stup_new_lot.clear();
             session.stup_new_expiry.clear();
         }
@@ -51903,8 +51934,15 @@ impl App {
                 }
                 None
             });
+            // Par le même chemin que la bande des natures : sans lui, le
+            // chiffre gardait le bon de livraison d'une réception comme
+            // numéro de procès-verbal d'une destruction, et le lot d'une
+            // autre boîte, caché.
             if let Some(k) = picked {
-                session.stup_new_kind = k;
+                let (stock, to_destroy) = open
+                    .as_ref()
+                    .map_or((0.0, 0.0), |o| (o.stock, o.to_destroy));
+                Self::stup_kind_picked(session, k, stock, to_destroy);
             }
         }
         // Entrée écrit la ligne — mais **seulement depuis un champ de ce
@@ -52328,14 +52366,18 @@ impl App {
                                     // n'avait rien de fiable à interroger.
                                     // La douchette le remplit ; on peut
                                     // aussi le lire sur la boîte.
-                                    focus_here |= motif::field_sized(
+                                    let lot = motif::field_sized(
                                         ui,
                                         egui::vec2(w, Self::button_height(ui)),
                                         egui::TextEdit::singleline(&mut session.stup_new_lot)
                                             .hint_text(motif::hint(tr("stup_lot_hint"))),
                                     )
-                                    .on_hover_text(tr("stup_lot_tooltip"))
-                                    .has_focus();
+                                    .on_hover_text(tr("stup_lot_tooltip"));
+                                    // Tapé ici, il appartient au produit ouvert.
+                                    if lot.changed() {
+                                        session.stup_lot_for = session.stup_open;
+                                    }
+                                    focus_here |= lot.has_focus();
                                     // **On ne reçoit pas des unités, on
                                     // reçoit des boîtes.** Le grossiste
                                     // livre trois boîtes d'Actiskenan, qui
@@ -52421,14 +52463,18 @@ impl App {
                                             .size(motif::pt(ui, 11.0))
                                             .color(motif::text_dim()),
                                     );
-                                    focus_here |= motif::field_sized(
+                                    let lot = motif::field_sized(
                                         ui,
                                         egui::vec2(w, Self::button_height(ui)),
                                         egui::TextEdit::singleline(&mut session.stup_new_lot)
                                             .hint_text(motif::hint(tr("stup_lot_hint"))),
                                     )
-                                    .on_hover_text(tr("stup_lot_tooltip"))
-                                    .has_focus();
+                                    .on_hover_text(tr("stup_lot_tooltip"));
+                                    // Tapé ici, il appartient au produit ouvert.
+                                    if lot.changed() {
+                                        session.stup_lot_for = session.stup_open;
+                                    }
+                                    focus_here |= lot.has_focus();
                                 }
                                 Kind::Inventaire => {
                                     // **Le comptage se fait en boîtes et en
@@ -52602,8 +52648,19 @@ impl App {
             prescriber: session.stup_new_prescriber.clone(),
             supplier: session.stup_new_supplier.clone(),
             reference: session.stup_new_reference.clone(),
-            lot: session.stup_new_lot.clone(),
-            expiry: session.stup_new_expiry.clone(),
+            // **Le lot du produit écrit, et d'aucun autre** : lu sur la
+            // boîte de A, puis B choisi dans la liste, il partait au
+            // registre sur la ligne de B sans s'être jamais montré.
+            lot: if session.stup_lot_for == Some(product.id) {
+                session.stup_new_lot.clone()
+            } else {
+                String::new()
+            },
+            expiry: if session.stup_lot_for == Some(product.id) {
+                session.stup_new_expiry.clone()
+            } else {
+                String::new()
+            },
             expected: *stock,
             operator: operator.to_owned(),
             remark: session.stup_new_remark.clone(),
@@ -54165,7 +54222,12 @@ impl App {
             // champ vide obligerait à relire le nombre qu'on vient de
             // lire ici.
             session.stup_open = Some(id);
-            session.stup_new_kind = crate::ordonnancier::Kind::Destruction;
+            Self::stup_kind_picked(
+                session,
+                crate::ordonnancier::Kind::Destruction,
+                0.0,
+                quantity.max(0.0),
+            );
             session.stup_new_qty = crate::codex::format_quantity(quantity.max(0.0));
             session.stup_note = None;
             // Et l'on bascule sur l'onglet où l'on **écrit** : cet
@@ -77771,7 +77833,7 @@ impl App {
                         session.stup_open = on;
                     }
                     session.open_registres(RegistreTab::Stupefiants);
-                    session.stup_new_kind = crate::ordonnancier::Kind::Sortie;
+                    Self::stup_kind_picked(session, crate::ordonnancier::Kind::Sortie, 0.0, 0.0);
                 }
                 // Les deux lectures qui vivent au dossier, avec ses
                 // chiffres et ses dates : leurs puces ne peuvent naître
