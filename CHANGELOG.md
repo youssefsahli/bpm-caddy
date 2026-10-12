@@ -18,15 +18,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   retry before a share is mounted, created it); the access-log retention
   uses a new settings key, so the ratcheted value written by 0.404–0.407
   is ignored; a DFG typed in the calculator is rounded as shown; correcting a
-  vaccination line without a code gives it one; conciliation counts as
-  a second molecule only a word that is, alone, the DCI of a known card
-  (valsartan for Tareg) — never a salt, an anion or a cation; checked
-  against the whole shipped base (Dépakine, Androcur, Cacit, Tardyferon
-  answer to their molecule, Amlor does not answer to amlodipine +
-  valsartan).
+  vaccination line without a code gives it one; conciliation refuses to
+  match a combination to one of its molecules only when the combination
+  is written with « + » or « / »; the attempts to also catch combinations
+  written with spaces each broke other cards (a salt read as a second
+  molecule, or « amoxicilline acide clavulanique » taken for amoxicillin)
+  and are withdrawn — that case is back to 0.403.0's behaviour.
 - Access-log retention has its own field in Options, which opens on the
-  officine's value; a save writes it only when it differs from what the
-  base holds (any save on any post used to overwrite it). A password kept to confirm creating a missing base is
+  officine's value; a save writes it only if it was changed in that
+  field, compared with the value read at opening, and says so when
+  another post changed it meanwhile (any save on any post used to
+  overwrite it). A password kept to confirm creating a missing base is
   forgotten as soon as the base is found.
 
 ## [0.408.0] - 2026-10-12

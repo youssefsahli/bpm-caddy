@@ -236,7 +236,7 @@ fn word_starts(line: &str) -> Vec<(usize, &str)> {
 ///
 /// Rend l'index **et la qualité** du rapprochement : `compare` en a
 /// besoin pour préférer un exact de la base à un partiel du dossier.
-fn scored_match(name: &str, base: &[Known], molecules: &[String]) -> Option<(i32, usize)> {
+fn scored_match(name: &str, base: &[Known]) -> Option<(i32, usize)> {
     let needle = crate::fuzzy::sort_key(name.trim());
     if needle.chars().filter(|c| c.is_alphanumeric()).count() < 3 {
         return None;
@@ -251,7 +251,7 @@ fn scored_match(name: &str, base: &[Known], molecules: &[String]) -> Option<(i32
             let hay = crate::fuzzy::sort_key(field.trim());
             let s = if hay == needle {
                 weight
-            } else if adds_a_molecule(&needle, &hay, molecules) {
+            } else if adds_a_molecule(&needle, &hay) {
                 // « Amlodipine valsartan » n'est pas l'Amlor, et
                 // « Ramipril » n'est pas le Cotriatec : rapprochés par
                 // préfixe, l'ajout du valsartan ou l'arrêt de
@@ -280,30 +280,10 @@ fn scored_match(name: &str, base: &[Known], molecules: &[String]) -> Option<(i32
     best
 }
 
-/// Les mots qui nomment une molécule, lus dans les DCI connues : ceux
-/// de cinq lettres et plus, moins les sels et les mots de liaison.
-fn molecule_words<'a>(dcis: impl Iterator<Item = &'a str>) -> Vec<String> {
-    // **Une molécule est ce qu'une fiche porte seule comme DCI.** Un mot
-    // de plus ne veut dire « une molécule de plus » que s'il est, à lui
-    // seul, la DCI d'un produit connu — le valsartan du Tareg, l'amlodipine
-    // de l'Amlor. Un sel, un anion, un cation ne le sont jamais : « sodium »
-    // ajouté à « valproate », « acétate » à « cyprotérone » ne faisaient
-    // plus répondre la Dépakine ni l'Androcur à leur molécule. Les listes
-    // de mots à écarter se contredisaient d'une relecture à l'autre ; ce
-    // critère-là se lit sur la base.
-    let mut out: Vec<String> = dcis
-        .map(|d| crate::fuzzy::sort_key(d.trim()))
-        .filter(|d| d.chars().count() >= 5 && d.chars().all(|c| c.is_alphanumeric() || c == '-'))
-        .collect();
-    out.sort();
-    out.dedup();
-    out
-}
-
 /// Le plus long des deux noms porte-t-il **une molécule de plus** que
 /// le plus court ? Une association écrite (« + », « / ») ou un mot qui
 /// nomme une autre molécule connue.
-fn adds_a_molecule(a: &str, b: &str, molecules: &[String]) -> bool {
+fn adds_a_molecule(a: &str, b: &str) -> bool {
     let (short, long) = if a.len() <= b.len() { (a, b) } else { (b, a) };
     if short == long || short.is_empty() {
         return false;
@@ -316,14 +296,15 @@ fn adds_a_molecule(a: &str, b: &str, molecules: &[String]) -> bool {
         .split(|c: char| !c.is_alphanumeric())
         .filter(|w| !w.is_empty() && !mine.contains(w))
         .collect();
-    if extra.is_empty() {
-        return false;
-    }
+    // **Seulement une association écrite** (« + », « / ») : chercher
+    // aussi les mots qui « nomment une molécule » a fait, d'une relecture
+    // à l'autre, d'un sel une seconde molécule (la Dépakine arrêtée contre
+    // « Valproate ») ou d'une association écrite avec des espaces le
+    // produit seul (« amoxicilline acide clavulanique » pris pour
+    // l'amoxicilline). Une association écrite sans signe reste le cas
+    // ouvert — voir PASSATION.
     let joined = long.contains('+') || long.contains('/') && !short.contains('/');
     joined && extra.iter().any(|w| w.chars().any(char::is_alphabetic))
-        || extra
-            .iter()
-            .any(|w| molecules.binary_search_by(|m| m.as_str().cmp(w)).is_ok())
 }
 
 /// Comparer l'ordonnance du dossier à une liste tapée ou collée.
@@ -371,7 +352,6 @@ pub fn compare(held: &[Held], list: &str, base: &[Known]) -> Vec<Divergence> {
             > 1
     };
     let product = |id: &str, name: &str| format!("{id}\u{1}{}", crate::fuzzy::sort_key(name));
-    let molecules = molecule_words(held.iter().map(|h| h.dci).chain(base.iter().map(|k| k.dci)));
     let mut entries: Vec<Entry> = Vec::new();
     for raw in list.lines() {
         let raw = raw.trim();
@@ -389,10 +369,7 @@ pub fn compare(held: &[Held], list: &str, base: &[Known]) -> Vec<Divergence> {
         // exactement : la ligne se lisait « dose changée » et l'arrêt
         // de la codéine n'était dit nulle part. À égalité, le dossier
         // garde la main — c'est la raison de le lire en premier.
-        let found = match (
-            scored_match(name, &from_file, &molecules),
-            scored_match(name, base, &molecules),
-        ) {
+        let found = match (scored_match(name, &from_file), scored_match(name, base)) {
             (Some((f, i)), Some((b, _))) if f >= b => Some((&from_file[i], true)),
             (Some((_, i)), None) => Some((&from_file[i], true)),
             (_, Some((_, j))) => Some((&base[j], false)),
@@ -778,8 +755,7 @@ mod tests {
     #[test]
     fn a_line_finds_its_fiche_by_brand_or_by_molecule() {
         let base = base();
-        let molecules = molecule_words(base.iter().map(|k| k.dci));
-        let by = |n: &str| scored_match(n, &base, &molecules).map(|(_, i)| base[i].name);
+        let by = |n: &str| scored_match(n, &base).map(|(_, i)| base[i].name);
         assert_eq!(by("Kardegic"), Some("Kardegic 75"));
         assert_eq!(by("KARDEGIC 75"), Some("Kardegic 75"));
         // Par la DCI, que la feuille de l'hôpital écrit plus volontiers
@@ -1157,7 +1133,7 @@ Vogalène lyoc si nausées
         }];
         let rows = compare(
             &held,
-            "Amlodipine valsartan 5 mg/80 mg : 1 cp le matin",
+            "Amlodipine/valsartan 5 mg/80 mg : 1 cp le matin",
             &base,
         );
         assert!(rows
@@ -1223,17 +1199,12 @@ Vogalène lyoc si nausées
     /// trouvés, dans un sens puis dans l'autre.
     #[test]
     fn a_molecule_named_without_its_salt_finds_its_card() {
-        let shipped: Vec<Known> = crate::db::STARTER_DRUGS
-            .iter()
-            .map(|(name, dci, class, _)| Known { name, dci, class })
-            .collect();
         let card = |name: &str| {
             crate::db::STARTER_DRUGS
                 .iter()
                 .find(|(n, ..)| *n == name)
                 .map(|(n, d, c, _)| (*n, *d, *c))
         };
-        let words = molecule_words(shipped.iter().map(|k| k.dci));
         for (name, typed) in [
             ("Dépakine", "Valproate"),
             ("Androcur", "Cyprotérone"),
@@ -1246,10 +1217,10 @@ Vogalène lyoc si nausées
                 dci,
                 class,
             };
-            let hit = scored_match(typed, std::slice::from_ref(&k), &words);
+            let hit = scored_match(typed, std::slice::from_ref(&k));
             assert!(hit.is_some(), "« {typed} » ne répond plus à {name} ({dci})");
         }
-        // Et une association reste une association.
+        // Et une association écrite reste une association.
         let (n, dci, class) = card("Amlor").expect("fiche livrée");
         let k = Known {
             name: n,
@@ -1257,8 +1228,8 @@ Vogalène lyoc si nausées
             class,
         };
         assert!(
-            scored_match("Amlodipine valsartan", std::slice::from_ref(&k), &words).is_none(),
-            "l'Amlor ne répond pas à une association"
+            scored_match("Amlodipine + valsartan", std::slice::from_ref(&k)).is_none(),
+            "l'Amlor ne répond pas à une association écrite"
         );
     }
 }

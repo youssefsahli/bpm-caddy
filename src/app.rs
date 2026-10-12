@@ -16556,6 +16556,9 @@ struct OptionsEditor {
     page: OptionsPage,
     /// Les réglages de l'officine ont été relus de la base.
     officine_seeded: bool,
+    /// La conservation du journal telle que la base la tenait à
+    /// l'ouverture — ce contre quoi l'enregistrement compare.
+    keep_seen: Option<String>,
     /// Two-step guard on the destructive reset button.
     confirm_reset: bool,
     /// Le même garde-fou sur « Effacer les compteurs ».
@@ -16596,6 +16599,7 @@ impl OptionsEditor {
     fn open(config: &Config, page: OptionsPage) -> Self {
         Self {
             officine_seeded: false,
+            keep_seen: None,
             page,
             loc_fee_text: config
                 .locations
@@ -16805,9 +16809,10 @@ impl App {
             return;
         };
         editor.officine_seeded = true;
-        if let Some(days) = session
-            .db
-            .setting(AUDIT_KEEP_KEY)
+        editor.keep_seen = session.db.setting(AUDIT_KEEP_KEY);
+        if let Some(days) = editor
+            .keep_seen
+            .as_deref()
             .and_then(|v| v.trim().parse::<u32>().ok())
         {
             editor.cfg.audit.keep_days = days;
@@ -18718,6 +18723,7 @@ impl App {
         {
             Some(OptionsEditor {
                 officine_seeded: false,
+                keep_seen: None,
                 page: match start_view.as_str() {
                     "about" => OptionsPage::About,
                     // The page where the ten skins are chosen. It
@@ -83761,21 +83767,34 @@ impl eframe::App for App {
                 // pour l'officine entière : écrite à chaque enregistrement,
                 // n'importe quel poste qui changeait son thème remettait sa
                 // propre valeur, et deux postes se la disputaient.
-                // La page part de la valeur de la base (voir
-                // `seed_officine_settings`) : ce qu'elle rend n'en diffère
-                // que si quelqu'un l'a changée.
-                let was = session.db.setting(AUDIT_KEEP_KEY);
-                if was.as_deref().map(str::trim)
-                    != Some(self.config.audit.keep_days.to_string().as_str())
-                    && (was.is_some() || self.config.audit.keep_days != before.audit.keep_days)
-                {
-                    let _ = session.db.set_setting(
+                // **Contre ce que la page a lu en s'ouvrant**, pas contre la
+                // base relue à l'instant : un autre poste qui l'a changée
+                // entre-temps n'est pas écrasé par un enregistrement qui ne
+                // portait que le thème. Rien n'est écrit si la valeur est
+                // celle de l'ouverture — ou, sans valeur en base, si ce
+                // poste n'a rien changé.
+                let seen = self.options.as_ref().and_then(|e| e.keep_seen.clone());
+                let mine = self.config.audit.keep_days.to_string();
+                let changed = match &seen {
+                    Some(v) => v.trim() != mine,
+                    None => self.config.audit.keep_days != before.audit.keep_days,
+                };
+                if changed {
+                    match session.db.set_setting(
                         AUDIT_KEEP_KEY,
-                        &self.config.audit.keep_days.to_string(),
-                        was.as_deref(),
+                        &mine,
+                        seen.as_deref(),
                         &session.today,
                         &session.operator,
-                    );
+                    ) {
+                        Ok(true) => {
+                            if let Some(editor) = &mut self.options {
+                                editor.keep_seen = Some(mine.clone());
+                            }
+                        }
+                        Ok(false) => session.stale("audit_keep_stale"),
+                        Err(e) => session.error = Some(e),
+                    }
                 }
                 session.cycle_months = self.config.rules.cycle_months.max(1);
                 session.loc_notice_days = self.config.locations.notice_days;

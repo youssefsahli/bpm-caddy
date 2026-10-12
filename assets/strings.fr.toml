@@ -3949,3 +3949,4 @@ pw_busy = "Une maintenance est en cours : attendez qu'elle finisse pour changer 
 calc_creat_mg_l = "Créatinine très basse pour des µmol/L : une valeur en mg/L se multiplie par 8,84 avant d'être tapée ici."
 calc_perkg_capped = " — plafonnée à {} mg, comme la phrase l'écrit"
 lock_db_create_again = "Pour créer exprès une base neuve à cet emplacement, retapez le même mot de passe."
+audit_keep_stale = "La conservation du journal a été changée sur un autre poste entre-temps : rien n'a été écrasé. Rouvrez les options pour la voir."

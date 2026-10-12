@@ -61,6 +61,14 @@ conciliation, acte de vaccination, retour d'une case de table), ADELI,
 lanceur, relais.
 
 Laissé, relevé par les relectures (à trancher ou à vérifier) :
+- conciliation : une association écrite **avec des espaces seulement**
+  (« amlodipine valsartan », « amoxicilline acide clavulanique ») se
+  rapproche encore de la fiche d'une de ses molécules par préfixe. Trois
+  tentatives par listes de mots ont chacune cassé d'autres fiches (sel
+  lu comme seconde molécule, association prise pour le produit seul) et
+  sont retirées ; seule l'association écrite (« + », « / ») est gardée.
+  Une solution sûre demande sans doute de chercher d'abord une fiche
+  d'association qui porte les deux noms ;
 - suppression d'un dossier cité au registre, reçue d'un autre poste :
   seule l'identité est gardée ; ses actes, sa biologie et ses notes
   partent avant elle, dans des envois antérieurs (la suppression se
