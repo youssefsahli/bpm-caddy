@@ -55910,11 +55910,11 @@ impl Db {
         // tenait — ses dossiers, et le registre des stupéfiants qui ne
         // s'efface jamais (R. 5132-36). Un avertissement rouge était la
         // seule protection. La copie échoue : rien n'est effacé.
-        self.snapshot_named("avant-adhesion")?;
         use crate::replica::{File, TABLES};
         if self.sync_post().is_some() {
             return Err(crate::strings::tr("posts_err_already").to_owned());
         }
+        self.snapshot_named("avant-adhesion")?;
         self.remove_capture()?;
         for file in [File::Main, File::Stups] {
             let mut sql = String::from("INSERT INTO sync_mute (mute) VALUES (1);\n");

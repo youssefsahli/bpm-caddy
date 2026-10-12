@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Fixes to fixes made earlier in this version: the lot of a scanned box
+  is written with the product the scan opens (it was tied to the product
+  open before the scan, and the register line went without lot or
+  expiry); correcting a vaccination line keeps its code unless its name
+  changed (a planned « dTcaP — rappel » lost its code and stayed due);
+  the file's DFG is compared as measured and only written rounded (29.6
+  rounded to 30 silenced « contra-indicated below 30 »), and the
+  calculator's DFG takes whole numbers; re-opening the same file keeps a
+  dose typed in its carnet; a refused join no longer makes a copy first;
+  the scanner gets ten minutes; a base named in `config.toml` and absent
+  can be created on purpose by typing the password a second time.
 - Kidney table: niflumic, tiaprofenic and mefenamic acid (Nifluril,
   Surgam, Ponstyl) are found again — their needles were written in one
   word and matched nothing, so a DFG of 25 said nothing about them;

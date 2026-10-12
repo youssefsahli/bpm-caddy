@@ -288,9 +288,10 @@ fn read_at_most(path: &std::path::Path, limit: usize) -> std::io::Result<Vec<u8>
     Ok(bytes)
 }
 
-/// Le temps qu'un scanner a pour rendre sa pièce : deux minutes, une
-/// numérisation recto verso en haute définition comprise.
-const SCANNER_PATIENCE: std::time::Duration = std::time::Duration::from_secs(120);
+/// Le temps qu'un scanner a pour rendre sa pièce : dix minutes — un
+/// chargeur de feuilles recto verso, ou l'outil du fabricant avec sa
+/// propre fenêtre, prennent le temps qu'il faut.
+const SCANNER_PATIENCE: std::time::Duration = std::time::Duration::from_secs(600);
 
 /// Le mot de passe passé par `BPM_CADDY_PASSWORD` (crochet des
 /// captures et de la commande `audit`), **lu une fois puis retiré de
@@ -305,6 +306,16 @@ pub fn env_password() -> Option<String> {
         pw
     })
     .clone()
+}
+
+/// Un DFG tel que l'écran l'écrit : entier quand il l'est, au dixième
+/// sinon, pour qu'un 29,6 ne s'écrive jamais « 30 » à côté de « sous 30 ».
+fn renal_dfg_text(v: f64) -> String {
+    if (v - v.round()).abs() < 0.05 {
+        format!("{v:.0}")
+    } else {
+        crate::strings::decimal(v, 1)
+    }
 }
 
 /// Deux secrets égaux, comparés en temps constant.
@@ -11633,6 +11644,7 @@ impl Session {
     }
 
     fn open_patient(&mut self, patient: Patient) {
+        let previous = self.viewing.as_ref().map(|v| v.id);
         self.note(crate::telemetry::Signal::File);
         // Et la trace. Ici parce que c'est la porte unique : une
         // vingtaine d'endroits ouvrent un dossier, et tous passent par
@@ -11660,9 +11672,13 @@ impl Session {
         // la fenêtre d'export (l'acte de A imprimé sous le nom de B) et
         // la dose tapée et pas encore inscrite (écrite au carnet de B
         // à la première Entrée).
-        self.export_box = None;
-        self.vacc_new = db::Vaccination::default();
-        self.vacc_new_date.clear();
+        // Rouvrir le même dossier (son onglet, au retour de l'agenda) ne
+        // perd rien.
+        if previous != Some(patient.id) {
+            self.export_box = None;
+            self.vacc_new = db::Vaccination::default();
+            self.vacc_new_date.clear();
+        }
         self.rule_block = None;
         // A discharge sheet belongs to the file it was pasted on: it
         // must never be read against the next patient's ordonnance.
@@ -11894,7 +11910,10 @@ impl Session {
                     && (self.today.is_empty() || r.date <= self.today.as_str())
             })
             .max_by(|a, b| a.date.cmp(b.date));
-        let dfg = latest.map(|r| r.value.round());
+        // Comparé **brut** — arrondi, 29,6 devenait 30 et taisait le
+        // « contre-indiqué sous 30 » ; l'écran l'écrit au dixième sous
+        // les seuils, voir `renal_dfg_text`.
+        let dfg = latest.map(|r| r.value);
         self.renal_dfg_on = latest.map(|r| r.date.to_owned()).unwrap_or_default();
         self.renal = crate::renal::resolve(crate::renal::read(&terms, dfg), &self.content);
         self.renal_dfg = dfg;
@@ -16350,6 +16369,9 @@ pub struct App {
     op_note_confirm: Option<i64>,
     /// Typst template editor, when open.
     tpl_editor: Option<TplEditor>,
+    /// La base absente qu'une seconde tentative créera : voir le
+    /// déverrouillage.
+    create_armed: Option<std::path::PathBuf>,
     /// Global options editor, when open.
     options: Option<OptionsEditor>,
     /// A base found rather than configured, on a first launch. Kept so
@@ -18759,6 +18781,7 @@ impl App {
             applied_look: None,
             pw_change: None,
             tpl_editor,
+            create_armed: None,
             options,
             op_notes: Vec::new(),
             op_notes_for: None,
@@ -21099,12 +21122,24 @@ impl App {
         });
 
         self.remember_password = remember;
+        // **Deux fois pour créer** : la première tentative sur une base
+        // absente le dit, la seconde — même chemin, mot de passe retapé —
+        // la crée. Un partage monté en retard ne crée donc rien seul, et
+        // une base voulue à un nouvel emplacement reste possible sans
+        // éditer `config.toml` à la main.
         let attempt = match (attempt, missing_base(&self.config)) {
-            (Some(_), Some(why)) => {
-                if let State::Locked { error, .. } = &mut self.state {
-                    *error = Some(why);
+            (Some(pw), Some(why)) => {
+                let here = self.config.db_path();
+                if self.create_armed.as_ref() == Some(&here) {
+                    self.create_armed = None;
+                    Some(pw)
+                } else {
+                    self.create_armed = Some(here);
+                    if let State::Locked { error, .. } = &mut self.state {
+                        *error = Some(format!("{why} {}", tr("lock_db_create_again")));
+                    }
+                    None
                 }
-                None
             }
             (attempt, _) => attempt,
         };
@@ -23577,8 +23612,18 @@ impl App {
                         // Le nom corrigé emporte son code : « Grippe »
                         // corrigé en « ROR » gardait le code de la grippe.
                         line.label = line.label.trim().to_owned();
-                        line.code =
-                            Self::catalogue_code(&session.vacc_catalogue, &line.code, &line.label);
+                        // **Seulement si le nom a changé** : une ligne
+                        // planifiée porte le libellé du calendrier
+                        // (« dTcaP — rappel »), pas celui du catalogue, et
+                        // la recalculer à chaque correction lui retirait
+                        // son code — la dose restait « due ».
+                        if line.label != session.vacc_edit_base.label.trim() {
+                            line.code = Self::catalogue_code(
+                                &session.vacc_catalogue,
+                                &line.code,
+                                &line.label,
+                            );
+                        }
                         let base = session.vacc_edit_base.clone();
                         match session.db.update_vaccination(line.id, &line, &base) {
                             Ok(true) => {
@@ -23638,7 +23683,7 @@ impl App {
             // une suggestion, « Hépatite B » s'inscrivait sans code, et
             // restait « dû » pour toujours.
             line.code = Self::catalogue_code(&session.vacc_catalogue, &line.code, &line.label);
-            // An empty date means "today"": recording the dose you have
+            // An empty date means "today": recording the dose you have
             // just given is the common case, and typing the date again
             // is the step an operator skips.
             let parsed = if session.vacc_new_date.trim().is_empty() {
@@ -24198,7 +24243,7 @@ impl App {
                             Some(v) => trn(
                                 "renal_dfg",
                                 &[
-                                    &format!("{v:.0}"),
+                                    &renal_dfg_text(v),
                                     &db::format_french_date(&session.renal_dfg_on),
                                 ],
                             ),
@@ -41143,6 +41188,9 @@ impl App {
                         .add(
                             egui::DragValue::new(&mut session.calc_renal_dfg)
                                 .range(3.0..=140.0)
+                                // Des entiers, comme les paliers les
+                                // écrivent : 50,4 tombait sous « ≤ 50 ».
+                                .max_decimals(0)
                                 .suffix(" mL/min"),
                         )
                         .changed()
@@ -49997,7 +50045,8 @@ impl App {
                                                 String::new()
                                             };
                                             session.stup_new_expiry = s.expiry.clone();
-                                            session.stup_lot_for = session.stup_open;
+                                            // Le produit de la boîte lue, qui ne s'ouvre que plus bas.
+                                            session.stup_lot_for = Some(stup_id);
                                         }
                                         // L'application ne propose jamais un
                                         // produit pour un code : elle n'a rien
@@ -70861,10 +70910,18 @@ impl App {
         // Le poste de référence ne quitte pas un groupe où d'autres
         // restent : ils le gardaient comme référence, et plus rien ne se
         // numérotait.
-        let others = session.db.sync_posts().unwrap_or_default().iter().any(|p| {
-            p.left_on.is_empty() && !p.companion && Some(p.post) != session.db.sync_post()
-        });
-        if leave && session.db.sync_post() == Some(session.db.sync_reference()) && others {
+        // Lu au clic seulement : pas une requête par image.
+        let reference_with_others = leave && {
+            let me = session.db.sync_post();
+            me == Some(session.db.sync_reference())
+                && session
+                    .db
+                    .sync_posts()
+                    .unwrap_or_default()
+                    .iter()
+                    .any(|p| p.left_on.is_empty() && !p.companion && Some(p.post) != me)
+        };
+        if reference_with_others {
             if let Some(w) = &mut session.posts_window {
                 w.note = Some((true, tr("posts_err_leave_reference").to_owned()));
             }
@@ -77752,7 +77809,7 @@ impl App {
                                     .map(|a| trf("companion_file_age", a)),
                                 session
                                     .renal_dfg
-                                    .map(|v| trf("companion_file_dfg", format!("{v:.0}"))),
+                                    .map(|v| trf("companion_file_dfg", renal_dfg_text(v))),
                             ]
                             .into_iter()
                             .flatten()

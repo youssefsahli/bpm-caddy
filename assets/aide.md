@@ -1546,8 +1546,9 @@ autres postes sur la même base doivent alors être déverrouillés avec le
 nouveau.
 
 Une base dont le chemin est écrit dans `config.toml` et qui n'est pas
-là (partage non monté, chemin mal tapé) n'est jamais créée au
-déverrouillage : l'écran le dit.
+là (partage non monté, chemin mal tapé) n'est jamais créée seule au
+déverrouillage : l'écran le dit, et c'est en retapant le mot de passe
+qu'on crée, exprès, une base neuve à cet emplacement.
 
 La suppression de pièces ne libère pas l'espace : seul « Compacter » le
 fait.
