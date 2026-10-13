@@ -7100,7 +7100,7 @@ impl Session {
             WorkTab::Script,
             WorkTab::Caisse,
         ] {
-            let label = self.tab_label(&tab);
+            let label = self.goto_label(&tab);
             let score = if q.is_empty() {
                 Some(0)
             } else {
@@ -7627,7 +7627,7 @@ impl Session {
                 Kind::View => {
                     let tab = view_from_fav_key(&f.target)?;
                     Some(GotoHit {
-                        label: self.tab_label(&tab),
+                        label: self.goto_label(&tab),
                         dest: Goto::Tab(tab),
                         kind: tr("goto_kind_view"),
                     })
@@ -10121,6 +10121,15 @@ impl Session {
     }
 
     /// The label a tab shows: the view's name, or the file's.
+    /// A tab's name in « Aller à… » and its recents: without a count, which
+    /// a remembered label would keep after it went down.
+    fn goto_label(&self, tab: &WorkTab) -> String {
+        match tab {
+            WorkTab::Officines => tr("tab_officines").to_owned(),
+            _ => self.tab_label(tab),
+        }
+    }
+
     fn tab_label(&self, tab: &WorkTab) -> String {
         match tab {
             WorkTab::Dashboard => tr("tab_dashboard").to_owned(),
@@ -10972,25 +10981,41 @@ impl Session {
         self.carte.presence_raw = raw;
     }
 
+    /// The directory address the base holds now — read apart from
+    /// `carte.presence`, against which the form writes.
+    #[cfg(feature = "sync")]
+    fn carte_address(&self) -> Option<String> {
+        let raw = self.db.setting(crate::repertoire::SETTING);
+        crate::repertoire::Presence::read(raw.as_deref()).address()
+    }
+
     /// **Which officines appeared since this post last looked**: the
-    /// directory's cards not yet seen. The first reading on a base sees
-    /// everything — no tab that announces forty newcomers the day the
-    /// feature arrives.
+    /// directory's cards not yet seen. The record names its directory
+    /// (one entry « @address ») — the first reading of a base, or of
+    /// another directory, sees everything: no tab that announces forty
+    /// newcomers the day the feature arrives, or the day the officine
+    /// moves.
     #[cfg(feature = "sync")]
     fn count_carte_fresh(&mut self) {
         let me = self.carte.me.clone();
+        let mark = format!("@{}", self.carte_address().unwrap_or_default());
         let here: std::collections::BTreeSet<String> = self
             .carte
             .list
             .iter()
             .filter(|f| f.device != me)
             .map(|f| f.device.clone())
+            .chain(std::iter::once(mark.clone()))
             .collect();
-        let seen = self.carte_seen.get_or_insert_with(|| {
+        if self.carte_seen.as_ref().is_none_or(|s| !s.contains(&mark)) {
+            self.carte_seen = Some(here.clone());
             self.carte_seen_dirty = true;
-            here.clone()
-        });
-        self.carte_fresh = here.difference(seen).count();
+        }
+        let seen = self
+            .carte_seen
+            .as_ref()
+            .map_or(0, |seen| here.difference(seen).count());
+        self.carte_fresh = seen;
     }
 
     /// The map is on screen: what it shows is seen. Only the officines
@@ -11002,12 +11027,14 @@ impl Session {
             return;
         }
         let me = self.carte.me.clone();
+        let mark = format!("@{}", self.carte_address().unwrap_or_default());
         self.carte_seen = Some(
             self.carte
                 .list
                 .iter()
                 .filter(|f| f.device != me)
                 .map(|f| f.device.clone())
+                .chain(std::iter::once(mark))
                 .collect(),
         );
         self.carte_seen_dirty = true;
@@ -11444,6 +11471,9 @@ impl Session {
                     self.carte.listed = false;
                     self.carte.list.clear();
                     self.carte.points.clear();
+                    // Ni la relecture de l'ancien répertoire, ni son compte.
+                    self.carte.refreshing = None;
+                    self.carte_fresh = 0;
                     // Pas par-dessus un partage en cours de lecture : la
                     // liste se relira au retour à l'onglet.
                     if self.carte.job.is_none() {
@@ -11523,15 +11553,41 @@ impl Session {
         // l'onglet compte celles qui sont apparues. L'adresse est lue de la
         // base à part : relire `presence` ici aurait déplacé ce contre quoi
         // le formulaire écrit.
+        // Sur son propre fil et sa propre réponse : il ne prend pas la place
+        // d'une lecture que l'opérateur a demandée, n'efface pas la note
+        // qu'il lit, et une erreur ne s'affiche pas — personne ne l'a
+        // demandé.
         let list_due = self.carte.next_list.is_none_or(|t| Instant::now() >= t);
-        if list_due && self.carte.job.is_none() {
+        if list_due && self.carte.job.is_none() && self.carte.refreshing.is_none() {
             self.carte.next_list = Some(Instant::now() + crate::repertoire::ANNOUNCE_EVERY);
-            let raw = self.db.setting(crate::repertoire::SETTING);
-            if let Some(address) = crate::repertoire::Presence::read(raw.as_deref()).address() {
+            if let Some(address) = self.carte_address() {
                 if self.carte.me.is_empty() {
                     self.carte.me = crate::network::device_hex(&self.db).unwrap_or_default();
                 }
-                self.carte_list_from(address);
+                let (tx, rx) = std::sync::mpsc::channel();
+                std::thread::spawn(move || {
+                    let read = crate::repertoire::list(&address, Duration::from_secs(8));
+                    let _ = tx.send((address, read));
+                });
+                self.carte.refreshing = Some(rx);
+            }
+        }
+        if let Some(rx) = &self.carte.refreshing {
+            match rx.try_recv() {
+                Ok((address, read)) => {
+                    self.carte.refreshing = None;
+                    // Une lecture de l'opérateur a la main ; une liste d'un
+                    // répertoire qu'on a quitté entre-temps ne s'installe pas.
+                    if let Ok(list) = read {
+                        if self.carte.job.is_none()
+                            && self.carte_address().as_deref() == Some(address.as_str())
+                        {
+                            self.set_carte_list(list);
+                        }
+                    }
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.carte.refreshing = None,
             }
         }
         let due = self.carte.next_announce.is_none_or(|t| Instant::now() >= t);
@@ -15180,6 +15236,11 @@ enum CarteAnswer {
     ),
 }
 
+/// Une relecture du répertoire faite d'elle-même : l'adresse lue, et la
+/// liste ou l'erreur.
+#[cfg(feature = "sync")]
+type CarteRefresh = (String, Result<Vec<crate::repertoire::Fiche>, String>);
+
 /// Un balayage du répertoire : la liste, les catalogues lus (vérifiés
 /// chacun contre sa carte), et ce que « En ligne » ouvrira.
 #[cfg(feature = "sync")]
@@ -15296,8 +15357,10 @@ struct Carte {
     /// qu'il l'ait reçu.
     announcing: Option<std::sync::mpsc::Receiver<Announced>>,
     next_announce: Option<Instant>,
-    /// La prochaine relecture du répertoire faite d'elle-même.
+    /// La prochaine relecture du répertoire faite d'elle-même, et celle
+    /// en cours : l'adresse lue, et ce qu'elle a répondu.
     next_list: Option<Instant>,
+    refreshing: Option<std::sync::mpsc::Receiver<CarteRefresh>>,
     announced: Option<(String, Result<(), String>)>,
     appeared: Option<String>,
     /// Le dernier départ manqué : la carte passe avant lui pendant dix
@@ -95716,7 +95779,8 @@ mod tests {
         );
         session.carte_looked();
         assert_eq!(session.carte_fresh, 0);
-        assert_eq!(session.carte_seen.as_ref().map(|s| s.len()), Some(3));
+        // Les trois, et le répertoire qu'elles sont.
+        assert_eq!(session.carte_seen.as_ref().map(|s| s.len()), Some(4));
         // Partie puis revenue : déjà vue.
         session.set_carte_list(vec![fiche("b"), fiche("c")]);
         session.carte_looked();
@@ -95726,7 +95790,25 @@ mod tests {
         // regardée : il ne grossit pas de toutes les cartes passées.
         session.set_carte_list(vec![fiche("d")]);
         session.carte_looked();
-        assert_eq!(session.carte_seen.as_ref().map(|s| s.len()), Some(1));
+        assert_eq!(session.carte_seen.as_ref().map(|s| s.len()), Some(2));
+        // Un autre répertoire : une première lecture, rien de nouveau.
+        let today = session.today.clone();
+        let presence = crate::repertoire::Presence {
+            adresse: "ailleurs.example:7747".to_owned(),
+            ..crate::repertoire::Presence::default()
+        };
+        session
+            .db
+            .set_setting(
+                crate::repertoire::SETTING,
+                &presence.text(),
+                None,
+                &today,
+                "",
+            )
+            .unwrap();
+        session.set_carte_list(vec![fiche("x"), fiche("y"), fiche("z")]);
+        assert_eq!(session.carte_fresh, 0);
     }
 
     /// **Un balayage du répertoire** : ce qui est lu se garde sous

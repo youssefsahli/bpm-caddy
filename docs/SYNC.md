@@ -903,7 +903,12 @@ clé de réseau n'y passe.
   un redémarrage ou un autre poste le rattrape, sans jamais retenir la
   carte destinée au nouveau répertoire, et rien n'est plus dû passé un
   jour — le répertoire a oublié la carte.
-* **Lire** : la liste des cartes, puis le catalogue d'une officine,
+* **Lire** : la liste des cartes — à l'ouverture de la carte, et
+  d'elle-même toutes les dix minutes tant qu'une adresse est écrite,
+  **même sans paraître** (le répertoire voit alors l'adresse du poste,
+  comme il la voit à chaque lecture) ; l'onglet compte celles qui sont
+  apparues depuis la dernière visite, relevées par base et par
+  répertoire — puis le catalogue d'une officine,
   vérifiés **par chaque poste** — la signature, l'empreinte du
   catalogue, et ce qui peut entrer (`versions::admissible`, sortes
   publiques connues). L'officine qui héberge ne peut ni changer un mot,
@@ -914,7 +919,8 @@ clé de réseau n'y passe.
   ailleurs, ou absent — signalé, jamais refusé, et jamais une preuve.
 * **Balayer** (« Tout le répertoire… ») : la liste, puis au plus
   `SWEEP_MOST` (20) catalogues — sous les trente appels par minute que
-  le répertoire tient, avec de quoi pour l'annonce —, un balayage par
+  le répertoire tient, avec de quoi pour l'annonce et la relecture de la
+  liste —, un balayage par
   minute (`SWEEP_EVERY`, comptée depuis la fin du précédent), 90 secondes en tout (`SWEEP_BUDGET`), arrêté
   à deux refus de suite. Les ouvertes d'abord (l'heure d'une carte bornée
   à maintenant), celles qui n'ont pas répondu en dernier ; chaque
