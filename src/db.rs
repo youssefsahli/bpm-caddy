@@ -1701,13 +1701,18 @@ fn stepwise_copy(src: &Connection, path: &Path, password: &str, what: &str) -> R
     {
         let backup =
             rusqlite::backup::Backup::new(src, &mut out).map_err(|e| format!("{what} : {e}"))?;
+        let started = std::time::Instant::now();
         let mut first_restart: Option<std::time::Instant> = None;
         let mut blocked_since: Option<std::time::Instant> = None;
         let mut remaining = i32::MAX;
         let mut restarts = 0;
         loop {
-            let whole =
-                restarts >= 3 || first_restart.is_some_and(|t| t.elapsed() > STEPWISE_PATIENCE);
+            // Et une borne absolue : une reprise que la progression ne
+            // montre pas (la source n'a pas grandi) ne fait pas tourner
+            // la copie sans fin.
+            let whole = restarts >= 3
+                || first_restart.is_some_and(|t| t.elapsed() > STEPWISE_PATIENCE)
+                || started.elapsed() > STEPWISE_PATIENCE * 30;
             match backup
                 .step(if whole { -1 } else { 128 })
                 .map_err(|e| format!("{what} : {e}"))?
@@ -42125,7 +42130,13 @@ fn rekey_lock(db_path: &Path) -> Result<std::fs::File, String> {
         .truncate(false)
         .write(true)
         .open(&path)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            format!(
+                "Un changement de mot de passe interrompu attend d'être fini, et son verrou ({}) \
+                 ne peut pas être posé : {e}.",
+                path.display()
+            )
+        })?;
     match f.try_lock() {
         Ok(()) => Ok(f),
         Err(std::fs::TryLockError::WouldBlock) => Err(
@@ -42207,16 +42218,22 @@ fn finish_rekey(db_path: &Path, typed: &str) -> Result<(), String> {
     let Some(other) = other else {
         // Pas le nouveau mot de passe. L'ancien, si la base s'ouvre avec
         // et qu'un des deux autres non : le dire, sans rien défaire.
-        if probe_key(db_path, typed).is_some()
-            && files[1..]
+        if probe_key(db_path, typed).is_some() {
+            if files[1..]
                 .iter()
                 .any(|f| present(f) && probe_key(f, typed).is_none())
-        {
-            return Err(
-                "Un changement de mot de passe a été interrompu : ouvrez avec le nouveau mot \
-                 de passe pour le terminer."
-                    .to_owned(),
-            );
+            {
+                return Err(
+                    "Un changement de mot de passe a été interrompu : ouvrez avec le nouveau mot \
+                     de passe pour le terminer."
+                        .to_owned(),
+                );
+            }
+            // Les trois s'ouvrent avec ce qui a été tapé : le changement
+            // s'est arrêté avant le premier fichier, et rien n'a bougé.
+            // Le témoin part — sous le verrou, aucun changement n'est en
+            // cours —, sans quoi chaque ouverture le relirait.
+            remove_rekey_witness(db_path);
         }
         return Ok(());
     };
@@ -66807,6 +66824,22 @@ mod tests {
         for file in [path.clone(), scans_path(&path), stups_path(&path)] {
             assert!(probe_key(&file, "nouveau").is_some(), "{}", file.display());
         }
+        assert!(!rekey_witness(&path).exists());
+    }
+
+    /// Un changement arrêté avant son premier fichier n'a rien changé :
+    /// l'ancien mot de passe ouvre, et le témoin part plutôt que d'être
+    /// relu à chaque ouverture.
+    #[test]
+    fn a_change_stopped_before_any_file_clears_its_witness() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-rekey-none-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("rien.db");
+        drop(Db::open(&path, "ancien").unwrap());
+        write_rekey_witness(&path, "ancien", "nouveau").unwrap();
+        assert!(Db::open(&path, "ancien").is_ok());
         assert!(!rekey_witness(&path).exists());
     }
 
