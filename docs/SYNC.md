@@ -884,9 +884,11 @@ réseau : rien ne s'y synchronise, rien n'entre de soi-même, et aucune
 clé de réseau n'y passe.
 
 * **Héberger** (`[reseau] repertoire`, `port_repertoire`, 7747) : un
-  poste tient le répertoire, en mémoire seulement, et demande au
-  routeur d'ouvrir le port. Aucune adresse n'est livrée : les officines
-  écrivent celle qu'on leur a donnée.
+  poste tient le répertoire, en mémoire seulement, en IPv6 et en IPv4,
+  et demande au routeur d'ouvrir le port IPv4 ; il montre aussi ses
+  adresses IPv6 publiques, où la box n'a qu'à laisser entrer. Aucune
+  adresse n'est livrée : les officines écrivent celle qu'on leur a
+  donnée.
 * **Paraître** (réglage de l'officine, `settings`, clé `repertoire` :
   adresse, paraître, commune, FINESS — écrit contre ce qui était lu) :
   toutes les dix minutes, le poste ouvert envoie — composée et signée
@@ -935,7 +937,11 @@ vérifié hors du verrou : 2 000 officines, 16 et 8 Mio
 par adresse — comptés à chaque annonce, une carte qui change d'adresse
 entre dans le compte de la nouvelle — et 256 Mio en tout ; 64
 connexions dont 4 par adresse, 30 appels par adresse et par minute
-(une table élaguée à la seconde, qui ne grossit pas sous les coups) ;
+(une table élaguée à la seconde, qui ne grossit pas sous les coups).
+« Adresse » veut dire **abonné** (`repertoire::caller`) : une IPv4, ou
+le préfixe `/64` d'une IPv6 — un abonné en tient des milliards et
+passerait sinon sous chaque borne en changeant d'adresse ; une IPv4 vue
+par une prise double pile compte comme elle-même ;
 cinq secondes pour dire sa préface, puis **une échéance unique** de
 trente secondes pour la demande entière, lecture et écriture. Une carte n'est reçue que signée depuis moins d'une demi-heure
 (et pas au-delà dans l'avenir) et plus récente que tout ce qu'on a vu de

@@ -755,11 +755,41 @@ impl Calls {
     }
 }
 
-/// **Tenir le répertoire** sur `port` jusqu'à ce que `stop` passe à vrai.
-/// Rend tout de suite ; le répertoire vit sur ses propres fils.
+/// **Qui appelle, pour les bornes** : une adresse IPv4 telle quelle (et
+/// celle qu'une prise double pile présente sous forme IPv6), une adresse
+/// IPv6 réduite à son préfixe `/64` — le réseau d'un abonné, qui en tient
+/// des milliards et changerait d'adresse à chaque appel pour passer sous
+/// chaque borne.
+pub fn caller(ip: IpAddr) -> IpAddr {
+    match ip {
+        IpAddr::V4(_) => ip,
+        IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+            Some(v4) => IpAddr::V4(v4),
+            None => {
+                let s = v6.segments();
+                IpAddr::V6(std::net::Ipv6Addr::new(s[0], s[1], s[2], s[3], 0, 0, 0, 0))
+            }
+        },
+    }
+}
+
+/// **Tenir le répertoire** sur `port` jusqu'à ce que `stop` passe à vrai,
+/// en IPv6 et en IPv4 : en IPv6 la box n'a qu'à laisser passer, sans
+/// ouverture de port. Rend tout de suite ; le répertoire vit sur ses
+/// propres fils.
 pub fn serve(port: u16, stop: Arc<AtomicBool>) -> std::io::Result<()> {
-    let listener = TcpListener::bind(("0.0.0.0", port))?;
-    listener.set_nonblocking(true)?;
+    // `[::]` d'abord : sous Linux il prend aussi l'IPv4, et `0.0.0.0` est
+    // alors refusé — ce qui est bien ; sous Windows il ne prend que
+    // l'IPv6, et `0.0.0.0` prend le reste.
+    let v6 = TcpListener::bind(("::", port));
+    let v4 = TcpListener::bind(("0.0.0.0", port));
+    let listeners: Vec<TcpListener> = match (v6, v4) {
+        (Err(e), Err(_)) => return Err(e),
+        (a, b) => [a.ok(), b.ok()].into_iter().flatten().collect(),
+    };
+    for l in &listeners {
+        l.set_nonblocking(true)?;
+    }
     let store: Arc<Mutex<Store>> = Arc::default();
     let mut calls = Calls::default();
     let open = Arc::new(AtomicUsize::new(0));
@@ -767,19 +797,30 @@ pub fn serve(port: u16, stop: Arc<AtomicBool>) -> std::io::Result<()> {
     // quelques-unes, jamais toutes.
     let by_address: Arc<Mutex<HashMap<IpAddr, usize>>> = Arc::default();
     std::thread::spawn(move || {
+        let mut turn = 0_usize;
         while !stop.load(Ordering::SeqCst) {
-            let (stream, from) = match listener.accept() {
-                Ok(s) => s,
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    std::thread::sleep(Duration::from_millis(100));
-                    continue;
+            // Chaque prise à son tour ; on ne dort que quand aucune n'a
+            // d'appel en attente.
+            let mut accepted = None;
+            let mut failed = false;
+            for k in 0..listeners.len() {
+                let l = &listeners[(turn + k) % listeners.len()];
+                match l.accept() {
+                    Ok(s) => {
+                        accepted = Some(s);
+                        break;
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+                    Err(_) => failed = true,
                 }
-                Err(_) => {
-                    std::thread::sleep(Duration::from_millis(500));
-                    continue;
-                }
+            }
+            turn = turn.wrapping_add(1);
+            let Some((stream, from)) = accepted else {
+                std::thread::sleep(Duration::from_millis(if failed { 500 } else { 100 }));
+                continue;
             };
-            let ip = from.ip();
+            // Les bornes comptent un abonné, pas une adresse.
+            let ip = caller(from.ip());
             if !calls.admit(ip) || open.load(Ordering::SeqCst) >= MOST_CONNECTIONS {
                 continue;
             }
@@ -1015,6 +1056,39 @@ mod tests {
 
     /// Un balayage lit les ouvertes d'abord, jamais soi-même, ni une
     /// officine absente, sans catalogue, ou déjà lue sous la même empreinte.
+    /// Les bornes comptent un abonné : une adresse IPv4, présentée telle
+    /// quelle ou par une prise double pile, est la même ; deux adresses
+    /// d'un même `/64` sont un seul appelant.
+    #[test]
+    fn a_caller_is_a_subscriber_not_an_address() {
+        let v4: IpAddr = "203.0.113.7".parse().unwrap();
+        let mapped: IpAddr = "::ffff:203.0.113.7".parse().unwrap();
+        assert_eq!(caller(mapped), v4);
+        assert_eq!(caller(v4), v4);
+        let a: IpAddr = "2a01:cb00:1:2:aaaa:bbbb:cccc:dddd".parse().unwrap();
+        let b: IpAddr = "2a01:cb00:1:2::1".parse().unwrap();
+        let other: IpAddr = "2a01:cb00:1:3::1".parse().unwrap();
+        assert_eq!(caller(a), caller(b));
+        assert_ne!(caller(a), caller(other));
+    }
+
+    /// Le répertoire répond en IPv6 comme en IPv4.
+    #[test]
+    fn the_directory_answers_on_both_stacks() {
+        let port = {
+            let probe = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+            probe.local_addr().unwrap().port()
+        };
+        let stop = Arc::new(AtomicBool::new(false));
+        serve(port, Arc::clone(&stop)).unwrap();
+        assert!(list(&format!("127.0.0.1:{port}"), Duration::from_secs(4)).is_ok());
+        // Une machine sans IPv6 n'a pas de boucle `::1` : rien à dire.
+        if TcpListener::bind(("::1", 0)).is_ok() {
+            assert!(list(&format!("[::1]:{port}"), Duration::from_secs(4)).is_ok());
+        }
+        stop.store(true, Ordering::SeqCst);
+    }
+
     #[test]
     fn a_sweep_reads_the_open_ones_first_and_nothing_twice() {
         let now = 1_000_000;

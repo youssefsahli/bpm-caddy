@@ -1272,7 +1272,8 @@ rien n'entre de soi-même, et son nom n'est prouvé que par l'empreinte,
 Le répertoire est tenu par une officine qui accepte de l'héberger sur
 l'un de ses postes (Options › Base, « Héberger le répertoire des
 officines », port 7747) ; il ne garde rien sur le disque. La carte y
-montre l'adresse à donner, et « Copier l'adresse » la met dans le
+montre l'adresse à donner — celle que le routeur a ouverte, et celles du
+poste en IPv6, joignables si la box laisse entrer les connexions IPv6 —, et « Copier l'adresse » la met dans le
 presse-papiers, à coller dans un message. Les autres
 écrivent son adresse dans « Cette officine sur la carte », choisissent
 leur commune et, si elles le veulent, cochent « Paraître sur la

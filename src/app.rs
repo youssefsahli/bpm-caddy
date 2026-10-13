@@ -11558,7 +11558,13 @@ impl Session {
                     self.carte.hosting = Some((port, stop));
                     let (tx, rx) = std::sync::mpsc::channel();
                     std::thread::spawn(move || {
-                        let _ = tx.send(crate::reach::open_mapping(port).map(|a| a.to_string()));
+                        let v4 = crate::reach::open_mapping(port).map(|a| a.to_string());
+                        let v6: Vec<String> = crate::reach::global_ipv6()
+                            .into_iter()
+                            .take(2)
+                            .map(|a| std::net::SocketAddr::from((a, port)).to_string())
+                            .collect();
+                        let _ = tx.send((v4, v6));
                     });
                     self.carte.host_reach = Some(rx);
                 }
@@ -11566,8 +11572,9 @@ impl Session {
             }
         }
         if let Some(rx) = &self.carte.host_reach {
-            if let Ok(public) = rx.try_recv() {
+            if let Ok((public, v6)) = rx.try_recv() {
                 self.carte.host_public = public;
+                self.carte.host_v6 = v6;
                 self.carte.host_reach = None;
             }
         }
@@ -15184,8 +15191,10 @@ struct Carte {
     /// Le port qui n'a pas pu s'ouvrir, et pourquoi : réessayé quand le
     /// réglage nomme un autre port, oublié quand il n'en nomme plus.
     host_failed: Option<(u16, String)>,
-    host_reach: Option<std::sync::mpsc::Receiver<Option<String>>>,
+    host_reach: Option<std::sync::mpsc::Receiver<(Option<String>, Vec<String>)>>,
     host_public: Option<String>,
+    /// Les adresses IPv6 publiques de ce poste, au port du répertoire.
+    host_v6: Vec<String>,
 }
 
 /// Ce qu'une annonce rapporte : le répertoire, carte (`true`) ou départ,
@@ -15269,6 +15278,7 @@ impl Carte {
             }
         });
         self.host_public = None;
+        self.host_v6.clear();
     }
 }
 
@@ -64337,18 +64347,34 @@ impl App {
                     motif::section(ui, tr("carte_host_title"));
                     if let Some((port, _)) = &session.carte.hosting {
                         ui.label(trf("carte_hosting", port));
-                        match &session.carte.host_public {
-                            Some(a) => {
-                                dim(&trf("carte_host_public", a), ui);
-                                // Ce que les autres officines devront écrire :
-                                // copié, il se colle dans un message.
-                                if motif::button(ui, tr("carte_host_copy")).clicked() {
-                                    ui.ctx().copy_text(a.clone());
-                                    session.carte.note =
-                                        Some((false, tr("carte_host_copied").to_owned()));
-                                }
+                        // L'adresse que le routeur a ouverte en IPv4, puis
+                        // celles de ce poste en IPv6, où la box n'a qu'à
+                        // laisser passer.
+                        let mut copied: Option<String> = None;
+                        if let Some(a) = &session.carte.host_public {
+                            dim(&trf("carte_host_public", a), ui);
+                            // Ce que les autres officines devront écrire :
+                            // copié, il se colle dans un message.
+                            if motif::button(ui, tr("carte_host_copy")).clicked() {
+                                copied = Some(a.clone());
                             }
-                            None => dim(tr("carte_host_private"), ui),
+                        }
+                        for a in &session.carte.host_v6 {
+                            dim(&trf("carte_host_v6", a), ui);
+                            if motif::button(ui, tr("carte_host_copy")).clicked() {
+                                copied = Some(a.clone());
+                            }
+                        }
+                        if session.carte.host_reach.is_some() {
+                            dim(tr("carte_host_seeking"), ui);
+                        } else if session.carte.host_public.is_none()
+                            && session.carte.host_v6.is_empty()
+                        {
+                            dim(tr("carte_host_private"), ui);
+                        }
+                        if let Some(a) = copied {
+                            ui.ctx().copy_text(a);
+                            session.carte.note = Some((false, tr("carte_host_copied").to_owned()));
                         }
                     } else if let Some((_, e)) = &session.carte.host_failed {
                         dim(&trf("carte_host_failed", e), ui);

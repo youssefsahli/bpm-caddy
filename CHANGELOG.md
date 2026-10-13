@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The directory also listens on IPv6, and its host sees its public IPv6
+  addresses next to the one the router opened: with most French boxes,
+  hosting works without any port forwarding, as long as the box lets
+  inbound IPv6 in.
+
+### Security
+
+- The directory's per-address limits count a subscriber, not an address:
+  an IPv6 caller is its /64 prefix, so it can no longer slip under every
+  limit by changing address on each call.
+
 ## [0.418.0] - 2026-10-13
 
 ### Added
