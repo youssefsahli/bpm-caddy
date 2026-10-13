@@ -275,8 +275,18 @@ fn engine_run(source: &str, data: &Snapshot, stop: Arc<std::sync::atomic::Atomic
     let patients = data.patients.clone();
     let read_patients = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let noted = Arc::clone(&read_patients);
-    engine.register_fn("patients", move || {
+    // **Construit une fois, prêté ensuite** : chaque appel refaisait
+    // toutes les cartes, et une boucle qui appelait `patients()` tournait
+    // une heure avant la limite d'opérations, qui ne compte qu'un appel.
+    // Une valeur partagée se prête sans se recopier.
+    let built: Arc<std::sync::OnceLock<rhai::Dynamic>> = Arc::default();
+    engine.register_fn("patients", move || -> rhai::Dynamic {
         noted.store(true, std::sync::atomic::Ordering::Relaxed);
+        built
+            .get_or_init(|| rhai::Dynamic::from(build_patients(&patients)).into_shared())
+            .clone()
+    });
+    fn build_patients(patients: &[Patient]) -> rhai::Array {
         patients
             .iter()
             .map(|p| {
@@ -296,7 +306,7 @@ fn engine_run(source: &str, data: &Snapshot, stop: Arc<std::sync::atomic::Atomic
                 rhai::Dynamic::from(m)
             })
             .collect::<rhai::Array>()
-    });
+    }
     let drugs = data.drugs.clone();
     engine.register_fn("medicaments", move || {
         drugs
@@ -912,6 +922,41 @@ mod tests {
             .into_iter()
             .collect(),
         }
+    }
+
+    /// **`patients()` se prête sans se refaire**, et ce qu'un script en
+    /// fait ne change pas ce que l'appel suivant rend : mille appels sur
+    /// deux mille dossiers tiennent en un instant.
+    #[test]
+    fn patients_are_built_once_and_never_changed_by_a_script() {
+        let out = run(
+            "let a = patients(); a.push(1); a[0].nom = \"X\"; let b = patients(); [a.len, b.len, b[0].nom]",
+            &sample(),
+        );
+        assert_eq!(out.error, None, "{out:?}");
+        let first = &sample().patients[0].nom;
+        let n = sample().patients.len();
+        assert_eq!(out.value, format!("[{}, {n}, \"{first}\"]", n + 1));
+        let mut big = sample();
+        let one = big.patients[0].clone();
+        big.patients = (0..2000)
+            .map(|i| Patient {
+                id: i,
+                ..one.clone()
+            })
+            .collect();
+        let started = std::time::Instant::now();
+        let out = run(
+            "let n = 0; for i in 0..1000 { n += patients().len; } n",
+            &big,
+        );
+        assert_eq!(out.error, None, "{out:?}");
+        assert_eq!(out.value, "2000000");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(20),
+            "{:?}",
+            started.elapsed()
+        );
     }
 
     /// La console lit la base et rend ce qu'elle a écrit.

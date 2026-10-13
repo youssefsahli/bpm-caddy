@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bulletins d'adhésion: a value too long for its box on the official
   form, even at the smallest size, is named when the bulletin opens — to
   shorten in the file or write by hand — instead of overflowing silently.
+- Console: `patients()` is built once per script and lent afterwards, so
+  a loop calling it no longer runs for an hour before the operation limit;
+  what a script does to the array never changes what the next call gives.
 
 ## [0.425.0] - 2026-10-13
 
