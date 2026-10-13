@@ -1244,7 +1244,11 @@ déjà lu ne se relit que quand l'officine l'a changé. Rien ne s'y compare
 « Carte des officines » (onglet, ou « Aller à… ») montre les officines
 qui paraissent au **répertoire** : une pastille par officine, à sa
 commune — pleine si elle est ouverte, creuse sinon, avec depuis quand
-elle n'a pas été vue. Le carré est cette officine. La liste à côté se
+elle n'a pas été vue. Le carré est cette officine. La molette (ou le
+pincement) agrandit la métropole là où pointe la souris, jusqu'à
+l'échelle d'une ville ; on la déplace en la faisant glisser, et un
+double clic ou « Toute la France » la remet entière — les encarts
+d'outre-mer ne bougent pas. La liste à côté se
 filtre par nom, commune ou code postal ; une fois la commune de
 l'officine choisie, les plus proches viennent d'abord, avec leur
 distance à vol d'oiseau. Choisie sur la carte

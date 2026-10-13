@@ -249,6 +249,37 @@ pub fn place(zone: Zone, frame: [f32; 4], projected: [f32; 2]) -> [f32; 2] {
     ]
 }
 
+/// L'inverse de [`place`] : le point projeté de `zone` qu'un point du
+/// cadre montre.
+pub fn unplace(zone: Zone, frame: [f32; 4], at: [f32; 2]) -> [f32; 2] {
+    let b = zone_bounds(zone);
+    let (bw, bh) = ((b[2] - b[0]).max(1e-3), (b[3] - b[1]).max(1e-3));
+    let (fw, fh) = (
+        (frame[2] - frame[0]).max(1.0),
+        (frame[3] - frame[1]).max(1.0),
+    );
+    let scale = (fw / bw).min(fh / bh);
+    let ox = frame[0] + (fw - bw * scale) / 2.0;
+    let oy = frame[1] + (fh - bh * scale) / 2.0;
+    [b[0] + (at[0] - ox) / scale, b[1] + (at[1] - oy) / scale]
+}
+
+/// **Le centre d'une vue grossie**, gardé dans la zone : on ne fait pas
+/// glisser la France hors du cadre.
+pub fn clamp_focus(zone: Zone, focus: [f32; 2]) -> [f32; 2] {
+    let b = zone_bounds(zone);
+    [
+        focus[0].clamp(b[0], b[2].max(b[0])),
+        focus[1].clamp(b[1], b[3].max(b[1])),
+    ]
+}
+
+/// Le centre d'une zone, projeté : la vue entière.
+pub fn zone_center(zone: Zone) -> [f32; 2] {
+    let b = zone_bounds(zone);
+    [(b[0] + b[2]) / 2.0, (b[1] + b[3]) / 2.0]
+}
+
 /// La distance à vol d'oiseau entre deux points (longitude, latitude),
 /// en kilomètres.
 pub fn distance_km(a: [f32; 2], b: [f32; 2]) -> f32 {
@@ -262,6 +293,26 @@ pub fn distance_km(a: [f32; 2], b: [f32; 2]) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Poser puis relever redonne le point ; le centre de la zone tombe
+    /// au centre du cadre ; un centre hors de la zone y revient.
+    #[test]
+    fn a_placed_point_reads_back() {
+        let frame = [10.0, 20.0, 410.0, 320.0];
+        let p = project(Zone::Metropole, 2.35, 48.86);
+        let back = unplace(Zone::Metropole, frame, place(Zone::Metropole, frame, p));
+        assert!((back[0] - p[0]).abs() < 1e-3 && (back[1] - p[1]).abs() < 1e-3);
+        let c = place(Zone::Metropole, frame, zone_center(Zone::Metropole));
+        assert!(
+            (c[0] - 210.0).abs() < 0.5 && (c[1] - 170.0).abs() < 0.5,
+            "{c:?}"
+        );
+        let b = zone_bounds(Zone::Metropole);
+        assert_eq!(
+            clamp_focus(Zone::Metropole, [b[2] + 50.0, b[1] - 9.0]),
+            [b[2], b[1]]
+        );
+    }
 
     #[test]
     fn distances_read_as_the_crow_flies() {

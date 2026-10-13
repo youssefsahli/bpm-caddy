@@ -15152,7 +15152,13 @@ struct Carte {
     /// l'onglet sur une saisie en cours.
     buffers_from: Option<Option<String>>,
     /// Les contours à l'écran, pour le cadre où ils ont été posés.
-    outlines: Option<([u32; 4], Vec<Vec<egui::Pos2>>)>,
+    /// Avec, pour chacun, s'il est en métropole (la vue grossie le coupe
+    /// à son cadre).
+    outlines: Option<([u32; 7], Vec<Outline>)>,
+    /// La vue de la métropole : combien grossie (0 : jamais touchée, la
+    /// France entière) et sur quel point projeté.
+    zoom: f32,
+    focus: Option<[f32; 2]>,
     pick: Option<String>,
     /// La clé de cette officine, lue à l'ouverture : « c'est vous ».
     me: String,
@@ -15204,8 +15210,39 @@ impl Drop for Carte {
     }
 }
 
+/// Un contour à l'écran, et s'il est en métropole.
+#[cfg(feature = "sync")]
+type Outline = (bool, Vec<egui::Pos2>);
+
+/// Combien la métropole se grossit au plus : une ville, pas une rue —
+/// une officine se place à sa commune.
+#[cfg(feature = "sync")]
+const CARTE_ZOOM_MOST: f32 = 24.0;
+
 #[cfg(feature = "sync")]
 impl Carte {
+    /// La vue de la métropole : son grossissement, au moins 1, et son
+    /// centre — celui de la France quand elle est entière.
+    fn view(&self) -> (f32, [f32; 2]) {
+        let zoom = self.zoom.max(1.0);
+        let whole = crate::geo::zone_center(crate::geo::Zone::Metropole);
+        if zoom <= 1.0 {
+            return (1.0, whole);
+        }
+        (zoom, self.focus.unwrap_or(whole))
+    }
+
+    fn set_view(&mut self, zoom: f32, focus: [f32; 2]) {
+        let zoom = if zoom.is_finite() {
+            zoom.clamp(1.0, CARTE_ZOOM_MOST)
+        } else {
+            1.0
+        };
+        self.zoom = zoom;
+        self.focus = (zoom > 1.0 && focus.iter().all(|v| v.is_finite()))
+            .then(|| crate::geo::clamp_focus(crate::geo::Zone::Metropole, focus));
+    }
+
     /// Arrêter le répertoire hébergé et refermer le port du routeur —
     /// après son ouverture si elle est encore en cours.
     fn stop_hosting(&mut self) {
@@ -63582,40 +63619,132 @@ impl App {
         motif::panel(ui, map_rect, Some(&map_title), |ui| {
             let well = motif::well(ui, ui.max_rect());
             let frames = crate::geo::frames(well.width(), well.height(), 6.0);
-            let at = |zone: crate::geo::Zone, p: [f32; 2]| -> egui::Pos2 {
-                let frame = frames
+            let frame_of = |zone: crate::geo::Zone| {
+                frames
                     .iter()
                     .find(|(z, _)| *z == zone)
-                    .map_or([0.0, 0.0, 1.0, 1.0], |(_, f)| *f);
-                let [x, y] = crate::geo::place(zone, frame, p);
-                egui::pos2(well.left() + x, well.top() + y)
+                    .map_or([0.0, 0.0, 1.0, 1.0], |(_, f)| *f)
             };
-            // Les contours, posés une fois pour ce cadre.
+            let metro_frame = frame_of(crate::geo::Zone::Metropole);
+            let metro = egui::Rect::from_min_max(
+                egui::pos2(well.left() + metro_frame[0], well.top() + metro_frame[1]),
+                egui::pos2(well.left() + metro_frame[2], well.top() + metro_frame[3]),
+            )
+            .intersect(well);
+            // La métropole se grossit et se déplace ; les encarts restent.
+            // Molette ou pincement vers le pointeur, glisser pour déplacer,
+            // double clic pour revenir à toute la France.
+            let back = ui.interact(
+                metro,
+                ui.id().with("carte_metro"),
+                egui::Sense::click_and_drag(),
+            );
+            let (mut zoom, mut focus) = session.carte.view();
+            let base = |p: [f32; 2]| crate::geo::place(crate::geo::Zone::Metropole, metro_frame, p);
+            let middle = [
+                (metro_frame[0] + metro_frame[2]) / 2.0,
+                (metro_frame[1] + metro_frame[3]) / 2.0,
+            ];
+            // Le point projeté qu'un point de l'écran montre, dans la vue.
+            let under = |zoom: f32, focus: [f32; 2], at: egui::Pos2| {
+                let fb = base(focus);
+                crate::geo::unplace(
+                    crate::geo::Zone::Metropole,
+                    metro_frame,
+                    [
+                        fb[0] + (at.x - well.left() - middle[0]) / zoom,
+                        fb[1] + (at.y - well.top() - middle[1]) / zoom,
+                    ],
+                )
+            };
+            if back.hovered() {
+                let (wheel, pinch) = ui.input(|i| (i.smooth_scroll_delta.y, i.zoom_delta()));
+                let factor = pinch * (wheel / 240.0).exp();
+                if (factor - 1.0).abs() > 1e-3 {
+                    let to = (zoom * factor).clamp(1.0, CARTE_ZOOM_MOST);
+                    if let Some(cursor) = back.hover_pos() {
+                        // Le point sous le pointeur y reste.
+                        let held = under(zoom, focus, cursor);
+                        let fb = base(held);
+                        let shifted = [
+                            fb[0] - (cursor.x - well.left() - middle[0]) / to,
+                            fb[1] - (cursor.y - well.top() - middle[1]) / to,
+                        ];
+                        focus =
+                            crate::geo::unplace(crate::geo::Zone::Metropole, metro_frame, shifted);
+                    }
+                    zoom = to;
+                }
+            }
+            if back.dragged() && zoom > 1.0 {
+                let d = back.drag_delta();
+                let fb = base(focus);
+                focus = crate::geo::unplace(
+                    crate::geo::Zone::Metropole,
+                    metro_frame,
+                    [fb[0] - d.x / zoom, fb[1] - d.y / zoom],
+                );
+            }
+            if back.double_clicked() {
+                zoom = 1.0;
+            }
+            session.carte.set_view(zoom, focus);
+            let (zoom, focus) = session.carte.view();
+            let focus_base = base(focus);
+            let at = |zone: crate::geo::Zone, p: [f32; 2]| -> egui::Pos2 {
+                let [x, y] = crate::geo::place(zone, frame_of(zone), p);
+                if zone == crate::geo::Zone::Metropole {
+                    egui::pos2(
+                        well.left() + middle[0] + (x - focus_base[0]) * zoom,
+                        well.top() + middle[1] + (y - focus_base[1]) * zoom,
+                    )
+                } else {
+                    egui::pos2(well.left() + x, well.top() + y)
+                }
+            };
+            // Les contours, posés une fois pour ce cadre et cette vue.
             let key = [
                 well.left().to_bits(),
                 well.top().to_bits(),
                 well.width().to_bits(),
                 well.height().to_bits(),
+                zoom.to_bits(),
+                focus[0].to_bits(),
+                focus[1].to_bits(),
             ];
             if session.carte.outlines.as_ref().map(|(k, _)| *k) != Some(key) {
                 let mut rings = Vec::new();
                 for d in crate::geo::departements() {
                     let zone = crate::geo::zone_of(d.code);
                     for ring in &d.rings {
-                        rings.push(
+                        rings.push((
+                            zone == crate::geo::Zone::Metropole,
                             ring.iter()
                                 .map(|p| at(zone, crate::geo::project(zone, p[0], p[1])))
                                 .collect::<Vec<_>>(),
-                        );
+                        ));
                     }
                 }
                 session.carte.outlines = Some((key, rings));
             }
             let painter = ui.painter_at(well);
+            // Ce qui est en métropole ne déborde pas sur les encarts.
+            let metro_painter = painter.with_clip_rect(metro);
+            let painter_of = |zone: crate::geo::Zone| {
+                if zone == crate::geo::Zone::Metropole {
+                    &metro_painter
+                } else {
+                    &painter
+                }
+            };
+            let shown_at = |zone: crate::geo::Zone, pos: egui::Pos2| {
+                zone != crate::geo::Zone::Metropole || metro.contains(pos)
+            };
             if let Some((_, rings)) = &session.carte.outlines {
                 let stroke = egui::Stroke::new(1.0_f32, motif::text_faint());
-                for ring in rings {
-                    painter.add(egui::Shape::closed_line(ring.clone(), stroke));
+                for (metropole, ring) in rings {
+                    let p = if *metropole { &metro_painter } else { &painter };
+                    p.add(egui::Shape::closed_line(ring.clone(), stroke));
                 }
             }
             for (zone, f) in &frames {
@@ -63630,6 +63759,23 @@ impl App {
                     );
                 }
             }
+            // Grossie : de quoi revenir à toute la France, dans le coin.
+            if zoom > 1.0 {
+                let label = tr("carte_zoom_reset");
+                let size = egui::vec2(Self::button_width(ui, label), Self::button_height(ui));
+                let corner = egui::Rect::from_min_size(
+                    egui::pos2(metro.right() - size.x - 4.0, metro.top() + 4.0),
+                    size,
+                );
+                if metro.contains_rect(corner) {
+                    motif::inside(ui, corner, |ui| {
+                        if motif::button(ui, label).clicked() {
+                            session.carte.set_view(1.0, focus);
+                        }
+                    });
+                }
+            }
+            back.on_hover_text(tr("carte_zoom_tooltip"));
             // Lisible, mais jamais une pastille qui couvre trois départements
             // quand le texte grandit et que la carte, elle, reste petite.
             let r = (Self::row_height(ui) * 0.22)
@@ -63638,7 +63784,7 @@ impl App {
             // Cette officine, là où elle a dit être : un carré, pour qu'il
             // se lise autrement qu'à sa couleur.
             if let Some((zone, p)) = session.carte.me_point {
-                painter.rect_stroke(
+                painter_of(zone).rect_stroke(
                     egui::Rect::from_center_size(at(zone, p), egui::vec2(r * 3.0, r * 3.0)),
                     0.0,
                     egui::Stroke::new(2.0_f32, motif::text()),
@@ -63655,6 +63801,11 @@ impl App {
                     continue;
                 };
                 let pos = at(*zone, *p);
+                // Hors de la vue grossie : ni dessinée, ni cliquable.
+                if !shown_at(*zone, pos) {
+                    continue;
+                }
+                let painter = painter_of(*zone);
                 let hit = egui::Rect::from_center_size(pos, egui::vec2(r * 3.0, r * 3.0));
                 let resp = ui.interact(
                     hit,
@@ -95199,6 +95350,30 @@ mod tests {
     fn identical_notes_merge_to_themselves() {
         let base = "# Notes\n\n- a\n";
         assert_eq!(merge_team_notes(base, base, base), base);
+    }
+
+    /// La vue de la carte : jamais moins que la France entière, jamais
+    /// plus que `CARTE_ZOOM_MOST`, un centre gardé dans la métropole, et
+    /// rien de ce qu'un calcul raté rendrait (NaN) n'y entre.
+    #[cfg(feature = "sync")]
+    #[test]
+    fn the_map_view_stays_on_france() {
+        let mut carte = super::Carte::default();
+        let whole = crate::geo::zone_center(crate::geo::Zone::Metropole);
+        assert_eq!(carte.view(), (1.0, whole));
+        carte.set_view(1000.0, [999.0, -999.0]);
+        let (zoom, focus) = carte.view();
+        assert_eq!(zoom, super::CARTE_ZOOM_MOST);
+        assert_eq!(
+            focus,
+            crate::geo::clamp_focus(crate::geo::Zone::Metropole, [999.0, -999.0])
+        );
+        carte.set_view(f32::NAN, [0.0, 0.0]);
+        assert_eq!(carte.view(), (1.0, whole));
+        carte.set_view(4.0, [f32::NAN, 0.0]);
+        assert_eq!(carte.view(), (4.0, whole));
+        carte.set_view(0.2, focus);
+        assert_eq!(carte.view(), (1.0, whole));
     }
 
     /// **Un balayage du répertoire** : ce qui est lu se garde sous

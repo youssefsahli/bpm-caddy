@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The map zooms: the wheel or a pinch enlarges metropolitan France
+  toward the pointer, down to a town; drag to pan, double-click or
+  « Toute la France » to see it whole. The overseas insets stay put.
+
 ## [0.417.0] - 2026-10-13
 
 ### Added
