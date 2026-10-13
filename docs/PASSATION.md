@@ -151,8 +151,8 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
 - paquet et copie : `VACUUM INTO` tient les fichiers partagés pendant
   toute la copie (les autres postes attendent, cinq secondes puis
   échouent) et l'export tourne dans l'image — à passer à
-  `backup_stepwise` et à un fil ; un paquet dont il manque les derniers
-  morceaux s'importe tronqué (ni taille ni empreinte par fichier) ;
+  `backup_stepwise` et à un fil (un paquet porte depuis le 13/10 la
+  taille et l'empreinte de chaque fichier, et un paquet coupé se refuse) ;
 - **changement de mot de passe interrompu** (coupure de courant entre
   deux fichiers) : la base et ses fichiers de pièces et de registre
   restent sous deux clés, et aucune ne les ouvre tous — à prévoir : une

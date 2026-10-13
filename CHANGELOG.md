@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A bundle (« paquet ») records each file's size and BLAKE3 fingerprint,
+  and importing checks what it rewrote: a bundle cut short — its last
+  pieces lost on the way — is refused, leaving nothing behind, instead of
+  importing a truncated base. Older bundles still import.
+
 ## [0.427.0] - 2026-10-13
 
 ### Security

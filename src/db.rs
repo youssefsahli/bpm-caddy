@@ -41973,6 +41973,25 @@ const BUNDLE_CHUNK: usize = 256 * 1024 * 1024;
 #[cfg(test)]
 const BUNDLE_CHUNK: usize = 4096;
 
+/// La taille d'un fichier et son empreinte (BLAKE3, en hexadécimal), lu
+/// par morceaux : le fichier des pièces dépasse le gigaoctet.
+fn file_digest(path: &Path) -> Result<(u64, String), String> {
+    use std::io::Read;
+    let mut f = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut hasher = blake3::Hasher::new();
+    let mut buf = vec![0_u8; 1 << 16];
+    let mut size = 0_u64;
+    loop {
+        let n = f.read(&mut buf).map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+        size += n as u64;
+        hasher.update(&buf[..n]);
+    }
+    Ok((size, hasher.finalize().to_hex().to_string()))
+}
+
 pub const BUNDLE_BASE: &str = "bpm_caddy.db";
 pub const BUNDLE_SCANS: &str = "bpm_caddy_scans.db";
 pub const BUNDLE_STUPS: &str = "bpm_caddy_stups.db";
@@ -42870,6 +42889,27 @@ impl Db {
                 n += 1;
             }
         }
+        // **La taille et l'empreinte de chaque fichier** : l'import vérifie
+        // ce qu'il a réécrit. Il repérait un trou entre deux morceaux, pas
+        // les derniers morceaux manquants — un paquet coupé s'importait
+        // tronqué.
+        for (name, path) in [
+            (BUNDLE_BASE, &base),
+            (BUNDLE_SCANS, &scans),
+            (BUNDLE_STUPS, &stups),
+        ] {
+            let (size, digest) = file_digest(path)?;
+            for (key, value) in [
+                (format!("taille:{name}"), size.to_string()),
+                (format!("empreinte:{name}"), digest),
+            ] {
+                out.execute(
+                    "INSERT INTO about (key, value) VALUES (?1, ?2)",
+                    rusqlite::params![key, value],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+        }
         // De quoi et de quand : un paquet qu'on retrouve dans six mois
         // sur une clé doit pouvoir dire lui-même ce qu'il est.
         for (key, value) in [
@@ -43019,6 +43059,24 @@ impl Db {
                     }
                 }
                 f.sync_all().map_err(|e| e.to_string())?;
+                drop(f);
+                // Ce qui a été réécrit est-il ce qui avait été emporté ? Un
+                // paquet d'avant cette vérification ne dit rien, et passe.
+                let said = |key: String| -> Option<String> {
+                    pack.query_row("SELECT value FROM about WHERE key = ?1", [key], |r| {
+                        r.get::<_, String>(0)
+                    })
+                    .ok()
+                };
+                if let (Some(size), Some(digest)) = (
+                    said(format!("taille:{name}")),
+                    said(format!("empreinte:{name}")),
+                ) {
+                    let (got_size, got_digest) = file_digest(&part(name))?;
+                    if size != got_size.to_string() || digest != got_digest {
+                        return Err(crate::strings::trf("opts_bundle_damaged", name));
+                    }
+                }
             }
             // **Le registre d'abord, la base en dernier**, comme la copie :
             // interrompu entre deux, un dossier où la base porte déjà son
@@ -62377,6 +62435,39 @@ mod tests {
     /// veulent rien dire seuls. Un paquet qui en rendrait deux ferait
     /// une officine sans registre, ce qui se verrait le jour d'un
     /// contrôle et pas avant.
+    /// **Un paquet coupé ne s'importe pas** : ses derniers morceaux
+    /// perdus, la taille et l'empreinte ne correspondent plus, et rien
+    /// n'est laissé dans le dossier d'arrivée.
+    #[test]
+    fn a_bundle_missing_its_last_pieces_is_refused() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-bundle-cut-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("live.db"), "secret").unwrap();
+        db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let pack = dir.join("officine.bpmpack");
+        db.export_bundle(&pack, "secret").unwrap();
+        {
+            let c = Connection::open(&pack).unwrap();
+            c.pragma_update(None, "key", "secret").unwrap();
+            let cut = c
+                .execute(
+                    "DELETE FROM chunks WHERE name = ?1
+                     AND n = (SELECT MAX(n) FROM chunks WHERE name = ?1)",
+                    [BUNDLE_BASE],
+                )
+                .unwrap();
+            assert_eq!(cut, 1, "la base voyage en morceaux en test");
+        }
+        let into = dir.join("arrivee");
+        let err = Db::import_bundle(&pack, "secret", &into).unwrap_err();
+        assert!(err.contains(BUNDLE_BASE), "{err}");
+        for name in [BUNDLE_BASE, BUNDLE_SCANS, BUNDLE_STUPS] {
+            assert!(!into.join(name).exists(), "{name} laissé");
+        }
+    }
+
     #[test]
     fn a_bundle_carries_the_three_files_and_gives_them_all_back() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-bundle-{}", std::process::id()));
