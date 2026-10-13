@@ -862,37 +862,12 @@ pub fn merge_officine(op: &Op, local: Option<&Map<String, Value>>, outcome: &mut
 /// La clé des notes d'équipe, rangées d'un seul tenant dans `settings`.
 pub const TEAM_DOC: &str = "team_doc";
 
-/// **Les notes d'équipe reçues d'un autre poste se fondent ligne à ligne**
-/// ([`merge_lines`]) : deux postes qui les écrivaient entre deux
-/// synchronisations — ou qui les avaient chacun créées — se contredisaient
-/// sur toute la colonne `value`, et chaque enregistrement suivant devenait
-/// une question. Ce qu'un autre poste ajoute s'ajoute ici.
-pub fn merge_team_doc(op: &Op, local: Option<&Map<String, Value>>, outcome: &mut Outcome) {
-    let meta = ["value", "updated_on", "updated_by"];
-    let is_doc = op.table == "settings"
-        && matches!(op.kind, Kind::Update | Kind::Insert)
-        && op.key.get("key").and_then(Value::as_str) == Some(TEAM_DOC);
-    let Some(row) = local.filter(|_| is_doc) else {
-        return;
-    };
-    if !outcome.conflicts.iter().any(|c| c.column == "value")
-        || outcome
-            .conflicts
-            .iter()
-            .any(|c| !meta.contains(&c.column.as_str()))
-    {
-        return;
-    }
-    let text = |m: &Map<String, Value>| m.get("value").and_then(Value::as_str).map(str::to_owned);
-    let (Some(mine), Some(theirs)) = (text(row), text(&op.new)) else {
-        return;
-    };
-    // Une création reçue n'a pas de base commune : tout ce qu'elle porte
-    // s'ajoute à ce qu'on a.
-    let base = text(&op.old).unwrap_or_default();
-    take_merged(op, row, outcome, merge_lines(&base, &mine, &theirs));
-}
-
+/// Les notes d'équipe ne se fondent pas à la synchronisation : chaque poste
+/// fondrait dans son ordre, sans renvoyer le résultat, et deux postes ne
+/// diraient plus jamais le même texte — les retraits cessant de voyager,
+/// en silence. Deux écritures croisées restent une question, posée une
+/// fois et tranchée ; la fusion par lignes ne sert que sur une même base
+/// (l'enregistrement contre ce que le poste avait lu).
 /// **Fusion par lignes** : notre texte, et les lignes que l'autre a
 /// ajoutées depuis la base commune (celles qu'on a retirées ici restent
 /// retirées). Des notes sont des listes : la ligne est l'unité naturelle,
@@ -955,62 +930,6 @@ fn take_merged(op: &Op, row: &Map<String, Value>, outcome: &mut Outcome, text: S
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Les notes d'équipe de deux postes se fondent ligne à ligne, à la
-    /// création comme à la mise à jour : aucune question, aucune ligne perdue.
-    #[test]
-    fn team_notes_from_two_posts_merge_line_by_line() {
-        let key: Map<String, Value> = [("key".to_owned(), Value::String(TEAM_DOC.into()))]
-            .into_iter()
-            .collect();
-        let row = |value: &str| -> Map<String, Value> {
-            [
-                ("key".to_owned(), Value::String(TEAM_DOC.into())),
-                ("value".to_owned(), Value::String(value.into())),
-                ("updated_by".to_owned(), Value::String("CL".into())),
-            ]
-            .into_iter()
-            .collect()
-        };
-        for (kind, old) in [(Kind::Insert, None), (Kind::Update, Some("# Notes\n"))] {
-            let op = Op {
-                file: File::Main,
-                table: "settings".into(),
-                kind,
-                key: key.clone(),
-                old: old
-                    .map(|o| {
-                        [("value".to_owned(), Value::String(o.into()))]
-                            .into_iter()
-                            .collect()
-                    })
-                    .unwrap_or_default(),
-                new: [
-                    ("key".to_owned(), Value::String(TEAM_DOC.into())),
-                    (
-                        "value".to_owned(),
-                        Value::String("# Notes\nlà-bas\n".into()),
-                    ),
-                    ("updated_by".to_owned(), Value::String("MB".into())),
-                ]
-                .into_iter()
-                .collect(),
-            };
-            let here = row("# Notes\nici\n");
-            let mut out = decide(&op, false, Some(&here));
-            assert!(
-                !out.conflicts.is_empty(),
-                "{kind:?} : sans fusion, un conflit"
-            );
-            merge_team_doc(&op, Some(&here), &mut out);
-            assert!(out.conflicts.is_empty(), "{kind:?} : {:?}", out.conflicts);
-            let Action::Set(set) = &out.action else {
-                panic!("{:?}", out.action)
-            };
-            let v = set["value"].as_str().unwrap();
-            assert!(v.contains("ici") && v.contains("là-bas"), "{v}");
-        }
-    }
 
     fn op(table: &str, kind: Kind, new: serde_json::Value) -> Op {
         Op {

@@ -21119,9 +21119,17 @@ impl App {
         self.doc_base = text.clone();
         // Ce qui n'avait pas pu s'enregistrer avant le verrouillage revient,
         // fondu dans ce que la base porte.
-        match self.doc_pending.take() {
+        // Et ce qu'on a tapé avant que la lecture aboutisse (base occupée) :
+        // rien de commun avec la base, tout s'y ajoute.
+        let pending = self.doc_pending.take().or_else(|| {
+            (self.doc_dirty && !self.doc_text.trim().is_empty())
+                .then(|| (String::new(), std::mem::take(&mut self.doc_text)))
+        });
+        match pending {
+            // Comme à l'enregistrement : ce qu'on a écrit est « le nôtre »,
+            // la base « le leur » — une ligne retirée ici reste retirée.
             Some((base, mine)) => {
-                self.doc_text = merge_team_notes(&base, &text, &mine);
+                self.doc_text = merge_team_notes(&base, &mine, &text);
                 self.doc_dirty = self.doc_text != text;
                 self.doc_last_edit = Instant::now();
             }
@@ -21133,8 +21141,10 @@ impl App {
         self.doc_loaded = true;
     }
 
-    /// Before the session goes: the notes typed are saved, then forgotten —
-    /// nothing of them stays in memory behind the lock screen.
+    /// Before the session goes: the notes typed are saved, then forgotten.
+    /// Only notes that could not be written (a shared base busy at the
+    /// last moment) stay in memory behind the lock screen, to be folded in
+    /// at the next unlock rather than lost.
     fn close_team_doc(&mut self) {
         if self.doc_dirty {
             self.doc_focused = false;
@@ -22559,7 +22569,9 @@ impl App {
                     self.side_help(ui);
                     return;
                 }
-                let status = if let Some(err) = &self.doc_error {
+                let status = if !self.doc_loaded {
+                    tr("docs_loading").to_owned()
+                } else if let Some(err) = &self.doc_error {
                     err.clone()
                 } else if self.doc_dirty {
                     tr("docs_saving").to_owned()

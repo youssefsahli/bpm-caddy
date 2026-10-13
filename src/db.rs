@@ -57033,7 +57033,6 @@ impl Db {
             }
             let mut outcome = decide(op, t.append_only, local.as_ref());
             crate::replica::merge_officine(op, local.as_ref(), &mut outcome);
-            crate::replica::merge_team_doc(op, local.as_ref(), &mut outcome);
             // **Un dossier que le registre de ce poste cite ne part pas**,
             // même quand la suppression vient d'ailleurs : l'autre poste
             // n'a vérifié que son propre registre, et une délivrance faite
