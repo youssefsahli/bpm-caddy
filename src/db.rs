@@ -49910,7 +49910,7 @@ impl Db {
                 .conn
                 .prepare(
                     "SELECT b.patient_id, p.first_name || ' ' || p.last_name,
-                            b.code, b.value, b.taken_on
+                            b.code, b.value, b.taken_on, b.remark
                      FROM biology b JOIN patients p ON p.id = b.patient_id
                      WHERE b.code <> ''
                      ORDER BY b.taken_on, b.id",
@@ -49924,11 +49924,14 @@ impl Db {
                         r.get::<_, String>(2)?,
                         r.get::<_, f64>(3)?,
                         r.get::<_, String>(4)?,
+                        r.get::<_, String>(5)?,
                     ))
                 })
                 .map_err(|e| e.to_string())?;
             for row in found {
-                let (id, name, code, value, date) = row.map_err(|e| e.to_string())?;
+                let (id, name, code, value, date, remark) = row.map_err(|e| e.to_string())?;
+                // « <15 » se lit sous 15, comme dans le dossier.
+                let value = crate::biology::bounded(value, &remark);
                 let entry = rows.entry(id).or_insert_with(|| WatchRow {
                     patient_id: id,
                     patient_name: name,

@@ -119,9 +119,8 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   à dire, ou à découper à l'écriture ; une réécriture périmée ne
   s'accepte plus qu'en la retapant (un geste « garder le texte livré »
   par phrase reste à faire) ;
-- rein : un résultat de biologie « <15 » se range 15 (la borne ne vit
-  que dans la remarque) et tombe au palier « 15 à 49 » des anti-Xa au
-  lieu de « au-dessous de 15 » — à porter dans `biology::Reading` ;
+- rein : un résultat « <15 » se lit au-dessous de 15 (fait le 13/10,
+  `biology::bounded`, dans les quatre lectures et la liste de veille) ;
   une vingtaine de lignes « Entre X et Y » ont encore `below: Y` (Y
   exclu) — à relire contre chaque RCP (les trois anticoagulant et
   cotrimoxazole sont faits) ; metformine « Entre 45 et 60 » est 45–59

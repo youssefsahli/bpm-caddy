@@ -311,6 +311,10 @@ pub fn env_password() -> Option<String> {
 /// Un DFG tel que l'écran l'écrit : entier quand il l'est, au dixième
 /// sinon, pour qu'un 29,6 ne s'écrive jamais « 30 » à côté de « sous 30 ».
 fn renal_dfg_text(v: f64) -> String {
+    // Une borne de laboratoire s'écrit comme il l'a écrite : « <15 ».
+    if crate::biology::bound_of(v).is_some() {
+        return crate::biology::value_text(v);
+    }
     if (v - v.round()).abs() < 0.05 {
         format!("{v:.0}")
     } else {
@@ -13336,7 +13340,7 @@ impl Session {
             .filter(|r| !r.code.is_empty())
             .map(|r| crate::biology::Reading {
                 code: r.code.as_str(),
-                value: r.value,
+                value: crate::biology::bounded(r.value, &r.remark),
                 date: r.taken_on.as_str(),
             })
             .collect();
@@ -30108,7 +30112,7 @@ impl App {
             .filter(|r| !r.code.is_empty())
             .map(|r| crate::biology::Reading {
                 code: r.code.as_str(),
-                value: r.value,
+                value: crate::biology::bounded(r.value, &r.remark),
                 date: r.taken_on.as_str(),
             })
             .collect();
@@ -76973,7 +76977,7 @@ impl App {
             .filter(|r| !r.code.is_empty())
             .map(|r| crate::biology::Reading {
                 code: r.code.as_str(),
-                value: r.value,
+                value: crate::biology::bounded(r.value, &r.remark),
                 date: r.taken_on.as_str(),
             })
             .collect();
@@ -81326,7 +81330,7 @@ impl App {
                     .filter(|r| !r.code.is_empty())
                     .map(|r| crate::biology::Reading {
                         code: r.code.as_str(),
-                        value: r.value,
+                        value: crate::biology::bounded(r.value, &r.remark),
                         date: r.taken_on.as_str(),
                     })
                     .collect::<Vec<_>>(),

@@ -2369,6 +2369,25 @@ mod tests {
         }
     }
 
+    /// **« <15 » est au-dessous de 15** : un DFG rendu borné par le
+    /// laboratoire, rangé 15 avec sa borne en remarque, tombe au palier
+    /// « au-dessous de 15 » et non à « entre 15 et 49 ».
+    #[test]
+    fn a_bounded_dfg_falls_below_its_bound() {
+        let t = crate::revue::Treatment {
+            name: "Xarelto",
+            dci: "rivaroxaban",
+            class: "",
+            tags: "",
+        };
+        let at = |dfg: f64| read(&[t], Some(dfg))[0].level;
+        assert_eq!(at(15.0), Some(Level::Reduce));
+        assert_eq!(
+            at(crate::biology::bounded(15.0, "<15")),
+            Some(Level::Contraindicated)
+        );
+    }
+
     /// **La table est une règle, pas de la prose.** Chaque entrée porte
     /// des mots à chercher, un libellé, au moins un palier et une
     /// source ; les paliers sont écrits du plus haut au plus bas et ne

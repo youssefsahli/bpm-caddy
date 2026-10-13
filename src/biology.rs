@@ -123,6 +123,57 @@ pub fn read_typed(text: &str, unit: &str) -> Result<(f64, String), &'static str>
     Ok((value, sign))
 }
 
+/// Combien sous (ou sur) sa borne se lit une valeur de laboratoire
+/// bornée : assez pour tomber du bon côté de chaque seuil, trop peu pour
+/// changer ce qui s'affiche.
+const BOUND_STEP: f64 = 1e-6;
+
+/// **La valeur que les seuils lisent**, avec sa borne de laboratoire —
+/// rangée en remarque (« <15 ») à côté du nombre (15). « <15 » se lit
+/// juste au-dessous de 15 : au palier « au-dessous de 15 », pas à
+/// « 15 à 49 » ; « >90 », juste au-dessus. « ≤ » et « ≥ » comprennent la
+/// borne et la gardent. Une remarque qui n'est pas la borne de ce nombre
+/// ne change rien.
+pub fn bounded(value: f64, remark: &str) -> f64 {
+    let Ok((n, sign)) = read_typed(remark, "") else {
+        return value;
+    };
+    if (n - value).abs() > 1e-9 {
+        return value;
+    }
+    let step = value.abs().max(1.0) * BOUND_STEP;
+    match sign.as_str() {
+        "<" => value - step,
+        ">" => value + step,
+        _ => value,
+    }
+}
+
+/// The bound a value read by [`bounded`] stands for, to write it back as
+/// the laboratory did: « <15 » rather than « 15,0 ».
+pub fn bound_of(v: f64) -> Option<(&'static str, f64)> {
+    // Au millième : ce qu'un laboratoire écrit, et ce que l'écran garde.
+    let r = (v * 1000.0).round() / 1000.0;
+    let gap = r - v;
+    let step = r.abs().max(1.0) * BOUND_STEP;
+    if gap > 0.0 && (gap - step).abs() < step * 0.5 {
+        Some(("<", r))
+    } else if gap < 0.0 && (-gap - step).abs() < step * 0.5 {
+        Some((">", r))
+    } else {
+        None
+    }
+}
+
+/// A laboratory value as written: « <15 », « <0,5 » for a bounded one,
+/// the number otherwise.
+pub fn value_text(v: f64) -> String {
+    match bound_of(v) {
+        Some((sign, n)) => format!("{sign}{}", crate::codex::format_quantity(n)),
+        None => crate::codex::format_quantity(v),
+    }
+}
+
 /// The analytes matching what is being typed, best first.
 pub fn search(query: &str) -> Vec<&'static Analyte> {
     if query.trim().is_empty() {
@@ -270,7 +321,7 @@ pub fn read(readings: &[Reading], treatments: &[crate::revue::Treatment]) -> Vec
                 text: format!(
                     "{} {} {} — {} ({}). {}",
                     a.label,
-                    crate::codex::format_quantity(r.value),
+                    value_text(r.value),
                     a.unit,
                     level_word(lv),
                     interval_text(a),
@@ -1923,6 +1974,29 @@ const RULES: &[Rule] = &[
 
 #[cfg(test)]
 mod tests {
+    use super::{bound_of, bounded, value_text};
+
+    /// « <15 » tombe au palier du dessous, « >90 » au-dessus, et s'écrit
+    /// comme le laboratoire l'a écrit.
+    #[test]
+    fn a_bounded_value_falls_on_the_right_side_of_a_threshold() {
+        let below = bounded(15.0, "<15");
+        assert!(below < 15.0 && below > 14.99);
+        assert_eq!(bound_of(below), Some(("<", 15.0)));
+        let above = bounded(90.0, "> 90");
+        assert!(above > 90.0);
+        assert_eq!(bound_of(above), Some((">", 90.0)));
+        assert_eq!(bounded(15.0, "≤15"), 15.0);
+        assert_eq!(bounded(15.0, ""), 15.0);
+        // Une remarque qui n'est pas la borne de ce nombre.
+        assert_eq!(bounded(15.0, "<30 au dernier bilan"), 15.0);
+        assert_eq!(bound_of(15.0), None);
+        assert_eq!(bound_of(29.6), None);
+        assert_eq!(bounded(0.5, "<0,5"), 0.5 - 1e-6);
+        assert_eq!(value_text(bounded(0.5, "<0,5")), "<0,5");
+        assert_eq!(value_text(bounded(15.0, "<15")), "<15");
+        assert_eq!(value_text(1.25), "1,25");
+    }
 
     /// L'unité tapée est vérifiée, et une borne de laboratoire se lit.
     #[test]

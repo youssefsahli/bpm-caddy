@@ -109,7 +109,9 @@ refusée et l'écran se recharge, sans écraser la saisie de l'autre poste.
 
 Sous la biologie, six lectures de la même ordonnance : interprétation
 des résultats, surveillance biologique en retard, adaptation à la
-clairance, grossesse et allaitement, sujet âgé, et interactions sur les
+clairance (un résultat tapé avec sa borne de laboratoire, « <15 », se
+lit au-dessous de 15 et s'écrit « <15 »), grossesse et allaitement,
+sujet âgé, et interactions sur les
 cytochromes.
 
 La lecture du sujet âgé est la seule dont la donnée est **déjà au
