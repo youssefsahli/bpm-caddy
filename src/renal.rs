@@ -2383,7 +2383,7 @@ mod tests {
         let at = |dfg: f64| read(&[t], Some(dfg))[0].level;
         assert_eq!(at(15.0), Some(Level::Reduce));
         assert_eq!(
-            at(crate::biology::bounded(15.0, "<15")),
+            at(crate::biology::effective(15.0, "<")),
             Some(Level::Contraindicated)
         );
     }

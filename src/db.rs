@@ -2443,7 +2443,8 @@ pub struct WatchRow {
     pub patient_id: i64,
     pub patient_name: String,
     /// (code, value, ISO date) — every reading, oldest first.
-    pub readings: Vec<(String, f64, String)>,
+    /// (code, valeur, jour, borne de laboratoire).
+    pub readings: Vec<(String, f64, String, String)>,
     /// Brand, DCI, class and tags of every treatment, as loose words
     /// for the biology rules.
     pub treatments: Vec<String>,
@@ -49931,7 +49932,7 @@ impl Db {
             for row in found {
                 let (id, name, code, value, date, remark) = row.map_err(|e| e.to_string())?;
                 // « <15 » se lit sous 15, comme dans le dossier.
-                let value = crate::biology::bounded(value, &remark);
+                let bound = crate::biology::bound_sign(value, &remark).to_owned();
                 let entry = rows.entry(id).or_insert_with(|| WatchRow {
                     patient_id: id,
                     patient_name: name,
@@ -49939,7 +49940,7 @@ impl Db {
                     treatments: Vec::new(),
                     drugs: Vec::new(),
                 });
-                entry.readings.push((code, value, date));
+                entry.readings.push((code, value, date, bound));
             }
         }
         {

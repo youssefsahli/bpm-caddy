@@ -959,6 +959,7 @@ mod tests {
             code: "INR",
             value: 2.4,
             date: "2026-08-22",
+            bound: "",
         }];
         let now = due(&treatments, &fresh, "2026-08-29");
         assert_eq!(now[0].level, Level::Ok);
@@ -970,6 +971,7 @@ mod tests {
             code: "INR",
             value: 2.4,
             date: "2025-11-20",
+            bound: "",
         }];
         let late = due(&treatments, &old, "2026-08-29");
         assert_eq!(late[0].level, Level::Overdue);
@@ -1004,12 +1006,14 @@ mod tests {
                 code: "INR",
                 value: 2.4,
                 date: "2026-08-22",
+                bound: "",
             },
             // Très en retard.
             Reading {
                 code: "TSH",
                 value: 2.1,
                 date: "2023-01-10",
+                bound: "",
             },
         ];
         let out = due(&treatments, &readings, "2026-08-29");
@@ -1217,11 +1221,13 @@ mod tests {
                 code: "INR",
                 value: 2.5,
                 date: "2026-06-01",
+                bound: "",
             },
             crate::biology::Reading {
                 code: "INR",
                 value: 2.5,
                 date: "2062-10-12",
+                bound: "",
             },
         ];
         let d = due(&[t], &readings, "2026-10-12");

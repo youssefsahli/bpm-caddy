@@ -123,55 +123,53 @@ pub fn read_typed(text: &str, unit: &str) -> Result<(f64, String), &'static str>
     Ok((value, sign))
 }
 
-/// Combien sous (ou sur) sa borne se lit une valeur de laboratoire
-/// bornée : assez pour tomber du bon côté de chaque seuil, trop peu pour
-/// changer ce qui s'affiche.
-const BOUND_STEP: f64 = 1e-6;
-
-/// **La valeur que les seuils lisent**, avec sa borne de laboratoire —
-/// rangée en remarque (« <15 ») à côté du nombre (15). « <15 » se lit
-/// juste au-dessous de 15 : au palier « au-dessous de 15 », pas à
-/// « 15 à 49 » ; « >90 », juste au-dessus. « ≤ » et « ≥ » comprennent la
-/// borne et la gardent. Une remarque qui n'est pas la borne de ce nombre
-/// ne change rien.
-pub fn bounded(value: f64, remark: &str) -> f64 {
-    let Ok((n, sign)) = read_typed(remark, "") else {
-        return value;
+/// **La borne de laboratoire d'un résultat** — « < », « > », « ≤ »,
+/// « ≥ », ou rien —, lue dans la remarque où elle est rangée (« <15 »)
+/// quand cette remarque n'est que la borne de ce nombre-là. Une remarque
+/// qui dit autre chose, ou un autre nombre, n'en est pas une.
+pub fn bound_sign(value: f64, remark: &str) -> &'static str {
+    let text = remark.trim();
+    let (sign, rest) = match text.chars().next() {
+        Some('<') => ("<", &text[1..]),
+        Some('>') => (">", &text[1..]),
+        Some('≤') => ("≤", &text['≤'.len_utf8()..]),
+        Some('≥') => ("≥", &text['≥'.len_utf8()..]),
+        _ => return "",
     };
-    if (n - value).abs() > 1e-9 {
-        return value;
+    match crate::codex::parse_amount(rest.trim_start()) {
+        // Le nombre de cette ligne, suivi au plus de son unité.
+        Some((n, tail))
+            if (tail.trim().is_empty()
+                || tail
+                    .trim()
+                    .chars()
+                    .all(|c| c.is_alphabetic() || c == '/' || c == 'µ'))
+                && (n - value).abs() <= 1e-9 * value.abs().max(1.0) =>
+        {
+            sign
+        }
+        _ => "",
     }
-    let step = value.abs().max(1.0) * BOUND_STEP;
-    match sign.as_str() {
+}
+
+/// **La valeur que les seuils lisent** : « <15 » juste au-dessous de 15
+/// — le palier « au-dessous de 15 », pas « 15 à 49 » —, « >90 » juste
+/// au-dessus ; « ≤ » et « ≥ » comprennent la borne et la gardent. Pour
+/// comparer seulement : ce qui s'écrit est le nombre et sa borne
+/// ([`value_text`]).
+pub fn effective(value: f64, sign: &str) -> f64 {
+    let step = value.abs().max(1.0) * 1e-6;
+    match sign {
         "<" => value - step,
         ">" => value + step,
         _ => value,
     }
 }
 
-/// The bound a value read by [`bounded`] stands for, to write it back as
-/// the laboratory did: « <15 » rather than « 15,0 ».
-pub fn bound_of(v: f64) -> Option<(&'static str, f64)> {
-    // Au millième : ce qu'un laboratoire écrit, et ce que l'écran garde.
-    let r = (v * 1000.0).round() / 1000.0;
-    let gap = r - v;
-    let step = r.abs().max(1.0) * BOUND_STEP;
-    if gap > 0.0 && (gap - step).abs() < step * 0.5 {
-        Some(("<", r))
-    } else if gap < 0.0 && (-gap - step).abs() < step * 0.5 {
-        Some((">", r))
-    } else {
-        None
-    }
-}
-
-/// A laboratory value as written: « <15 », « <0,5 » for a bounded one,
-/// the number otherwise.
-pub fn value_text(v: f64) -> String {
-    match bound_of(v) {
-        Some((sign, n)) => format!("{sign}{}", crate::codex::format_quantity(n)),
-        None => crate::codex::format_quantity(v),
-    }
+/// Un résultat écrit comme le laboratoire l'a rendu : « <15 », « >1476 »,
+/// le nombre seul sinon.
+pub fn value_text(value: f64, sign: &str) -> String {
+    format!("{sign}{}", crate::codex::format_quantity(value))
 }
 
 /// The analytes matching what is being typed, best first.
@@ -197,6 +195,16 @@ pub struct Reading<'a> {
     pub value: f64,
     /// ISO `YYYY-MM-DD`, possibly empty.
     pub date: &'a str,
+    /// La borne de laboratoire (`bound_sign`) : « < », « > », « ≤ »,
+    /// « ≥ », ou rien.
+    pub bound: &'a str,
+}
+
+impl Reading<'_> {
+    /// Ce que les seuils lisent ([`effective`]).
+    pub fn effective(&self) -> f64 {
+        effective(self.value, self.bound)
+    }
 }
 
 /// How loudly a finding asks to be acted on.
@@ -309,7 +317,7 @@ pub fn read(readings: &[Reading], treatments: &[crate::revue::Treatment]) -> Vec
         let Some(a) = find(code) else {
             continue;
         };
-        let lv = level(a, r.value);
+        let lv = level(a, r.effective());
         if lv.notable() {
             out.push(Finding {
                 severity: if lv.critical() {
@@ -321,7 +329,7 @@ pub fn read(readings: &[Reading], treatments: &[crate::revue::Treatment]) -> Vec
                 text: format!(
                     "{} {} {} — {} ({}). {}",
                     a.label,
-                    value_text(r.value),
+                    value_text(r.value, r.bound),
                     a.unit,
                     level_word(lv),
                     interval_text(a),
@@ -335,7 +343,7 @@ pub fn read(readings: &[Reading], treatments: &[crate::revue::Treatment]) -> Vec
             continue;
         };
         let hit = match rule.side {
-            Side::Above => r.value >= rule.threshold,
+            Side::Above => r.effective() >= rule.threshold,
             // **Strictement au-dessous**, comme le disent les textes
             // (« inférieur à ») et comme le panneau rénal lit ses paliers :
             // à un DFG de 30 tout rond, la biologie annonçait la
@@ -343,7 +351,7 @@ pub fn read(readings: &[Reading], treatments: &[crate::revue::Treatment]) -> Vec
             // le même dossier, disait « dose à réduire ». Un potassium de
             // 3,5 n'est pas une hypokaliémie. Au-dessus, le seuil reste
             // compris : c'est le côté de la prudence.
-            Side::Below => r.value < rule.threshold,
+            Side::Below => r.effective() < rule.threshold,
         };
         if !hit {
             continue;
@@ -1974,31 +1982,29 @@ const RULES: &[Rule] = &[
 
 #[cfg(test)]
 mod tests {
-    use super::{bound_of, bounded, value_text};
+    use super::{bound_sign, effective, value_text};
 
-    /// « <15 » tombe au palier du dessous, « >90 » au-dessus, et s'écrit
-    /// comme le laboratoire l'a écrit.
+    /// « <15 » tombe au palier du dessous, « >90 » au-dessus, et chacun
+    /// s'écrit comme le laboratoire l'a rendu — à toute grandeur.
     #[test]
     fn a_bounded_value_falls_on_the_right_side_of_a_threshold() {
-        let below = bounded(15.0, "<15");
+        assert_eq!(bound_sign(15.0, "<15"), "<");
+        assert_eq!(bound_sign(90.0, "> 90"), ">");
+        assert_eq!(bound_sign(1476.0, ">1476 pmol/L"), ">");
+        assert_eq!(bound_sign(15.0, "≤15"), "≤");
+        assert_eq!(bound_sign(15.0, ""), "");
+        assert_eq!(bound_sign(15.0, "<30"), "");
+        assert_eq!(bound_sign(15.0, "<15 au dernier bilan, à refaire"), "");
+        let below = effective(15.0, "<");
         assert!(below < 15.0 && below > 14.99);
-        assert_eq!(bound_of(below), Some(("<", 15.0)));
-        let above = bounded(90.0, "> 90");
-        assert!(above > 90.0);
-        assert_eq!(bound_of(above), Some((">", 90.0)));
-        assert_eq!(bounded(15.0, "≤15"), 15.0);
-        assert_eq!(bounded(15.0, ""), 15.0);
-        // Une remarque qui n'est pas la borne de ce nombre.
-        assert_eq!(bounded(15.0, "<30 au dernier bilan"), 15.0);
-        assert_eq!(bound_of(15.0), None);
-        assert_eq!(bound_of(29.6), None);
-        assert_eq!(bounded(0.5, "<0,5"), 0.5 - 1e-6);
-        assert_eq!(value_text(bounded(0.5, "<0,5")), "<0,5");
-        assert_eq!(value_text(bounded(15.0, "<15")), "<15");
-        assert_eq!(value_text(1.25), "1,25");
+        assert!(effective(90.0, ">") > 90.0);
+        assert_eq!(effective(15.0, "≤"), 15.0);
+        assert_eq!(value_text(500.0, ">"), ">500");
+        assert_eq!(value_text(1476.0, "<"), "<1476");
+        assert_eq!(value_text(0.5, "<"), "<0,5");
+        assert_eq!(value_text(66.6669, ""), "66,667");
     }
 
-    /// L'unité tapée est vérifiée, et une borne de laboratoire se lit.
     #[test]
     fn a_typed_value_keeps_its_unit_honest() {
         assert_eq!(read_typed("1,2", "g/L"), Ok((1.2, String::new())));
@@ -2077,6 +2083,7 @@ mod tests {
                 code: "DFG",
                 value,
                 date: "2026-09-11",
+                bound: "",
             }];
             read(&readings, &treatments)
                 .iter()
@@ -2106,6 +2113,7 @@ mod tests {
             code: "K",
             value: 5.4,
             date: "2026-09-11",
+            bound: "",
         }];
         let treatments = [treat("Triatec", "ramipril", "IEC", "")];
         let found = read(&readings, &treatments);
@@ -2170,6 +2178,7 @@ mod tests {
             code: "K",
             value: 5.6,
             date: "2026-08-20",
+            bound: "",
         }];
         // On its own the value is reported, but nothing is alerted
         // about a treatment the patient does not take.
@@ -2192,11 +2201,13 @@ mod tests {
                 code: "K",
                 value: 6.2,
                 date: "2026-01-05",
+                bound: "",
             },
             Reading {
                 code: "K",
                 value: 4.1,
                 date: "2026-08-20",
+                bound: "",
             },
         ];
         let found = read(&readings, &[treat("Coversyl", "périndopril", "IEC", "")]);
@@ -2207,11 +2218,13 @@ mod tests {
                 code: "K",
                 value: 4.8,
                 date: "2026-08-20",
+                bound: "",
             },
             Reading {
                 code: "K",
                 value: 6.2,
                 date: "2026-08-20",
+                bound: "",
             },
         ];
         let found = read(&same_day, &[treat("Coversyl", "périndopril", "IEC", "")]);
@@ -2224,6 +2237,7 @@ mod tests {
             code: "DFG",
             value: 26.0,
             date: "2026-08-20",
+            bound: "",
         }];
         let found = read(&readings, &[treat("Eliquis", "apixaban", "AOD", "")]);
         assert!(found
@@ -2473,6 +2487,7 @@ mod tests {
                         code: a.code,
                         value: v,
                         date: "2026-09-13",
+                        bound: "",
                     }];
                     // Ce que la valeur dit d'elle-même n'est pas en
                     // cause : seules les règles qui nomment un
@@ -2515,6 +2530,7 @@ mod tests {
             code: "INR",
             value: 1.2,
             date: "2026-09-01",
+            bound: "",
         }];
         let got = read(&inr, &[t("Vitamine K1")]);
         assert!(
@@ -2526,6 +2542,7 @@ mod tests {
             code: "GGT",
             value: 120.0,
             date: "2026-09-01",
+            bound: "",
         }];
         let got = read(&ggt, &[t("Previscan")]);
         assert!(

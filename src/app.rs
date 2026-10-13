@@ -311,10 +311,6 @@ pub fn env_password() -> Option<String> {
 /// Un DFG tel que l'écran l'écrit : entier quand il l'est, au dixième
 /// sinon, pour qu'un 29,6 ne s'écrive jamais « 30 » à côté de « sous 30 ».
 fn renal_dfg_text(v: f64) -> String {
-    // Une borne de laboratoire s'écrit comme il l'a écrite : « <15 ».
-    if crate::biology::bound_of(v).is_some() {
-        return crate::biology::value_text(v);
-    }
     if (v - v.round()).abs() < 0.05 {
         format!("{v:.0}")
     } else {
@@ -4873,6 +4869,8 @@ struct Session {
     /// Ce que le rein impose au dossier ouvert, **déjà résolu**.
     renal: Vec<crate::renal::Resolved>,
     renal_dfg: Option<f64>,
+    /// Le DFG tel que le laboratoire l'a rendu, borne comprise (« <15 »).
+    renal_dfg_shown: String,
     /// Le jour de ce DFG, ISO ; vide sans DFG.
     renal_dfg_on: String,
     /// Ce qu'on peut écraser de l'ordonnance ouverte, ligne par ligne
@@ -6304,6 +6302,7 @@ impl Session {
             bio_findings: Vec::new(),
             renal: Vec::new(),
             renal_dfg: None,
+            renal_dfg_shown: String::new(),
             renal_dfg_on: String::new(),
             crush: Vec::new(),
             gravidity: Vec::new(),
@@ -12507,6 +12506,16 @@ impl Session {
         }
     }
 
+    /// The file's DFG as written: the laboratory's bound when it gave one
+    /// (« <15 »), otherwise the value the tables read.
+    fn renal_dfg_text(&self, v: f64) -> String {
+        if self.renal_dfg_shown.starts_with(['<', '>', '≤', '≥']) {
+            self.renal_dfg_shown.clone()
+        } else {
+            renal_dfg_text(v)
+        }
+    }
+
     /// What the stock says against the lot typed for the dose being written.
     fn vacc_lot_notice(&self) -> Option<String> {
         let (_, Some(w)) = self.vacc_lot_warn.as_ref()? else {
@@ -13340,8 +13349,9 @@ impl Session {
             .filter(|r| !r.code.is_empty())
             .map(|r| crate::biology::Reading {
                 code: r.code.as_str(),
-                value: crate::biology::bounded(r.value, &r.remark),
+                value: r.value,
                 date: r.taken_on.as_str(),
+                bound: crate::biology::bound_sign(r.value, &r.remark),
             })
             .collect();
         // Everything the file knows about what the patient takes —
@@ -13390,7 +13400,11 @@ impl Session {
         // Comparé **brut** — arrondi, 29,6 devenait 30 et taisait le
         // « contre-indiqué sous 30 » ; l'écran l'écrit au dixième sous
         // les seuils, voir `renal_dfg_text`.
-        let dfg = latest.map(|r| r.value);
+        let dfg = latest.map(|r| r.effective());
+        // Ce qui s'écrit : le nombre rendu et sa borne.
+        self.renal_dfg_shown = latest
+            .map(|r| crate::biology::value_text(r.value, r.bound))
+            .unwrap_or_default();
         self.renal_dfg_on = latest.map(|r| r.date.to_owned()).unwrap_or_default();
         self.renal = crate::renal::resolve(crate::renal::read(&terms, dfg), &self.content);
         self.renal_dfg = dfg;
@@ -13522,9 +13536,16 @@ impl Session {
                 day: b.taken_on.clone(),
                 kind: Kind::Biologie,
                 title: b.label.clone(),
-                detail: format!("{} {}", crate::codex::format_quantity(b.value), b.unit)
-                    .trim()
-                    .to_owned(),
+                detail: format!(
+                    "{} {}",
+                    crate::biology::value_text(
+                        b.value,
+                        crate::biology::bound_sign(b.value, &b.remark)
+                    ),
+                    b.unit
+                )
+                .trim()
+                .to_owned(),
                 id: b.id,
             });
         }
@@ -16831,10 +16852,11 @@ fn bio_watch(db: &Db, today: &str) -> Vec<BioWatch> {
             .readings
             .iter()
             .rev()
-            .map(|(code, value, date)| crate::biology::Reading {
+            .map(|(code, value, date, bound)| crate::biology::Reading {
                 code: code.as_str(),
                 value: *value,
                 date: date.as_str(),
+                bound: bound.as_str(),
             })
             .collect();
         let terms: Vec<crate::revue::Treatment> = row
@@ -26263,7 +26285,7 @@ impl App {
                             Some(v) => trn(
                                 "renal_dfg",
                                 &[
-                                    &renal_dfg_text(v),
+                                    &session.renal_dfg_text(v),
                                     &db::format_french_date(&session.renal_dfg_on),
                                 ],
                             ),
@@ -28670,7 +28692,12 @@ impl App {
                                                 egui::Label::new(
                                                     egui::RichText::new(format!(
                                                         "{} {}",
-                                                        crate::codex::format_quantity(r.value),
+                                                        crate::biology::value_text(
+                                                            r.value,
+                                                            crate::biology::bound_sign(
+                                                                r.value, &r.remark
+                                                            )
+                                                        ),
                                                         r.unit
                                                     ))
                                                     .size(motif::pt(ui, 12.0))
@@ -28688,7 +28715,15 @@ impl App {
                                         // interval to be read against.
                                         match crate::biology::find(&r.code) {
                                             Some(a) => {
-                                                let level = crate::biology::level(a, r.value);
+                                                let level = crate::biology::level(
+                                                    a,
+                                                    crate::biology::effective(
+                                                        r.value,
+                                                        crate::biology::bound_sign(
+                                                            r.value, &r.remark,
+                                                        ),
+                                                    ),
+                                                );
                                                 if level.notable() {
                                                     ui.label(
                                                         egui::RichText::new(format!(
@@ -28837,7 +28872,10 @@ impl App {
             });
         });
         if let Some(r) = start_edit {
-            session.bio_edit_value = crate::codex::format_quantity(r.value);
+            // La valeur telle qu'elle a été rendue, borne comprise : la
+            // retaper sans elle la retire.
+            session.bio_edit_value =
+                crate::biology::value_text(r.value, crate::biology::bound_sign(r.value, &r.remark));
             session.bio_edit_date = if r.taken_on.is_empty() {
                 String::new()
             } else {
@@ -28961,9 +28999,14 @@ impl App {
                 return;
             }
         };
-        if !bound.is_empty() {
-            edited.remark = session.bio_edit_value.trim().to_owned();
-        }
+        // La remarque est la borne de ce nombre, ou rien : retapé sans
+        // « < », le résultat n'est plus borné — jamais une borne d'avant
+        // restée en remarque.
+        edited.remark = if bound.is_empty() {
+            String::new()
+        } else {
+            session.bio_edit_value.trim().to_owned()
+        };
         let taken_on = if session.bio_edit_date.trim().is_empty() {
             String::new()
         } else {
@@ -30090,8 +30133,14 @@ impl App {
             .iter()
             .take(12)
             .map(|r| {
+                let bound = crate::biology::bound_sign(r.value, &r.remark);
                 let level = crate::biology::find(&r.code)
-                    .map(|a| crate::biology::level_word(crate::biology::level(a, r.value)))
+                    .map(|a| {
+                        crate::biology::level_word(crate::biology::level(
+                            a,
+                            crate::biology::effective(r.value, bound),
+                        ))
+                    })
                     .unwrap_or("")
                     .to_owned();
                 (
@@ -30101,7 +30150,7 @@ impl App {
                         db::format_french_date(&r.taken_on)
                     },
                     r.label.clone(),
-                    format!("{} {}", crate::codex::format_quantity(r.value), r.unit),
+                    format!("{} {}", crate::biology::value_text(r.value, bound), r.unit),
                     level,
                 )
             })
@@ -30112,8 +30161,9 @@ impl App {
             .filter(|r| !r.code.is_empty())
             .map(|r| crate::biology::Reading {
                 code: r.code.as_str(),
-                value: crate::biology::bounded(r.value, &r.remark),
+                value: r.value,
                 date: r.taken_on.as_str(),
+                bound: crate::biology::bound_sign(r.value, &r.remark),
             })
             .collect();
         let words: Vec<crate::revue::Treatment> = treats
@@ -76977,8 +77027,9 @@ impl App {
             .filter(|r| !r.code.is_empty())
             .map(|r| crate::biology::Reading {
                 code: r.code.as_str(),
-                value: crate::biology::bounded(r.value, &r.remark),
+                value: r.value,
                 date: r.taken_on.as_str(),
+                bound: crate::biology::bound_sign(r.value, &r.remark),
             })
             .collect();
         // Les cascades déjà lues : la carte ne les lit pas pour son
@@ -81330,8 +81381,9 @@ impl App {
                     .filter(|r| !r.code.is_empty())
                     .map(|r| crate::biology::Reading {
                         code: r.code.as_str(),
-                        value: crate::biology::bounded(r.value, &r.remark),
+                        value: r.value,
                         date: r.taken_on.as_str(),
+                        bound: crate::biology::bound_sign(r.value, &r.remark),
                     })
                     .collect::<Vec<_>>(),
                 found,
@@ -81578,7 +81630,7 @@ impl App {
                                     .map(|a| trf("companion_file_age", a)),
                                 session
                                     .renal_dfg
-                                    .map(|v| trf("companion_file_dfg", renal_dfg_text(v))),
+                                    .map(|v| trf("companion_file_dfg", session.renal_dfg_text(v))),
                             ]
                             .into_iter()
                             .flatten()
@@ -92528,6 +92580,7 @@ mod tests {
             code: "TCA",
             value: 4.0,
             date: "2026-09-01",
+            bound: "",
         }];
         let chips = |card: &Drug, bio: &[crate::biology::Reading]| -> Vec<String> {
             super::companion_signals(
