@@ -166,8 +166,7 @@ BPM-Caddy reads a `config.toml` from the platform config directory:
 ```toml
 [database]
 # Point this at the pharmacy network drive to share the database — the
-# team documentation file (notes_equipe.md) lives next to it and is
-# shared the same way.
+# team notes live inside it, encrypted, and are shared the same way.
 path = "Z:/LGO_Shared/bpm_caddy.db"
 auto_lock_timeout_minutes = 15
 # Daily snapshots kept in backups/ (0 disables them).

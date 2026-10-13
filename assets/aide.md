@@ -20,7 +20,9 @@ Trois volets autour d'un cahier d'onglets.
 - Au centre, la vue ouverte. Les onglets du haut en gardent plusieurs
   ouvertes à la fois.
 - À droite, ce volet : notes d'équipe, carnet du jour, notes
-  personnelles et aide.
+  personnelles et aide. Les notes d'équipe vivent dans la base chiffrée
+  et voyagent avec elle vers les autres postes ; elles ne se lisent
+  qu'une fois la session ouverte.
 
 Les volets latéraux se ferment et se redimensionnent ; leur largeur et
 la vue ouverte sont conservées d'une session à l'autre.

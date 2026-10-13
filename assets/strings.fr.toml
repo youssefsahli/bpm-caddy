@@ -1922,6 +1922,7 @@ docs_title = "Documentation d'équipe"
 docs_saved = "Enregistré"
 docs_saving = "Modifications en cours…"
 docs_save_error = "Enregistrement impossible : {}"
+docs_busy = "la base change sans cesse, réessai à la prochaine frappe"
 docs_merged = "Notes fusionnées avec un autre poste."
 docs_operator = "Opérateur"
 docs_stamp = "+ Entrée"
@@ -1938,6 +1939,7 @@ pw_empty = "Le mot de passe ne peut pas être vide."
 pw_mismatch = "Les deux saisies ne correspondent pas."
 
 # --- Modèle des notes d'équipe (premier lancement) ---
+team_doc_moved = "Les notes d'équipe vivent désormais dans la base chiffrée de BPM-Caddy (volet « Docs »). Ce fichier n'est plus lu."
 team_doc_template = """
 # Notes d'équipe — BPM-Caddy
 

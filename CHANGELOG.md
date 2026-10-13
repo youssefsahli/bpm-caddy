@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- The team notes (« Docs » pane) live in the encrypted base instead of a
+  plain `notes_equipe.md` next to it — a file its template invited to fill
+  with patient names, outside the encryption and the backups. They are
+  read only once a session is open, saved against what this post last
+  read (another post's lines merged in), travel to the other posts like
+  every officine setting, and are forgotten at lock. The old file is
+  brought in once, then emptied of its contents.
+
 ## [0.426.0] - 2026-10-13
 
 ### Fixed

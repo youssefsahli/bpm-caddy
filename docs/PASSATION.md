@@ -170,13 +170,12 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
 - impression d'un entretien : fait le 13/10 (les phrases de `pdf.rs` dans
   `strings.fr.toml`, « — » pour une naissance inconnue et sous une liste
   vide) ;
-- **le document d'équipe (`notes_equipe.md`) est un fichier en clair**
-  à côté de la base, que son modèle invite à remplir de noms
-  (« Patients à recontacter ») : hors du chiffrement, hors des copies et
-  des sauvegardes, et partagé seulement par un dossier commun — à
-  ranger dans la base, chiffré et compare-and-set ; sa fusion entre deux
-  postes ramène une ligne que l'autre avait rayée et duplique une ligne
-  reformulée ;
+- le document d'équipe vit dans la base chiffrée (réglage `team_doc`,
+  compare-and-set ; l'ancien `notes_equipe.md` repris puis vidé — fait le
+  13/10). Reste : sa fusion entre deux postes ramène une ligne que
+  l'autre avait rayée et duplique une ligne reformulée ; deux postes à
+  bases séparées qui l'écrivent en même temps lèvent un conflit à
+  arbitrer ;
 - une transmission écrite dans les deux secondes après minuit se range au
   jour nouveau pendant que la page montre encore la veille ;
 - tables de référence : `edited_table_keys` et `all_table_cells`

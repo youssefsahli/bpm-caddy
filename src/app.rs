@@ -2828,6 +2828,9 @@ fn notes_box(
     (add, delete)
 }
 
+/// La clé sous laquelle la base garde les notes d'équipe.
+const TEAM_DOC_KEY: &str = "team_doc";
+
 /// Union-merge for the shared team notes: keep our text, append the
 /// lines another PC added since the common `base` (lines we deleted
 /// ourselves stay deleted). Notes are lists — line granularity is the
@@ -18269,9 +18272,12 @@ pub struct App {
     doc_dirty: bool,
     doc_last_edit: Instant,
     doc_error: Option<String>,
-    /// Last content known to be on disk — the merge base when another
-    /// PC saves the shared notes concurrently.
+    /// Last content known to be in the base — the merge base when another
+    /// post saves the shared notes concurrently.
     doc_base: String,
+    /// Les notes d'équipe ont été lues de la base pour cette session : elles
+    /// n'existent qu'une fois la base ouverte, et s'effacent au verrouillage.
+    doc_loaded: bool,
     /// Whether the notes editor currently has keyboard focus (don't
     /// swap the text under the cursor).
     doc_focused: bool,
@@ -18770,8 +18776,9 @@ impl App {
         // `config` reste modifiable au-delà d'ici : l'officine se lit
         // dans la base dès qu'une session s'ouvre, et remplace alors ce
         // que le fichier de ce poste en disait — voir `adopt_officine`.
-        let doc_text = std::fs::read_to_string(config.team_doc_path())
-            .unwrap_or_else(|_| tr("team_doc_template").to_owned());
+        // Les notes d'équipe vivent dans la base chiffrée : lues une fois
+        // celle-ci ouverte (`load_team_doc`), jamais d'un fichier en clair.
+        let doc_text = String::new();
         // The shape the post was last left in wins over the start-up
         // flags; the flags are what a first launch has to go on.
         let layout = crate::config::Layout::load();
@@ -20761,6 +20768,7 @@ impl App {
             doc_base: doc_text.clone(),
             doc_text,
             doc_dirty: false,
+            doc_loaded: false,
             doc_last_edit: Instant::now(),
             doc_error: None,
             doc_focused: false,
@@ -21011,36 +21019,103 @@ impl App {
         }
     }
 
+    /// **Save the team notes into the base**, against what this post last
+    /// read there: another post saved meanwhile, its lines are merged in
+    /// (`merge_team_notes`) and written against what it wrote. Never under
+    /// a focused cursor — the debounce retries once focus leaves.
     fn save_doc(&mut self) {
-        let path = self.config.team_doc_path();
-        // Another PC may have saved since our last sync: merge their
-        // additions instead of overwriting the whole file with our copy.
+        let operator = self.operator.trim().to_owned();
+        let State::Unlocked(session) = &self.state else {
+            return;
+        };
+        if !self.doc_loaded {
+            return;
+        }
         let mut notice = None;
-        if let Ok(disk) = std::fs::read_to_string(&path) {
-            if disk != self.doc_base && disk != self.doc_text {
-                // Never rewrite the text under a focused cursor: skip
-                // this save cycle, the merge happens once focus leaves
-                // (the debounce keeps retrying while dirty).
-                if self.doc_focused {
+        for _ in 0..3 {
+            let current = session.db.setting(TEAM_DOC_KEY);
+            if let Some(theirs) = current.as_deref() {
+                if theirs != self.doc_base && theirs != self.doc_text {
+                    if self.doc_focused {
+                        return;
+                    }
+                    self.doc_text = merge_team_notes(&self.doc_base, &self.doc_text, theirs);
+                    notice = Some(tr("docs_merged").to_owned());
+                }
+            }
+            match session.db.set_setting(
+                TEAM_DOC_KEY,
+                &self.doc_text,
+                current.as_deref(),
+                &session.today,
+                &operator,
+            ) {
+                Ok(true) => {
+                    self.doc_dirty = false;
+                    self.doc_base = self.doc_text.clone();
+                    self.doc_error = notice;
                     return;
                 }
-                self.doc_text = merge_team_notes(&self.doc_base, &self.doc_text, &disk);
-                notice = Some(tr("docs_merged").to_owned());
+                // Écrit ailleurs entre la lecture et l'écriture : relire, fondre.
+                Ok(false) => continue,
+                Err(e) => {
+                    self.doc_error = Some(trf("docs_save_error", e));
+                    return;
+                }
             }
         }
-        let result = path
-            .parent()
-            .map(std::fs::create_dir_all)
-            .unwrap_or(Ok(()))
-            .and_then(|()| std::fs::write(&path, &self.doc_text));
-        match result {
-            Ok(()) => {
-                self.doc_dirty = false;
-                self.doc_base = self.doc_text.clone();
-                self.doc_error = notice;
+        self.doc_error = Some(trf("docs_save_error", tr("docs_busy")));
+    }
+
+    /// **Read the team notes from the base**, once a session is open. The
+    /// first time on a base, the notes the post kept in a plain file next
+    /// to it (`notes_equipe.md`, before 0.427) are brought in — and the
+    /// file is emptied of them: names of patients had no business in a
+    /// clear file outside the encryption and the backups.
+    fn load_team_doc(&mut self) {
+        let operator = self.operator.trim().to_owned();
+        let State::Unlocked(session) = &self.state else {
+            return;
+        };
+        let text = match session.db.setting(TEAM_DOC_KEY) {
+            Some(t) => t,
+            None => {
+                let path = self.config.team_doc_path();
+                let from_file = std::fs::read_to_string(&path)
+                    .ok()
+                    .filter(|t| t.trim() != tr("team_doc_moved").trim());
+                let text = from_file
+                    .clone()
+                    .unwrap_or_else(|| tr("team_doc_template").to_owned());
+                // Le premier venu l'écrit ; un autre poste qui a pris les
+                // devants a déjà mis le sien.
+                let wrote = session
+                    .db
+                    .set_setting(TEAM_DOC_KEY, &text, None, &session.today, &operator)
+                    .unwrap_or(false);
+                if wrote && from_file.is_some() {
+                    let _ = std::fs::write(&path, tr("team_doc_moved"));
+                }
+                session.db.setting(TEAM_DOC_KEY).unwrap_or(text)
             }
-            Err(e) => self.doc_error = Some(trf("docs_save_error", e)),
+        };
+        self.doc_base = text.clone();
+        self.doc_text = text;
+        self.doc_dirty = false;
+        self.doc_loaded = true;
+    }
+
+    /// Before the session goes: the notes typed are saved, then forgotten —
+    /// nothing of them stays in memory behind the lock screen.
+    fn close_team_doc(&mut self) {
+        if self.doc_dirty {
+            self.doc_focused = false;
+            self.save_doc();
         }
+        self.doc_text.clear();
+        self.doc_base.clear();
+        self.doc_dirty = false;
+        self.doc_loaded = false;
     }
 
     /// The pane showing the day's carnet: read the entries, add one.
@@ -80024,6 +80099,7 @@ impl App {
                 // rendait.
                 session.flush_telemetry();
                 Self::keep_online_seen(&mut self.layout, session);
+                self.close_team_doc();
                 self.state = State::Locked {
                     password: String::new(),
                     error: None,
@@ -83980,6 +84056,7 @@ impl eframe::App for App {
                 session.flush_date_edits();
                 session.flush_telemetry();
                 Self::keep_online_seen(&mut self.layout, session);
+                self.close_team_doc();
                 self.state = State::Locked {
                     password: String::new(),
                     error: None,
@@ -84052,10 +84129,12 @@ impl eframe::App for App {
             && self.doc_check.elapsed() > Duration::from_secs(3)
         {
             self.doc_check = Instant::now();
-            if let Ok(disk) = std::fs::read_to_string(self.config.team_doc_path()) {
-                if disk != self.doc_base {
-                    self.doc_base = disk.clone();
-                    self.doc_text = disk;
+            if let State::Unlocked(session) = &self.state {
+                if let Some(stored) = session.db.setting(TEAM_DOC_KEY) {
+                    if stored != self.doc_base {
+                        self.doc_base = stored.clone();
+                        self.doc_text = stored;
+                    }
                 }
             }
         }
@@ -87552,6 +87631,7 @@ impl eframe::App for App {
                     if let State::Unlocked(session) = &mut self.state {
                         Self::keep_online_seen(&mut self.layout, session);
                     }
+                    self.close_team_doc();
                     self.state = State::Locked {
                         password: String::new(),
                         error: Some(tr("opts_db_moved_now").to_owned()),
@@ -87733,6 +87813,11 @@ impl eframe::App for App {
             self.nav_dock(ctx);
         }
 
+        // Les notes d'équipe, lues de la base dès qu'une session est ouverte
+        // — à chaque déverrouillage, quel qu'en soit le chemin.
+        if !self.doc_loaded && matches!(self.state, State::Unlocked(_)) {
+            self.load_team_doc();
+        }
         // Debounced auto-save runs even when the pane is hidden.
         if self.doc_dirty && self.doc_last_edit.elapsed() > Duration::from_millis(1200) {
             self.save_doc();
@@ -87767,11 +87852,8 @@ impl eframe::App for App {
             Self::keep_online_seen(&mut self.layout, session);
         }
         self.layout.save();
-        if self.doc_dirty {
-            // No cursor to protect on the way out: allow the merge.
-            self.doc_focused = false;
-            self.save_doc();
-        }
+        // No cursor to protect on the way out: allow the merge.
+        self.close_team_doc();
         // Ce que ce poste a compté depuis le dernier versement. Sans
         // cette ligne, les cinq dernières minutes de chaque journée
         // seraient perdues — et la dernière journée en entier sur un
