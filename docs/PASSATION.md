@@ -55,11 +55,14 @@ registre FINESS, la carte suggère son FINESS — chaque commit relu) a
 passé son smoke dans les quatre formes (539df12) ; la 0.419.0 (le
 répertoire en IPv6, sans transfert de port, et ses bornes par abonné et
 par réseau — trois relectures de sécurité, corrigées) a passé son smoke
-dans les quatre formes (2b58429) : **c'est elle à publier** —
-`git tag v0.419.0 2b58429 && git push origin v0.419.0` (à défaut, la
-0.418.0 : `git tag v0.418.0 539df12`). Après elle, sur `main` : l'onglet
-de la carte compte les officines apparues (relu, corrigé), pour la
-0.420.0 ; les étiquettes intermédiaires n'ont jamais été
+dans les quatre formes (2b58429) ; la 0.420.0 (l'onglet de la carte
+compte les officines apparues, « En ligne » déplie une entrée en entier
+— relus, corrigés) a passé son smoke dans les quatre formes (da6c454) :
+**c'est elle à publier** — `git tag v0.420.0 da6c454 && git push origin
+v0.420.0` (à défaut, la 0.419.0 : `git tag v0.419.0 2b58429`). Après
+elle, sur `main` : « En ligne » filtre « Différentes d'ici » et prend la
+version d'une officine du répertoire (deux relectures, corrigées), pour
+la 0.421.0 ; les étiquettes intermédiaires n'ont jamais été
 posées, et **la 0.395.0 ne se publie pas** (elle lisait mal les doses de
 charge et les titrations, corrigé dans la 0.396.0).
 
