@@ -895,7 +895,10 @@ clé de réseau n'y passe.
   sur son fil — sa **carte de visite**
   signée par la clé de l'officine sur le réseau (la même que
   l'appairage montre) et son **catalogue** — les seuls champs des sortes
-  publiques dont la dernière version est d'ici (`enligne::own_offers`) :
+  publiques dont la dernière version est d'ici (`enligne::own_offers`),
+  **et que la base tient encore** (`repertoire::catalogue_where` : le
+  journal garde les versions d'une entrée supprimée, qui ne se publie
+  plus) :
   jamais une liste, une phrase, ce qu'une officine appairée a réécrit, ni
   un patient, ni un nom qu'elle a reçu. Décochée, ou l'adresse changée,
   une carte de départ la retire. Le réglage retient le répertoire qui a

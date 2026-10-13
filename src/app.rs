@@ -8325,6 +8325,8 @@ impl Session {
     /// Ce que cette liste laisse dehors est aussi important que ce
     /// qu'elle contient — voir [`Self::sync_if_others_wrote`].
     fn resync(&mut self) {
+        // Le stock de lots a pu changer ailleurs.
+        self.vacc_lot_warn = None;
         // Deux lectures gardées d'une image à l'autre et qu'un autre
         // poste peut rendre fausses : la biologie d'un dossier (la carte)
         // et les lignes par indication d'une fiche (les calculs).
@@ -11480,13 +11482,39 @@ impl Session {
         }
     }
 
+    /// The entries this base holds now, by kind and key — what the
+    /// catalogue may publish: the journal keeps a deleted entry's versions.
+    #[cfg(feature = "sync")]
+    fn cards_here(&self) -> std::collections::HashSet<(&'static str, String)> {
+        crate::versions::Kind::ALL
+            .into_iter()
+            .filter(|k| !k.is_private())
+            .flat_map(|k| {
+                self.db
+                    .offer_locals(k)
+                    .unwrap_or_default()
+                    .into_keys()
+                    .map(move |card| (k.key(), card))
+            })
+            .collect()
+    }
+
     /// **What this officine publishes**, exactly as its card's catalogue
     /// leaves — composed by the same function, read back from its bytes —
     /// shown in « En ligne », to look at before appearing.
     #[cfg(feature = "sync")]
     fn carte_preview_own(&mut self, name: &str) {
+        // Le nom que la carte porterait : sans nom, elle ne part pas.
+        let name = name.trim();
+        if name.is_empty() {
+            self.carte.note = Some((true, tr("carte_need_name").to_owned()));
+            return;
+        }
         self.reload_card_edits();
-        let (bytes, _) = crate::repertoire::catalogue_of(&self.card_edits);
+        let here = self.cards_here();
+        let (bytes, _) = crate::repertoire::catalogue_where(&self.card_edits, |k, card| {
+            here.contains(&(k.key(), card.to_owned()))
+        });
         let articles: Vec<crate::repertoire::Article> =
             serde_json::from_slice(&bytes).unwrap_or_default();
         let offers: Vec<crate::enligne::Offer> = articles
@@ -11963,10 +11991,17 @@ impl Session {
         } else {
             Vec::new()
         };
+        let here = if present {
+            self.cards_here()
+        } else {
+            std::collections::HashSet::new()
+        };
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let (catalogue, parts) = if present {
-                crate::repertoire::catalogue_of(&edits)
+                crate::repertoire::catalogue_where(&edits, |k, card| {
+                    here.contains(&(k.key(), card.to_owned()))
+                })
             } else {
                 (Vec::new(), Vec::new())
             };
@@ -12440,6 +12475,19 @@ impl Session {
             })
             .collect();
         self.camp.campaign = Some(campaign);
+    }
+
+    /// What the stock says against the lot typed for the dose being written.
+    fn vacc_lot_notice(&self) -> Option<String> {
+        let (_, Some(w)) = self.vacc_lot_warn.as_ref()? else {
+            return None;
+        };
+        Some(match w {
+            crate::campagne::LotWarning::Expired(on) => {
+                trf("vacc_lot_expired", db::format_french_date(on))
+            }
+            crate::campagne::LotWarning::OtherVaccine(product) => trf("vacc_lot_other", product),
+        })
     }
 
     /// Le numéro du lot en stock pour ce vaccin qui périme le premier,
@@ -13075,6 +13123,7 @@ impl Session {
         if previous != Some(patient.id) {
             self.export_box = None;
             self.vacc_new = db::Vaccination::default();
+            self.vacc_lot_proposed = None;
             self.vacc_new_date.clear();
         }
         self.rule_block = None;
@@ -25361,11 +25410,14 @@ impl App {
                             Self::parse_carnet_date(&session.vacc_new_date, &today)
                                 .unwrap_or_else(|_| today.clone())
                         };
-                        let asked = [
-                            session.vacc_new.lot.clone(),
-                            session.vacc_new.code.clone(),
-                            given,
-                        ];
+                        // Le code sous lequel la dose s'enregistrera, pas celui
+                        // d'un choix qu'on a retapé par-dessus.
+                        let code = Self::catalogue_code(
+                            &session.vacc_catalogue,
+                            &session.vacc_new.code,
+                            &session.vacc_new.label,
+                        );
+                        let asked = [session.vacc_new.lot.clone(), code, given];
                         if session.vacc_lot_warn.as_ref().map(|(a, _)| a) != Some(&asked) {
                             let lots = session.db.vaccine_lots().unwrap_or_default();
                             let warn = crate::campagne::lot_warning(
@@ -25373,16 +25425,30 @@ impl App {
                             );
                             session.vacc_lot_warn = Some((asked, warn));
                         }
-                        if let Some((_, Some(w))) = &session.vacc_lot_warn {
-                            let text = match w {
-                                crate::campagne::LotWarning::Expired(on) => {
-                                    trf("vacc_lot_expired", db::format_french_date(on))
-                                }
-                                crate::campagne::LotWarning::OtherVaccine(product) => {
-                                    trf("vacc_lot_other", product)
-                                }
-                            };
-                            motif::badge(ui, &text, Some(motif::Pict::Warn), motif::alert(), true);
+                        // Une ligne, tronquée, la phrase entière au survol —
+                        // comptée par `carnet_notice_h`. Pas pendant qu'on
+                        // corrige une ligne déjà écrite : ce lot-ci n'est
+                        // pas le sien.
+                        if let (Some(text), None) = (session.vacc_lot_notice(), &session.vacc_edit)
+                        {
+                            ui.horizontal(|ui| {
+                                motif::badge(
+                                    ui,
+                                    tr("vacc_lot_check"),
+                                    Some(motif::Pict::Warn),
+                                    motif::alert(),
+                                    true,
+                                );
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(text.as_str())
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::alert()),
+                                    )
+                                    .truncate(),
+                                )
+                                .on_hover_text(text.as_str());
+                            });
                         }
                         // Ce que le catalogue reconnaît dans ce qui est
                         // tapé : des rangées, les flèches et Entrée,
@@ -25648,6 +25714,7 @@ impl App {
                             Ok(_) => {
                                 session.error = None;
                                 session.vacc_new = db::Vaccination::default();
+                                session.vacc_lot_proposed = None;
                                 session.vacc_new_date.clear();
                                 session.vacc_cursor = 0;
                                 session.focus_vacc_name = true;
@@ -30985,6 +31052,11 @@ impl App {
         // La remarque sur la dose en cours de saisie : une ligne, tronquée.
         if !session.carnet_entry_warnings().is_empty() {
             h += Self::label_line(ui) + ui.spacing().item_spacing.y;
+        }
+        // Le lot que le stock contredit : une rangée (la pastille, la phrase
+        // tronquée).
+        if session.vacc_lot_notice().is_some() && session.vacc_edit.is_none() {
+            h += Self::button_height(ui).max(Self::label_line(ui)) + ui.spacing().item_spacing.y;
         }
         h
     }
@@ -58200,6 +58272,9 @@ impl App {
                     lot.received_on = today.clone();
                     match session.db.add_vaccine_lot(&lot) {
                         Ok(_) => {
+                            // Le stock a changé : ce que le carnet disait d'un
+                            // lot tapé se relit.
+                            session.vacc_lot_warn = None;
                             let code = std::mem::take(&mut session.camp.new_lot.code);
                             session.camp.new_lot = campagne::Lot {
                                 code,
@@ -58242,6 +58317,7 @@ impl App {
         }
         if let Some((id, lot)) = delete_lot {
             session.camp.confirm_delete = None;
+            session.vacc_lot_warn = None;
             match session.db.delete_vaccine_lot(id, &lot) {
                 Ok(true) => reload = true,
                 Ok(false) => {
@@ -58498,10 +58574,12 @@ impl App {
                     .find(|v| v.code == code)
                     .cloned()
                 {
+                    let lot = session.first_usable_lot(&v.code).unwrap_or_default();
+                    session.vacc_lot_proposed = (!lot.is_empty()).then(|| lot.clone());
                     session.vacc_new = db::Vaccination {
                         code: v.code.clone(),
                         label: v.label.clone(),
-                        lot: session.first_usable_lot(&v.code).unwrap_or_default(),
+                        lot,
                         ..Default::default()
                     };
                     session.vacc_new_date.clear();
@@ -58521,6 +58599,7 @@ impl App {
                     .find(|v| v.code == code)
                     .cloned()
                 {
+                    session.vacc_lot_proposed = None;
                     session.vacc_new = db::Vaccination {
                         code: v.code.clone(),
                         label: v.label.clone(),
@@ -65285,6 +65364,9 @@ impl App {
                                         .color(motif::text_dim()),
                                 );
                                 match here {
+                                    // Ce que cette officine publie : rien ne se
+                                    // prend, c'est déjà sa base.
+                                    _ if online.remote.as_ref().is_some_and(|r| r.own) => {}
                                     Here::Absent => {
                                         if motif::button(ui, tr("online_take"))
                                             .on_hover_text(tr("online_take_tooltip"))

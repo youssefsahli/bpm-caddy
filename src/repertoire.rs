@@ -280,12 +280,22 @@ pub fn digest(catalogue: &[u8]) -> String {
 /// sortes publiques, chaque entrée à sa dernière version — et le compte
 /// par sorte que sa carte annonce.
 pub fn catalogue_of(edits: &[versions::Edit]) -> (Vec<u8>, Vec<(String, u32)>) {
+    catalogue_where(edits, |_, _| true)
+}
+
+/// [`catalogue_of`], réduit aux entrées que `here` dit encore là (sorte,
+/// clé) : le journal garde les versions d'une fiche supprimée, et une
+/// fiche retirée parce qu'elle était fausse ne se publie plus.
+pub fn catalogue_where(
+    edits: &[versions::Edit],
+    here: impl Fn(Kind, &str) -> bool,
+) -> (Vec<u8>, Vec<(String, u32)>) {
     let mut articles = Vec::new();
     let mut parts = Vec::new();
     for kind in Kind::ALL.into_iter().filter(|k| !k.is_private()) {
         let own = crate::enligne::own_offers(edits, kind);
         let mut n = 0_u32;
-        for o in own {
+        for o in own.into_iter().filter(|o| here(kind, &o.card)) {
             if articles.len() >= ARTICLES_MAX {
                 break;
             }
@@ -1139,6 +1149,22 @@ pub fn fetch_catalogue(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Une entrée supprimée ici ne se publie plus, même si le journal
+    /// garde ses versions.
+    #[test]
+    fn a_deleted_entry_leaves_the_catalogue() {
+        let edits = vec![
+            edit(Kind::Codex, "Lugol", "form", "solution", ""),
+            edit(Kind::Codex, "Dakin", "form", "solution", ""),
+        ];
+        let (all, _) = catalogue_of(&edits);
+        let (kept, parts) = catalogue_where(&edits, |_, card| card == versions::key("Dakin"));
+        let read = |b: &[u8]| serde_json::from_slice::<Vec<Article>>(b).unwrap().len();
+        assert_eq!(read(&all), 2);
+        assert_eq!(read(&kept), 1);
+        assert_eq!(parts, vec![("codex".to_owned(), 1)]);
+    }
 
     /// Un balayage lit les ouvertes d'abord, jamais soi-même, ni une
     /// officine absente, sans catalogue, ou déjà lue sous la même empreinte.

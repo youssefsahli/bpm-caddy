@@ -21,6 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   entry (nothing is refused); choosing another vaccine replaces the lot
   proposed for the previous one unless it was retyped; a lot received
   already expired is refused.
+- The directory catalogue no longer publishes an entry this officine
+  deleted: the journal keeps its versions, and a card removed because it
+  was wrong kept being published.
+- The lot warning reads the vaccine the dose will be filed under, fits
+  the form's measured band, is not shown while an existing line is
+  edited, and is read again when the stock changes; a lot proposed from
+  the campaign gives way to another vaccine like any proposal.
+- « Voir ce que l'officine publie… » offers nothing to take, and asks for
+  the officine's name when it has none.
 
 ## [0.421.0] - 2026-10-13
 
