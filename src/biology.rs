@@ -87,6 +87,16 @@ pub fn levels_bounded(a: &Analyte, value: f64, sign: &str) -> (Level, Level) {
     (near, far)
 }
 
+/// Le pire de deux niveaux qu'une borne permet, celui qu'on dit : le
+/// critique s'il y en a un, sinon celui qui s'écarte de la normale.
+pub fn worst_level(near: Level, far: Level) -> Level {
+    if far.critical() || !near.notable() {
+        far
+    } else {
+        near
+    }
+}
+
 /// **Le niveau d'un résultat, borne comprise** : celui que toute valeur
 /// permise partage, sinon `Unknown` — « à interpréter » : « <60 » d'un
 /// DFG peut être bas ou effondré, et l'écran ne choisit pas pour le
@@ -97,6 +107,27 @@ pub fn reading_level(a: &Analyte, value: f64, sign: &str) -> Level {
         near
     } else {
         Level::Unknown
+    }
+}
+
+/// La valeur rendue et son unité — sans blanc de trop quand l'analyte
+/// n'en a pas (l'INR).
+fn measured(a: &Analyte, r: &Reading) -> String {
+    let v = value_text(r.value, r.bound);
+    if a.unit.is_empty() {
+        v
+    } else {
+        format!("{v} {}", a.unit)
+    }
+}
+
+/// L'intervalle entre parenthèses, ou rien quand l'analyte n'en a pas.
+fn interval_paren(a: &Analyte) -> String {
+    let i = interval_text(a);
+    if i.is_empty() {
+        String::new()
+    } else {
+        format!(" ({i})")
     }
 }
 
@@ -362,13 +393,12 @@ pub fn read(readings: &[Reading], treatments: &[crate::revue::Treatment]) -> Vec
                 },
                 code: a.code,
                 text: format!(
-                    "{} {} {} — {} : peut-être {} ({}). {}",
+                    "{} {} — {} : peut-être {}{}. {}",
                     a.label,
-                    value_text(r.value, r.bound),
-                    a.unit,
+                    measured(a, r),
                     level_word(Level::Unknown),
                     level_word(worst),
-                    interval_text(a),
+                    interval_paren(a),
                     a.note
                 ),
                 unsure: String::new(),
@@ -384,12 +414,11 @@ pub fn read(readings: &[Reading], treatments: &[crate::revue::Treatment]) -> Vec
                 },
                 code: a.code,
                 text: format!(
-                    "{} {} {} — {} ({}). {}",
+                    "{} {} — {}{}. {}",
                     a.label,
-                    value_text(r.value, r.bound),
-                    a.unit,
+                    measured(a, r),
                     level_word(lv),
-                    interval_text(a),
+                    interval_paren(a),
                     a.note
                 ),
                 unsure: String::new(),
@@ -2242,6 +2271,23 @@ mod tests {
         assert_eq!(reading_level(a, 45.0, "<"), Level::Unknown);
         assert_eq!(reading_level(a, 45.0, ""), level(a, 45.0));
         assert_eq!(reading_level(a, 120.0, ">"), level(a, 121.0));
+        // Sans unité ni intervalle, pas de blanc ni de parenthèses vides.
+        let inr = read(
+            &[Reading {
+                code: "INR",
+                value: 4.0,
+                date: "2026-09-11",
+                bound: ">",
+            }],
+            &[],
+        );
+        for f in &inr {
+            assert!(
+                !f.text.contains("()") && !f.text.contains("  "),
+                "{}",
+                f.text
+            );
+        }
         // Lu sans résoudre — le tableau de bord, le compagnon — aussi.
         let raw = read(
             &[Reading {
@@ -2303,6 +2349,35 @@ mod tests {
 
     #[test]
     fn every_biology_reading_is_editable_and_every_rewrite_arrives() {
+        // Une règle « à vérifier » sous une valeur bornée : la tête et la
+        // règle suivent chacune leur réécriture, une seule fois.
+        {
+            let readings = [Reading {
+                code: "DFG",
+                value: 45.0,
+                date: "2026-09-11",
+                bound: "<",
+            }];
+            let treatments = [treat("Glucophage 1000 mg", "metformine", "biguanide", "")];
+            let over = crate::content::Overrides::from_rows(
+                phrases()
+                    .iter()
+                    .map(|(k, _, shipped)| {
+                        (k.clone(), format!("réécrit:{k}"), (*shipped).to_owned())
+                    })
+                    .collect::<Vec<_>>(),
+            );
+            let head = format!("réécrit:{}", super::hedge_key());
+            let hedged: Vec<Finding> = resolve(read(&readings, &treatments), &over)
+                .into_iter()
+                .filter(|f| f.text.starts_with(&head))
+                .collect();
+            assert!(!hedged.is_empty(), "la tête réécrite manque");
+            for f in &hedged {
+                assert_eq!(f.text.matches("réécrit:").count(), 2, "{}", f.text);
+                assert!(f.text.contains("(<45 mL/min)"), "{}", f.text);
+            }
+        }
         // Une kaliémie haute sous IEC : une lecture que le tableau a.
         let readings = [Reading {
             code: "K",

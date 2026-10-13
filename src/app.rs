@@ -28721,23 +28721,41 @@ impl App {
                                         // interval to be read against.
                                         match crate::biology::find(&r.code) {
                                             Some(a) => {
-                                                let level = crate::biology::reading_level(
+                                                let (near, far) = crate::biology::levels_bounded(
                                                     a,
                                                     r.value,
                                                     crate::biology::bound_sign(r.value, &r.remark),
                                                 );
+                                                // Une borne qui couvre deux niveaux :
+                                                // « à interpréter », à la couleur du
+                                                // pire qu'elle permet.
+                                                let (word, level) = if near == far {
+                                                    (crate::biology::level_word(near), near)
+                                                } else {
+                                                    let worst = if far.critical() || !near.notable()
+                                                    {
+                                                        far
+                                                    } else {
+                                                        near
+                                                    };
+                                                    (
+                                                        crate::biology::level_word(
+                                                            crate::biology::Level::Unknown,
+                                                        ),
+                                                        worst,
+                                                    )
+                                                };
                                                 if level.notable() {
                                                     ui.label(
-                                                        egui::RichText::new(format!(
-                                                            "  {}  ",
-                                                            crate::biology::level_word(level)
-                                                        ))
-                                                        .size(motif::pt(ui, 10.5))
-                                                        .strong()
-                                                        .color(motif::on_fill(bio_level_color(
-                                                            level,
-                                                        )))
-                                                        .background_color(bio_level_color(level)),
+                                                        egui::RichText::new(format!("  {word}  "))
+                                                            .size(motif::pt(ui, 10.5))
+                                                            .strong()
+                                                            .color(motif::on_fill(bio_level_color(
+                                                                level,
+                                                            )))
+                                                            .background_color(bio_level_color(
+                                                                level,
+                                                            )),
                                                     );
                                                 } else {
                                                     ui.label(
@@ -83398,11 +83416,13 @@ fn companion_signals(
     // soustraction qui le dit. Quatre-vingt-sept règles deux fois, dans
     // la branche que la mémoïsation ne prend que lorsque la question a
     // bougé.
-    let common = crate::biology::read(bio, &[]);
-    let values: Vec<crate::biology::Finding> = crate::biology::read(bio, &one)
-        .into_iter()
-        .filter(|f| !common.iter().any(|c| c.code == f.code && c.text == f.text))
-        .collect();
+    // Avec les mots de l'officine, comme le bilan.
+    let common = crate::biology::resolve(crate::biology::read(bio, &[]), over);
+    let values: Vec<crate::biology::Finding> =
+        crate::biology::resolve(crate::biology::read(bio, &one), over)
+            .into_iter()
+            .filter(|f| !common.iter().any(|c| c.code == f.code && c.text == f.text))
+            .collect();
     if let Some(worst) = values.iter().max_by_key(|f| f.severity) {
         let mut hover = trf("companion_bio_head", values.len());
         for f in &values {
