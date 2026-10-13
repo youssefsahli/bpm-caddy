@@ -460,6 +460,61 @@ pub fn offer_of(article: &Article, from: &str) -> Option<crate::enligne::Offer> 
     })
 }
 
+/// **Combien de catalogues un balayage demande** : avec la liste, sous
+/// les trente appels par adresse et par minute que le répertoire tient —
+/// un balayage ne se fait pas refuser la fin de sa propre lecture.
+pub const SWEEP_MOST: usize = 24;
+const _: () = assert!(SWEEP_MOST < CALLS_PER_MINUTE);
+
+/// Ce que les catalogues gardés en mémoire pèsent au plus : un
+/// répertoire qui en annonce de très gros ne fait pas grossir l'écran
+/// sans fin.
+pub const SWEEP_BYTES: usize = 32 << 20;
+
+/// **Les officines dont un balayage lit le catalogue** : présentes, pas
+/// celle-ci, avec un catalogue annoncé, et pas déjà lu sous la même
+/// empreinte (`held`) ; les ouvertes d'abord, puis les plus récemment
+/// vues — au plus `most`.
+pub fn to_sweep<'a>(
+    list: &'a [Fiche],
+    held: impl Fn(&Fiche) -> bool,
+    me: &str,
+    now: u64,
+    most: usize,
+) -> Vec<&'a Fiche> {
+    let mut out: Vec<&Fiche> = list
+        .iter()
+        .filter(|f| {
+            f.present
+                && f.device != me
+                && !f.catalogue.is_empty()
+                && f.parts.iter().any(|(_, n)| *n > 0)
+                && !held(f)
+        })
+        .collect();
+    out.sort_by_key(|f| (!f.online(now), std::cmp::Reverse(f.seq)));
+    out.truncate(most);
+    out
+}
+
+/// Ce qu'un catalogue lu pèse en mémoire, à peu près : ses textes.
+pub fn weight(articles: &[Article]) -> usize {
+    articles
+        .iter()
+        .map(|a| {
+            a.kind.len()
+                + a.card.len()
+                + a.name.len()
+                + a.day.len()
+                + a.fields
+                    .iter()
+                    .map(|(f, v)| f.len() + v.len())
+                    .sum::<usize>()
+                + 64
+        })
+        .sum()
+}
+
 /// Le verbe d'une demande.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Verbe {
@@ -941,6 +996,48 @@ pub fn fetch_catalogue(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Un balayage lit les ouvertes d'abord, jamais soi-même, ni une
+    /// officine absente, sans catalogue, ou déjà lue sous la même empreinte.
+    #[test]
+    fn a_sweep_reads_the_open_ones_first_and_nothing_twice() {
+        let now = 1_000_000;
+        let fiche = |device: &str, age: u64, catalogue: &str, present: bool| Fiche {
+            device: device.to_owned(),
+            seq: now - age,
+            catalogue: catalogue.to_owned(),
+            parts: vec![("codex".to_owned(), 1)],
+            present,
+            ..Fiche::default()
+        };
+        let mut empty = fiche("e", 10, "d", true);
+        empty.parts = vec![("codex".to_owned(), 0)];
+        let list = vec![
+            fiche("old", 7200, "d1", true),
+            fiche("me", 10, "d2", true),
+            fiche("gone", 10, "d3", false),
+            fiche("bare", 10, "", true),
+            fiche("open", 60, "d4", true),
+            fiche("held", 30, "d5", true),
+            fiche("older", 9000, "d6", true),
+            empty,
+        ];
+        let held = |f: &Fiche| f.device == "held" && f.catalogue == "d5";
+        let order: Vec<&str> = to_sweep(&list, held, "me", now, 10)
+            .iter()
+            .map(|f| f.device.as_str())
+            .collect();
+        assert_eq!(order, ["open", "old", "older"]);
+        assert_eq!(to_sweep(&list, held, "me", now, 1).len(), 1);
+        let a = Article {
+            kind: "codex".to_owned(),
+            card: "x".to_owned(),
+            name: "X".to_owned(),
+            day: String::new(),
+            fields: vec![("f".to_owned(), "v".repeat(100))],
+        };
+        assert!(weight(&[a]) > 100);
+    }
 
     fn device(n: u8) -> bpm_sync::Device {
         bpm_sync::Device::from_seed([n; 32])

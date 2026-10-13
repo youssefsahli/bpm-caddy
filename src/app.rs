@@ -10924,6 +10924,189 @@ impl Session {
         self.carte.job = Some(rx);
     }
 
+    /// **Read the whole directory's share**: the list, then the catalogues
+    /// not already held under the same digest — the open officines
+    /// first, at most `SWEEP_MOST`, on its own thread. It opens in « En
+    /// ligne », on `kind` when one is asked for, searched for `query`.
+    #[cfg(feature = "sync")]
+    fn carte_sweep(&mut self, kind: Option<crate::versions::Kind>, query: &str) -> bool {
+        if self.carte.job.is_some() {
+            return false;
+        }
+        self.read_presence();
+        let Some(address) = self.carte.presence.address() else {
+            return false;
+        };
+        let me = crate::network::device_hex(&self.db).unwrap_or_default();
+        let held: std::collections::HashMap<String, String> = self
+            .carte
+            .catalogues
+            .iter()
+            .map(|(d, (digest, _))| (d.clone(), digest.clone()))
+            .collect();
+        let query = query.to_owned();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let list = crate::repertoire::list(&address, Duration::from_secs(8));
+            let mut got = Vec::new();
+            if let Ok(list) = &list {
+                let started = Instant::now();
+                let picks = crate::repertoire::to_sweep(
+                    list,
+                    |f| held.get(&f.device) == Some(&f.catalogue),
+                    &me,
+                    crate::repertoire::unix_now(),
+                    crate::repertoire::SWEEP_MOST,
+                );
+                for f in picks {
+                    // Une lecture qui traîne n'en retient pas l'écran : la
+                    // suite se lira au prochain balayage.
+                    if started.elapsed() > Duration::from_secs(90) {
+                        break;
+                    }
+                    let read =
+                        crate::repertoire::fetch_catalogue(&address, f, Duration::from_secs(8));
+                    got.push((f.clone(), read));
+                }
+            }
+            let _ = tx.send(CarteAnswer::Sweep(Box::new(Sweep {
+                list,
+                got,
+                kind,
+                query,
+            })));
+        });
+        self.carte.job = Some(rx);
+        true
+    }
+
+    /// What a sweep brought back: the catalogues kept (only under the
+    /// digest the directory lists now, within `SWEEP_BYTES`, the least
+    /// recently seen dropped first), and « En ligne » opened on them.
+    #[cfg(feature = "sync")]
+    fn carte_swept(&mut self, sweep: Sweep) {
+        let Sweep {
+            list,
+            got,
+            kind,
+            query,
+        } = sweep;
+        let list = match list {
+            Ok(list) => list,
+            Err(e) => {
+                let note = trf("carte_unreachable", &e);
+                if let Some(online) = &mut self.online {
+                    online.note = Some((true, note.clone()));
+                }
+                self.carte.note = Some((true, note));
+                return;
+            }
+        };
+        self.carte.note = None;
+        self.set_carte_list(list);
+        let mut failed = 0;
+        for (f, read) in got {
+            match read {
+                Ok(articles) => {
+                    self.carte
+                        .catalogues
+                        .insert(f.device.clone(), (f.catalogue.clone(), articles));
+                }
+                Err(_) => failed += 1,
+            }
+        }
+        let listed: std::collections::HashMap<&str, &crate::repertoire::Fiche> = self
+            .carte
+            .list
+            .iter()
+            .map(|f| (f.device.as_str(), f))
+            .collect();
+        self.carte.catalogues.retain(|d, (digest, _)| {
+            listed
+                .get(d.as_str())
+                .is_some_and(|f| &f.catalogue == digest)
+        });
+        let mut total: usize = self
+            .carte
+            .catalogues
+            .values()
+            .map(|(_, a)| crate::repertoire::weight(a))
+            .sum();
+        if total > crate::repertoire::SWEEP_BYTES {
+            let mut by_age: Vec<(u64, String)> = self
+                .carte
+                .catalogues
+                .keys()
+                .map(|d| (listed.get(d.as_str()).map_or(0, |f| f.seq), d.clone()))
+                .collect();
+            by_age.sort();
+            for (_, d) in by_age {
+                if total <= crate::repertoire::SWEEP_BYTES {
+                    break;
+                }
+                if let Some((_, a)) = self.carte.catalogues.remove(&d) {
+                    total -= crate::repertoire::weight(&a);
+                }
+            }
+        }
+        let me = crate::network::device_hex(&self.db).unwrap_or_default();
+        let now = crate::repertoire::unix_now();
+        let sharing =
+            crate::repertoire::to_sweep(&self.carte.list, |_| false, &me, now, usize::MAX);
+        let mut read = 0;
+        let mut offers: Vec<crate::enligne::Offer> = Vec::new();
+        for f in &sharing {
+            let Some((_, articles)) = self.carte.catalogues.get(&f.device) else {
+                continue;
+            };
+            read += 1;
+            // Le nom seul ne distingue pas deux « Pharmacie du Centre ».
+            let from = if f.commune.is_empty() {
+                f.nom.clone()
+            } else {
+                format!("{} ({})", f.nom, f.commune)
+            };
+            offers.extend(
+                articles
+                    .iter()
+                    .filter_map(|a| crate::repertoire::offer_of(a, &from)),
+            );
+        }
+        let total = sharing.len();
+        let Some(kind) = kind
+            .filter(|k| offers.iter().any(|o| o.kind == *k))
+            .or_else(|| {
+                crate::versions::Kind::ALL
+                    .into_iter()
+                    .find(|k| offers.iter().any(|o| o.kind == *k))
+            })
+        else {
+            let note = tr(if total == 0 {
+                "carte_sweep_nobody"
+            } else {
+                "carte_sweep_nothing"
+            })
+            .to_owned();
+            if let Some(online) = &mut self.online {
+                online.note = Some((false, note.clone()));
+            }
+            self.carte.note = Some((false, note));
+            return;
+        };
+        self.online = Some(Online {
+            kind,
+            query,
+            network: true,
+            remote: Some(Remote {
+                officine: tr("online_everyone").to_owned(),
+                device: String::new(),
+                offers,
+                everyone: Some((read, total, failed)),
+            }),
+            ..Online::default()
+        });
+    }
+
     /// Ask the directory for one officine's catalogue; it opens in « En
     /// ligne » when it arrives.
     #[cfg(feature = "sync")]
@@ -11314,6 +11497,7 @@ impl Session {
                 self.carte.note = None;
                 self.set_carte_list(list);
             }
+            CarteAnswer::Sweep(sweep) => self.carte_swept(*sweep),
             CarteAnswer::List(Err(e)) => {
                 self.carte.note = Some((true, trf("carte_unreachable", &e)));
             }
@@ -11337,6 +11521,7 @@ impl Session {
                         officine: fiche.nom.clone(),
                         device: fiche.device.clone(),
                         offers,
+                        everyone: None,
                     }),
                     ..Online::default()
                 });
@@ -14678,16 +14863,33 @@ struct Remote {
     officine: String,
     device: String,
     offers: Vec<crate::enligne::Offer>,
+    /// Tout le répertoire à la fois : combien d'officines ont été lues,
+    /// sur combien qui partagent, et combien n'ont pas répondu.
+    everyone: Option<(usize, usize, usize)>,
 }
 
 /// Ce que le fil du répertoire rapporte.
 #[cfg(feature = "sync")]
 enum CarteAnswer {
     List(Result<Vec<crate::repertoire::Fiche>, String>),
+    Sweep(Box<Sweep>),
     Catalogue(
         Box<crate::repertoire::Fiche>,
         Result<Vec<crate::repertoire::Article>, String>,
     ),
+}
+
+/// Un balayage du répertoire : la liste, les catalogues lus (vérifiés
+/// chacun contre sa carte), et ce que « En ligne » ouvrira.
+#[cfg(feature = "sync")]
+struct Sweep {
+    list: Result<Vec<crate::repertoire::Fiche>, String>,
+    got: Vec<(
+        crate::repertoire::Fiche,
+        Result<Vec<crate::repertoire::Article>, String>,
+    )>,
+    kind: Option<crate::versions::Kind>,
+    query: String,
 }
 
 /// **La carte des officines** : ce que la base dit de la présence de
@@ -14715,6 +14917,17 @@ struct Carte {
     /// sa zone) — calculé une fois par lecture.
     list: Vec<crate::repertoire::Fiche>,
     points: Vec<Option<(crate::geo::Zone, [f32; 2])>>,
+    /// Les catalogues déjà lus, par officine : l'empreinte de sa carte et
+    /// ses articles — relus seulement quand l'empreinte change.
+    catalogues: std::collections::HashMap<String, (String, Vec<crate::repertoire::Article>)>,
+    /// Ce que le registre dit du numéro que l'officine tape, et la commune
+    /// qu'il en propose — lus quand le numéro, la commune ou le nom
+    /// changent, jamais à chaque image.
+    own_check: Option<(
+        [String; 4],
+        Option<crate::finess::Check>,
+        Option<&'static crate::geo::Commune>,
+    )>,
     /// Ce que le registre FINESS dit de chacune — lu une fois par lecture.
     checks: Vec<Option<crate::finess::Check>>,
     listed: bool,
@@ -63267,12 +63480,8 @@ impl App {
                         egui::RichText::new(Self::carte_status(f, now)).size(motif::pt(ui, 11.0)),
                     );
                     if let Some(c) = check {
-                        let (word, color, _) = Self::carte_finess_verdict(c);
-                        ui.label(
-                            egui::RichText::new(word)
-                                .size(motif::pt(ui, 11.0))
-                                .color(color),
-                        );
+                        let (word, color, mark) = Self::carte_finess_verdict(c);
+                        motif::badge(ui, word, Some(mark), color, mark != motif::Pict::Check);
                     }
                 });
             }
@@ -63410,6 +63619,7 @@ impl App {
         let mut browse: Option<String> = None;
         let mut pick: Option<String> = None;
         let mut save = false;
+        let mut sweep = false;
         let me = session.carte.me.clone();
         let busy = session.carte.job.is_some();
         motif::panel(ui, rect, None, |ui| {
@@ -63482,6 +63692,13 @@ impl App {
                     // Le répertoire entier, en liste : ce que la carte ne
                     // place pas — une commune inconnue — s'y trouve aussi.
                     motif::section(ui, &trn("carte_list_title", &[&session.carte.list.len()]));
+                    if !session.carte.list.is_empty()
+                        && motif::button_enabled(ui, tr("carte_sweep"), !busy)
+                            .on_hover_text(tr("online_everyone_tooltip"))
+                            .clicked()
+                    {
+                        sweep = true;
+                    }
                     if session.carte.presence.address().is_none() {
                         dim(tr("carte_no_directory"), ui);
                     } else if busy && !session.carte.listed {
@@ -63562,25 +63779,42 @@ impl App {
                     // Options › Officine.
                     if session.carte.finess.trim().len() == 9 {
                         let (cp, commune) = session.carte.commune.clone().unwrap_or_default();
-                        if let Some(check) = crate::finess::check(
-                            &session.carte.finess,
-                            &cp,
-                            &commune,
-                            &config.pharmacy.name,
-                        ) {
-                            Self::carte_finess(ui, &session.carte.finess, check);
-                            if let crate::finess::Check::Elsewhere(entry) = check {
-                                if let Some(c) = crate::finess::commune_of(entry) {
-                                    if motif::button(
-                                        ui,
-                                        &trn("carte_finess_take", &[&c.nom, &c.postcode]),
-                                    )
-                                    .clicked()
-                                    {
-                                        session.carte.commune =
-                                            Some((c.postcode.to_owned(), c.nom.to_owned()));
-                                        session.locate_me();
-                                    }
+                        let asked = [
+                            session.carte.finess.clone(),
+                            cp,
+                            commune,
+                            config.pharmacy.name.clone(),
+                        ];
+                        if session.carte.own_check.as_ref().map(|(a, _, _)| a) != Some(&asked) {
+                            let check =
+                                crate::finess::check(&asked[0], &asked[1], &asked[2], &asked[3]);
+                            // La commune du registre ne se propose que quand
+                            // elle n'est pas déjà celle choisie.
+                            let offer = match check {
+                                Some(crate::finess::Check::Elsewhere(entry)) => {
+                                    crate::finess::commune_of(entry)
+                                }
+                                Some(crate::finess::Check::Here { entry, .. })
+                                    if session.carte.commune.is_none() =>
+                                {
+                                    crate::finess::commune_of(entry)
+                                }
+                                _ => None,
+                            };
+                            session.carte.own_check = Some((asked, check, offer));
+                        }
+                        if let Some((_, check, offer)) = session.carte.own_check {
+                            if let Some(check) = check {
+                                Self::carte_finess(ui, &session.carte.finess, check);
+                            }
+                            if let Some(c) = offer {
+                                // Un bouton ne s'enveloppe pas : la phrase
+                                // va dans une étiquette, le bouton reste court.
+                                dim(&trn("carte_finess_offer", &[&c.nom, &c.postcode]), ui);
+                                if motif::button(ui, tr("carte_finess_take")).clicked() {
+                                    session.carte.commune =
+                                        Some((c.postcode.to_owned(), c.nom.to_owned()));
+                                    session.locate_me();
                                 }
                             }
                         }
@@ -63624,6 +63858,9 @@ impl App {
         }
         if let Some(d) = browse {
             session.carte_browse(&d);
+        }
+        if sweep {
+            session.carte_sweep(None, "");
         }
         if save {
             session.carte_save(operator);
@@ -63768,6 +64005,9 @@ impl App {
         // Le bouton du réseau n'existe que dans une application qui en a.
         #[cfg_attr(not(feature = "sync"), allow(unused_mut))]
         let mut network = false;
+        // Tout le répertoire, lu d'un geste — ou la suite de sa lecture.
+        #[cfg_attr(not(feature = "sync"), allow(unused_mut, unused_variables))]
+        let mut sweep = false;
         let mut close = false;
         let screen = ctx.screen_rect();
         let title = match &online.remote {
@@ -63786,6 +64026,21 @@ impl App {
                         // journal s'offre encore : la phrase ne dit
                         // « aucun réseau » que sur une liste vide.
                         egui::RichText::new(match &online.remote {
+                            Some(Remote {
+                                everyone: Some((read, total, failed)),
+                                ..
+                            }) => {
+                                let mut t = trn("online_scope_everyone", &[read, total]);
+                                if read < total {
+                                    t.push(' ');
+                                    t.push_str(&trn("online_sweep_more", &[&(total - read)]));
+                                }
+                                if *failed > 0 {
+                                    t.push(' ');
+                                    t.push_str(&trn("online_sweep_failed", &[failed]));
+                                }
+                                t
+                            }
                             // Pas appairée : qui elle est n'est pas prouvé.
                             Some(r) => trf("online_scope_remote", Self::remote_key(&r.device)),
                             None => tr(if online.network || !online.rows.is_empty() {
@@ -63839,8 +64094,27 @@ impl App {
                     }
                     motif::checkbox(ui, &mut online.only_absent, tr("online_only_absent"));
                     #[cfg(feature = "sync")]
-                    if motif::button(ui, tr("online_network")).clicked() {
-                        network = true;
+                    match &online.remote {
+                        None => {
+                            if motif::button(ui, tr("online_network")).clicked() {
+                                network = true;
+                            }
+                            if motif::button(ui, tr("online_everyone_button"))
+                                .on_hover_text(tr("online_everyone_tooltip"))
+                                .clicked()
+                            {
+                                sweep = true;
+                            }
+                        }
+                        Some(Remote {
+                            everyone: Some((read, total, failed)),
+                            ..
+                        }) if read < total || *failed > 0 => {
+                            if motif::button(ui, tr("online_sweep_next")).clicked() {
+                                sweep = true;
+                            }
+                        }
+                        Some(_) => {}
                     }
                 });
                 if let Some((err, text)) = &online.note {
@@ -63986,6 +64260,16 @@ impl App {
         if network {
             session.open_tool(Tool::Reseau);
             close = true;
+        }
+        #[cfg(feature = "sync")]
+        if sweep {
+            online.note = Some(if session.carte_sweep(Some(kind), &online.query) {
+                (false, tr("online_sweeping").to_owned())
+            } else if session.carte.job.is_some() {
+                (false, tr("carte_reading").to_owned())
+            } else {
+                (true, tr("online_no_directory").to_owned())
+            });
         }
         if !close {
             session.online = Some(online);
@@ -94662,6 +94946,70 @@ mod tests {
     /// Celui qui n'avait rien vu rouvrait Options › Officine sur un
     /// texte périmé, le corrigeait, et se faisait refuser l'écriture :
     /// le conflit était réel, et c'est l'écran qui le fabriquait.
+    /// **Un balayage du répertoire** : ce qui est lu se garde sous
+    /// l'empreinte de la carte, « En ligne » s'ouvre sur tout à la fois en
+    /// disant combien ont été lues et combien n'ont pas répondu, et un
+    /// catalogue dont l'empreinte a changé ne s'offre plus.
+    #[cfg(feature = "sync")]
+    #[test]
+    fn a_sweep_keeps_what_it_read_under_the_cards_digest() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-sweep-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = crate::db::Swept(dir.clone());
+        let db = crate::db::Db::open(&dir.join("sweep.db"), "secret").unwrap();
+        let mut session = super::Session::new(db, 12, 30, true).unwrap();
+        let now = crate::repertoire::unix_now();
+        let fiche = |device: &str, nom: &str, digest: &str| crate::repertoire::Fiche {
+            device: device.repeat(64),
+            seq: now,
+            nom: nom.to_owned(),
+            commune: "Brest".to_owned(),
+            catalogue: digest.to_owned(),
+            parts: vec![("codex".to_owned(), 1)],
+            present: true,
+            ..crate::repertoire::Fiche::default()
+        };
+        let article = crate::repertoire::Article {
+            kind: "codex".to_owned(),
+            card: "gelule x".to_owned(),
+            name: "Gélule X".to_owned(),
+            day: "2026-10-01".to_owned(),
+            fields: vec![("form".to_owned(), "gélule".to_owned())],
+        };
+        let list = vec![
+            fiche("a", "Pharmacie A", "da"),
+            fiche("b", "Pharmacie B", "db"),
+        ];
+        session.carte_swept(super::Sweep {
+            list: Ok(list.clone()),
+            got: vec![
+                (list[0].clone(), Ok(vec![article])),
+                (list[1].clone(), Err("timeout".to_owned())),
+            ],
+            kind: Some(crate::versions::Kind::Codex),
+            query: "gélule".to_owned(),
+        });
+        let online = session.online.as_ref().expect("En ligne s'ouvre");
+        assert_eq!(online.query, "gélule");
+        let remote = online.remote.as_ref().unwrap();
+        assert_eq!(remote.everyone, Some((1, 2, 1)));
+        assert_eq!(remote.offers.len(), 1);
+        assert_eq!(remote.offers[0].from, ["Pharmacie A (Brest)"]);
+        assert_eq!(session.carte.catalogues.len(), 1);
+        // Une nouvelle carte, un autre catalogue : l'ancien ne s'offre plus.
+        session.online = None;
+        session.carte_swept(super::Sweep {
+            list: Ok(vec![fiche("a", "Pharmacie A", "da2")]),
+            got: Vec::new(),
+            kind: None,
+            query: String::new(),
+        });
+        assert!(session.carte.catalogues.is_empty());
+        assert!(session.online.is_none());
+        assert!(session.carte.note.is_some());
+    }
+
     #[test]
     fn what_another_post_writes_of_the_officine_arrives_without_relocking() {
         let dir =

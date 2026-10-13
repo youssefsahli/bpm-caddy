@@ -86,9 +86,15 @@ fn town(text: &str) -> String {
 /// portent : « SELARL Pharmacie du Centre » et « Pharmacie du centre »
 /// disent la même chose.
 fn name_words(text: &str) -> Vec<String> {
-    const COMMON: [&str; 26] = [
+    const COMMON: [&str; 32] = [
         "pharmacie",
         "pharmacies",
+        "phie",
+        "pharma",
+        "seleurl",
+        "selurl",
+        "selasu",
+        "sasu",
         "officine",
         "selarl",
         "selas",
@@ -145,10 +151,34 @@ pub enum Check {
     },
 }
 
+/// Le registre coupe la ville de l'acheminement à vingt-six caractères :
+/// « SORGES ET LIGUEUX EN PERIG ».
+const TOWN_CUT: usize = 26;
+
+/// Le département d'un code postal, tel que deux codes se comparent :
+/// trois chiffres outre-mer, deux ailleurs (la Corse est « 20 » des deux
+/// côtés).
+fn dep_of(code_postal: &str) -> &str {
+    let n = if code_postal.starts_with("97") { 3 } else { 2 };
+    code_postal.get(..n).unwrap_or("")
+}
+
+/// La ville du registre et le nom d'une commune disent-ils la même —
+/// la ville coupée se lisant comme un début.
+fn same_town(ville: &str, commune: &str) -> bool {
+    let (v, c) = (town(ville), town(commune));
+    if v.is_empty() {
+        return false;
+    }
+    v == c || (ville.trim().chars().count() >= TOWN_CUT && c.starts_with(&v))
+}
+
 /// **Un FINESS déclaré, lu au registre** : `None` quand rien n'est
 /// déclaré. La commune déclarée colle quand son code postal est celui
-/// du registre, ou son nom celui de la ville — une grande ville a
-/// plusieurs codes.
+/// du registre, ou son nom celui de la ville **dans le même
+/// département** — une grande ville a plusieurs codes, mais Thoiry est
+/// dans l'Ain, la Savoie et les Yvelines. Aucune commune déclarée ne
+/// contredit rien.
 pub fn check(finess: &str, code_postal: &str, commune: &str, nom: &str) -> Option<Check> {
     if finess.trim().is_empty() {
         return None;
@@ -156,7 +186,10 @@ pub fn check(finess: &str, code_postal: &str, commune: &str, nom: &str) -> Optio
     let Some(entry) = lookup(finess) else {
         return Some(Check::Absent);
     };
-    let same_place = entry.code_postal == code_postal.trim() || town(entry.ville) == town(commune);
+    let code_postal = code_postal.trim();
+    let same_place = (code_postal.is_empty() && commune.trim().is_empty())
+        || entry.code_postal == code_postal
+        || (dep_of(entry.code_postal) == dep_of(code_postal) && same_town(entry.ville, commune));
     Some(if same_place {
         Check::Here {
             entry,
@@ -168,21 +201,19 @@ pub fn check(finess: &str, code_postal: &str, commune: &str, nom: &str) -> Optio
 }
 
 /// La commune de la liste livrée où le registre met une officine : celle
-/// de son code postal dont le nom est la ville, ou à défaut la première
-/// de ce code.
+/// de son code postal dont le nom est la ville, ou la seule de ce code.
+/// Un code de plusieurs communes dont aucune n'a le nom de la ville — un
+/// lieu-dit de La Poste — n'en donne aucune : mieux vaut rien qu'un
+/// village voisin.
 pub fn commune_of(entry: &Officine) -> Option<&'static Commune> {
-    let ville = town(entry.ville);
-    let mut first = None;
-    for c in crate::geo::communes()
+    let at: Vec<&'static Commune> = crate::geo::communes()
         .iter()
         .filter(|c| c.postcode == entry.code_postal)
-    {
-        if town(c.nom) == ville {
-            return Some(c);
-        }
-        first = first.or(Some(c));
-    }
-    first
+        .collect();
+    at.iter()
+        .find(|c| same_town(entry.ville, c.nom))
+        .copied()
+        .or(if at.len() == 1 { Some(at[0]) } else { None })
 }
 
 #[cfg(test)]
@@ -224,7 +255,7 @@ mod tests {
                 }
             }
         }
-        assert!(placed * 100 >= all.len() * 99, "{placed} / {}", all.len());
+        assert!(placed * 100 >= all.len() * 98, "{placed} / {}", all.len());
         assert!(named * 100 >= all.len() * 90, "{named} / {}", all.len());
     }
 
@@ -234,6 +265,55 @@ mod tests {
         assert_eq!(town("STE VERGE"), town("Sainte-Verge"));
         assert_eq!(town("PARIS CEDEX 13"), town("Paris"));
         assert_ne!(town("SAINT DENIS"), town("Saint-Didier"));
+        // Coupée à vingt-six caractères par le registre.
+        assert!(same_town(
+            "SORGES ET LIGUEUX EN PERIG",
+            "Sorges et Ligueux en Périgord"
+        ));
+        assert!(!same_town("PARIS", "Paris-l'Hôpital"));
+    }
+
+    /// Un homonyme dans un autre département n'est pas la ville du
+    /// registre ; une commune pas encore choisie ne contredit rien.
+    #[test]
+    fn a_homonym_elsewhere_is_elsewhere() {
+        let o = register()
+            .iter()
+            .find(|o| o.ville == "THOIRY" && o.code_postal.starts_with("01"))
+            .expect("une officine à Thoiry (Ain)");
+        assert_eq!(
+            check(o.finess, "78770", "Thoiry", o.nom),
+            Some(Check::Elsewhere(o))
+        );
+        assert!(matches!(
+            check(o.finess, "01710", "Thoiry", o.nom),
+            Some(Check::Here { .. })
+        ));
+        assert!(matches!(
+            check(o.finess, "", "", o.nom),
+            Some(Check::Here { .. })
+        ));
+    }
+
+    /// Un code de plusieurs communes, dont aucune n'a le nom de la ville
+    /// du registre, ne propose pas un village voisin.
+    #[test]
+    fn a_locality_that_is_no_commune_offers_none() {
+        let mut per_code = std::collections::HashMap::new();
+        for c in crate::geo::communes() {
+            *per_code.entry(c.postcode).or_insert(0) += 1;
+        }
+        for o in register() {
+            if let Some(c) = commune_of(o) {
+                let alone = per_code.get(o.code_postal) == Some(&1);
+                assert!(
+                    alone || same_town(o.ville, c.nom),
+                    "{} {}",
+                    o.finess,
+                    o.ville
+                );
+            }
+        }
     }
 
     #[test]
@@ -244,6 +324,11 @@ mod tests {
         ));
         assert!(same_name("Pharmacie Martin", "PHARMACIE MARTIN ET DUPONT"));
         assert!(same_name("Pharmacie", "PHARMACIE DE LA GARE"));
+        assert!(same_name(
+            "Grande pharmacie du Centre",
+            "SELEURL GRANDE PHARMACIE DU CENTRE"
+        ));
+        assert!(same_name("Pharmacie du Centre", "SELEURL PHIE DU CENTRE"));
         assert!(!same_name("Pharmacie Martin", "PHARMACIE DU MARCHE"));
         assert!(!same_name("Grande pharmacie de Nice", "PHARMACIE DE LILLE"));
     }
@@ -269,8 +354,9 @@ mod tests {
         );
         // Une autre commune, mais la même ville : un autre code postal
         // d'une grande ville ne la déplace pas.
+        let other = format!("{}999", &o.code_postal[..2]);
         assert_eq!(
-            check(o.finess, "00000", o.ville, o.nom),
+            check(o.finess, &other, o.ville, o.nom),
             Some(Check::Here {
                 entry: o,
                 renamed: false

@@ -1230,6 +1230,14 @@ soi-même ne compte pas. Dans la fenêtre, elles viennent en tête, marquées
 prendre ; quand plusieurs officines partagent, la liste de choix
 parcourt le partage d'une seule.
 
+« Tout le répertoire… » cherche, au-delà du réseau, chez **toutes les
+officines de la carte** (voir « Carte des officines ») : le poste lit le
+partage de chacune — vingt-quatre au plus par lecture, les ouvertes
+d'abord ; « Lire la suite » lit les suivantes — et la fenêtre les montre
+ensemble, chaque entrée au nom de l'officine et de sa commune. Un partage
+déjà lu ne se relit que quand l'officine l'a changé. Rien ne s'y compare
+à l'historique : elles ne sont pas appairées.
+
 # Carte des officines
 
 « Carte des officines » (onglet, ou « Aller à… ») montre les officines
@@ -1246,7 +1254,8 @@ aussi sa pastille. Le registre dit ce qui ne colle pas ; il ne prouve
 rien, n'importe qui pouvant écrire le numéro d'une autre. En écrivant
 le sien, l'officine voit ce que le registre dit d'elle, et en reprend
 la commune d'un clic. « Parcourir… » ouvre son partage dans la fenêtre « En
-ligne », où chaque entrée se prend d'un geste. **Aucun appairage** :
+ligne », où chaque entrée se prend d'un geste ; « Chercher dans tout le
+répertoire… » y ouvre celui de toutes à la fois. **Aucun appairage** :
 rien n'entre de soi-même, et son nom n'est prouvé que par l'empreinte,
 à comparer de vive voix.
 

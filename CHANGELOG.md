@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   name and town beside it; the last two also ring the officine's dot.
   Typing one's own number shows what the register says and offers its
   commune in one click. Flagged, never refused, and never a proof.
+- « Tout le répertoire… » in « En ligne » (and « Chercher dans tout le
+  répertoire… » on the map): search every officine on the map at once,
+  Soulseek-style. The post reads each officine's signed catalogue (24 per
+  pass, open ones first, « Lire la suite » for the rest), verifies it,
+  keeps it in memory under the card's digest, and lists every entry under
+  the officine's name and commune, each taken in one gesture.
 
 ## [0.416.0] - 2026-10-13
 
