@@ -26329,6 +26329,10 @@ impl App {
                             (Some(l), Some(b)) => {
                                 format!("{} — {} sous {b} mL/min", f.treatment, l.label())
                             }
+                            // Un DFG rendu borné n'est pas un DFG manquant.
+                            _ if f.conduct == crate::renal::BOUNDED => {
+                                format!("{} — {}", f.treatment, tr("renal_bounded"))
+                            }
                             _ => format!("{} — {}", f.treatment, tr("renal_unknown")),
                         };
                         ui.label(
@@ -28958,11 +28962,12 @@ impl App {
                 }
             }
         };
-        // « <0,5 » : le nombre se range, la borne se dit en remarque.
+        // « <0,5 » : le nombre se range, la borne se dit en remarque —
+        // écrite d'une seule façon, le signe et le nombre, sans unité.
         let remark = if bound.is_empty() {
             String::new()
         } else {
-            session.bio_new_value.trim().to_owned()
+            crate::biology::value_text(value, &bound)
         };
         let row = db::BioResult {
             id: 0,
@@ -29007,7 +29012,7 @@ impl App {
         edited.remark = if bound.is_empty() {
             String::new()
         } else {
-            session.bio_edit_value.trim().to_owned()
+            crate::biology::value_text(value, &bound)
         };
         let taken_on = if session.bio_edit_date.trim().is_empty() {
             String::new()
@@ -47846,6 +47851,9 @@ impl App {
             };
             let head = match (f.level, f.below) {
                 (Some(l), Some(b)) => format!("{} — {} sous {b} mL/min", f.treatment, l.label()),
+                _ if f.conduct == crate::renal::BOUNDED => {
+                    format!("{} — {}", f.treatment, tr("renal_bounded"))
+                }
                 _ => format!("{} — {}", f.treatment, tr("renal_unknown")),
             };
             ui.label(
@@ -77042,7 +77050,7 @@ impl App {
         companion_signals(
             card,
             &list,
-            session.renal_dfg,
+            (session.renal_dfg, session.renal_dfg_bound.as_str()),
             age,
             &session.surveillance,
             &bio,
@@ -78662,6 +78670,7 @@ impl App {
                     session.renal_dfg.map(f64::to_bits),
                     on_file.clone(),
                     session.cascades_rev,
+                    session.file_rev,
                 );
                 if session.graph_pair.as_ref().map(|(k, _)| k) != Some(&key) {
                     let sig = Self::graph_pair_signals(session, id, &[map.centre.0]);
@@ -78719,6 +78728,7 @@ impl App {
                     session.renal_dfg.map(f64::to_bits),
                     on_file.clone(),
                     session.cascades_rev,
+                    session.file_rev,
                 );
                 if session.graph_pair.as_ref().map(|(k, _)| k) != Some(&key) {
                     let sig = Self::graph_pair_signals(session, map.centre.0, &on_file);
@@ -82429,7 +82439,9 @@ type CompanionKey = (
 
 /// Ce dont dépend la lecture d'un nœud de la carte : la paire (centre,
 /// nœud), le dossier ouvert, son DFG et son ordonnance.
-type GraphPairKey = (i64, i64, Option<i64>, Option<u64>, Vec<i64>, u64);
+/// Avec `file_rev` : un résultat corrigé (une borne retirée, le nombre
+/// inchangé) relit le survol.
+type GraphPairKey = (i64, i64, Option<i64>, Option<u64>, Vec<i64>, u64, u64);
 
 /// La distance au calme d'un signal — jamais une couleur écrite ici.
 ///
@@ -82984,7 +82996,28 @@ fn companion_look(
             filed,
         };
     };
-    let signals = companion_signals(&card, file, dfg, age, watch, bio, cascades, over);
+    // La borne du DFG que le dossier retient : le dernier daté, pas après
+    // aujourd'hui — comme le dossier le choisit.
+    let dfg_bound = bio
+        .iter()
+        .filter(|r| {
+            r.code.eq_ignore_ascii_case("DFG")
+                && Some(r.value) == dfg
+                && !r.date.trim().is_empty()
+                && (today.is_empty() || r.date <= today)
+        })
+        .max_by(|a, b| a.date.cmp(b.date))
+        .map_or("", |r| r.bound);
+    let signals = companion_signals(
+        &card,
+        file,
+        (dfg, dfg_bound),
+        age,
+        watch,
+        bio,
+        cascades,
+        over,
+    );
     // Les pages qui parlent. La première est toujours là : les puces,
     // le signe d'alerte et ce à quoi le produit sert sont ce que la
     // barre est venue dire, et quand toutes les tables se taisent c'est
@@ -83072,7 +83105,8 @@ fn companion_look(
 fn companion_signals(
     card: &Drug,
     file: &[Drug],
-    dfg: Option<f64>,
+    // Le DFG du dossier et sa borne de laboratoire.
+    (dfg, bound): (Option<f64>, &str),
     age: Option<u32>,
     watch: &[crate::surveillance::ResolvedDue],
     bio: &[crate::biology::Reading],
@@ -83454,13 +83488,6 @@ fn companion_signals(
     }
     // Le rein, au DFG du dossier quand il y en a un. Sans chiffre la
     // puce dit qu'il manque, et ne conclut pas.
-    // La borne du DFG du dossier, lue dans sa biologie : « <30 » ne se
-    // juge pas comme 30.
-    let bound = bio
-        .iter()
-        .filter(|r| r.code.eq_ignore_ascii_case("DFG") && Some(r.value) == dfg)
-        .max_by(|a, b| a.date.cmp(b.date))
-        .map_or("", |r| r.bound);
     if let Some(f) = crate::renal::resolve(crate::renal::read_bounded(&one, dfg, bound), over)
         .into_iter()
         .next()
@@ -92119,8 +92146,16 @@ mod tests {
             );
         }
         let over = crate::content::Overrides::from_rows(rows);
-        let signals =
-            super::companion_signals(&codeine, &[], Some(20.0), Some(80), &[], &[], &[], &over);
+        let signals = super::companion_signals(
+            &codeine,
+            &[],
+            (Some(20.0), ""),
+            Some(80),
+            &[],
+            &[],
+            &[],
+            &over,
+        );
         let gravid = signals
             .iter()
             .find(|s| s.goes == super::CompanionWhere::Cross(super::DdiSection::Gravidity))
@@ -92144,7 +92179,7 @@ mod tests {
         let signals = super::companion_signals(
             &skenan,
             &[],
-            None,
+            (None, ""),
             None,
             &[],
             &[],
@@ -92183,7 +92218,7 @@ mod tests {
         assert!(super::companion_signals(
             &unknown,
             &[],
-            None,
+            (None, ""),
             None,
             &[],
             &[],
@@ -92220,7 +92255,7 @@ mod tests {
         let crossed = super::companion_signals(
             &macrolide,
             std::slice::from_ref(&statin),
-            None,
+            (None, ""),
             None,
             &[],
             &[],
@@ -92255,7 +92290,7 @@ mod tests {
         let aside = super::companion_signals(
             &bystander,
             &[statin.clone(), macrolide.clone()],
-            None,
+            (None, ""),
             None,
             &[],
             &[],
@@ -92595,7 +92630,7 @@ mod tests {
             super::companion_signals(
                 card,
                 &[],
-                None,
+                (None, ""),
                 None,
                 &[],
                 bio,
@@ -92676,7 +92711,7 @@ mod tests {
         let signals = super::companion_signals(
             &stagid,
             std::slice::from_ref(&glucophage),
-            None,
+            (None, ""),
             None,
             &[],
             &[],
@@ -92743,7 +92778,7 @@ mod tests {
             super::companion_signals(
                 card,
                 file,
-                None,
+                (None, ""),
                 None,
                 &[],
                 &[],
@@ -93664,7 +93699,7 @@ mod tests {
         let signals = super::companion_signals(
             &plavix,
             &file,
-            None,
+            (None, ""),
             None,
             &[],
             &[],
@@ -93689,7 +93724,7 @@ mod tests {
         let alone = super::companion_signals(
             &plavix,
             &[],
-            None,
+            (None, ""),
             None,
             &[],
             &[],

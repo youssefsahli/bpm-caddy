@@ -137,13 +137,11 @@ pub fn bound_sign(value: f64, remark: &str) -> &'static str {
         _ => return "",
     };
     match crate::codex::parse_amount(rest.trim_start()) {
-        // Le nombre de cette ligne, suivi au plus de son unité.
+        // Le nombre de cette ligne, suivi au plus de son unité — un seul
+        // mot (« % », « 10^9/L », « mL/min/1,73m² ») ; une phrase n'est pas
+        // une borne.
         Some((n, tail))
-            if (tail.trim().is_empty()
-                || tail
-                    .trim()
-                    .chars()
-                    .all(|c| c.is_alphabetic() || c == '/' || c == 'µ'))
+            if tail.split_whitespace().count() <= 1
                 && (n - value).abs() <= 1e-9 * value.abs().max(1.0) =>
         {
             sign
@@ -1991,6 +1989,8 @@ mod tests {
         assert_eq!(bound_sign(15.0, "<15"), "<");
         assert_eq!(bound_sign(90.0, "> 90"), ">");
         assert_eq!(bound_sign(1476.0, ">1476 pmol/L"), ">");
+        assert_eq!(bound_sign(10.0, "<10 %"), "<");
+        assert_eq!(bound_sign(60.0, ">60 mL/min/1,73m²"), ">");
         assert_eq!(bound_sign(15.0, "≤15"), "≤");
         assert_eq!(bound_sign(15.0, ""), "");
         assert_eq!(bound_sign(15.0, "<30"), "");

@@ -150,7 +150,7 @@ pub fn read(treatments: &[crate::revue::Treatment], dfg: Option<f64>) -> Vec<Fin
 }
 
 /// Ce qu'une ligne dit d'un DFG rendu borné qui ne permet pas de conclure.
-const BOUNDED: &str = "Le DFG est rendu borné par le laboratoire : il ne dit pas de quel côté d'un seuil de ce traitement il se trouve — à vérifier avec la valeur exacte.";
+pub const BOUNDED: &str = "Le DFG est rendu borné par le laboratoire : il ne dit pas de quel côté d'un seuil de ce traitement il se trouve — à vérifier avec la valeur exacte.";
 
 /// [`read`], pour un DFG rendu avec sa borne de laboratoire (`bound` :
 /// « < », « ≤ », « > », « ≥ », ou rien). **Un palier ne se conclut que
@@ -205,16 +205,27 @@ pub fn read_bounded(
                     !surely_below(v, t) && !surely_above(v, t)
                 })
             });
-            let hit = if open {
-                None
-            } else {
-                dfg.and_then(|v| {
-                    a.steps
-                        .iter()
-                        .filter(|s| surely_below(v, f64::from(s.below)))
-                        .min_by_key(|s| s.below)
-                })
-            };
+            let floor = dfg.and_then(|v| {
+                a.steps
+                    .iter()
+                    .filter(|s| surely_below(v, f64::from(s.below)))
+                    .min_by_key(|s| s.below)
+            });
+            // Un palier resté ouvert ne retire pas une conclusion que
+            // toutes les valeurs permises partagent : « <45 » sous deux
+            // paliers « contre-indiqué » (60 et 30) l'est quoi qu'il en
+            // soit. On conclut quand le palier sûr et chaque palier ouvert
+            // disent le même niveau.
+            let open = open
+                && !floor.is_some_and(|f| {
+                    dfg.is_some_and(|v| {
+                        a.steps.iter().all(|s| {
+                            let t = f64::from(s.below);
+                            surely_below(v, t) || surely_above(v, t) || s.level == f.level
+                        })
+                    })
+                });
+            let hit = if open { None } else { floor };
             // Sans DFG, la ligne existe et ne conclut pas. Avec un DFG
             // au-dessus de tous les seuils, il n'y a rien à dire du
             // tout — et le silence est la bonne réponse.
@@ -2435,6 +2446,18 @@ mod tests {
         assert_eq!(at(40.0, ">"), Some((None, true)));
         // « ≤15 » : peut-être 15 même, qui n'est pas sous 15.
         assert_eq!(at(15.0, "≤"), Some((None, true)));
+        // « ≥20 » : sous 50 ou non, on ne sait pas.
+        assert_eq!(at(20.0, "≥"), Some((None, true)));
+        // Deux paliers « contre-indiqué » : « <45 » l'est quoi qu'il en soit.
+        let alitretinoine = crate::revue::Treatment {
+            name: "Toctino",
+            dci: "alitrétinoïne",
+            class: "",
+            tags: "",
+        };
+        let found = read_bounded(&[alitretinoine], Some(45.0), "<");
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].level, Some(Level::Contraindicated));
     }
 
     /// **La table est une règle, pas de la prose.** Chaque entrée porte
