@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.421.0] - 2026-10-13
+
 ### Changed
 
 - « En ligne »: « Absentes ici seulement » becomes a choice, « Toutes /
