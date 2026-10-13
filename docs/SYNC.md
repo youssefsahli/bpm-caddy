@@ -913,12 +913,13 @@ clé de réseau n'y passe.
 * **Balayer** (« Tout le répertoire… ») : la liste, puis au plus
   `SWEEP_MOST` (20) catalogues — sous les trente appels par minute que
   le répertoire tient, avec de quoi pour l'annonce —, un balayage par
-  minute (`SWEEP_EVERY`), 90 secondes en tout (`SWEEP_BUDGET`), arrêté
+  minute (`SWEEP_EVERY`, comptée depuis la fin du précédent), 90 secondes en tout (`SWEEP_BUDGET`), arrêté
   à deux refus de suite. Les ouvertes d'abord (l'heure d'une carte bornée
   à maintenant), celles qui n'ont pas répondu en dernier ; chaque
   catalogue vérifié comme ci-dessus. Le poste les garde en mémoire sous
   l'empreinte de la carte (relus quand elle change, oubliés quand
-  l'officine quitte la liste, `SWEEP_BYTES` au plus — les lus depuis le
+  l'officine quitte la liste, `SWEEP_BYTES` au plus, à un catalogue
+  près : un balayage s'arrête de lire quand ce qu'il a lu les passe — les lus depuis le
   plus longtemps, à l'horloge d'ici, écartés d'abord, jamais ceux du
   balayage même) ; rien n'est écrit sur le disque. Une même entrée chez
   plusieurs officines est une offre à leurs noms.

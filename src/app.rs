@@ -11023,15 +11023,24 @@ impl Session {
                     crate::repertoire::SWEEP_MOST,
                 );
                 let mut refused = 0;
+                let mut weight = 0_usize;
                 for f in picks {
                     // Une lecture ne dépasse pas ce qui reste du budget —
                     // une connexion et quatre fois son attente : la suite
                     // se lira au prochain balayage.
-                    let patience = Duration::from_secs(8).min(left() / 5);
-                    if patience < Duration::from_secs(1) {
+                    // Deux adresses résolues (IPv6 et IPv4) : six fois
+                    // l'attente au pire.
+                    let patience = Duration::from_secs(8).min(left() / 6);
+                    if patience < Duration::from_secs(1) || weight > crate::repertoire::SWEEP_BYTES
+                    {
                         break;
                     }
                     let read = crate::repertoire::fetch_catalogue(&address, f, patience);
+                    // Ce qu'un seul balayage rapporte tient lui aussi sous
+                    // le plafond de la mémoire.
+                    if let Ok(articles) = &read {
+                        weight += crate::repertoire::weight(articles);
+                    }
                     // Deux refus de suite : le répertoire ne répond plus,
                     // on ne frappe pas encore dix-huit fois.
                     refused = if read.is_err() { refused + 1 } else { 0 };
@@ -11070,6 +11079,9 @@ impl Session {
     /// was typed in it; a closed one reopens only when the map asked.
     #[cfg(feature = "sync")]
     fn carte_swept(&mut self, sweep: Sweep) {
+        // La minute que le répertoire compte part du dernier appel, pas du
+        // premier : un balayage peut durer plus d'une minute.
+        self.carte.last_sweep = Some(Instant::now());
         let Sweep {
             list,
             got,
@@ -11206,9 +11218,10 @@ impl Session {
                     && self.carte.sweep_failed.contains_key(&f.device)
             })
             .count();
+        // La sorte choisie pendant la lecture l'emporte sur celle du clic.
         let current = self.online.as_ref().map(|o| o.kind);
-        let Some(kind) = kind
-            .or(current)
+        let Some(kind) = current
+            .or(kind)
             .filter(|k| offers.iter().any(|o| o.kind == *k))
             .or_else(|| {
                 crate::versions::Kind::ALL
@@ -63903,7 +63916,8 @@ impl App {
                     } else if session.carte.list.is_empty() {
                         dim(tr("carte_empty"), ui);
                     }
-                    if session.carte.list.len() > 1 {
+                    // Un filtre écrit reste à portée tant qu'il filtre.
+                    if session.carte.list.len() > 1 || !session.carte.filter.is_empty() {
                         let w = ui.available_width();
                         motif::field(
                             ui,
@@ -63925,7 +63939,7 @@ impl App {
                         // s'enveloppe pas, et un nom de quatre-vingts
                         // caractères sortait du volet.
                         let text = match km {
-                            Some(km) => trn("carte_list_entry_km", &[&f.nom, &f.commune, &km]),
+                            Some(km) => trn("carte_list_entry_km", &[&km, &f.nom, &f.commune]),
                             None => format!("{} · {}", f.nom, f.commune),
                         };
                         let label = Self::carte_elide(ui, &text, ui.available_width());
@@ -95240,6 +95254,8 @@ mod tests {
         assert_eq!(remote.offers[0].from, ["Pharmacie A (Brest)"]);
         assert_eq!(session.carte.catalogues.len(), 1);
         assert_eq!(session.carte.sweep_failed.len(), 1);
+        // La minute du répertoire se compte depuis la réponse.
+        assert!(session.sweep_wait().is_some());
         // La suite : la même entrée chez une seconde officine est une
         // offre à leurs deux noms, et ce qu'on a tapé pendant la lecture
         // reste.
@@ -95286,11 +95302,6 @@ mod tests {
         assert!(session.carte.note.is_some());
     }
 
-    /// A session on a scratch database, for the notebook tests.
-    ///
-    /// The guard comes back with the session and not instead of it: it
-    /// removes the directory when it drops, and dropping it here would
-    /// delete the database out from under the session it just opened.
     /// Ce qu'un autre poste écrit de l'officine arrive **sans qu'on se
     /// reverrouille**.
     ///
@@ -97554,6 +97565,11 @@ mod tests {
         assert!(fit.is_finite());
     }
 
+    /// A session on a scratch database, for the notebook tests.
+    ///
+    /// The guard comes back with the session and not instead of it: it
+    /// removes the directory when it drops, and dropping it here would
+    /// delete the database out from under the session it just opened.
     fn scratch_session(tag: &str) -> (super::Session, crate::db::Swept) {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-tab-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
