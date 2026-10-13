@@ -249,9 +249,28 @@ pub fn place(zone: Zone, frame: [f32; 4], projected: [f32; 2]) -> [f32; 2] {
     ]
 }
 
+/// La distance à vol d'oiseau entre deux points (longitude, latitude),
+/// en kilomètres.
+pub fn distance_km(a: [f32; 2], b: [f32; 2]) -> f32 {
+    let (la1, la2) = (a[1].to_radians(), b[1].to_radians());
+    let dla = la2 - la1;
+    let dlo = (b[0] - a[0]).to_radians();
+    let h = (dla / 2.0).sin().powi(2) + la1.cos() * la2.cos() * (dlo / 2.0).sin().powi(2);
+    2.0 * 6371.0 * h.sqrt().min(1.0).asin()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn distances_read_as_the_crow_flies() {
+        let paris = [2.35, 48.86];
+        let lyon = [4.84, 45.76];
+        let d = distance_km(paris, lyon);
+        assert!((385.0..400.0).contains(&d), "{d}");
+        assert_eq!(distance_km(paris, paris), 0.0);
+    }
 
     /// Les cent un départements, chacun avec un contour, et chaque
     /// commune dans un département qui existe.

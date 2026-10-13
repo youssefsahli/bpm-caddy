@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pass, open ones first, « Lire la suite » for the rest), verifies it,
   keeps it in memory under the card's digest, and lists every entry under
   the officine's name and commune, each taken in one gesture.
+- The map's list filters by name, commune or postcode, and once the
+  officine has chosen its commune, lists the nearest first with their
+  distance as the crow flies.
 
 ## [0.416.0] - 2026-10-13
 

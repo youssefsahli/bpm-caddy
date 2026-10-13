@@ -1243,7 +1243,10 @@ déjà lu ne se relit que quand l'officine l'a changé. Rien ne s'y compare
 « Carte des officines » (onglet, ou « Aller à… ») montre les officines
 qui paraissent au **répertoire** : une pastille par officine, à sa
 commune — pleine si elle est ouverte, creuse sinon, avec depuis quand
-elle n'a pas été vue. Le carré est cette officine. Choisie sur la carte
+elle n'a pas été vue. Le carré est cette officine. La liste à côté se
+filtre par nom, commune ou code postal ; une fois la commune de
+l'officine choisie, les plus proches viennent d'abord, avec leur
+distance à vol d'oiseau. Choisie sur la carte
 ou dans la liste, une officine dit sa commune, son FINESS s'il est
 écrit, l'empreinte de sa clé et ce qu'elle partage. Le FINESS se lit
 au **registre public** livré avec l'application : « Au registre

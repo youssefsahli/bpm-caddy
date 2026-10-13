@@ -10896,6 +10896,57 @@ impl Session {
                 let zone = crate::geo::zone_of(c.dep);
                 (zone, crate::geo::project(zone, c.lon, c.lat))
             });
+        self.carte.me_lonlat = self
+            .carte
+            .commune
+            .as_ref()
+            .and_then(|(cp, nom)| crate::geo::commune(cp, nom))
+            .map(|c| [c.lon, c.lat]);
+        self.carte.rev += 1;
+    }
+
+    /// **The directory's list as shown**: what the filter keeps, the
+    /// nearest first when this officine has chosen its commune, each with
+    /// its distance — read when the filter, the list or the commune
+    /// change, never per frame.
+    #[cfg(feature = "sync")]
+    fn carte_order(&mut self) {
+        let asked = (self.carte.filter.clone(), self.carte.rev);
+        if self.carte.order_for.as_ref() == Some(&asked) {
+            return;
+        }
+        let words: Vec<String> = crate::geo::folded(&self.carte.filter)
+            .split(' ')
+            .filter(|w| !w.is_empty())
+            .map(str::to_owned)
+            .collect();
+        let me = self.carte.me_lonlat;
+        let mut order: Vec<(usize, Option<u32>)> = self
+            .carte
+            .list
+            .iter()
+            .enumerate()
+            .filter(|(_, f)| {
+                let text =
+                    crate::geo::folded(&format!("{} {} {}", f.nom, f.commune, f.code_postal));
+                words.iter().all(|w| text.contains(w.as_str()))
+            })
+            .map(|(i, _)| {
+                let km = me
+                    .zip(self.carte.lonlat.get(i).copied().flatten())
+                    .map(|(a, b)| crate::geo::distance_km(a, b).round() as u32);
+                (i, km)
+            })
+            .collect();
+        let list = &self.carte.list;
+        order.sort_by(|a, b| {
+            a.1.is_none()
+                .cmp(&b.1.is_none())
+                .then(a.1.cmp(&b.1))
+                .then_with(|| list[a.0].nom.cmp(&list[b.0].nom))
+        });
+        self.carte.order = order;
+        self.carte.order_for = Some(asked);
     }
 
     #[cfg(not(feature = "sync"))]
@@ -11136,20 +11187,28 @@ impl Session {
             .collect();
         // Une commune que la liste ignore se pose encore à celle du
         // registre, quand le registre la met là où elle dit être.
-        self.carte.points = list
+        let communes: Vec<Option<&'static crate::geo::Commune>> = list
             .iter()
             .zip(&self.carte.checks)
             .map(|(f, check)| {
-                let c = crate::geo::commune(&f.code_postal, &f.commune).or(match check {
+                crate::geo::commune(&f.code_postal, &f.commune).or(match check {
                     Some(crate::finess::Check::Here { entry, .. }) => {
                         crate::finess::commune_of(entry)
                     }
                     _ => None,
-                })?;
+                })
+            })
+            .collect();
+        self.carte.points = communes
+            .iter()
+            .map(|c| {
+                let c = (*c)?;
                 let zone = crate::geo::zone_of(c.dep);
                 Some((zone, crate::geo::project(zone, c.lon, c.lat)))
             })
             .collect();
+        self.carte.lonlat = communes.iter().map(|c| c.map(|c| [c.lon, c.lat])).collect();
+        self.carte.rev += 1;
         if let Some(pick) = &self.carte.pick {
             if !list.iter().any(|f| &f.device == pick) {
                 self.carte.pick = None;
@@ -14928,6 +14987,17 @@ struct Carte {
         Option<crate::finess::Check>,
         Option<&'static crate::geo::Commune>,
     )>,
+    /// Où est chacune (longitude, latitude), et cette officine : pour la
+    /// distance.
+    lonlat: Vec<Option<[f32; 2]>>,
+    me_lonlat: Option<[f32; 2]>,
+    /// La liste montrée : ce que le filtre garde, les plus proches
+    /// d'abord, avec leur distance en kilomètres — relue quand le filtre
+    /// ou `rev` (la liste, la commune) changent.
+    filter: String,
+    order: Vec<(usize, Option<u32>)>,
+    order_for: Option<(String, u64)>,
+    rev: u64,
     /// Ce que le registre FINESS dit de chacune — lu une fois par lecture.
     checks: Vec<Option<crate::finess::Check>>,
     listed: bool,
@@ -63706,16 +63776,32 @@ impl App {
                     } else if session.carte.list.is_empty() {
                         dim(tr("carte_empty"), ui);
                     }
-                    for f in &session.carte.list {
+                    if session.carte.list.len() > 1 {
+                        let w = ui.available_width();
+                        motif::field(
+                            ui,
+                            w,
+                            egui::TextEdit::singleline(&mut session.carte.filter)
+                                .hint_text(motif::hint(tr("carte_filter_hint"))),
+                        );
+                    }
+                    session.carte_order();
+                    if session.carte.order.is_empty() && !session.carte.list.is_empty() {
+                        dim(tr("carte_filter_none"), ui);
+                    }
+                    for &(i, km) in &session.carte.order {
+                        let Some(f) = session.carte.list.get(i) else {
+                            continue;
+                        };
                         let on = session.carte.pick.as_deref() == Some(f.device.as_str());
                         // Coupé à la largeur de la colonne : un bouton ne
                         // s'enveloppe pas, et un nom de quatre-vingts
                         // caractères sortait du volet.
-                        let label = Self::carte_elide(
-                            ui,
-                            &format!("{} · {}", f.nom, f.commune),
-                            ui.available_width(),
-                        );
+                        let text = match km {
+                            Some(km) => trn("carte_list_entry_km", &[&f.nom, &f.commune, &km]),
+                            None => format!("{} · {}", f.nom, f.commune),
+                        };
+                        let label = Self::carte_elide(ui, &text, ui.available_width());
                         if motif::toggle(ui, &label, on)
                             .on_hover_text(Self::carte_status(f, now))
                             .clicked()
