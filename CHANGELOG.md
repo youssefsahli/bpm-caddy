@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.430.0] - 2026-10-13
+
 ### Fixed
 
 - A password change interrupted between its three files (a power cut, a
