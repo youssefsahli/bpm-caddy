@@ -5162,6 +5162,8 @@ struct Session {
     /// « Prescrire… » ouverte sur le carnet : le dossier, et ses lignes —
     /// (vaccin, ce que la ligne dit, retenue).
     vacc_ord: Option<(i64, Vec<VaccOrdLine>)>,
+    /// La réécriture sans phrase dont « Retirer » a été cliqué une fois.
+    textes_orphan_armed: Option<String>,
     /// Its editor, when open.
     vacc_cat_edit: Option<VaccCatEdit>,
     /// In-progress country search of the travel panel.
@@ -6521,6 +6523,7 @@ impl Session {
             vacc_ddr_text: None,
             vacc_catalogue: Vec::new(),
             vacc_ord: None,
+            textes_orphan_armed: None,
             vacc_cat_edit: None,
             travel_query: String::new(),
             patient_doses: Vec::new(),
@@ -67873,6 +67876,7 @@ impl App {
         );
 
         let mut pick: Option<String> = None;
+        let mut drop_orphan: Option<(String, String)> = None;
         // **Le compte sur la porte.** La liste défile derrière une barre
         // flottante, donc invisible au repos : les deux volets tirés
         // larges elle montrait douze documents sur seize, coupés au
@@ -67916,9 +67920,62 @@ impl App {
                                 pick = Some(d.subject.clone());
                             }
                         }
+                        // **Les réécritures sans phrase** : une adresse
+                        // tirée d'un libellé qui a changé. Elles ne
+                        // s'impriment plus nulle part ; dites et retirables
+                        // ici, plutôt qu'invisibles en base.
+                        let known: std::collections::HashSet<&str> = docs
+                            .iter()
+                            .flat_map(|d| d.phrases.iter().map(|(k, _, _)| k.as_str()))
+                            .collect();
+                        let orphans = session.content.orphans(&known);
+                        if !orphans.is_empty() {
+                            ui.add_space(6.0);
+                            ui.label(
+                                egui::RichText::new(trn("textes_orphans", &[&orphans.len()]))
+                                    .size(motif::pt(ui, 11.0))
+                                    .strong(),
+                            )
+                            .on_hover_text(tr("textes_orphans_tooltip"));
+                            for (key, value) in orphans {
+                                ui.label(
+                                    egui::RichText::new(key)
+                                        .size(motif::pt(ui, 10.0))
+                                        .color(motif::text_faint()),
+                                );
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(value).size(motif::pt(ui, 10.5)),
+                                    )
+                                    .wrap(),
+                                );
+                                let armed = session.textes_orphan_armed.as_deref() == Some(key);
+                                let label = if armed {
+                                    tr("textes_orphan_confirm")
+                                } else {
+                                    tr("textes_orphan_remove")
+                                };
+                                if motif::button(ui, label).clicked() {
+                                    if armed {
+                                        drop_orphan = Some((key.to_owned(), value.to_owned()));
+                                    } else {
+                                        session.textes_orphan_armed = Some(key.to_owned());
+                                    }
+                                }
+                            }
+                        }
                     });
             });
         });
+        if let Some((key, shown)) = drop_orphan {
+            session.textes_orphan_armed = None;
+            match session.db.remove_orphan_override(&key, &shown) {
+                Ok(true) => {}
+                Ok(false) => session.stale("textes_orphan_stale"),
+                Err(e) => session.error = Some(e),
+            }
+            session.content = session.db.content_overrides().unwrap_or_default();
+        }
 
         let open = session
             .textes_open

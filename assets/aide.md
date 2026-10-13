@@ -1742,6 +1742,11 @@ au prochain lancement.
 
 Chaque modification garde la trace du texte d'origine. Si le texte livré
 change, la modification est signalée pour relecture.
+Une phrase réécrite que la version suivante ne contient plus — un
+libellé changé, une phrase retirée — ne s'imprime plus nulle part :
+« Textes imprimés » la liste sous « Réécritures sans phrase », avec son
+texte, pour le reprendre dans la phrase qui la remplace, puis la retirer
+en deux clics.
 
 # Base de données
 

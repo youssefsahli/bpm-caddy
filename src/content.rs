@@ -137,6 +137,24 @@ impl Overrides {
         self.map.get(key).map(|e| e.value.as_str())
     }
 
+    /// **Les réécritures qui ne visent plus aucune phrase** : une adresse
+    /// tirée d'un libellé qui a changé, une phrase retirée par une
+    /// version. Elles restaient en base, invisibles et non comptées.
+    /// Rangées par adresse ; `known` dit les adresses de cette version.
+    pub fn orphans<'a>(
+        &'a self,
+        known: &std::collections::HashSet<&str>,
+    ) -> Vec<(&'a str, &'a str)> {
+        let mut out: Vec<(&str, &str)> = self
+            .map
+            .iter()
+            .filter(|(k, e)| !known.contains(k.as_str()) && !e.value.trim().is_empty())
+            .map(|(k, e)| (k.as_str(), e.value.as_str()))
+            .collect();
+        out.sort_unstable();
+        out
+    }
+
     /// Le texte livré que la surcharge visait, pour l'afficher à côté
     /// du nouveau quand les deux ont divergé.
     pub fn aimed_at(&self, key: &str) -> Option<&str> {
@@ -304,6 +322,26 @@ pub fn documents() -> Vec<Document> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Une réécriture dont l'adresse n'est plus une phrase se trouve ; une
+    /// réécriture vide ou d'une phrase connue, non.
+    #[test]
+    fn a_rewrite_without_a_phrase_is_found() {
+        let o = Overrides::from_rows([
+            (
+                "rein.ancien.libelle".to_owned(),
+                "Notre texte".to_owned(),
+                "x".to_owned(),
+            ),
+            ("rein.vide".to_owned(), "  ".to_owned(), "x".to_owned()),
+            ("connue.a".to_owned(), "Réécrite".to_owned(), "x".to_owned()),
+        ]);
+        let known: std::collections::HashSet<&str> = ["connue.a"].into_iter().collect();
+        assert_eq!(
+            o.orphans(&known),
+            vec![("rein.ancien.libelle", "Notre texte")]
+        );
+    }
 
     fn one(key: &str, value: &str, shipped_seen: &str) -> Overrides {
         Overrides::from_rows([(key.to_owned(), value.to_owned(), shipped_seen.to_owned())])

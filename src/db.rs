@@ -53507,6 +53507,20 @@ impl Db {
         Ok(())
     }
 
+    /// Retirer une réécriture qui ne vise plus aucune phrase, contre le
+    /// texte que l'écran montrait. `false` si un autre poste l'a changée
+    /// entre-temps.
+    pub fn remove_orphan_override(&self, key: &str, shown: &str) -> Result<bool, String> {
+        let n = self
+            .conn
+            .execute(
+                "DELETE FROM content_overrides WHERE key = ?1 AND value = ?2",
+                (key, shown),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(n == 1)
+    }
+
     /// Toutes les phrases que l'officine a réécrites, lues **une fois**.
     ///
     /// Elles sont résolues à chaque impression et à chaque dessin de
