@@ -152,11 +152,11 @@ pub fn read(treatments: &[crate::revue::Treatment], dfg: Option<f64>) -> Vec<Fin
     read_bounded(treatments, dfg, "")
 }
 
-/// Ce qu'une ligne dit d'un DFG rendu borné qui ne permet pas de conclure.
 /// Ce qu'une ligne dit sans DFG au dossier.
 pub const MISSING: &str =
     "Ce traitement s'adapte à la fonction rénale ; aucun DFG n'est noté au dossier.";
 
+/// Ce qu'une ligne dit d'un DFG rendu borné qui ne permet pas de conclure.
 pub const BOUNDED: &str = "Le DFG est rendu borné par le laboratoire : il ne dit pas de quel côté d'un seuil de ce traitement il se trouve — à vérifier avec la valeur exacte.";
 
 /// [`read`], pour un DFG rendu avec sa borne de laboratoire (`bound` :

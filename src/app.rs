@@ -4761,9 +4761,6 @@ struct Session {
     /// field) and the catalogue entry it was picked from.
     vacc_new: db::Vaccination,
     vacc_new_date: String,
-    /// Le geste des postes armé par un premier clic, qu'un second fait.
-    #[cfg(feature = "sync")]
-    posts_confirm: Option<PostsConfirm>,
     /// Le lot que le choix d'un vaccin a proposé : un autre vaccin le
     /// remplace tant qu'on ne l'a pas retouché.
     vacc_lot_proposed: Option<String>,
@@ -6270,8 +6267,6 @@ impl Session {
             travels: Vec::new(),
             vacc_new: db::Vaccination::default(),
             vacc_new_date: String::new(),
-            #[cfg(feature = "sync")]
-            posts_confirm: None,
             vacc_lot_proposed: None,
             vacc_lot_warn: None,
             vacc_cursor: 0,
@@ -15266,6 +15261,9 @@ struct PostsWindow {
     /// L'invitation en cours est pour un téléphone : son code se montre
     /// aussi en QR.
     inviting_phone: bool,
+    /// Le geste armé par un premier clic, qu'un second fait — oublié avec
+    /// la fenêtre, comme « Quitter » et « Rejoindre ».
+    posts_confirm: Option<PostsConfirm>,
 }
 
 /// **Un code QR**, peint : sombre sur clair quel que soit le thème — un
@@ -74176,7 +74174,14 @@ impl App {
                 match rx.try_recv() {
                     Ok(Progress::Waiting(at)) => w.waiting = Some(at),
                     Ok(Progress::Code(code)) => w.code = Some(code),
-                    Ok(Progress::Status(said)) => w.note = Some((false, said)),
+                    Ok(Progress::Status(said)) => {
+                        // Admis : le code n'a plus rien à ouvrir, et la porte
+                        // attend le premier mot sans pouvoir s'annuler.
+                        if said == tr("posts_invite_first_word") {
+                            w.waiting = None;
+                        }
+                        w.note = Some((false, said));
+                    }
                     Ok(Progress::Peers(_) | Progress::Officines(_)) => {}
                     Ok(Progress::Done(said)) => {
                         w.note = Some((false, said));
@@ -74502,8 +74507,7 @@ impl App {
                                 ui.horizontal_wrapped(|ui| {
                                     // Deux temps : fonder un second groupe sépare
                                     // ce poste des autres.
-                                    let armed =
-                                        session.posts_confirm == Some(PostsConfirm::FoundOther);
+                                    let armed = w.posts_confirm == Some(PostsConfirm::FoundOther);
                                     let label = if armed {
                                         tr("posts_found_other_confirm")
                                     } else {
@@ -74514,12 +74518,12 @@ impl App {
                                         .clicked()
                                     {
                                         if armed {
-                                            session.posts_confirm = None;
+                                            w.posts_confirm = None;
                                             start = Some(Job::Found {
                                                 name: config.pharmacy.name.clone(),
                                             });
                                         } else {
-                                            session.posts_confirm = Some(PostsConfirm::FoundOther);
+                                            w.posts_confirm = Some(PostsConfirm::FoundOther);
                                         }
                                     }
                                 });
@@ -74604,7 +74608,7 @@ impl App {
                                 // un poste retiré ne reçoit plus rien.
                                 if Some(p.post) != sum.post {
                                     let armed =
-                                        session.posts_confirm == Some(PostsConfirm::Retire(p.post));
+                                        w.posts_confirm == Some(PostsConfirm::Retire(p.post));
                                     let label = if armed {
                                         tr("posts_retire_confirm")
                                     } else {
@@ -74616,10 +74620,9 @@ impl App {
                                     {
                                         if armed {
                                             retire = Some(p.post);
-                                            session.posts_confirm = None;
+                                            w.posts_confirm = None;
                                         } else {
-                                            session.posts_confirm =
-                                                Some(PostsConfirm::Retire(p.post));
+                                            w.posts_confirm = Some(PostsConfirm::Retire(p.post));
                                         }
                                     }
                                 }
@@ -74854,6 +74857,10 @@ impl App {
             }
             let (answers_tx, answers_rx) = std::sync::mpsc::channel();
             let path = session.db.path().unwrap_or_default();
+            if let Some(w) = &mut session.posts_window {
+                // Une autre tâche part : ce qui était armé ne l'est plus.
+                w.posts_confirm = None;
+            }
             let rx = crate::postes::spawn(
                 job,
                 path,
