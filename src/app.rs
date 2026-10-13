@@ -5634,13 +5634,17 @@ struct Session {
     /// L'infirmier(ère) du dossier ouvert : le dossier, le réglage tel que
     /// la base le portait (contre lequel on écrit), et ce que l'écran a
     /// sous les doigts.
-    care: Option<(i64, Option<String>, crate::infirmier::Care)>,
+    care: Option<(i64, String, crate::infirmier::Care)>,
+    /// Ce que l'écran porte de l'infirmier(ère) n'est pas encore écrit :
+    /// [`Session::flush_care`] l'écrit en quittant l'onglet, le dossier,
+    /// ou au verrouillage.
+    care_dirty: bool,
     /// La feuille rangée par moment, lue contre (dossier, `file_rev`).
     care_sheet: Option<((i64, u64), crate::infirmier::Sheet)>,
     /// Une délivrance vient d'être notée sur un dossier dont
     /// l'infirmier(ère) prend les traitements : la feuille se propose,
     /// une fois, tant que ce dossier reste ouvert.
-    care_due: Option<i64>,
+    care_due: Option<(i64, String)>,
     /// Les tables que l'équipe a corrigées, lues contre `table_rev` : la
     /// liste les marque, et les relisait à chaque image.
     table_edited: Option<(u64, std::collections::HashSet<String>)>,
@@ -6593,6 +6597,7 @@ impl Session {
             care: None,
             care_sheet: None,
             care_due: None,
+            care_dirty: false,
             table_edited: None,
             drug_form: None,
             drug_reading: true,
@@ -8352,13 +8357,10 @@ impl Session {
         self.vacc_lot_warn = None;
         // Une table corrigée sur un autre poste se marque aussi.
         self.table_edited = None;
-        // Le réglage de l'infirmier(ère) relu, sauf s'il porte une saisie
-        // pas encore écrite : celle-là partira contre ce qu'elle avait lu.
-        if self
-            .care
-            .as_ref()
-            .is_some_and(|(_, raw, care)| crate::infirmier::Care::read(raw.as_deref()) == *care)
-        {
+        // L'infirmier(ère) du dossier relu, sauf si l'écran porte une
+        // saisie pas encore écrite : celle-là partira contre ce qu'elle
+        // avait lu.
+        if !self.care_dirty {
             self.care = None;
         }
         // Deux lectures gardées d'une image à l'autre et qu'un autre
@@ -12549,31 +12551,48 @@ impl Session {
 
     /// The nurse setting of a file, read from the base when the file
     /// changes — the raw text kept, as what the next write is compared to.
+    /// A base that does not answer is said, never read as « no nurse ».
     fn load_care(&mut self, patient: i64) {
         if self.care.as_ref().is_some_and(|(id, _, _)| *id == patient) {
             return;
         }
-        let raw = self.db.setting(&crate::infirmier::Care::key(patient));
-        let care = crate::infirmier::Care::read(raw.as_deref());
-        self.care = Some((patient, raw, care));
+        // Ce qui était tapé pour le dossier d'avant part d'abord.
+        self.flush_care();
+        match self.db.patient_care(patient) {
+            Ok(raw) => {
+                let care = crate::infirmier::Care::read(Some(&raw));
+                self.care = Some((patient, raw, care));
+            }
+            Err(e) => {
+                self.care = None;
+                self.error = Some(e);
+            }
+        }
+    }
+
+    /// Write what the screen holds of the nurse, if anything was changed.
+    fn flush_care(&mut self) {
+        if self.care_dirty {
+            self.save_care();
+        }
     }
 
     /// Save the nurse setting against what the screen read; another post
-    /// changed it meanwhile, the screen reloads and says so.
-    fn save_care(&mut self, operator: &str) {
+    /// changed it meanwhile, the screen reloads and says so. Nothing
+    /// changed, nothing written: a click through the fields is not an
+    /// edit, and would travel to every post as one.
+    fn save_care(&mut self) {
+        self.care_dirty = false;
         let Some((patient, raw, care)) = self.care.clone() else {
             return;
         };
-        let today = self.today.clone();
-        match self.db.set_setting(
-            &crate::infirmier::Care::key(patient),
-            &care.text(),
-            raw.as_deref(),
-            &today,
-            operator,
-        ) {
+        if crate::infirmier::Care::read(Some(&raw)) == care {
+            return;
+        }
+        let text = care.text();
+        match self.db.set_patient_care(patient, &text, &raw) {
             Ok(true) => {
-                self.care = Some((patient, Some(care.text()), care));
+                self.care = Some((patient, text, care));
                 self.error = None;
             }
             Ok(false) => {
@@ -12984,6 +13003,7 @@ impl Session {
     /// field equal to the row read back writes nothing; one typed over a
     /// value changed elsewhere compares with what it showed.
     fn flush_date_edits(&mut self) {
+        self.flush_care();
         let Some(pid) = self.viewing.as_ref().map(|p| p.id) else {
             self.date_edits.clear();
             self.made_edits.clear();
@@ -13210,6 +13230,9 @@ impl Session {
         // answer is read against this patient's age. Set last, they
         // computed it against the file that was open before.
         self.viewing = Some(patient.clone());
+        // Un rappel de feuille vaut pour la délivrance qu'il suit, pas
+        // pour le dossier rouvert plus tard.
+        self.care_due = None;
         self.reload_interviews(patient.id);
         self.reload_treatments(patient.id);
         self.patient_notes = self
@@ -19014,22 +19037,14 @@ impl App {
                                 })
                                 .cloned();
                             if let Some(p) = pick {
-                                let today = session.today.clone();
                                 let care = crate::infirmier::Care {
                                     remis: true,
                                     nom: "Mme Durand".to_owned(),
                                     telephone: "06 00 00 00 00".to_owned(),
                                     style: crate::infirmier::Style::Simple,
                                 };
-                                let key = crate::infirmier::Care::key(p.id);
-                                let was = session.db.setting(&key);
-                                let _ = session.db.set_setting(
-                                    &key,
-                                    &care.text(),
-                                    was.as_deref(),
-                                    &today,
-                                    "",
-                                );
+                                let was = session.db.patient_care(p.id).unwrap_or_default();
+                                let _ = session.db.set_patient_care(p.id, &care.text(), &was);
                                 session.open_patient(p);
                             }
                             session.patient_tab = PatientTab::Infirmier;
@@ -24216,8 +24231,12 @@ impl App {
             Self::patient_fil_pane(ui, session, work);
             return;
         }
+        if session.patient_tab != PatientTab::Infirmier {
+            // Quitter l'onglet écrit ce qui y était tapé.
+            session.flush_care();
+        }
         if session.patient_tab == PatientTab::Infirmier {
-            Self::patient_infirmier_pane(ui, session, patient, work, config, operator);
+            Self::patient_infirmier_pane(ui, session, patient, work, config);
             return;
         }
         if session.patient_tab == PatientTab::Vaccins {
@@ -25170,7 +25189,6 @@ impl App {
         patient: &Patient,
         rect: egui::Rect,
         config: &Config,
-        operator: &str,
     ) {
         use crate::infirmier::Style;
         session.load_care(patient.id);
@@ -25188,6 +25206,7 @@ impl App {
             session.care_sheet = Some((key, crate::infirmier::sheet(&lines)));
         }
         let mut save = false;
+        let mut dirty = false;
         let mut print = false;
         motif::panel(ui, rect, Some(tr("care_title")), |ui| {
             egui::ScrollArea::vertical()
@@ -25219,25 +25238,23 @@ impl App {
                             .on_hover_text(tr("care_remis_tooltip"))
                             .changed()
                         {
+                            dirty = true;
                             save = true;
                         }
                     });
                     let w = chars_wide(ui, 32.0).min(ui.available_width());
                     ui.horizontal_wrapped(|ui| {
                         Self::form_label(ui, tr("care_name"));
-                        if motif::field(ui, w, egui::TextEdit::singleline(&mut care.nom))
-                            .lost_focus()
-                        {
-                            save = true;
-                        }
+                        let field = motif::field(ui, w, egui::TextEdit::singleline(&mut care.nom));
+                        dirty |= field.changed();
+                        save |= field.lost_focus();
                     });
                     ui.horizontal_wrapped(|ui| {
                         Self::form_label(ui, tr("care_phone"));
-                        if motif::field(ui, w, egui::TextEdit::singleline(&mut care.telephone))
-                            .lost_focus()
-                        {
-                            save = true;
-                        }
+                        let field =
+                            motif::field(ui, w, egui::TextEdit::singleline(&mut care.telephone));
+                        dirty |= field.changed();
+                        save |= field.lost_focus();
                     });
                     ui.add_space(6.0);
                     motif::section(ui, tr("care_style_title"));
@@ -25260,6 +25277,7 @@ impl App {
                                 && care.style != style
                             {
                                 care.style = style;
+                                dirty = true;
                                 save = true;
                             }
                         }
@@ -25314,8 +25332,9 @@ impl App {
                     }
                 });
         });
+        session.care_dirty |= dirty;
         if save {
-            session.save_care(operator);
+            session.flush_care();
         }
         if print {
             Self::print_infirmier(session, patient, config);
@@ -25332,22 +25351,15 @@ impl App {
         patient: &Patient,
         config: &Config,
     ) {
-        match session.care_due {
-            Some(id) if id == patient.id => {}
+        let nom = match &session.care_due {
+            Some((id, nom)) if *id == patient.id => nom.clone(),
             // Un autre dossier ouvert : le rappel ne le suit pas.
             Some(_) => {
                 session.care_due = None;
                 return;
             }
             None => return,
-        }
-        let nom = crate::infirmier::Care::read(
-            session
-                .db
-                .setting(&crate::infirmier::Care::key(patient.id))
-                .as_deref(),
-        )
-        .nom;
+        };
         let (mut print, mut open, mut later) = (false, false, false);
         let screen = ctx.screen_rect();
         let shown = egui::Window::new(tr("care_due_title"))
@@ -33256,16 +33268,16 @@ impl App {
                         // feuille se propose. Lu de la base, pas du
                         // réglage gardé à l'écran — un autre poste a pu
                         // cocher la case.
-                        if next.dispensed > was.dispensed
-                            && crate::infirmier::Care::read(
-                                session
-                                    .db
-                                    .setting(&crate::infirmier::Care::key(patient.id))
-                                    .as_deref(),
-                            )
-                            .remis
-                        {
-                            session.care_due = Some(patient.id);
+                        if next.dispensed > was.dispensed {
+                            match session.db.patient_care(patient.id) {
+                                Ok(raw) => {
+                                    let care = crate::infirmier::Care::read(Some(&raw));
+                                    if care.remis {
+                                        session.care_due = Some((patient.id, care.nom));
+                                    }
+                                }
+                                Err(e) => session.error = Some(e),
+                            }
                         }
                     }
                     Ok(false) => {

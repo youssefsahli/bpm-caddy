@@ -1444,9 +1444,19 @@ fn infirmier_sheet_markup(
 ) -> String {
     use crate::infirmier::Style;
     use crate::intake::Moment;
+    use crate::strings::tr;
     let t = |s: &str| format!("#{}", typst_str(s));
     // Le moment sans la quantité : une marque, jamais un « 1 » inventé.
     let qty = |q: &Option<String>| q.clone().unwrap_or_else(|| "•".to_owned());
+    // Le repas et les remarques suivent la prise dans les trois styles :
+    // « à jeun » vaut pour qui remplit le pilulier autant que le nombre.
+    let note = |n: &str| {
+        if n.trim().is_empty() {
+            String::new()
+        } else {
+            format!("#text(9pt, fill: luma(80))[{}]", t(n.trim()))
+        }
+    };
     let mut out = String::new();
     let heading = |out: &mut String, title: &str| {
         out.push_str(&format!(
@@ -1470,12 +1480,20 @@ fn infirmier_sheet_markup(
                             t(&d.name),
                             t(&qty(&d.quantity))
                         ));
+                        if !d.note.trim().is_empty() {
+                            out.push_str(&format!("#h(5.6mm) {}\\\n", note(&d.note)));
+                        }
                     }
                 } else {
                     out.push_str(
                         "#table(columns: (1fr, auto, 1.2fr), inset: 6pt, stroke: 0.6pt,\n",
                     );
-                    out.push_str("  [*Médicament*], [*Quantité*], [*Remarques*],\n");
+                    out.push_str(&format!(
+                        "  [*{}*], [*{}*], [*{}*],\n",
+                        t(tr("pdf_nurse_drug")),
+                        t(tr("pdf_nurse_quantity")),
+                        t(tr("pdf_nurse_notes"))
+                    ));
                     for d in doses {
                         out.push_str(&format!(
                             "  [{}], [{}], [{}],\n",
@@ -1484,36 +1502,50 @@ fn infirmier_sheet_markup(
                             t(&d.note)
                         ));
                     }
-                    out.push_str(")\n#text(9.5pt)[Préparé le ............ par ............]\n");
+                    out.push_str(&format!(
+                        ")\n#text(9.5pt)[{}]\n",
+                        t(tr("pdf_nurse_prepared"))
+                    ));
                 }
             }
         }
         Style::Grille => {
-            // Un médicament par ligne, dans l'ordre où la feuille les a
-            // rencontrés.
-            let mut names: Vec<&str> = Vec::new();
+            // Une ligne du dossier par rangée, dans l'ordre du dossier :
+            // deux lignes du même médicament font deux rangées, et aucune
+            // prise ne disparaît sous l'autre.
+            let mut rows: Vec<(usize, &str, &str)> = Vec::new();
             for m in Moment::ALL {
                 for d in &sheet.moments[m.index()] {
-                    if !names.contains(&d.name.as_str()) {
-                        names.push(&d.name);
+                    if !rows.iter().any(|(l, _, _)| *l == d.line) {
+                        rows.push((d.line, &d.name, &d.note));
                     }
                 }
             }
+            rows.sort_by_key(|(l, _, _)| *l);
             out.push_str("#table(columns: (1fr, auto, auto, auto, auto), inset: 7pt, stroke: 0.6pt, align: (left, center, center, center, center),\n");
-            out.push_str("  [*Médicament*], [*Matin*], [*Midi*], [*Soir*], [*Coucher*],\n");
-            for n in &names {
-                out.push_str(&format!("  [*{}*]", t(n)));
+            out.push_str(&format!("  [*{}*]", t(tr("pdf_nurse_drug"))));
+            for m in Moment::ALL {
+                out.push_str(&format!(", [*{}*]", t(m.label())));
+            }
+            out.push_str(",\n");
+            for (line, name, n) in &rows {
+                let cell_name = if n.trim().is_empty() {
+                    format!("*{}*", t(name))
+                } else {
+                    format!("*{}*\\\n{}", t(name), note(n))
+                };
+                out.push_str(&format!("  [{cell_name}]"));
                 for m in Moment::ALL {
                     let cell = sheet.moments[m.index()]
                         .iter()
-                        .find(|d| d.name == *n)
+                        .find(|d| d.line == *line)
                         .map(|d| qty(&d.quantity))
                         .unwrap_or_default();
                     out.push_str(&format!(", [{}]", t(&cell)));
                 }
                 out.push_str(",\n");
             }
-            if names.is_empty() {
+            if rows.is_empty() {
                 out.push_str("  [], [], [], [], [],\n");
             }
             out.push_str(")\n");
@@ -1522,10 +1554,10 @@ fn infirmier_sheet_markup(
     // Hors des moments, toujours écrit : une prise à la demande n'entre
     // pas au pilulier, un rythme non quotidien se lit en toutes lettres.
     for (title, rows) in [
-        ("Moment à convenir", &sheet.daily),
-        ("Si besoin", &sheet.on_demand),
-        ("Pas tous les jours", &sheet.cyclic),
-        ("Posologie à lire telle quelle", &sheet.unread),
+        (tr("care_daily"), &sheet.daily),
+        (tr("care_on_demand"), &sheet.on_demand),
+        (tr("care_cyclic"), &sheet.cyclic),
+        (tr("care_unread"), &sheet.unread),
     ] {
         if rows.is_empty() {
             continue;
@@ -1547,7 +1579,10 @@ fn infirmier_values(data: &NurseData, pharmacy: &PharmacyConfig) -> Vec<(&'stati
     let nurse = if nurse.is_empty() {
         String::new()
     } else {
-        format!("#{}", typst_str(&format!("Infirmier(ère) : {nurse}")))
+        format!(
+            "#{}",
+            typst_str(&crate::strings::trf("pdf_nurse_line", nurse))
+        )
     };
     let mention = if data.mention.trim().is_empty() {
         String::new()
@@ -8852,17 +8887,6 @@ mod tests {
         assert!(typst_str("1:2").contains("1:2"));
     }
 
-    /// Chaque modèle par défaut compile avec ses valeurs d'exemple, et
-    /// il ne reste pas un seul `{{` dedans — un marqueur non substitué
-    /// s'imprime en toutes lettres au milieu de la page.
-    ///
-    /// **Et sous `BPM_CADDY_TEST_PDF_OUT`, chaque aperçu est écrit.**
-    /// C'est ce que l'officine lit dans l'éditeur de modèles pour
-    /// comprendre le sien, et aucun des trente-deux n'avait jamais été
-    /// *regardé* : les fichiers que cette variable produisait venaient
-    /// des autres tests, dont plusieurs remplissent leurs pages de texte
-    /// hostile pour prouver l'échappement — une lettre au médecin pleine
-    /// de « #eval » est le gardien qui fonctionne, pas un aperçu.
     /// **Les trois feuilles de l'infirmier(ère) compilent**, avec ce
     /// qu'elles rangent hors des moments, et un nom qui porte un guillemet.
     #[test]
@@ -8871,6 +8895,7 @@ mod tests {
             |name: &str, poso: &str| (name.to_owned(), poso.to_owned(), crate::intake::read(poso));
         let sheet = crate::infirmier::sheet(&[
             line("Metformine \"1000\" mg", "1 comprimé matin et soir"),
+            line("Metformine \"1000\" mg", "1/2 comprimé le matin au repas"),
             line("Doliprane 1 g", "1 comprimé si besoin"),
             line(
                 "Méthotrexate 10 mg",
@@ -8878,6 +8903,10 @@ mod tests {
             ),
             line("Crème X", "selon l'avis du dermatologue"),
         ]);
+        // La grille garde une rangée par ligne du dossier : la deuxième
+        // Metformine n'est pas fondue dans la première.
+        let grid = infirmier_sheet_markup(crate::infirmier::Style::Grille, &sheet);
+        assert_eq!(grid.matches("Metformine").count(), 2, "{grid}");
         let patient = sample_patient();
         for style in crate::infirmier::Style::ALL {
             let care = crate::infirmier::Care {
@@ -8907,6 +8936,17 @@ mod tests {
         }
     }
 
+    /// Chaque modèle par défaut compile avec ses valeurs d'exemple, et
+    /// il ne reste pas un seul `{{` dedans — un marqueur non substitué
+    /// s'imprime en toutes lettres au milieu de la page.
+    ///
+    /// **Et sous `BPM_CADDY_TEST_PDF_OUT`, chaque aperçu est écrit.**
+    /// C'est ce que l'officine lit dans l'éditeur de modèles pour
+    /// comprendre le sien, et aucun des trente-deux n'avait jamais été
+    /// *regardé* : les fichiers que cette variable produisait venaient
+    /// des autres tests, dont plusieurs remplissent leurs pages de texte
+    /// hostile pour prouver l'échappement — une lettre au médecin pleine
+    /// de « #eval » est le gardien qui fonctionne, pas un aperçu.
     #[test]
     fn every_default_template_compiles_with_its_sample_values() {
         let out = std::env::var("BPM_CADDY_TEST_PDF_OUT").ok();

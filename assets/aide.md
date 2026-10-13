@@ -252,8 +252,8 @@ mentionne.
 
 Pour un patient dont l'infirmier(ère) vient chercher les traitements,
 l'onglet « Infirmier » retient la case « Traitement remis à
-l'infirmier(ère) », son nom et son téléphone — un réglage de
-l'officine, le même sur tous les postes.
+l'infirmier(ère) », son nom et son téléphone — notés sur le
+dossier : les mêmes sur tous les postes, et effacés avec lui.
 
 La feuille range les traitements **par moment** — matin, midi, soir,
 coucher —, dans l'ordre où l'on remplit un pilulier. Trois styles au

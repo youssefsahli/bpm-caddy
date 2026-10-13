@@ -29,6 +29,11 @@ CREATE TABLE IF NOT EXISTS patients (
     -- vide sinon. Il donne le terme, et le terme donne les vaccins de la
     -- grossesse ; au-delà de 42 SA il ne dit plus rien.
     pregnancy_ddr TEXT NOT NULL DEFAULT '',
+    -- L'infirmier(ère) qui vient chercher les traitements, en JSON
+    -- (`infirmier::Care`) ; vide sinon. Sur le dossier et pas dans les
+    -- réglages : il voyage avec lui, et part avec lui quand on le
+    -- supprime.
+    infirmier   TEXT NOT NULL DEFAULT '',
     -- Local time, like every other stamp in this base: the counter
     -- works in its own clock, and an act entered after midnight in a
     -- pharmacie de garde must carry that day, not the UTC one.
@@ -1357,6 +1362,7 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE caisse_counts ADD COLUMN float_opening INTEGER",
     "ALTER TABLE patients ADD COLUMN sex TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE patients ADD COLUMN pregnancy_ddr TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE patients ADD COLUMN infirmier TEXT NOT NULL DEFAULT ''",
     "CREATE TABLE IF NOT EXISTS drug_facts (
         drug_id   INTEGER NOT NULL,
         property  TEXT NOT NULL,
@@ -43218,6 +43224,33 @@ impl Db {
             .execute(
                 "UPDATE patients SET pregnancy_ddr = ?2 WHERE id = ?1 AND pregnancy_ddr = ?3",
                 (id, new.trim(), expected),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// L'infirmier(ère) d'un dossier, tel que la base le porte (JSON, ou
+    /// vide). Un dossier absent se lit vide ; une base qui ne répond pas
+    /// est une erreur, pas « pas d'infirmier ».
+    pub fn patient_care(&self, id: i64) -> Result<String, String> {
+        use rusqlite::OptionalExtension;
+        self.conn
+            .query_row("SELECT infirmier FROM patients WHERE id = ?1", [id], |r| {
+                r.get::<_, String>(0)
+            })
+            .optional()
+            .map(Option::unwrap_or_default)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Écrire l'infirmier(ère) d'un dossier, compare-and-set contre ce que
+    /// l'écran avait lu.
+    pub fn set_patient_care(&self, id: i64, new: &str, expected: &str) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE patients SET infirmier = ?2 WHERE id = ?1 AND infirmier = ?3",
+                (id, new, expected),
             )
             .map_err(|e| e.to_string())?;
         Ok(changed == 1)

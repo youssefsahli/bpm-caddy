@@ -11,8 +11,9 @@
 //! lecture ne comprend pas passe telle quelle.
 //!
 //! Ce que l'officine retient d'un patient — la case, le nom et le
-//! téléphone de l'infirmier(ère), le style de la feuille — vit dans la
-//! base (`settings`, une clé par dossier), écrit contre ce qui était lu.
+//! téléphone de l'infirmier(ère), le style de la feuille — vit sur le
+//! dossier (`patients.infirmier`), écrit contre ce qui était lu : il
+//! voyage avec le dossier et part avec lui.
 //!
 //! Pur, testé.
 
@@ -60,12 +61,7 @@ pub struct Care {
 }
 
 impl Care {
-    /// La clé de réglage d'un dossier.
-    pub fn key(patient_id: i64) -> String {
-        format!("infirmier.{patient_id}")
-    }
-
-    /// Lu du réglage ; un texte illisible, ou rien, est « pas d'infirmier ».
+    /// Lu du dossier ; un texte vide ou illisible est « pas d'infirmier ».
     pub fn read(text: Option<&str>) -> Self {
         text.and_then(|t| serde_json::from_str(t).ok())
             .unwrap_or_default()
@@ -81,6 +77,10 @@ impl Care {
 /// — la feuille ne l'invente pas.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Dose {
+    /// La ligne du dossier dont elle vient : deux lignes du même
+    /// médicament restent deux lignes, jamais une prise fondue dans
+    /// l'autre.
+    pub line: usize,
     pub name: String,
     pub quantity: Option<String>,
     /// Le repas et les remarques de la posologie.
@@ -124,7 +124,7 @@ impl Sheet {
 /// lecture)`, dans l'ordre du dossier.
 pub fn sheet(lines: &[(String, String, Reading)]) -> Sheet {
     let mut out = Sheet::default();
-    for (name, posology, reading) in lines {
+    for (line, (name, posology, reading)) in lines.iter().enumerate() {
         let note = [reading.meal.trim(), reading.note.trim()]
             .into_iter()
             .filter(|s| !s.is_empty())
@@ -139,6 +139,7 @@ pub fn sheet(lines: &[(String, String, Reading)]) -> Sheet {
                 for m in Moment::ALL {
                     if let Some(take) = reading.doses[m.index()] {
                         out.moments[m.index()].push(Dose {
+                            line,
                             name: name.clone(),
                             quantity: take.label(),
                             note: note.clone(),
@@ -198,6 +199,20 @@ mod tests {
         assert!(sheet(&[]).is_empty());
     }
 
+    /// Deux lignes du même médicament gardent chacune leur prise, et
+    /// chacune dit de quelle ligne elle vient.
+    #[test]
+    fn two_lines_of_one_drug_stay_two() {
+        let s = sheet(&[
+            line("Metformine 1000 mg", "1 comprimé le matin"),
+            line("Metformine 1000 mg", "1/2 comprimé matin et soir"),
+        ]);
+        let matin = &s.moments[Moment::Matin.index()];
+        assert_eq!(matin.len(), 2);
+        assert_eq!((matin[0].line, matin[1].line), (0, 1));
+        assert_ne!(matin[0].quantity, matin[1].quantity);
+    }
+
     /// Ce que l'officine retient se relit tel quel, et un réglage absent
     /// ou illisible ne dit pas qu'il y a une infirmière.
     #[test]
@@ -212,6 +227,6 @@ mod tests {
         assert_eq!(Care::read(None), Care::default());
         assert_eq!(Care::read(Some("{pas du json")), Care::default());
         assert!(!Care::default().remis);
-        assert_eq!(Care::key(42), "infirmier.42");
+        assert_eq!(Care::read(Some("")), Care::default());
     }
 }

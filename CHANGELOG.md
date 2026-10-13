@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Nurse sheet (« Feuille de l'infirmier(ère) »), a new tab in the patient
   file: for a patient whose nurse collects the medicines, the officine
   ticks « Traitement remis à l'infirmier(ère) », notes the nurse's name and
-  phone (a base setting, the same on every post), and picks one of three
+  phone (kept on the patient file: the same on every post, deleted with it), and picks one of three
   sheets — « Simple » (a checkbox per dose under morning, noon, evening,
   bedtime), « Détaillée » (quantity, meal and remarks, with a « préparé le
   / par » line) or « Grille » (one medicine per row, moments in columns).
