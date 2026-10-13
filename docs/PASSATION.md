@@ -89,9 +89,12 @@ bornées, changement de mot de passe interrompu repris, publication
 entière ou rien — trois relectures, corrigées) a passé son smoke dans
 les quatre formes (66c9e41), étiquetée le 13/10 — première publication
 par la tâche finale `publish`.
-La 0.431.0 (publier sur la carte entrée par entrée, ruptures, listes et
-phrases sur la carte au choix de l'officine, ordonnance de vaccination —
-trois relectures, corrigées) est à passer au smoke.
+**La 0.431.0 ne se publie pas** (l'ordonnance de vaccination cochait
+d'avance ce que le calendrier propose seulement d'évaluer — corrigé dans
+la suivante). La 0.432.0 (publier sur la carte entrée par entrée,
+ruptures, listes et phrases sur la carte au choix de l'officine,
+ordonnance de vaccination, mentions de l'officine dans la base — chaque
+lot relu, corrigé) est à passer au smoke.
 Les versions 0.398 à 0.420 n'ont jamais été étiquetées : le lanceur est
 resté sur la 0.397.0 jusqu'au 13/10 ; désormais chaque version dont le
 smoke passe s'étiquette aussitôt ; les étiquettes intermédiaires n'ont jamais été
