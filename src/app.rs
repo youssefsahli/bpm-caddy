@@ -28732,12 +28732,8 @@ impl App {
                                                 let (word, level) = if near == far {
                                                     (crate::biology::level_word(near), near)
                                                 } else {
-                                                    let worst = if far.critical() || !near.notable()
-                                                    {
-                                                        far
-                                                    } else {
-                                                        near
-                                                    };
+                                                    let worst =
+                                                        crate::biology::worst_level(near, far);
                                                     (
                                                         crate::biology::level_word(
                                                             crate::biology::Level::Unknown,

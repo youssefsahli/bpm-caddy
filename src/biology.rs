@@ -380,11 +380,7 @@ pub fn read(readings: &[Reading], treatments: &[crate::revue::Treatment]) -> Vec
         // Une borne qui couvre deux niveaux : « à interpréter », en disant
         // le pire qu'elle permet — un avertissement s'il est critique.
         if lv != far {
-            let worst = if far.critical() || !lv.notable() {
-                far
-            } else {
-                lv
-            };
+            let worst = worst_level(lv, far);
             out.push(Finding {
                 severity: if worst.critical() {
                     Severity::Warn
