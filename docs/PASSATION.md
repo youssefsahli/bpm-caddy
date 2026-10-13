@@ -148,10 +148,9 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   pendant une invitation laisse la porte ouverte jusqu'à six minutes,
   sans bouton pour l'annuler ; « × » (retirer) et « Fonder un autre
   groupe » partent d'un clic ;
-- carnet : le lot proposé par un vaccin reste quand on en choisit un
-  autre, et un lot connu mais périmé ou d'un autre vaccin s'inscrit sans
-  avertissement ; un lot reçu avec une péremption passée est accepté ;
-  deux postes peuvent ouvrir le même flacon dans les deux secondes ;
+- carnet : deux postes peuvent ouvrir le même flacon dans les deux
+  secondes (le lot proposé, le lot périmé ou d'un autre vaccin, et le
+  lot reçu déjà périmé : faits le 13/10) ;
 - impression d'un entretien : une section vide de la fiche s'imprime en
   titre seul ; « (aucun traitement enregistré) », « Médecin traitant »
   et « {a} ans » écrits en dur dans `pdf.rs`, et le CR imprime « né(e)
