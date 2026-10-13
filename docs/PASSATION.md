@@ -163,8 +163,8 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   laisser inviter que la référence ?) ; deux postes qui se désignent
   référence avant de se parler numérotent tous deux ; verrouiller
   pendant une invitation laisse la porte ouverte jusqu'à six minutes,
-  sans bouton pour l'annuler ; « × » (retirer) et « Fonder un autre
-  groupe » partent d'un clic ;
+  sans bouton pour l'annuler (« × » et « Fonder un autre groupe » : deux
+  clics depuis le 13/10) ;
 - carnet : deux postes peuvent ouvrir le même flacon dans les deux
   secondes (le lot proposé, le lot périmé ou d'un autre vaccin, et le
   lot reçu déjà périmé : faits le 13/10) ;

@@ -1509,7 +1509,9 @@ avec le sien. Le registre, la caisse et les journaux restent en ajout
 seul : une modification reçue pour eux est refusée, et le refus est
 affiché. Le poste de référence installe le contenu livré avec les mises
 à jour. Il ne se retire ni ne quitte le groupe tant que d'autres postes y
-restent : en désigner un autre d'abord.
+restent : en désigner un autre d'abord. Retirer un poste (« × ») et
+« Fonder un autre groupe » se font en deux clics : le premier arme le
+bouton, qui dit alors ce qu'il va faire.
 
 **L'officine** (nom, adresse, pharmacien, n° AM, équipe, horaires) se
 corrige depuis n'importe quel poste, dans Options › Officine. Deux postes

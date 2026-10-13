@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The kidney panel's two lines without a verdict — no DFG on file, and a
   bounded DFG that leaves a tier open — are printed phrases the officine
   may rewrite in « Textes », like every tier's conduct.
+- Posts: removing a post (« × ») and « Fonder un autre groupe » take two
+  clicks — the first arms the button, which then says what it will do.
 
 ## [0.424.0] - 2026-10-13
 

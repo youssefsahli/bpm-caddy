@@ -4761,6 +4761,9 @@ struct Session {
     /// field) and the catalogue entry it was picked from.
     vacc_new: db::Vaccination,
     vacc_new_date: String,
+    /// Le geste des postes armé par un premier clic, qu'un second fait.
+    #[cfg(feature = "sync")]
+    posts_confirm: Option<PostsConfirm>,
     /// Le lot que le choix d'un vaccin a proposé : un autre vaccin le
     /// remplace tant qu'on ne l'a pas retouché.
     vacc_lot_proposed: Option<String>,
@@ -6267,6 +6270,8 @@ impl Session {
             travels: Vec::new(),
             vacc_new: db::Vaccination::default(),
             vacc_new_date: String::new(),
+            #[cfg(feature = "sync")]
+            posts_confirm: None,
             vacc_lot_proposed: None,
             vacc_lot_warn: None,
             vacc_cursor: 0,
@@ -15480,6 +15485,16 @@ struct Online {
     /// L'entrée dépliée : les lignes lues (`rows_gen`), sa place, et son
     /// texte entier.
     unfolded: Option<(u64, usize, String)>,
+}
+
+/// Un geste des postes qui ne se défait pas, armé par un premier clic.
+#[cfg(feature = "sync")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PostsConfirm {
+    /// Retirer ce poste du groupe.
+    Retire(i64),
+    /// Fonder un second groupe.
+    FoundOther,
 }
 
 /// Une ligne de « En ligne » : l'offre, ce qu'elle est ici, sa bulle, et
@@ -74475,13 +74490,27 @@ impl App {
                             if inviting.is_some() || !group_online.is_empty() {
                                 ui.add_space(8.0);
                                 ui.horizontal_wrapped(|ui| {
-                                    if motif::button_enabled(ui, tr("posts_found_other"), !busy)
+                                    // Deux temps : fonder un second groupe sépare
+                                    // ce poste des autres.
+                                    let armed =
+                                        session.posts_confirm == Some(PostsConfirm::FoundOther);
+                                    let label = if armed {
+                                        tr("posts_found_other_confirm")
+                                    } else {
+                                        tr("posts_found_other")
+                                    };
+                                    if motif::button_enabled(ui, label, !busy)
                                         .on_hover_text(tr("posts_found_other_tooltip"))
                                         .clicked()
                                     {
-                                        start = Some(Job::Found {
-                                            name: config.pharmacy.name.clone(),
-                                        });
+                                        if armed {
+                                            session.posts_confirm = None;
+                                            start = Some(Job::Found {
+                                                name: config.pharmacy.name.clone(),
+                                            });
+                                        } else {
+                                            session.posts_confirm = Some(PostsConfirm::FoundOther);
+                                        }
                                     }
                                 });
                             }
@@ -74561,12 +74590,28 @@ impl App {
                                 {
                                     reference = Some(p.post);
                                 }
-                                if Some(p.post) != sum.post
-                                    && motif::button(ui, "×")
+                                // Deux temps : un clic arme, le second retire —
+                                // un poste retiré ne reçoit plus rien.
+                                if Some(p.post) != sum.post {
+                                    let armed =
+                                        session.posts_confirm == Some(PostsConfirm::Retire(p.post));
+                                    let label = if armed {
+                                        tr("posts_retire_confirm")
+                                    } else {
+                                        "×"
+                                    };
+                                    if motif::button(ui, label)
                                         .on_hover_text(tr("posts_retire_tooltip"))
                                         .clicked()
-                                {
-                                    retire = Some(p.post);
+                                    {
+                                        if armed {
+                                            retire = Some(p.post);
+                                            session.posts_confirm = None;
+                                        } else {
+                                            session.posts_confirm =
+                                                Some(PostsConfirm::Retire(p.post));
+                                        }
+                                    }
                                 }
                             });
                             ui.label(
