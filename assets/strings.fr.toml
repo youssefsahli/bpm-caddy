@@ -3243,6 +3243,7 @@ opts_postes_addresses_hint = "192.168.1.14:7743, 192.168.1.15:7743"
 # Les connexions
 tab_connexions = "Connexions"
 tab_officines = "Carte des officines"
+tab_officines_fresh = "Carte des officines ({})"
 tab_messages = "Messages"
 conn_title = "Connexions"
 conn_subtitle = "Postes de l'officine : synchronisation sur le réseau local dès le lancement, toutes données. Réseau d'officines : au lancement puis à intervalle ; ruptures, valeurs sourcées, versions des fiches, préparations, protocoles, lignes de TROD et vaccins ; jamais de patient."

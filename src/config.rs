@@ -2181,6 +2181,11 @@ pub struct Layout {
     /// `online_seen`, en liste, et la relire en table faisait échouer
     /// tout le fichier — fenêtre, volets et vue avec.
     pub online_seen_by_base: std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
+    /// Les officines de la carte que ce poste a déjà vues, par base (les
+    /// clés de leurs cartes) : l'onglet compte celles qui sont apparues
+    /// depuis. Une base absente n'a jamais été relevée — ce que le
+    /// répertoire tient la première fois passe pour vu.
+    pub carte_seen_by_base: std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
     /// The version of BPM-Caddy that wrote this file. Recorded so
     /// Options › À propos can say when the workspace was last laid out
     /// by another version, and so a future change of shape can tell a
@@ -2203,6 +2208,7 @@ impl Default for Layout {
             companion_width: 0.0,
             companion_height: 0.0,
             online_seen_by_base: std::collections::BTreeMap::new(),
+            carte_seen_by_base: std::collections::BTreeMap::new(),
             version: String::new(),
         }
     }

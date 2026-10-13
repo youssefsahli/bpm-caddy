@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The « Carte des officines » tab counts the officines that appeared
+  since this post last looked, « Carte des officines (2) »: the post
+  reads the directory by itself every ten minutes. The first reading on a
+  base counts nothing.
+
 ## [0.419.0] - 2026-10-13
 
 ### Added

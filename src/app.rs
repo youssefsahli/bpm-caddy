@@ -5520,6 +5520,12 @@ struct Session {
     /// `online_seen` a changé depuis que `layout.toml` l'a recopié :
     /// recopié alors seulement, jamais à chaque image.
     online_seen_dirty: bool,
+    /// La carte des officines : celles que ce poste a déjà vues
+    /// (`Layout::carte_seen_by_base`), combien sont apparues depuis — ce
+    /// que l'onglet compte —, et si `layout.toml` doit le recopier.
+    carte_seen: Option<std::collections::BTreeSet<String>>,
+    carte_fresh: usize,
+    carte_seen_dirty: bool,
     /// La carte des officines (`repertoire`).
     #[cfg(feature = "sync")]
     carte: Carte,
@@ -6506,6 +6512,9 @@ impl Session {
             edits_rev: 0,
             online_seen: None,
             online_seen_dirty: false,
+            carte_seen: None,
+            carte_fresh: 0,
+            carte_seen_dirty: false,
             #[cfg(feature = "sync")]
             carte: Carte::default(),
             online_fresh: std::collections::HashMap::new(),
@@ -10131,6 +10140,10 @@ impl Session {
             WorkTab::Stats => tr("tab_stats").to_owned(),
             WorkTab::Ruptures => tr("tab_ruptures").to_owned(),
             WorkTab::Connexions => tr("tab_connexions").to_owned(),
+            // Celles qui sont apparues depuis la dernière visite.
+            WorkTab::Officines if self.carte_fresh > 0 => {
+                trn("tab_officines_fresh", &[&self.carte_fresh])
+            }
             WorkTab::Officines => tr("tab_officines").to_owned(),
             WorkTab::Messages => tr("tab_messages").to_owned(),
             WorkTab::Script => tr("tab_script").to_owned(),
@@ -10959,12 +10972,60 @@ impl Session {
         self.carte.presence_raw = raw;
     }
 
+    /// **Which officines appeared since this post last looked**: the
+    /// directory's cards not yet seen. The first reading on a base sees
+    /// everything — no tab that announces forty newcomers the day the
+    /// feature arrives.
+    #[cfg(feature = "sync")]
+    fn count_carte_fresh(&mut self) {
+        let me = self.carte.me.clone();
+        let here: std::collections::BTreeSet<String> = self
+            .carte
+            .list
+            .iter()
+            .filter(|f| f.device != me)
+            .map(|f| f.device.clone())
+            .collect();
+        let seen = self.carte_seen.get_or_insert_with(|| {
+            self.carte_seen_dirty = true;
+            here.clone()
+        });
+        self.carte_fresh = here.difference(seen).count();
+    }
+
+    /// The map is on screen: what it shows is seen. Only the officines
+    /// listed now are kept — the record does not grow with every card
+    /// that ever passed.
+    #[cfg(feature = "sync")]
+    fn carte_looked(&mut self) {
+        if self.carte_fresh == 0 || !self.carte.listed {
+            return;
+        }
+        let me = self.carte.me.clone();
+        self.carte_seen = Some(
+            self.carte
+                .list
+                .iter()
+                .filter(|f| f.device != me)
+                .map(|f| f.device.clone())
+                .collect(),
+        );
+        self.carte_seen_dirty = true;
+        self.carte_fresh = 0;
+    }
+
     /// Read the directory, on its own thread.
     #[cfg(feature = "sync")]
     fn carte_fetch(&mut self) {
         let Some(address) = self.carte.presence.address() else {
             return;
         };
+        self.carte_list_from(address);
+    }
+
+    /// Read the directory at `address`, on its own thread.
+    #[cfg(feature = "sync")]
+    fn carte_list_from(&mut self, address: String) {
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let _ = tx.send(CarteAnswer::List(crate::repertoire::list(
@@ -11326,6 +11387,7 @@ impl Session {
         }
         self.carte.list = list;
         self.carte.listed = true;
+        self.count_carte_fresh();
         self.carte.listed_at = Some(Instant::now());
     }
 
@@ -11457,6 +11519,21 @@ impl Session {
             }
         }
         self.poll_carte_host(config);
+        // **Le répertoire relu de lui-même** toutes les dix minutes, que
+        // l'onglet compte celles qui sont apparues. L'adresse est lue de la
+        // base à part : relire `presence` ici aurait déplacé ce contre quoi
+        // le formulaire écrit.
+        let list_due = self.carte.next_list.is_none_or(|t| Instant::now() >= t);
+        if list_due && self.carte.job.is_none() {
+            self.carte.next_list = Some(Instant::now() + crate::repertoire::ANNOUNCE_EVERY);
+            let raw = self.db.setting(crate::repertoire::SETTING);
+            if let Some(address) = crate::repertoire::Presence::read(raw.as_deref()).address() {
+                if self.carte.me.is_empty() {
+                    self.carte.me = crate::network::device_hex(&self.db).unwrap_or_default();
+                }
+                self.carte_list_from(address);
+            }
+        }
         let due = self.carte.next_announce.is_none_or(|t| Instant::now() >= t);
         if due && self.carte.announcing.is_none() {
             self.carte.next_announce = Some(Instant::now() + crate::repertoire::ANNOUNCE_EVERY);
@@ -15219,6 +15296,8 @@ struct Carte {
     /// qu'il l'ait reçu.
     announcing: Option<std::sync::mpsc::Receiver<Announced>>,
     next_announce: Option<Instant>,
+    /// La prochaine relecture du répertoire faite d'elle-même.
+    next_list: Option<Instant>,
     announced: Option<(String, Result<(), String>)>,
     appeared: Option<String>,
     /// Le dernier départ manqué : la carte passe avant lui pendant dix
@@ -20190,6 +20269,8 @@ impl App {
                     session.patient_band_folded = layout.patient_band_folded;
                     session.online_seen =
                         layout.online_seen_by_base.get(&session.base_key()).cloned();
+                    session.carte_seen =
+                        layout.carte_seen_by_base.get(&session.base_key()).cloned();
                     state = State::Unlocked(Box::new(session));
                     remember_password = from_keyring;
                 }
@@ -22732,6 +22813,11 @@ impl App {
                     session.online_seen = self
                         .layout
                         .online_seen_by_base
+                        .get(&session.base_key())
+                        .cloned();
+                    session.carte_seen = self
+                        .layout
+                        .carte_seen_by_base
                         .get(&session.base_key())
                         .cloned();
                     self.state = State::Unlocked(Box::new(session));
@@ -63600,6 +63686,15 @@ impl App {
     /// `layout.toml` record — only when it changed, and before a session
     /// that goes (lock, exit) takes its last marks with it.
     fn keep_online_seen(layout: &mut crate::config::Layout, session: &mut Session) {
+        // La carte des officines, relevée de même.
+        if session.carte_seen_dirty {
+            if let Some(seen) = &session.carte_seen {
+                layout
+                    .carte_seen_by_base
+                    .insert(session.base_key(), seen.clone());
+            }
+            session.carte_seen_dirty = false;
+        }
         if !session.online_seen_dirty {
             return;
         }
@@ -63629,6 +63724,8 @@ impl App {
     /// que cette officine décide pour elle-même.
     #[cfg(feature = "sync")]
     fn officines_view(ui: &mut egui::Ui, session: &mut Session, operator: &str, config: &Config) {
+        // À l'écran, ce que la carte montre est vu.
+        session.carte_looked();
         let now = crate::repertoire::unix_now();
         let body = motif::visible_rect(ui);
         let note_size = motif::pt(ui, 11.5);
@@ -95588,6 +95685,48 @@ mod tests {
         assert_eq!(carte.view(), (4.0, whole));
         carte.set_view(0.2, focus);
         assert_eq!(carte.view(), (1.0, whole));
+    }
+
+    /// **L'onglet compte celles qui sont apparues** : la première lecture
+    /// d'une base passe pour vue, une officine arrivée ensuite compte, et
+    /// regarder la carte remet le compte à zéro ; une officine partie
+    /// puis revenue n'est pas nouvelle tant que le relevé l'a gardée.
+    #[cfg(feature = "sync")]
+    #[test]
+    fn the_map_tab_counts_newcomers() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-fresh-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = crate::db::Swept(dir.clone());
+        let db = crate::db::Db::open(&dir.join("fresh.db"), "secret").unwrap();
+        let mut session = super::Session::new(db, 12, 30, true).unwrap();
+        let fiche = |d: &str| crate::repertoire::Fiche {
+            device: d.repeat(64),
+            present: true,
+            ..crate::repertoire::Fiche::default()
+        };
+        session.set_carte_list(vec![fiche("a"), fiche("b")]);
+        assert_eq!(session.carte_fresh, 0);
+        assert!(session.carte_seen_dirty);
+        session.set_carte_list(vec![fiche("a"), fiche("b"), fiche("c")]);
+        assert_eq!(session.carte_fresh, 1);
+        assert_eq!(
+            session.tab_label(&super::WorkTab::Officines),
+            crate::strings::trn("tab_officines_fresh", &[&1])
+        );
+        session.carte_looked();
+        assert_eq!(session.carte_fresh, 0);
+        assert_eq!(session.carte_seen.as_ref().map(|s| s.len()), Some(3));
+        // Partie puis revenue : déjà vue.
+        session.set_carte_list(vec![fiche("b"), fiche("c")]);
+        session.carte_looked();
+        session.set_carte_list(vec![fiche("a"), fiche("b"), fiche("c")]);
+        assert_eq!(session.carte_fresh, 0);
+        // Le relevé ne garde que ce que la carte montrait quand on l'a
+        // regardée : il ne grossit pas de toutes les cartes passées.
+        session.set_carte_list(vec![fiche("d")]);
+        session.carte_looked();
+        assert_eq!(session.carte_seen.as_ref().map(|s| s.len()), Some(1));
     }
 
     /// **Un balayage du répertoire** : ce qui est lu se garde sous
