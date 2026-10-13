@@ -13512,6 +13512,7 @@ impl Session {
     fn refresh_fil(&mut self) {
         let Some(id) = self.viewing.as_ref().map(|p| p.id) else {
             self.patient_fil.clear();
+            self.fil_rev = self.fil_rev.wrapping_add(1);
             return;
         };
         use crate::timeline::{Event, Kind};
@@ -18521,6 +18522,12 @@ struct OptionsEditor {
     message: Option<(bool, String)>,
     /// L'officine cherchée au registre FINESS.
     registre: Registre,
+    /// L'officine telle que la fenêtre l'a ouverte, et si la fenêtre a
+    /// passé un verrouillage : rendue, elle s'enregistre contre ce qu'elle
+    /// avait lu, et non contre ce que le déverrouillage a relu — sans quoi
+    /// elle écrasait ce qu'un autre poste avait changé entre-temps.
+    officine_from: Option<crate::config::PharmacyConfig>,
+    parked: bool,
 }
 
 /// **Retrouver son officine au registre FINESS** : ce qu'on tape, et
@@ -18559,6 +18566,8 @@ impl OptionsEditor {
             confirm_telemetry_clear: false,
             backup_seen: None,
             registre: Registre::default(),
+            officine_from: Some(config.pharmacy.clone()),
+            parked: false,
         }
     }
 }
@@ -20701,6 +20710,8 @@ impl App {
         {
             Some(OptionsEditor {
                 registre: Registre::default(),
+                officine_from: Some(config.pharmacy.clone()),
+                parked: false,
                 officine_seeded: false,
                 keep_seen: None,
                 page: match start_view.as_str() {
@@ -24959,16 +24970,31 @@ impl App {
                     rows.push(Some(i));
                 }
                 // Et l'air d'une liste, pas celui d'un formulaire : l'écart
-                // entre deux lignes réduit, compté dans la hauteur promise.
+                // entre deux lignes réduit, posé **avant** `show_rows`, qui
+                // compte l'écart de l'ui où il est appelé. Chaque rangée a
+                // exactement la hauteur promise — la date se pose dans une
+                // case de la hauteur du texte courant.
                 let gap = ui.spacing().item_spacing.y * 0.4;
-                let row_h = text_h + gap;
+                ui.spacing_mut().item_spacing.y = gap;
+                let row_h = text_h.max(ui.text_style_height(&egui::TextStyle::Body));
                 egui::ScrollArea::vertical()
                     .id_salt("fil_rows")
                     .auto_shrink([false, false])
                     .show_rows(ui, row_h, rows.len(), |ui, range| {
-                        ui.visuals_mut().faint_bg_color = motif::bg_dark();
                         ui.spacing_mut().interact_size.y = text_h;
-                        ui.spacing_mut().item_spacing.y = gap;
+                        let w = ui.available_width();
+                        // Chaque rangée dans une case de la hauteur promise.
+                        let cell = |ui: &mut egui::Ui, add: &mut dyn FnMut(&mut egui::Ui)| {
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(w, row_h),
+                                egui::Layout::left_to_right(egui::Align::Center),
+                                |ui| {
+                                    ui.set_min_height(row_h);
+                                    ui.set_max_height(row_h);
+                                    add(ui);
+                                },
+                            );
+                        };
                         for r in range {
                             let Some(slot) = rows.get(r).copied() else {
                                 continue;
@@ -24979,9 +25005,7 @@ impl App {
                                 } else {
                                     tr("fil_behind")
                                 };
-                                ui.allocate_ui(egui::vec2(ui.available_width(), text_h), |ui| {
-                                    Self::fil_heading(ui, heading);
-                                });
+                                cell(ui, &mut |ui| Self::fil_heading(ui, heading));
                                 continue;
                             };
                             let e = &fil[i];
@@ -24990,7 +25014,7 @@ impl App {
                             // dessine seule.
                             let same =
                                 i > 0 && fil[i - 1].day == e.day && !(i == ahead && ahead > 0);
-                            ui.horizontal(|ui| {
+                            cell(ui, &mut |ui| {
                                 Self::grid_cell(
                                     ui,
                                     day_w,
@@ -85256,8 +85280,26 @@ impl eframe::App for App {
         let parked = if matches!(self.state, State::Unlocked(_)) {
             None
         } else {
-            self.options.take()
+            self.options.take().map(|mut e| {
+                e.parked = true;
+                // Un geste armé ne passe pas un verrouillage : la personne
+                // qui déverrouille ne l'a pas armé.
+                e.confirm_reset = false;
+                e.confirm_telemetry_clear = false;
+                e
+            })
         };
+        // Rendue après un verrouillage : l'officine s'enregistrera contre
+        // ce que la fenêtre avait lu, et un changement fait ailleurs
+        // entre-temps passera par la fusion ou l'avis, pas par-dessus.
+        if let (State::Unlocked(session), Some(e)) = (&mut self.state, &mut self.options) {
+            if e.parked {
+                e.parked = false;
+                if e.officine_from.is_some() && session.officine_seen != e.officine_from {
+                    session.officine_seen = e.officine_from.clone();
+                }
+            }
+        }
         let mut close_opts = false;
         let mut open_pw = false;
         let mut saved_cfg: Option<Config> = None;
