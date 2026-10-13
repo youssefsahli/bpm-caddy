@@ -68,7 +68,11 @@ dans les quatre formes (0e8b170), **étiquetée et publiée le 13/10** ;
 la 0.423.0 (un résultat borné par le laboratoire se lit et s'écrit comme
 il a été rendu, le rein ne conclut que ce que la borne permet — trois
 relectures cliniques, corrigées) a passé son smoke dans les quatre
-formes (d568444), étiquetée le 13/10.
+formes (d568444), étiquetée le 13/10 ; la 0.424.0 (une valeur bornée
+qui ne tranche pas une règle de biologie ou un niveau s'annonce « à
+vérifier » partout où la biologie se lit — deux relectures cliniques,
+corrigées) a passé son smoke dans les quatre formes (fb56c64),
+étiquetée le 13/10.
 Les versions 0.398 à 0.420 n'ont jamais été étiquetées : le lanceur est
 resté sur la 0.397.0 jusqu'au 13/10 ; désormais chaque version dont le
 smoke passe s'étiquette aussitôt ; les étiquettes intermédiaires n'ont jamais été
