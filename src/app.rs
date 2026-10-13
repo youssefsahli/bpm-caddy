@@ -15209,8 +15209,9 @@ struct Online {
     /// officines que les offres nomment — lues avec elles.
     from: String,
     sources: Vec<String>,
-    /// Ne montrer que ce qui manque ici : ce qu'on peut prendre.
-    only_absent: bool,
+    /// Tout, ce qui manque ici (ce qu'on peut prendre), ou ce qui est ici
+    /// autrement (ce qu'une autre officine a écrit d'une entrée qu'on a).
+    only: Here3,
     /// Ce qui n'avait pas encore été vu à l'ouverture (`Offer::stamp`) :
     /// marqué « nouveau », et en tête.
     fresh: std::collections::HashSet<String>,
@@ -15220,11 +15221,20 @@ struct Online {
     /// Les lignes que la recherche garde, et ce qu'elle demandait — avec
     /// `rows_gen`, compté à chaque relecture des lignes.
     shown: Vec<usize>,
-    shown_for: Option<(String, String, bool, u64)>,
+    shown_for: Option<(String, String, Here3, u64)>,
     rows_gen: u64,
     /// L'entrée dépliée : les lignes lues (`rows_gen`), sa place, et son
     /// texte entier.
     unfolded: Option<(u64, usize, String)>,
+}
+
+/// Ce que « En ligne » garde de ce que chaque offre est ici.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Here3 {
+    #[default]
+    All,
+    Absent,
+    Differs,
 }
 
 /// Combien de lignes « En ligne » dessine au plus : au-delà, il dit le
@@ -64887,7 +64897,13 @@ impl App {
                             .min(chars_wide(ui, 32.0));
                         motif::select(ui, "online_from", w, &mut online.from, &options);
                     }
-                    motif::checkbox(ui, &mut online.only_absent, tr("online_only_absent"));
+                    let options = [
+                        (Here3::All, tr("online_show_all").to_owned()),
+                        (Here3::Absent, tr("online_only_absent").to_owned()),
+                        (Here3::Differs, tr("online_only_differs").to_owned()),
+                    ];
+                    let w = motif::select_width(ui, options.iter().map(|(_, l)| l.as_str()));
+                    motif::select(ui, "online_only", w, &mut online.only, &options);
                     #[cfg(feature = "sync")]
                     match &online.remote {
                         None => {
@@ -64937,7 +64953,7 @@ impl App {
                         let asked = (
                             online.query.clone(),
                             online.from.clone(),
-                            online.only_absent,
+                            online.only,
                             online.rows_gen,
                         );
                         if online.shown_for.as_ref() != Some(&asked) {
@@ -64948,7 +64964,11 @@ impl App {
                                 .filter(|(_, (o, here, _))| {
                                     o.matches(&online.query)
                                         && (online.from.is_empty() || o.from.contains(&online.from))
-                                        && (!online.only_absent || *here == Here::Absent)
+                                        && match online.only {
+                                            Here3::All => true,
+                                            Here3::Absent => *here == Here::Absent,
+                                            Here3::Differs => *here == Here::Differs,
+                                        }
                                 })
                                 .map(|(i, _)| i)
                                 .collect();

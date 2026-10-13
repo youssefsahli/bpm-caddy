@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- « En ligne »: « Absentes ici seulement » becomes a choice, « Toutes /
+  Absentes ici / Différentes d'ici » — the last lists what another
+  officine wrote differently of an entry this base has, its updates.
+
 ## [0.420.0] - 2026-10-13
 
 ### Added
