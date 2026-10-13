@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.418.0] - 2026-10-13
+
 ### Added
 
 - The map zooms: the wheel or a pinch enlarges metropolitan France
