@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Billing fees, the convention's rules (cycle, yearly caps, Warn / Inform
+  / Block) and the rental fees now live in the base like the mentions:
+  written on one post, they hold on every post — two posts could bill
+  the same act at two amounts, or one block a patient the other let
+  through. A post that never changed a section leaves the base's alone;
+  a change made elsewhere while Options is open is reloaded and said.
+
 ## [0.432.0] - 2026-10-13
 
 ### Changed

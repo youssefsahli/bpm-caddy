@@ -1748,6 +1748,13 @@ change, la modification est signalée pour relecture.
 Un fichier chiffré, partageable entre postes. Le registre des
 stupéfiants et les pièces scannées ont chacun leur fichier, à côté.
 
+Ce qui vaut pour l'officine est rangé dans la base et lu par tous les
+postes : l'officine (nom, adresse, équipe, horaires), les mentions, les
+honoraires de la facturation, les règles de la convention et les
+forfaits de location. Écrits sur un poste, ils valent sur tous ; un
+changement fait ailleurs pendant que les options sont ouvertes est relu
+et signalé, jamais écrasé. Le reste des options est propre au poste.
+
 Sauvegardes quotidiennes, en nombre fixé ; « Copier la base… » copie les
 trois fichiers, ensemble ou pas du tout. « Déplacer la base vers… » les
 copie de même puis bascule ce poste sur la copie : il se verrouille et se

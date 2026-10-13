@@ -38,31 +38,33 @@ enum State {
 /// lancement de la nouvelle version verse donc ce qui était déjà écrit,
 /// et les postes suivants le lisent au lieu de le redemander.
 fn adopt_officine(config: &mut Config, session: &mut Session) {
-    // Les mentions suivent le même chemin : celles de la base, ou, sans
-    // elles, celles que ce poste avait écrites.
-    let raw = session.db.setting(MENTIONS_KEY);
-    match mentions_of(raw.as_deref()) {
-        Some(shared) => {
-            config.disclaimers = shared;
-            session.mentions_seen = raw;
-        }
-        // Ce poste n'en a pas : la base reste sans, pour qu'un poste qui en
-        // a les y verse — sinon le premier poste mis à jour effaçait
-        // celles des autres.
-        None if config.disclaimers == crate::config::DisclaimersConfig::default() => {}
-        None => {
-            if let Ok(text) = toml::to_string(&config.disclaimers) {
-                let day = session.today.clone();
-                if session
-                    .db
-                    .set_setting(MENTIONS_KEY, &text, raw.as_deref(), &day, "")
-                    .unwrap_or(false)
-                {
-                    session.mentions_seen = Some(text);
+    // Les réglages de l'officine suivent le même chemin : ceux de la
+    // base, ou, sans eux, ceux que ce poste avait changés.
+    let day = session.today.clone();
+    for key in SHARED_SECTIONS {
+        let raw = session.db.setting(key);
+        match raw {
+            Some(raw) => {
+                if section_read(config, key, &raw) {
+                    session.shared_seen.insert(key, raw);
+                }
+            }
+            None if section_untouched(config, key) => {}
+            None => {
+                if let Some(text) = section_text(config, key) {
+                    if session
+                        .db
+                        .set_setting(key, &text, None, &day, "")
+                        .unwrap_or(false)
+                    {
+                        session.shared_seen.insert(key, text);
+                    }
                 }
             }
         }
     }
+    session.cycle_months = config.rules.cycle_months.max(1);
+    session.loc_notice_days = config.locations.notice_days;
     match session.db.officine() {
         Some(shared) => {
             config.pharmacy = shared.clone();
@@ -354,8 +356,60 @@ const AUDIT_KEEP_KEY: &str = "audit_keep_days_officine";
 /// poste : une ordonnance imprimée au comptoir et la même en
 /// arrière-boutique portaient chacune les mentions de leur poste.
 const MENTIONS_KEY: &str = "mentions_officine";
+/// Les honoraires des actes : deux postes facturaient le même acte à deux
+/// montants.
+const BILLING_KEY: &str = "facturation_officine";
+/// Les règles de la convention (cycles, plafonds, conduite) : un poste en
+/// « Bloquer », l'autre en « Avertir », et le même patient passait d'un
+/// côté et pas de l'autre.
+const RULES_KEY: &str = "regles_officine";
+/// Les forfaits de location et le préavis de renouvellement.
+const LOCATIONS_KEY: &str = "locations_officine";
+
+/// **Les réglages de l'officine rangés dans la base**, section par section
+/// — chacune lue au déverrouillage, reprise d'un autre poste quand les
+/// options sont fermées, écrite contre ce que la fenêtre avait lu. La
+/// section `[pharmacy]` a son propre chemin, qui fusionne champ par champ.
+const SHARED_SECTIONS: [&str; 4] = [MENTIONS_KEY, BILLING_KEY, RULES_KEY, LOCATIONS_KEY];
+
+/// Une section de la configuration, écrite comme la base la garde.
+fn section_text(c: &Config, key: &str) -> Option<String> {
+    match key {
+        MENTIONS_KEY => toml::to_string(&c.disclaimers).ok(),
+        BILLING_KEY => toml::to_string(&c.billing).ok(),
+        RULES_KEY => toml::to_string(&c.rules).ok(),
+        LOCATIONS_KEY => toml::to_string(&c.locations).ok(),
+        _ => None,
+    }
+}
+
+/// Poser une section lue dans la base ; `false` si elle ne se lit pas —
+/// la configuration reste alors telle quelle.
+fn section_read(c: &mut Config, key: &str, raw: &str) -> bool {
+    match key {
+        MENTIONS_KEY => toml::from_str(raw).map(|v| c.disclaimers = v).is_ok(),
+        BILLING_KEY => toml::from_str(raw).map(|v| c.billing = v).is_ok(),
+        RULES_KEY => toml::from_str(raw).map(|v| c.rules = v).is_ok(),
+        LOCATIONS_KEY => toml::from_str(raw).map(|v| c.locations = v).is_ok(),
+        _ => false,
+    }
+}
+
+/// Ce que la configuration porte de cette section est-il ce que dit `raw` ?
+fn section_is(c: &Config, key: &str, raw: &str) -> bool {
+    let mut read = c.clone();
+    section_read(&mut read, key, raw) && section_text(&read, key) == section_text(c, key)
+}
+
+/// La section n'a jamais été touchée sur ce poste : elle ne s'écrit pas
+/// dans une base qui n'en a pas — sinon le premier poste mis à jour
+/// remplaçait les réglages des autres par les valeurs d'usine.
+fn section_untouched(c: &Config, key: &str) -> bool {
+    section_text(c, key) == section_text(&Config::default(), key)
+}
 
 /// Les mentions telles que la base les porte, lues.
+#[cfg(test)]
 fn mentions_of(raw: Option<&str>) -> Option<crate::config::DisclaimersConfig> {
     toml::from_str(raw?).ok()
 }
@@ -6016,11 +6070,12 @@ struct Session {
     /// vient d'ajouter. `None` veut dire « la base n'en portait pas » —
     /// une base d'avant cette version, ou une base neuve.
     officine_seen: Option<crate::config::PharmacyConfig>,
-    /// Les mentions telles que ce poste les a lues dans la base (le texte
-    /// contre lequel il écrit), et celles qu'un autre poste a écrites
-    /// depuis, à prendre quand les options sont fermées.
-    mentions_seen: Option<String>,
-    mentions_fresh: Option<crate::config::DisclaimersConfig>,
+    /// Les réglages de l'officine (`SHARED_SECTIONS`) tels que ce poste les
+    /// a lus dans la base — le texte contre lequel il écrit —, et ceux
+    /// qu'un autre poste a écrits depuis, à prendre quand les options sont
+    /// fermées.
+    shared_seen: std::collections::HashMap<&'static str, String>,
+    shared_fresh: std::collections::HashMap<&'static str, String>,
     /// Ce qu'un **autre poste** a écrit de l'officine et que celui-ci
     /// n'a pas encore pris.
     ///
@@ -6740,8 +6795,8 @@ impl Session {
             content: crate::content::Overrides::default(),
             text_edit: None,
             officine_seen: None,
-            mentions_seen: None,
-            mentions_fresh: None,
+            shared_seen: std::collections::HashMap::new(),
+            shared_fresh: std::collections::HashMap::new(),
             officine_fresh: None,
             officine_stale: false,
             sync_seen: (0, 0, 0),
@@ -8491,11 +8546,12 @@ impl Session {
                 self.officine_fresh = Some(theirs);
             }
         }
-        let raw = self.db.setting(MENTIONS_KEY);
-        if raw.is_some() && raw != self.mentions_seen {
-            if let Some(theirs) = mentions_of(raw.as_deref()) {
-                self.mentions_fresh = Some(theirs);
-                self.mentions_seen = raw;
+        for key in SHARED_SECTIONS {
+            if let Some(raw) = self.db.setting(key) {
+                if self.shared_seen.get(key) != Some(&raw) {
+                    self.shared_fresh.insert(key, raw.clone());
+                    self.shared_seen.insert(key, raw);
+                }
             }
         }
         // Le référentiel, **sauf si sa fiche est ouverte en
@@ -18809,8 +18865,9 @@ struct OptionsEditor {
     /// La conservation du journal telle que la base la tenait à
     /// l'ouverture — ce contre quoi l'enregistrement compare.
     keep_seen: Option<String>,
-    /// Les mentions telles que la base les portait à l'ouverture.
-    mentions_seen: Option<String>,
+    /// Les réglages de l'officine tels que la base les portait à
+    /// l'ouverture, section par section.
+    shared_seen: std::collections::HashMap<&'static str, Option<String>>,
     /// Two-step guard on the destructive reset button.
     confirm_reset: bool,
     /// Le même garde-fou sur « Effacer les compteurs ».
@@ -18860,7 +18917,7 @@ impl OptionsEditor {
         Self {
             officine_seeded: false,
             keep_seen: None,
-            mentions_seen: None,
+            shared_seen: std::collections::HashMap::new(),
             page,
             loc_fee_text: config
                 .locations
@@ -19073,9 +19130,12 @@ impl App {
         };
         editor.officine_seeded = true;
         editor.keep_seen = session.db.setting(AUDIT_KEEP_KEY);
-        editor.mentions_seen = session.db.setting(MENTIONS_KEY);
-        if let Some(shared) = mentions_of(editor.mentions_seen.as_deref()) {
-            editor.cfg.disclaimers = shared;
+        for key in SHARED_SECTIONS {
+            let raw = session.db.setting(key);
+            if let Some(raw) = &raw {
+                section_read(&mut editor.cfg, key, raw);
+            }
+            editor.shared_seen.insert(key, raw);
         }
         if let Some(days) = editor
             .keep_seen
@@ -21060,7 +21120,7 @@ impl App {
                 parked: false,
                 officine_seeded: false,
                 keep_seen: None,
-                mentions_seen: None,
+                shared_seen: std::collections::HashMap::new(),
                 page: match start_view.as_str() {
                     "about" => OptionsPage::About,
                     // The page where the ten skins are chosen. It
@@ -85382,8 +85442,12 @@ impl eframe::App for App {
                     // porte, non à ce que ce poste avait vu ce matin.
                     session.officine_seen = Some(theirs);
                 }
-                if let Some(theirs) = session.mentions_fresh.take() {
-                    self.config.disclaimers = theirs;
+                if !session.shared_fresh.is_empty() {
+                    for (key, raw) in std::mem::take(&mut session.shared_fresh) {
+                        section_read(&mut self.config, key, &raw);
+                    }
+                    session.cycle_months = self.config.rules.cycle_months.max(1);
+                    session.loc_notice_days = self.config.locations.notice_days;
                 }
             }
         }
@@ -89020,48 +89084,53 @@ impl eframe::App for App {
                         Err(e) => session.error = Some(e),
                     }
                 }
-                // Les mentions, à la base contre ce que la fenêtre avait lu
-                // — rien d'écrit si elles n'ont pas changé.
-                // Changées ou non se juge contre ce que la fenêtre avait lu de
-                // la base — comme la durée du journal —, pas contre la
-                // configuration du poste, qui peut avoir du retard sur elle.
-                let seen = self.options.as_ref().and_then(|e| e.mentions_seen.clone());
-                let changed = match mentions_of(seen.as_deref()) {
-                    Some(read) => self.config.disclaimers != read,
-                    None => self.config.disclaimers != before.disclaimers,
-                };
-                if changed {
-                    match toml::to_string(&self.config.disclaimers) {
-                        Ok(text) => match session.db.set_setting(
-                            MENTIONS_KEY,
-                            &text,
-                            seen.as_deref(),
-                            &session.today,
-                            &session.operator,
-                        ) {
-                            Ok(true) => {
-                                session.mentions_fresh = None;
-                                session.mentions_seen = Some(text.clone());
+                // Les réglages de l'officine, à la base contre ce que la
+                // fenêtre avait lu — rien d'écrit pour une section qui n'a
+                // pas changé. Changée ou non se juge contre ce que la
+                // fenêtre avait lu de la base, pas contre la configuration
+                // du poste, qui peut avoir du retard sur elle.
+                for key in SHARED_SECTIONS {
+                    let seen = self
+                        .options
+                        .as_ref()
+                        .and_then(|e| e.shared_seen.get(key).cloned().flatten());
+                    let changed = match &seen {
+                        Some(read) => !section_is(&self.config, key, read),
+                        None => section_text(&self.config, key) != section_text(&before, key),
+                    };
+                    let Some(text) = section_text(&self.config, key).filter(|_| changed) else {
+                        continue;
+                    };
+                    match session.db.set_setting(
+                        key,
+                        &text,
+                        seen.as_deref(),
+                        &session.today,
+                        &session.operator,
+                    ) {
+                        Ok(true) => {
+                            session.shared_fresh.remove(key);
+                            session.shared_seen.insert(key, text.clone());
+                            if let Some(editor) = &mut self.options {
+                                editor.shared_seen.insert(key, Some(text));
+                            }
+                        }
+                        Ok(false) => {
+                            let raw = session.db.setting(key);
+                            if let Some(r) = &raw {
+                                section_read(&mut self.config, key, r);
                                 if let Some(editor) = &mut self.options {
-                                    editor.mentions_seen = Some(text);
+                                    section_read(&mut editor.cfg, key, r);
                                 }
+                                session.shared_seen.insert(key, r.clone());
                             }
-                            Ok(false) => {
-                                let raw = session.db.setting(MENTIONS_KEY);
-                                if let Some(theirs) = mentions_of(raw.as_deref()) {
-                                    self.config.disclaimers = theirs.clone();
-                                    if let Some(editor) = &mut self.options {
-                                        editor.cfg.disclaimers = theirs;
-                                        editor.mentions_seen = raw.clone();
-                                    }
-                                }
-                                session.mentions_fresh = None;
-                                session.mentions_seen = raw;
-                                session.stale("mentions_stale");
+                            if let Some(editor) = &mut self.options {
+                                editor.shared_seen.insert(key, raw);
                             }
-                            Err(e) => session.error = Some(e),
-                        },
-                        Err(e) => session.error = Some(e.to_string()),
+                            session.shared_fresh.remove(key);
+                            session.stale("reglages_stale");
+                        }
+                        Err(e) => session.error = Some(e),
                     }
                 }
                 session.cycle_months = self.config.rules.cycle_months.max(1);
@@ -101564,18 +101633,33 @@ mod tests {
     /// **Avec le fil, l'écran n'attend pas** : recentrer garde la carte
     /// d'avant jusqu'à la réponse, puis la carte du nouveau centre porte
     /// son anneau d'interactions — le même que sans fil.
-    /// Les mentions se relisent telles qu'écrites, et un texte illisible
-    /// n'en est pas : le poste garde alors les siennes.
+    /// **Chaque réglage partagé de l'officine se relit tel qu'écrit** ; un
+    /// texte illisible ne change rien ; et une section jamais touchée sur
+    /// ce poste se reconnaît — elle ne s'écrit pas dans une base vide.
     #[test]
-    fn the_officine_mentions_read_back() {
-        let m = crate::config::DisclaimersConfig {
-            ordonnance_footer: "Pharmacien prescripteur — vaccination".to_owned(),
-            ..Default::default()
-        };
-        let text = toml::to_string(&m).unwrap();
-        assert_eq!(super::mentions_of(Some(&text)), Some(m));
-        assert_eq!(super::mentions_of(Some("pas = [du toml")), None);
-        assert_eq!(super::mentions_of(None), None);
+    fn the_officine_sections_read_back() {
+        let mut changed = Config::default();
+        changed.disclaimers.ordonnance_footer = "Pharmacien prescripteur".to_owned();
+        changed.billing.adhesion = 7.5;
+        changed.rules.cycle_months = 6;
+        changed.locations.notice_days = 3;
+        for key in super::SHARED_SECTIONS {
+            let text = super::section_text(&changed, key).unwrap();
+            let mut fresh = Config::default();
+            assert!(super::section_untouched(&fresh, key), "{key}");
+            assert!(!super::section_untouched(&changed, key), "{key}");
+            assert!(super::section_read(&mut fresh, key, &text), "{key}");
+            assert!(super::section_is(&fresh, key, &text), "{key}");
+            assert!(
+                !super::section_read(&mut fresh, key, "pas = [du toml"),
+                "{key}"
+            );
+            assert!(super::section_is(&fresh, key, &text), "{key}");
+        }
+        assert_eq!(
+            super::mentions_of(super::section_text(&changed, super::MENTIONS_KEY).as_deref()),
+            Some(changed.disclaimers.clone())
+        );
     }
 
     #[test]

@@ -221,8 +221,12 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
 - réglages par poste qui devraient être de l'officine : facturation,
   règles (dont `enforcement = Block`), mentions et forfaits de location
   vivent dans `config.toml` — deux postes peuvent facturer ou bloquer un
-  même patient autrement ; `[pharmacy]` et les mentions (`MENTIONS_KEY`,
-  fait le 13/10) sont passées à la base ;
+  même patient autrement — **fait le 14/10** : `[pharmacy]` a son chemin
+  (fusion champ par champ), les mentions, la facturation, les règles et
+  les locations passent par `SHARED_SECTIONS` (adoptées au
+  déverrouillage seulement si ce poste les a changées, reprises d'un
+  autre poste options fermées, écrites contre ce que la fenêtre avait
+  lu). Un poste d'une version d'avant lit encore son `config.toml` ;
 - options ouvertes au verrouillage : mises de côté et rendues au
   déverrouillage (fait le 13/10) ;
 - réécritures orphelines : une clé dérivée d'un libellé (âge, grossesse,
