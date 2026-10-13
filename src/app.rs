@@ -8325,6 +8325,8 @@ impl Session {
     fn resync(&mut self) {
         // Le stock de lots a pu changer ailleurs.
         self.vacc_lot_warn = None;
+        // Une table corrigée sur un autre poste se marque aussi.
+        self.table_edited = None;
         // Deux lectures gardées d'une image à l'autre et qu'un autre
         // poste peut rendre fausses : la biologie d'un dossier (la carte)
         // et les lignes par indication d'une fiche (les calculs).
@@ -21125,23 +21127,22 @@ impl App {
         // fondu dans ce que la base porte.
         // Et ce qu'on a tapé avant que la lecture aboutisse (base occupée) :
         // rien de commun avec la base, tout s'y ajoute.
-        let pending = self.doc_pending.take().or_else(|| {
-            (self.doc_dirty && !self.doc_text.trim().is_empty())
-                .then(|| (String::new(), std::mem::take(&mut self.doc_text)))
-        });
-        match pending {
-            // Comme à l'enregistrement : ce qu'on a écrit est « le nôtre »,
-            // la base « le leur » — une ligne retirée ici reste retirée.
-            Some((base, mine)) => {
-                self.doc_text = merge_team_notes(&base, &mine, &text);
-                self.doc_dirty = self.doc_text != text;
-                self.doc_last_edit = Instant::now();
-            }
-            None => {
-                self.doc_text = text;
-                self.doc_dirty = false;
-            }
+        // Les deux, l'un après l'autre : ce que le verrouillage a gardé, puis
+        // ce qu'on a tapé depuis — aucun ne remplace l'autre. Comme à
+        // l'enregistrement, ce qu'on a écrit est « le nôtre », la base « le
+        // leur » : une ligne retirée ici reste retirée.
+        let mut merged = match self.doc_pending.take() {
+            Some((base, mine)) => merge_team_notes(&base, &mine, &text),
+            None => text.clone(),
+        };
+        if self.doc_dirty && !self.doc_text.trim().is_empty() {
+            merged = merge_team_notes("", &self.doc_text, &merged);
         }
+        self.doc_dirty = merged != text;
+        if self.doc_dirty {
+            self.doc_last_edit = Instant::now();
+        }
+        self.doc_text = merged;
         self.doc_loaded = true;
     }
 
@@ -21152,17 +21153,31 @@ impl App {
     fn close_team_doc(&mut self) {
         if self.doc_dirty {
             self.doc_focused = false;
-            for _ in 0..3 {
-                self.save_doc();
-                if !self.doc_dirty {
-                    break;
+            // Rien à enregistrer tant que la lecture n'a pas abouti.
+            if self.doc_loaded {
+                for _ in 0..3 {
+                    self.save_doc();
+                    if !self.doc_dirty {
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(150));
                 }
-                std::thread::sleep(Duration::from_millis(150));
             }
             // Toujours pas écrites (base occupée) : gardées pour le
-            // prochain déverrouillage, plutôt que perdues.
+            // prochain déverrouillage, plutôt que perdues — ajoutées à ce
+            // qu'un verrouillage précédent gardait déjà.
             if self.doc_dirty {
-                self.doc_pending = Some((self.doc_base.clone(), self.doc_text.clone()));
+                let base = if self.doc_loaded {
+                    self.doc_base.clone()
+                } else {
+                    String::new()
+                };
+                self.doc_pending = Some(match self.doc_pending.take() {
+                    Some((old_base, old)) => {
+                        (old_base, merge_team_notes(&base, &self.doc_text, &old))
+                    }
+                    None => (base, self.doc_text.clone()),
+                });
             }
         }
         self.doc_text.clear();

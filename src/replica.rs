@@ -868,6 +868,7 @@ pub const TEAM_DOC: &str = "team_doc";
 /// en silence. Deux écritures croisées restent une question, posée une
 /// fois et tranchée ; la fusion par lignes ne sert que sur une même base
 /// (l'enregistrement contre ce que le poste avait lu).
+///
 /// **Fusion par lignes** : notre texte, et les lignes que l'autre a
 /// ajoutées depuis la base commune (celles qu'on a retirées ici restent
 /// retirées). Des notes sont des listes : la ligne est l'unité naturelle,

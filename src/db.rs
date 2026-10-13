@@ -62428,13 +62428,6 @@ mod tests {
         }
     }
 
-    /// Un paquet emporte les trois fichiers et les rend tous les trois.
-    ///
-    /// C'est ce que cette fonction existe pour faire : la base, les
-    /// pièces et le registre vivent à part, et deux des trois ne
-    /// veulent rien dire seuls. Un paquet qui en rendrait deux ferait
-    /// une officine sans registre, ce qui se verrait le jour d'un
-    /// contrôle et pas avant.
     /// **Un paquet coupé ne s'importe pas** : ses derniers morceaux
     /// perdus, la taille et l'empreinte ne correspondent plus, et rien
     /// n'est laissé dans le dossier d'arrivée.
@@ -62468,6 +62461,13 @@ mod tests {
         }
     }
 
+    /// Un paquet emporte les trois fichiers et les rend tous les trois.
+    ///
+    /// C'est ce que cette fonction existe pour faire : la base, les
+    /// pièces et le registre vivent à part, et deux des trois ne
+    /// veulent rien dire seuls. Un paquet qui en rendrait deux ferait
+    /// une officine sans registre, ce qui se verrait le jour d'un
+    /// contrôle et pas avant.
     #[test]
     fn a_bundle_carries_the_three_files_and_gives_them_all_back() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-bundle-{}", std::process::id()));
