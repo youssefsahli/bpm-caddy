@@ -5650,6 +5650,13 @@ struct Session {
     /// l'infirmier(ère) prend les traitements : la feuille se propose,
     /// une fois, tant que ce dossier reste ouvert.
     care_due: Option<(i64, String)>,
+    /// Ce que l'officine publie sur la carte, (sorte, clé) — lu une fois,
+    /// relu au `resync` et après chaque coche.
+    published: Option<std::collections::HashSet<(String, String)>>,
+    /// « Mes publications », ouverte : ce que l'officine a écrit des
+    /// sortes publiques, (sorte, nom, jour, publiée).
+    #[cfg(feature = "sync")]
+    publications: Option<Publications>,
     /// Les tables que l'équipe a corrigées, lues contre `table_rev` : la
     /// liste les marque, et les relisait à chaque image.
     table_edited: Option<(u64, std::collections::HashSet<String>)>,
@@ -6602,6 +6609,9 @@ impl Session {
             care: None,
             care_sheet: None,
             care_due: None,
+            published: None,
+            #[cfg(feature = "sync")]
+            publications: None,
             care_dirty: false,
             table_edited: None,
             drug_form: None,
@@ -8362,6 +8372,8 @@ impl Session {
         self.vacc_lot_warn = None;
         // Une table corrigée sur un autre poste se marque aussi.
         self.table_edited = None;
+        // Une entrée publiée ou retirée depuis un autre poste.
+        self.published = None;
         // L'infirmier(ère) du dossier relu, sauf si l'écran porte une
         // saisie pas encore écrite : celle-là partira contre ce qu'elle
         // avait lu.
@@ -11526,7 +11538,12 @@ impl Session {
     /// The entries this base holds now, by kind and key — what the
     /// catalogue may publish: the journal keeps a deleted entry's versions.
     #[cfg(feature = "sync")]
+    ///
+    /// **And only those it chose to publish**: the map carries what an
+    /// officine ticked « Publier », entry by entry — what it writes for its
+    /// paired networks follows their own settings.
     fn cards_here(&self) -> std::collections::HashSet<(&'static str, String)> {
+        let published = self.db.published_entries().unwrap_or_default();
         crate::versions::Kind::ALL
             .into_iter()
             .filter(|k| !k.is_private())
@@ -11537,6 +11554,7 @@ impl Session {
                     .into_iter()
                     .map(move |card| (k.key(), card))
             })
+            .filter(|(k, card)| published.contains(&((*k).to_owned(), card.clone())))
             .collect()
     }
 
@@ -12552,6 +12570,55 @@ impl Session {
         } else {
             crate::biology::value_text(v, &self.renal_dfg_bound)
         }
+    }
+
+    /// Open « Mes publications »: what this officine wrote of the public
+    /// kinds and still holds, each with its mark — composed once, here.
+    #[cfg(feature = "sync")]
+    fn open_publications(&mut self) {
+        self.reload_card_edits();
+        let published = self.db.published_entries().unwrap_or_default();
+        let mut rows = Vec::new();
+        for kind in crate::versions::Kind::ALL
+            .into_iter()
+            .filter(|k| !k.is_private())
+        {
+            let here = self.db.entry_keys(kind).unwrap_or_default();
+            let mut own = crate::enligne::own_offers(&self.card_edits, kind);
+            own.retain(|o| here.contains(&o.card));
+            own.sort_by_key(|o| crate::fuzzy::sort_key(&o.name));
+            for o in own {
+                let on = published.contains(&(kind.key().to_owned(), o.card.clone()));
+                rows.push((kind, o.name, o.day, on));
+            }
+        }
+        self.publications = Some(Publications {
+            filter: String::new(),
+            rows,
+        });
+    }
+
+    /// Is this entry published on the officines' map? Read once, kept.
+    fn is_published(&mut self, kind: crate::versions::Kind, name: &str) -> bool {
+        if self.published.is_none() {
+            self.published = Some(self.db.published_entries().unwrap_or_default());
+        }
+        self.published
+            .as_ref()
+            .is_some_and(|set| set.contains(&(kind.key().to_owned(), crate::versions::key(name))))
+    }
+
+    /// Publish an entry on the map, or take it back.
+    fn set_published(&mut self, kind: crate::versions::Kind, name: &str, on: bool, operator: &str) {
+        let today = self.today.clone();
+        match self
+            .db
+            .set_published(kind, &crate::versions::key(name), on, &today, operator)
+        {
+            Ok(()) => self.error = None,
+            Err(e) => self.error = Some(e),
+        }
+        self.published = None;
     }
 
     /// The nurse setting of a file, read from the base when the file
@@ -15539,6 +15606,14 @@ enum MessagesTo {
     People,
     Everyone,
     Group,
+}
+
+/// « Mes publications » : un filtre, et ce que l'officine a écrit des
+/// sortes publiques — (sorte, nom, jour de sa dernière version, publiée).
+#[cfg(feature = "sync")]
+struct Publications {
+    filter: String,
+    rows: Vec<(crate::versions::Kind, String, String, bool)>,
 }
 
 /// « En ligne » : the offers of one kind of entry, searched.
@@ -45762,6 +45837,13 @@ impl App {
                             session.entry_versions =
                                 Some((crate::versions::Kind::Codex, prep.name.clone()));
                         }
+                        Self::publish_toggle(
+                            ui,
+                            session,
+                            crate::versions::Kind::Codex,
+                            &prep.name,
+                            operator,
+                        );
                         ui.add_space(10.0);
                         let label = if session.codex_confirm_delete {
                             tr("patient_delete_confirm")
@@ -65325,6 +65407,7 @@ impl App {
         let mut save = false;
         let mut sweep = false;
         let mut preview = false;
+        let mut publications = false;
         let me = session.carte.me.clone();
         let busy = session.carte.job.is_some();
         motif::panel(ui, rect, None, |ui| {
@@ -65578,6 +65661,13 @@ impl App {
                     {
                         preview = true;
                     }
+                    // Ce qui part : entrée par entrée, cochée à la main.
+                    if motif::button(ui, tr("publications_open"))
+                        .on_hover_text(tr("publications_open_tooltip"))
+                        .clicked()
+                    {
+                        publications = true;
+                    }
                     if let Some((at, said)) = &session.carte.announced {
                         match said {
                             Ok(()) => dim(&trf("carte_announced", at), ui),
@@ -65664,8 +65754,97 @@ impl App {
         if preview {
             session.carte_preview_own(&config.pharmacy.name);
         }
+        if publications {
+            session.open_publications();
+        }
+        Self::publications_window(ui.ctx(), session, operator);
         if save {
             session.carte_save(operator);
+        }
+    }
+
+    /// **Mes publications** : every entry this officine wrote of the public
+    /// kinds, and whether the map carries it — the one place to see and
+    /// choose all of it.
+    #[cfg(feature = "sync")]
+    fn publications_window(ctx: &egui::Context, session: &mut Session, operator: &str) {
+        let Some(mut win) = session.publications.take() else {
+            return;
+        };
+        let mut close = false;
+        let mut toggled: Option<(crate::versions::Kind, String, bool)> = None;
+        let screen = ctx.screen_rect();
+        let shown = egui::Window::new(tr("publications_title"))
+            .collapsible(false)
+            .resizable(false)
+            .fixed_size(dialog_size(screen.size(), egui::vec2(620.0, 520.0)))
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("publications_hint"))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+                ui.horizontal_wrapped(|ui| {
+                    motif::field(
+                        ui,
+                        chars_wide(ui, 28.0).min(ui.available_width()),
+                        egui::TextEdit::singleline(&mut win.filter)
+                            .hint_text(motif::hint(tr("publications_filter"))),
+                    );
+                    let n = win.rows.iter().filter(|r| r.3).count();
+                    ui.label(trn("publications_count", &[&n, &win.rows.len()]));
+                });
+                let footer = Self::row_height(ui) + ui.spacing().item_spacing.y * 2.0;
+                let body_h = (ui.available_height() - footer).max(Self::row_height(ui) * 4.0);
+                let wanted = win.filter.trim().to_owned();
+                egui::ScrollArea::vertical()
+                    .id_salt("publications_body")
+                    .max_height(body_h)
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        if win.rows.is_empty() {
+                            ui.label(
+                                egui::RichText::new(tr("publications_none"))
+                                    .color(motif::text_dim()),
+                            );
+                        }
+                        let mut last: Option<crate::versions::Kind> = None;
+                        for (kind, name, day, on) in win.rows.iter_mut() {
+                            if !wanted.is_empty() && !crate::fuzzy::contains_folded(name, &wanted) {
+                                continue;
+                            }
+                            if last != Some(*kind) {
+                                motif::section(ui, Self::online_kind_label(*kind));
+                                last = Some(*kind);
+                            }
+                            ui.horizontal(|ui| {
+                                if motif::checkbox(ui, on, name.as_str()).changed() {
+                                    toggled = Some((*kind, name.clone(), *on));
+                                }
+                                ui.label(
+                                    egui::RichText::new(db::format_french_date(day))
+                                        .size(motif::pt(ui, 10.5))
+                                        .color(motif::text_faint()),
+                                );
+                            });
+                        }
+                    });
+                ui.horizontal_wrapped(|ui| {
+                    if motif::button(ui, tr("tpl_close")).clicked() {
+                        close = true;
+                    }
+                });
+            });
+        motif::dialog_relief(ctx, &shown);
+        if let Some((kind, name, on)) = toggled {
+            session.set_published(kind, &name, on, operator);
+        }
+        if !close && !ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+            session.publications = Some(win);
         }
     }
 
@@ -65689,6 +65868,24 @@ impl App {
     #[cfg(not(feature = "sync"))]
     fn remote_key(device: &str) -> String {
         device.to_owned()
+    }
+
+    /// « Publier sur la carte » for one entry: ticked, the entry joins the
+    /// catalogue this officine shows on the officines' map.
+    fn publish_toggle(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        kind: crate::versions::Kind,
+        name: &str,
+        operator: &str,
+    ) {
+        let mut on = session.is_published(kind, name);
+        if motif::checkbox(ui, &mut on, tr("publish_toggle"))
+            .on_hover_text(tr("publish_toggle_tooltip"))
+            .changed()
+        {
+            session.set_published(kind, name, on, operator);
+        }
     }
 
     /// The « En ligne » button of a content tab: one gesture to what the

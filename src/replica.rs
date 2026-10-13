@@ -160,6 +160,9 @@ pub const TABLES: &[Table] = &[
     t("table_cells", Main, Fiches, false, false),
     t("seed_state", Main, Officine, false, false),
     t("settings", Main, Officine, false, false),
+    // Ce que l'officine publie sur la carte : son choix, sur tous ses
+    // postes.
+    t("published_entries", Main, Officine, false, false),
     t("prescribers", Main, Officine, false, true),
     t("colleague_groups", Main, Officine, false, true),
     // Les réseaux de plus : leur clé suit l'officine d'un poste à l'autre,

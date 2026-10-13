@@ -271,6 +271,17 @@ CREATE TABLE IF NOT EXISTS access_log (
     act      TEXT NOT NULL,
     file     INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS published_entries (
+    -- Ce que l'officine publie sur la carte des officines, entrée par
+    -- entrée : la sorte (`versions::Kind::key`) et la clé de l'entrée
+    -- (`versions::key`). Rien n'y paraît sans y être ; les réseaux
+    -- appairés, eux, suivent leurs propres réglages (`NetShares`).
+    kind     TEXT NOT NULL,
+    card     TEXT NOT NULL,
+    since    TEXT NOT NULL DEFAULT '',
+    operator TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (kind, card)
+);
 CREATE TABLE IF NOT EXISTS drug_facts (
     -- Les valeurs de pharmacocinétique et de pharmacodynamie qu'une
     -- officine a sourcées pour une fiche (voir `src/pk.rs`). Une par
@@ -1363,6 +1374,13 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE patients ADD COLUMN sex TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE patients ADD COLUMN pregnancy_ddr TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE patients ADD COLUMN infirmier TEXT NOT NULL DEFAULT ''",
+    "CREATE TABLE IF NOT EXISTS published_entries (
+        kind     TEXT NOT NULL,
+        card     TEXT NOT NULL,
+        since    TEXT NOT NULL DEFAULT '',
+        operator TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY (kind, card)
+    )",
     "CREATE TABLE IF NOT EXISTS drug_facts (
         drug_id   INTEGER NOT NULL,
         property  TEXT NOT NULL,
@@ -56217,6 +56235,48 @@ impl Db {
         }
     }
 
+    /// Les entrées que l'officine publie sur la carte : (sorte, clé).
+    pub fn published_entries(&self) -> Result<std::collections::HashSet<(String, String)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT kind, card FROM published_entries")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Publier une entrée sur la carte, ou la retirer. Un état voulu et non
+    /// une bascule : deux postes qui cochent la même entrée arrivent au
+    /// même endroit, sans compare-and-set.
+    pub fn set_published(
+        &self,
+        kind: crate::versions::Kind,
+        card: &str,
+        on: bool,
+        day: &str,
+        operator: &str,
+    ) -> Result<(), String> {
+        if on {
+            self.conn
+                .execute(
+                    "INSERT INTO published_entries (kind, card, since, operator)
+                     VALUES (?1, ?2, ?3, ?4) ON CONFLICT (kind, card) DO NOTHING",
+                    (kind.key(), card, day, operator),
+                )
+                .map_err(|e| e.to_string())?;
+        } else {
+            self.conn
+                .execute(
+                    "DELETE FROM published_entries WHERE kind = ?1 AND card = ?2",
+                    (kind.key(), card),
+                )
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
     pub fn offer_locals(
         &self,
         kind: crate::versions::Kind,
@@ -59363,6 +59423,30 @@ mod tests {
     /// Les clés que `entry_keys` donne sont celles d'`offer_locals` : ce
     /// que le catalogue garde et ce que « En ligne » compare se lisent sur
     /// les mêmes entrées.
+    /// Publier est un état voulu : coché deux fois, une ligne ; retiré, plus
+    /// rien ; et ce qui n'a jamais été coché n'est pas publié.
+    #[test]
+    fn publishing_an_entry_is_a_wanted_state() {
+        use crate::versions::Kind;
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-publish-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("p.db"), "secret").unwrap();
+        assert!(db.published_entries().unwrap().is_empty());
+        let arnica = crate::versions::key("Huile d'arnica");
+        db.set_published(Kind::Codex, &arnica, true, "2026-10-13", "YS")
+            .unwrap();
+        db.set_published(Kind::Codex, &arnica, true, "2026-10-14", "AB")
+            .unwrap();
+        let set = db.published_entries().unwrap();
+        assert_eq!(set.len(), 1);
+        assert!(set.contains(&("codex".to_owned(), arnica.clone())));
+        db.set_published(Kind::Codex, &arnica, false, "", "")
+            .unwrap();
+        assert!(db.published_entries().unwrap().is_empty());
+    }
+
     #[test]
     fn entry_keys_are_the_keys_offers_compare_against() {
         use crate::versions::Kind;

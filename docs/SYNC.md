@@ -898,7 +898,9 @@ clé de réseau n'y passe.
   publiques dont la dernière version est d'ici (`enligne::own_offers`),
   **et que la base tient encore** (`repertoire::catalogue_where` : le
   journal garde les versions d'une entrée supprimée, qui ne se publie
-  plus) :
+  plus), **et qu'elle a cochée « Publier sur la carte »** (table
+  `published_entries`, sorte et clé, qui voyage entre les postes sur le
+  flux Officine ; lue par `App::cards_here`) :
   jamais une liste, une phrase, ce qu'une officine appairée a réécrit, ni
   un patient, ni un nom qu'elle a reçu. Décochée, ou l'adresse changée,
   une carte de départ la retire. Le réglage retient le répertoire qui a

@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Publishing to the officines' map is now explicit, entry by entry. A
+  « Publier sur la carte » box sits on a preparation's page (the
+  officine's arnica oil, say), and « Mes publications… » on the map lists
+  everything the officine wrote — fiches, preparations, protocols, TROD
+  lines, vaccines, devices, cascades — each ticked or not, with a search.
+  Only ticked entries reach the directory; paired networks keep their own
+  settings. An officine already on the map publishes nothing after the
+  upgrade until it ticks its entries.
+
 ## [0.430.0] - 2026-10-13
 
 ### Fixed

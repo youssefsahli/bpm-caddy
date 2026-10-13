@@ -1329,12 +1329,17 @@ presse-papiers, à coller dans un message. Les autres
 leur commune et, si elles le veulent, cochent « Paraître sur la
 carte » : le poste annonce alors l'officine toutes les dix minutes tant
 que l'application est ouverte. Partent son nom, sa commune, son FINESS
-s'il est écrit, et ce qu'elle a écrit elle-même des fiches,
-préparations, protocoles, lignes de TROD, vaccins, dispositifs et
-cascades — **jamais un patient, une liste de contrôle ni une phrase
-imprimée**. « Voir ce que l'officine publie… » montre ce catalogue
-exactement tel qu'il part, avant même de paraître. Décocher la retire du
-répertoire.
+s'il est écrit, et **ce qu'elle a choisi de publier**, entrée par
+entrée, de ce qu'elle a écrit elle-même — fiches, préparations,
+protocoles, lignes de TROD, vaccins, dispositifs et cascades ; **jamais
+un patient, une liste de contrôle ni une phrase imprimée**. Une entrée
+se publie par « Publier sur la carte », sur sa page (une préparation du
+Codex, par exemple : l'huile d'arnica de l'officine), ou dans « Mes
+publications… », qui liste tout ce que l'officine a écrit, coché ou
+non. Rien n'est publié sans être coché ; les réseaux appairés suivent
+leurs propres réglages. « Voir ce que l'officine publie… » montre ce
+catalogue exactement tel qu'il part, avant même de paraître. Décocher
+« Paraître sur la carte » retire l'officine du répertoire.
 
 Les contours des départements et les communes viennent de l'IGN, de
 l'INSEE et de geo.api.gouv.fr, le registre des officines de FINESS
