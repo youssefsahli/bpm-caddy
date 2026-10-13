@@ -220,8 +220,8 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   `Swatinem/rust-cache@v2` — ou cache empoisonné) atteint chaque
   officine. À faire, avec une clé hors ligne à créer par Youssef :
   signer les binaires (minisign/ed25519), embarquer la clé publique
-  dans le lanceur, refuser sans signature ; épingler les actions par
-  empreinte ; pas de cache dans la tâche qui publie ;
+  dans le lanceur, refuser sans signature (les actions sont épinglées
+  par empreinte et la publication se fait sans cache depuis le 13/10) ;
 - `release.yml` : chaque tâche de la matrice publie seule, la
   publication devient « latest » avant que les trois binaires soient
   là ; une tâche finale (ou un brouillon publié en dernier) ; et
