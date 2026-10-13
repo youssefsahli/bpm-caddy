@@ -202,8 +202,8 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   règles (dont `enforcement = Block`), mentions et forfaits de location
   vivent dans `config.toml` — deux postes peuvent facturer ou bloquer un
   même patient autrement ; seule `[pharmacy]` est passée à la base ;
-- options ouvertes au verrouillage automatique : ce qui était tapé et
-  pas enregistré part sans un mot ;
+- options ouvertes au verrouillage : mises de côté et rendues au
+  déverrouillage (fait le 13/10) ;
 - réécritures orphelines : une clé dérivée d'un libellé (âge, grossesse,
   écrasement, rein, foie, revue, surveillance) qui change de libellé
   laisse la réécriture en base, invisible et non comptée ; à montrer

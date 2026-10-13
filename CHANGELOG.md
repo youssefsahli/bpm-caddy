@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and importing checks what it rewrote: a bundle cut short — its last
   pieces lost on the way — is refused, leaving nothing behind, instead of
   importing a truncated base. Older bundles still import.
+- Options left open when the session locks (automatically or not) are put
+  aside and come back as they were at unlock, instead of losing what was
+  typed without a word.
 
 ## [0.427.0] - 2026-10-13
 

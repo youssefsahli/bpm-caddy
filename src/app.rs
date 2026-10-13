@@ -84877,7 +84877,11 @@ impl eframe::App for App {
         // it a click aimed at the dialog's edge landed in the table
         // underneath, and on a dense screen the dialog itself was hard
         // to pick out of the panels it floats over.
-        if self.options.is_some() || self.pw_change.is_some() || self.tpl_editor.is_some() {
+        // Une fenêtre mise de côté au verrouillage ne voile ni ne bloque
+        // l'écran de déverrouillage.
+        if matches!(self.state, State::Unlocked(_))
+            && (self.options.is_some() || self.pw_change.is_some() || self.tpl_editor.is_some())
+        {
             Self::swallow_clicks_behind_modal(ctx);
         }
 
@@ -85205,9 +85209,14 @@ impl eframe::App for App {
         }
 
         // Global options editor: edits config.toml from within the app.
-        if !matches!(self.state, State::Unlocked(_)) {
-            self.options = None;
-        }
+        // **Mis de côté au verrouillage, pas jeté** : un verrouillage
+        // automatique emportait sans un mot ce qui était tapé. Caché tant
+        // que la session est fermée, il revient tel quel au déverrouillage.
+        let parked = if matches!(self.state, State::Unlocked(_)) {
+            None
+        } else {
+            self.options.take()
+        };
         let mut close_opts = false;
         let mut open_pw = false;
         let mut saved_cfg: Option<Config> = None;
@@ -87855,6 +87864,9 @@ impl eframe::App for App {
         if close_opts {
             self.options = None;
         }
+        if parked.is_some() {
+            self.options = parked;
+        }
 
         // **Une fois après une mise à jour** : le lanceur met
         // l'application à jour sans rien demander, et ce qui vient
@@ -87920,7 +87932,11 @@ impl eframe::App for App {
         // toolbar, docks, workspace — has just finished painting into
         // that same layer. A rectangle appended after them covers all of
         // them, and the windows, which live a layer above, stay lit.
-        if self.options.is_some() || self.pw_change.is_some() || self.tpl_editor.is_some() {
+        // Une fenêtre mise de côté au verrouillage ne voile ni ne bloque
+        // l'écran de déverrouillage.
+        if matches!(self.state, State::Unlocked(_))
+            && (self.options.is_some() || self.pw_change.is_some() || self.tpl_editor.is_some())
+        {
             ctx.layer_painter(egui::LayerId::background()).rect_filled(
                 ctx.screen_rect(),
                 0.0,
