@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - « En ligne »: « Absentes ici seulement » becomes a choice, « Toutes /
   Absentes ici / Différentes d'ici » — the last lists what another
   officine wrote differently of an entry this base has, its updates.
+  For a directory officine, « Prendre leur version » gives every field
+  that differs their value, all or nothing, each against what this base
+  holds, the old value kept in the entry's history.
 
 ## [0.420.0] - 2026-10-13
 

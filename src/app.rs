@@ -10777,6 +10777,52 @@ impl Session {
     }
 
     /// An offer taken: the list it belongs to is read again.
+    /// **Take another officine's version** of an entry this base has: each
+    /// field that differs gets their value, against what this base holds
+    /// now, all or nothing, each carried by a version — the old value stays
+    /// in the history. A card goes through its own compare-and-set save.
+    fn take_theirs(&mut self, offer: &crate::enligne::Offer) -> Result<bool, String> {
+        use crate::versions::Kind;
+        if offer.kind == Kind::Fiche {
+            let Some(card) = self
+                .db
+                .drugs()?
+                .into_iter()
+                .find(|d| crate::versions::key(&d.name) == offer.card)
+            else {
+                return Ok(false);
+            };
+            let mut new = card.clone();
+            let mut changed = false;
+            for (f, v) in &offer.fields {
+                if db::drug_field(&card, f).is_some_and(|mine| mine != v) {
+                    changed |= db::set_drug_field(&mut new, f, v.clone());
+                }
+            }
+            if !changed {
+                return Ok(false);
+            }
+            return self.db.update_drug_by(&new, &card, &self.operator, true);
+        }
+        let locals = self.db.offer_locals(offer.kind)?;
+        let Some(here) = locals.get(&offer.card) else {
+            return Ok(false);
+        };
+        let fields: Vec<(String, String, String)> = offer
+            .fields
+            .iter()
+            .filter_map(|(f, v)| {
+                let (_, mine) = here.iter().find(|(l, _)| l == f)?;
+                (mine != v).then(|| (f.clone(), v.clone(), mine.clone()))
+            })
+            .collect();
+        if fields.is_empty() {
+            return Ok(false);
+        }
+        self.db
+            .take_entry_values(offer.kind, &offer.card, &fields, &self.operator)
+    }
+
     fn after_adopt(&mut self, kind: crate::versions::Kind) {
         use crate::versions::Kind;
         match kind {
@@ -64807,6 +64853,7 @@ impl App {
         let mut take: Option<usize> = None;
         let mut compare: Option<usize> = None;
         let mut unfold: Option<usize> = None;
+        let mut take_theirs: Option<usize> = None;
         // Le bouton du réseau n'existe que dans une application qui en a.
         #[cfg_attr(not(feature = "sync"), allow(unused_mut))]
         let mut network = false;
@@ -65057,7 +65104,17 @@ impl App {
                                             compare = Some(i);
                                         }
                                     }
-                                    Here::Differs => {}
+                                    // Une officine du répertoire : pas d'historique
+                                    // commun à comparer, mais leur version se
+                                    // prend — l'ancienne reste à l'historique.
+                                    Here::Differs => {
+                                        if motif::button(ui, tr("online_take_theirs"))
+                                            .on_hover_text(tr("online_take_theirs_tooltip"))
+                                            .clicked()
+                                        {
+                                            take_theirs = Some(i);
+                                        }
+                                    }
                                     Here::Same => {}
                                 }
                             });
@@ -65124,6 +65181,18 @@ impl App {
                     .get(i)
                     .map(|(o, _, _)| (online.rows_gen, i, Self::offer_text(o, None)))
             };
+        }
+        if let Some(i) = take_theirs {
+            let offer = online.rows[i].0.clone();
+            online.note = Some(match session.take_theirs(&offer) {
+                Ok(true) => {
+                    session.after_adopt(kind);
+                    online.rows_rev = None;
+                    (false, trf("online_theirs_taken", &offer.name))
+                }
+                Ok(false) => (true, trf("online_not_taken", &offer.name)),
+                Err(e) => (true, e),
+            });
         }
         if let Some(i) = take {
             let offer = online.rows[i].0.clone();

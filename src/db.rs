@@ -56013,6 +56013,39 @@ impl Db {
         }
     }
 
+    /// **Prendre la version d'une autre officine** d'une entrée qu'on a :
+    /// chaque champ `(champ, valeur, ce que l'écran montrait)` écrit et
+    /// porté par une version, **tous ou aucun** — un champ qui a changé
+    /// entre-temps défait le reste. L'ancienne valeur reste dans
+    /// l'historique, d'où l'on y revient.
+    pub fn take_entry_values(
+        &self,
+        kind: crate::versions::Kind,
+        card: &str,
+        fields: &[(String, String, String)],
+        operator: &str,
+    ) -> Result<bool, String> {
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
+        let done = (|| -> Result<bool, String> {
+            for (field, value, shown) in fields {
+                if !self.set_entry_field_in(kind, card, field, value, shown, operator, false)? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        })();
+        match done {
+            Ok(true) => {
+                tx.commit().map_err(|e| e.to_string())?;
+                Ok(true)
+            }
+            other => {
+                let _ = tx.rollback();
+                other
+            }
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn set_entry_field_in(
         &self,
@@ -58871,6 +58904,80 @@ mod tests {
             .unwrap());
         assert_eq!(b.checklist_items(list.id).unwrap().len(), 3);
         assert!(Kind::Liste.is_private() && !Kind::Dispositif.is_private());
+    }
+
+    /// **Prendre la version d'une autre officine** : tous les champs ou
+    /// aucun, chacun contre ce que l'écran montrait, et l'ancienne valeur
+    /// reste à l'historique.
+    #[test]
+    fn taking_their_version_is_all_or_nothing() {
+        use crate::versions::Kind;
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-theirs-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("t.db"), "secret").unwrap();
+        db.add_preparation("Gélule d'essai").unwrap();
+        let p = db
+            .preparations()
+            .unwrap()
+            .into_iter()
+            .find(|p| p.name == "Gélule d'essai")
+            .expect("la préparation écrite");
+        let (_, name, fields) = db.entry_fields(Kind::Codex, &p.name).unwrap().unwrap();
+        let local = |f: &str| {
+            fields
+                .iter()
+                .find(|(k, _)| *k == f)
+                .map(|(_, v)| v.clone())
+                .unwrap()
+        };
+        let (a, b) = (fields[0].0, fields[1].0);
+        // Le second champ ne dit plus ce que l'écran montrait : rien ne s'écrit.
+        let refused = db
+            .take_entry_values(
+                Kind::Codex,
+                &name,
+                &[
+                    (a.to_owned(), "leur valeur A".to_owned(), local(a)),
+                    (
+                        b.to_owned(),
+                        "leur valeur B".to_owned(),
+                        "périmé".to_owned(),
+                    ),
+                ],
+                "CD",
+            )
+            .unwrap();
+        assert!(!refused);
+        let (_, _, after) = db.entry_fields(Kind::Codex, &name).unwrap().unwrap();
+        assert_eq!(after, fields);
+        // Les deux à jour : les deux s'écrivent, chacun avec sa version.
+        assert!(db
+            .take_entry_values(
+                Kind::Codex,
+                &name,
+                &[
+                    (a.to_owned(), "leur valeur A".to_owned(), local(a)),
+                    (b.to_owned(), "leur valeur B".to_owned(), local(b)),
+                ],
+                "CD",
+            )
+            .unwrap());
+        let (_, _, after) = db.entry_fields(Kind::Codex, &name).unwrap().unwrap();
+        let now = |f: &str| {
+            after
+                .iter()
+                .find(|(k, _)| *k == f)
+                .map(|(_, v)| v.clone())
+                .unwrap()
+        };
+        assert_eq!(now(a), "leur valeur A");
+        assert_eq!(now(b), "leur valeur B");
+        let edits = db.card_edits().unwrap();
+        let history = crate::versions::history_of(&edits, Kind::Codex, &name, a);
+        assert!(history
+            .iter()
+            .any(|e| e.value == "leur valeur A" && e.previous == local(a)));
     }
 
     /// **Un renommage est une version, pas une entrée de plus** : un

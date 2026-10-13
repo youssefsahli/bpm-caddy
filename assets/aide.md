@@ -1230,7 +1230,10 @@ autre officine. Ouvrir la fenêtre les marque vues ; ce qu'on écrit
 soi-même ne compte pas. Dans la fenêtre, elles viennent en tête, marquées
 « nouvelle ». Le choix « Toutes / Absentes ici / Différentes d'ici »
 garde ce qu'on peut prendre, ou ce qu'une autre officine a écrit
-autrement d'une entrée qu'on a — ses mises à jour ; quand plusieurs officines partagent, la liste de choix
+autrement d'une entrée qu'on a — ses mises à jour. Pour une officine
+du répertoire, « Prendre leur version » donne à chaque champ qui
+diffère leur valeur, tous ou aucun ; la vôtre reste dans l'historique
+de l'entrée, d'où l'on y revient ; quand plusieurs officines partagent, la liste de choix
 parcourt le partage d'une seule.
 
 « Tout le répertoire… » cherche, au-delà du réseau, chez **toutes les
