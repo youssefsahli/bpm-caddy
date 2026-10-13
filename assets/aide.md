@@ -696,7 +696,8 @@ leurs propres lignes de posologie : ajouter un produit revient à ajouter
 une fiche.
 
 Aucune mention n'est imprimée par défaut ; les mentions souhaitées se
-saisissent dans Options › Mentions.
+saisissent dans Options › Mentions. Elles valent pour l'officine : écrites
+sur un poste, elles s'impriment sur tous.
 
 # Agenda et planning
 

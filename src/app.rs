@@ -38,6 +38,27 @@ enum State {
 /// lancement de la nouvelle version verse donc ce qui était déjà écrit,
 /// et les postes suivants le lisent au lieu de le redemander.
 fn adopt_officine(config: &mut Config, session: &mut Session) {
+    // Les mentions suivent le même chemin : celles de la base, ou, sans
+    // elles, celles que ce poste avait écrites.
+    let raw = session.db.setting(MENTIONS_KEY);
+    match mentions_of(raw.as_deref()) {
+        Some(shared) => {
+            config.disclaimers = shared;
+            session.mentions_seen = raw;
+        }
+        None => {
+            if let Ok(text) = toml::to_string(&config.disclaimers) {
+                let day = session.today.clone();
+                if session
+                    .db
+                    .set_setting(MENTIONS_KEY, &text, raw.as_deref(), &day, "")
+                    .unwrap_or(false)
+                {
+                    session.mentions_seen = Some(text);
+                }
+            }
+        }
+    }
     match session.db.officine() {
         Some(shared) => {
             config.pharmacy = shared.clone();
@@ -324,6 +345,16 @@ fn renal_dfg_text(v: f64) -> String {
 /// écrivaient en maximum qui ne redescendait jamais (et en zéro qui
 /// arrêtait la purge), reste ignorée.
 const AUDIT_KEEP_KEY: &str = "audit_keep_days_officine";
+
+/// **Les mentions de l'officine**, dans la base et non dans le fichier du
+/// poste : une ordonnance imprimée au comptoir et la même en
+/// arrière-boutique portaient chacune les mentions de leur poste.
+const MENTIONS_KEY: &str = "mentions_officine";
+
+/// Les mentions telles que la base les porte, lues.
+fn mentions_of(raw: Option<&str>) -> Option<crate::config::DisclaimersConfig> {
+    toml::from_str(raw?).ok()
+}
 
 /// Deux secrets égaux, comparés en temps constant.
 fn same_secret(a: &str, b: &str) -> bool {
@@ -5981,6 +6012,11 @@ struct Session {
     /// vient d'ajouter. `None` veut dire « la base n'en portait pas » —
     /// une base d'avant cette version, ou une base neuve.
     officine_seen: Option<crate::config::PharmacyConfig>,
+    /// Les mentions telles que ce poste les a lues dans la base (le texte
+    /// contre lequel il écrit), et celles qu'un autre poste a écrites
+    /// depuis, à prendre quand les options sont fermées.
+    mentions_seen: Option<String>,
+    mentions_fresh: Option<crate::config::DisclaimersConfig>,
     /// Ce qu'un **autre poste** a écrit de l'officine et que celui-ci
     /// n'a pas encore pris.
     ///
@@ -6700,6 +6736,8 @@ impl Session {
             content: crate::content::Overrides::default(),
             text_edit: None,
             officine_seen: None,
+            mentions_seen: None,
+            mentions_fresh: None,
             officine_fresh: None,
             officine_stale: false,
             sync_seen: (0, 0, 0),
@@ -8447,6 +8485,13 @@ impl Session {
         if let Some(theirs) = self.db.officine() {
             if self.officine_seen.as_ref() != Some(&theirs) {
                 self.officine_fresh = Some(theirs);
+            }
+        }
+        let raw = self.db.setting(MENTIONS_KEY);
+        if raw.is_some() && raw != self.mentions_seen {
+            if let Some(theirs) = mentions_of(raw.as_deref()) {
+                self.mentions_fresh = Some(theirs);
+                self.mentions_seen = raw;
             }
         }
         // Le référentiel, **sauf si sa fiche est ouverte en
@@ -18752,6 +18797,8 @@ struct OptionsEditor {
     /// La conservation du journal telle que la base la tenait à
     /// l'ouverture — ce contre quoi l'enregistrement compare.
     keep_seen: Option<String>,
+    /// Les mentions telles que la base les portait à l'ouverture.
+    mentions_seen: Option<String>,
     /// Two-step guard on the destructive reset button.
     confirm_reset: bool,
     /// Le même garde-fou sur « Effacer les compteurs ».
@@ -18801,6 +18848,7 @@ impl OptionsEditor {
         Self {
             officine_seeded: false,
             keep_seen: None,
+            mentions_seen: None,
             page,
             loc_fee_text: config
                 .locations
@@ -19013,6 +19061,10 @@ impl App {
         };
         editor.officine_seeded = true;
         editor.keep_seen = session.db.setting(AUDIT_KEEP_KEY);
+        editor.mentions_seen = session.db.setting(MENTIONS_KEY);
+        if let Some(shared) = mentions_of(editor.mentions_seen.as_deref()) {
+            editor.cfg.disclaimers = shared;
+        }
         if let Some(days) = editor
             .keep_seen
             .as_deref()
@@ -20996,6 +21048,7 @@ impl App {
                 parked: false,
                 officine_seeded: false,
                 keep_seen: None,
+                mentions_seen: None,
                 page: match start_view.as_str() {
                     "about" => OptionsPage::About,
                     // The page where the ten skins are chosen. It
@@ -85289,6 +85342,9 @@ impl eframe::App for App {
                     // porte, non à ce que ce poste avait vu ce matin.
                     session.officine_seen = Some(theirs);
                 }
+                if let Some(theirs) = session.mentions_fresh.take() {
+                    self.config.disclaimers = theirs;
+                }
             }
         }
 
@@ -88922,6 +88978,41 @@ impl eframe::App for App {
                         }
                         Ok(false) => session.stale("audit_keep_stale"),
                         Err(e) => session.error = Some(e),
+                    }
+                }
+                // Les mentions, à la base contre ce que la fenêtre avait lu
+                // — rien d'écrit si elles n'ont pas changé.
+                if self.config.disclaimers != before.disclaimers {
+                    let seen = self.options.as_ref().and_then(|e| e.mentions_seen.clone());
+                    match toml::to_string(&self.config.disclaimers) {
+                        Ok(text) => match session.db.set_setting(
+                            MENTIONS_KEY,
+                            &text,
+                            seen.as_deref(),
+                            &session.today,
+                            &session.operator,
+                        ) {
+                            Ok(true) => {
+                                session.mentions_seen = Some(text.clone());
+                                if let Some(editor) = &mut self.options {
+                                    editor.mentions_seen = Some(text);
+                                }
+                            }
+                            Ok(false) => {
+                                let raw = session.db.setting(MENTIONS_KEY);
+                                if let Some(theirs) = mentions_of(raw.as_deref()) {
+                                    self.config.disclaimers = theirs.clone();
+                                    if let Some(editor) = &mut self.options {
+                                        editor.cfg.disclaimers = theirs;
+                                        editor.mentions_seen = raw.clone();
+                                    }
+                                }
+                                session.mentions_seen = raw;
+                                session.stale("mentions_stale");
+                            }
+                            Err(e) => session.error = Some(e),
+                        },
+                        Err(e) => session.error = Some(e.to_string()),
                     }
                 }
                 session.cycle_months = self.config.rules.cycle_months.max(1);
@@ -101424,6 +101515,20 @@ mod tests {
     /// **Avec le fil, l'écran n'attend pas** : recentrer garde la carte
     /// d'avant jusqu'à la réponse, puis la carte du nouveau centre porte
     /// son anneau d'interactions — le même que sans fil.
+    /// Les mentions se relisent telles qu'écrites, et un texte illisible
+    /// n'en est pas : le poste garde alors les siennes.
+    #[test]
+    fn the_officine_mentions_read_back() {
+        let m = crate::config::DisclaimersConfig {
+            ordonnance_footer: "Pharmacien prescripteur — vaccination".to_owned(),
+            ..Default::default()
+        };
+        let text = toml::to_string(&m).unwrap();
+        assert_eq!(super::mentions_of(Some(&text)), Some(m));
+        assert_eq!(super::mentions_of(Some("pas = [du toml")), None);
+        assert_eq!(super::mentions_of(None), None);
+    }
+
     #[test]
     fn with_the_map_thread_a_recentre_keeps_the_old_map_until_the_answer() {
         let (mut s, _swept) = scratch_session("graph-async");

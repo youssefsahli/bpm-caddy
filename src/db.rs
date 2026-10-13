@@ -59628,8 +59628,14 @@ mod tests {
         db.set_published(Kind::Codex, &crate::versions::key("En route"), true, "", "")
             .unwrap();
         assert_eq!(db.prune_published().unwrap(), 0);
-        db.set_published(Kind::Codex, &crate::versions::key("En route"), false, "", "")
-            .unwrap();
+        db.set_published(
+            Kind::Codex,
+            &crate::versions::key("En route"),
+            false,
+            "",
+            "",
+        )
+        .unwrap();
         db.set_published(
             Kind::Codex,
             &crate::versions::key("Disparue"),

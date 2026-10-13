@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The mentions (Options › Mentions) now live in the base and hold for
+  the whole officine: written on one post, they print on every post — an
+  ordonnance printed at the counter and in the back office carried each
+  its own post's mentions. A base without them takes this post's on the
+  first launch; a change made elsewhere while Options is open is reloaded
+  and said, never overwritten.
+
 ## [0.431.0] - 2026-10-13
 
 ### Changed

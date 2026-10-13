@@ -968,7 +968,7 @@ impl LocationForfait {
 /// field prints no line at all. The officine writes what it wants to
 /// see — a legal frame on the ordonnance, an advice at the foot of the
 /// carnet — and nothing else appears.
-#[derive(Deserialize, Serialize, Default, Clone)]
+#[derive(Deserialize, Serialize, Default, Clone, PartialEq, Debug)]
 #[serde(default)]
 pub struct DisclaimersConfig {
     /// Under the ordonnance's title.
