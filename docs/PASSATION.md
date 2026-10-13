@@ -125,8 +125,6 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   découpe au changement de flux et à 40 Ko) — les garder demande que
   `delete_patient` émette la suppression du dossier d'abord, ou que le
   receveur regarde plus loin dans les envois de l'auteur ;
-- Options montre la durée de conservation du poste, pas celle que la
-  base tient pour l'officine ;
 - dossier d'échange : un fichier `.bpmposte` se lit enregistrement par
   enregistrement, sans borne de taille (fait le 13/10) ; une réécriture périmée ne
   s'accepte plus qu'en la retapant (un geste « garder le texte livré »
