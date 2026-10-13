@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.422.0] - 2026-10-13
+
 ### Added
 
 - « Voir ce que l'officine publie… » on the map: the catalogue the
