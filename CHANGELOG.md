@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Vaccination prescription: « Prescrire… » in a patient's Vaccinations
+  tab composes the ordonnance from what the calendar owes according to
+  the carnet (ticked in advance, each line with what the calendar says,
+  editable), plus any vaccine of the officine's catalogue, and prints it
+  through the « Ordonnance » template, signed by the operator with the
+  officine's own mentions. Nothing is written to the carnet.
 - Ruptures and substitutions on the officines' map, opt-in: « Publier les
   ruptures et substitutions » adds the officine's own events of the last
   ninety days — without the initials of who noted them nor their free

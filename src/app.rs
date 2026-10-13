@@ -5050,6 +5050,9 @@ struct Session {
     /// The vaccine catalogue (`vaccine_catalogue`), read at opening and
     /// after each write — the list the carnet offers by name.
     vacc_catalogue: Vec<vaccines::Vaccine>,
+    /// « Prescrire… » ouverte sur le carnet : le dossier, et ses lignes —
+    /// (vaccin, ce que la ligne dit, retenue).
+    vacc_ord: Option<(i64, Vec<VaccOrdLine>)>,
     /// Its editor, when open.
     vacc_cat_edit: Option<VaccCatEdit>,
     /// In-progress country search of the travel panel.
@@ -6401,6 +6404,7 @@ impl Session {
             vacc_due: Vec::new(),
             vacc_ddr_text: None,
             vacc_catalogue: Vec::new(),
+            vacc_ord: None,
             vacc_cat_edit: None,
             travel_query: String::new(),
             patient_doses: Vec::new(),
@@ -15657,6 +15661,10 @@ enum MessagesTo {
     Group,
 }
 
+/// Une ligne de l'ordonnance de vaccination : le vaccin, ce qu'elle en
+/// dit, retenue ou non.
+type VaccOrdLine = (String, String, bool);
+
 /// Un événement publié sur la carte, et s'il est déjà au journal d'ici.
 #[cfg(feature = "sync")]
 type MapEvent = (crate::ruptures::Event, bool);
@@ -24374,6 +24382,7 @@ impl App {
         let work = strip[1];
         // The ordonnance box floats over whichever half is on screen.
         Self::ordonnance_box(ctx, session, patient, config, operator);
+        Self::vacc_ord_window(ctx, session, patient, config, operator);
         Self::care_reminder(ctx, session, patient, config);
         if session.ordonnance.is_none() {
             session.trod_edit = None;
@@ -25489,6 +25498,136 @@ impl App {
         }
         if print {
             Self::print_infirmier(session, patient, config);
+        }
+    }
+
+    /// **L'ordonnance de vaccination** : les vaccins que le calendrier
+    /// doit, cochés d'avance, d'autres pris au catalogue de l'officine, et
+    /// chaque ligne telle qu'elle s'imprimera — à corriger. Elle part par
+    /// le modèle « Ordonnance », signée de qui est au comptoir, avec les
+    /// mentions que l'officine a écrites. Rien n'est inscrit au carnet.
+    fn vacc_ord_window(
+        ctx: &egui::Context,
+        session: &mut Session,
+        patient: &Patient,
+        config: &Config,
+        operator: &str,
+    ) {
+        let Some((id, mut rows)) = session.vacc_ord.take() else {
+            return;
+        };
+        // Un autre dossier ouvert : la fenêtre ne le suit pas.
+        if id != patient.id {
+            return;
+        }
+        let mut close = false;
+        let mut print = false;
+        let mut add: Option<String> = None;
+        let screen = ctx.screen_rect();
+        let shown = egui::Window::new(tr("vord_title"))
+            .collapsible(false)
+            .resizable(false)
+            .fixed_size(dialog_size(screen.size(), egui::vec2(640.0, 480.0)))
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("vord_hint"))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+                let footer = Self::row_height(ui) * 2.0 + ui.spacing().item_spacing.y * 3.0;
+                let body_h = (ui.available_height() - footer).max(Self::row_height(ui) * 3.0);
+                egui::ScrollArea::vertical()
+                    .id_salt("vord_body")
+                    .max_height(body_h)
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        if rows.is_empty() {
+                            ui.label(egui::RichText::new(tr("vord_none")).color(motif::text_dim()));
+                        }
+                        let w = ui.available_width();
+                        for (label, what, on) in rows.iter_mut() {
+                            motif::checkbox(ui, on, label.as_str());
+                            motif::field(
+                                ui,
+                                w,
+                                egui::TextEdit::singleline(what)
+                                    .hint_text(motif::hint(tr("vord_line_hint"))),
+                            );
+                            ui.add_space(2.0);
+                        }
+                    });
+                ui.horizontal_wrapped(|ui| {
+                    let options: Vec<(String, String)> = session
+                        .vacc_catalogue
+                        .iter()
+                        .filter(|v| !rows.iter().any(|(l, _, _)| *l == v.label))
+                        .map(|v| (v.label.clone(), v.label.clone()))
+                        .collect();
+                    if !options.is_empty() {
+                        let mut picked = String::new();
+                        let w = motif::select_width(ui, options.iter().map(|(_, l)| l.as_str()))
+                            .min(chars_wide(ui, 36.0));
+                        let mut with_prompt = vec![(String::new(), tr("vord_add").to_owned())];
+                        with_prompt.extend(options);
+                        if motif::select(ui, "vord_add", w, &mut picked, &with_prompt).changed()
+                            && !picked.is_empty()
+                        {
+                            add = Some(picked);
+                        }
+                    }
+                });
+                ui.horizontal_wrapped(|ui| {
+                    let any = rows.iter().any(|(_, _, on)| *on);
+                    if motif::button_enabled(ui, tr("vord_print"), any).clicked() {
+                        print = true;
+                    }
+                    if motif::button(ui, tr("tpl_close")).clicked() {
+                        close = true;
+                    }
+                });
+            });
+        motif::dialog_relief(ctx, &shown);
+        if let Some(label) = add {
+            rows.push((label, String::new(), true));
+        }
+        if print {
+            let lines: Vec<crate::ordonnance::Line> = rows
+                .iter()
+                .filter(|(_, _, on)| *on)
+                .map(|(label, what, _)| crate::ordonnance::Line {
+                    name: label.clone(),
+                    posology: what.trim().to_owned(),
+                    caution: String::new(),
+                })
+                .collect();
+            let today = session
+                .db
+                .today_french()
+                .unwrap_or_else(|_| tr("itv_date_fallback").to_owned());
+            match crate::pdf::open_ordonnance(
+                patient,
+                &config.pharmacy,
+                tr("vord_indication"),
+                &today,
+                &lines,
+                &[],
+                &config.ordonnance_template_path(),
+                &config.pharmacy.signature_for(operator),
+                (
+                    &config.disclaimers.ordonnance_header,
+                    &config.disclaimers.ordonnance_footer,
+                ),
+            ) {
+                Ok(_) => session.error = None,
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if !close && !ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+            session.vacc_ord = Some((id, rows));
         }
     }
 
@@ -30038,6 +30177,13 @@ impl App {
         let mut fill = false;
         let mut ddr_write: Option<String> = None;
         let mut open_catalogue = false;
+        let mut open_prescription = false;
+        // Ce que le calendrier doit, retenu d'avance, et dit comme il le
+        // dit : la ligne de l'ordonnance reprend son détail, à corriger.
+        let prescribed: Vec<VaccOrdLine> = owed
+            .iter()
+            .map(|l| (l.label.to_owned(), l.detail.clone(), true))
+            .collect();
         motif::panel(ui, rect, Some(tr("vacc_due_section")), |ui| {
             // **La grossesse en cours**, facultative : sa date donne le
             // terme, et le terme les vaccins de la grossesse. Pas pour un
@@ -30090,6 +30236,12 @@ impl App {
                     .clicked()
                 {
                     open_catalogue = true;
+                }
+                if motif::button(ui, tr("vord_open"))
+                    .on_hover_text(tr("vord_open_tooltip"))
+                    .clicked()
+                {
+                    open_prescription = true;
                 }
             });
             if !owed.is_empty() {
@@ -30210,6 +30362,9 @@ impl App {
                 session.load_carnet(patient.id);
                 session.refresh_counts();
             }
+        }
+        if open_prescription {
+            session.vacc_ord = Some((patient.id, prescribed));
         }
         if open_catalogue && session.vacc_cat_edit.is_none() {
             session.vacc_cat_edit = Some(VaccCatEdit::default());

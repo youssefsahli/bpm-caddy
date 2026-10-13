@@ -634,6 +634,18 @@ Une réponse « oui » est une question à instruire et non une
 contre-indication calculée. Phrases réécrivables sous « Fiche de
 vaccination » ; mise en page, modèle `vaccin`.
 
+## Ordonnance de vaccination
+
+Dans l'onglet Vaccinations du dossier, « Prescrire… » compose
+l'ordonnance : les vaccins que le calendrier doit d'après le carnet
+sont cochés d'avance, chacun avec ce que le calendrier en dit, et
+« Ajouter un vaccin… » prend tout autre vaccin du catalogue de
+l'officine. Chaque ligne s'imprime telle qu'elle est écrite — dose,
+schéma, rappel : à corriger avant d'imprimer, le choix revient au
+pharmacien. L'ordonnance part par le modèle « Ordonnance », signée de
+l'opérateur, avec les mentions écrites dans Options › Mentions ; rien
+n'est inscrit au carnet.
+
 ## Feuille de TROD
 
 « Tout imprimer » suit l'acte : pour un TROD, la feuille puis le
