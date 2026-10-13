@@ -10857,11 +10857,10 @@ impl Session {
         shown: &db::EntryLocal,
     ) -> Result<bool, String> {
         use crate::versions::Kind;
-        // Ce que le répertoire a déjà filtré, redit ici : jamais une sorte
-        // privée, jamais une valeur que la sorte refuse.
-        if offer.kind.is_private() {
-            return Ok(false);
-        }
+        // Ce que le répertoire a déjà filtré, redit ici : jamais une valeur
+        // que la sorte refuse. Une liste ou une phrase n'arrive que cochée
+        // « Publier sur la carte » par qui l'a écrite, ou d'un réseau
+        // appairé qui partage les listes — et se prend d'un geste, ici.
         let takeable = Self::takeable_fields(offer);
         let theirs = |f: &str| {
             takeable
@@ -11565,7 +11564,6 @@ impl Session {
         let published = self.db.published_entries().unwrap_or_default();
         crate::versions::Kind::ALL
             .into_iter()
-            .filter(|k| !k.is_private())
             .flat_map(|k| {
                 self.db
                     .entry_keys(k)
@@ -12605,17 +12603,26 @@ impl Session {
         self.reload_card_edits();
         let published = self.db.published_entries().unwrap_or_default();
         let mut rows = Vec::new();
-        for kind in crate::versions::Kind::ALL
-            .into_iter()
-            .filter(|k| !k.is_private())
-        {
+        for kind in crate::versions::Kind::ALL {
             let here = self.db.entry_keys(kind).unwrap_or_default();
-            let mut own = crate::enligne::own_offers(&self.card_edits, kind);
+            let mut own = crate::enligne::own_offers_any(&self.card_edits, kind);
             own.retain(|o| here.contains(&o.card));
-            own.sort_by_key(|o| crate::fuzzy::sort_key(&o.name));
-            for o in own {
-                let on = published.contains(&(kind.key().to_owned(), o.card.clone()));
-                rows.push((kind, o.name, o.day, on));
+            let mut entries: Vec<(String, String, String)> =
+                own.into_iter().map(|o| (o.card, o.name, o.day)).collect();
+            // Une liste ou une phrase réécrite ne se versionne qu'une fois
+            // cochée : elle se propose d'ici, sans jour.
+            if kind.is_private() {
+                for name in self.db.private_entry_names(kind).unwrap_or_default() {
+                    let card = crate::versions::key(&name);
+                    if !entries.iter().any(|(c, _, _)| *c == card) {
+                        entries.push((card, name, String::new()));
+                    }
+                }
+            }
+            entries.sort_by_key(|(_, name, _)| crate::fuzzy::sort_key(name));
+            for (card, name, day) in entries {
+                let on = published.contains(&(kind.key().to_owned(), card));
+                rows.push((kind, name, day, on));
             }
         }
         self.publications = Some(Publications {
@@ -65505,11 +65512,13 @@ impl App {
                             dim(&trf("carte_key_line", fp), ui);
                         }
                         for (k, n) in &f.parts {
-                            if let Some(kind) = crate::versions::kind_of_key(k) {
-                                ui.label(trn(
-                                    "carte_part_line",
-                                    &[&n, &Self::online_kind_label(kind)],
-                                ));
+                            let label = if k == crate::repertoire::SUPPLY_KIND {
+                                Some(tr("carte_part_ruptures"))
+                            } else {
+                                crate::repertoire::kind_of_wire(k).map(Self::online_kind_label)
+                            };
+                            if let Some(label) = label {
+                                ui.label(trn("carte_part_line", &[&n, &label]));
                             }
                         }
                         if f.device == me {

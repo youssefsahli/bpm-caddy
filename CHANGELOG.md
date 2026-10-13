@@ -29,6 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and « Prendre » adds an event to the local journal under the publishing
   officine's name (as signed by its card). Older versions skip these
   entries without refusing the catalogue.
+- Checklists and rewritten printed phrases (the counselling sheets
+  included) can be published on the map too, one by one, from « Mes
+  publications… »: a ticked one is versioned even when no paired network
+  shares lists, and travels under its own kind name, which older versions
+  skip without refusing the catalogue. Others take it from « En ligne »
+  like any entry.
 
 ## [0.430.0] - 2026-10-13
 

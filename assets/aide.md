@@ -1331,8 +1331,9 @@ carte » : le poste annonce alors l'officine toutes les dix minutes tant
 que l'application est ouverte. Partent son nom, sa commune, son FINESS
 s'il est écrit, et **ce qu'elle a choisi de publier**, entrée par
 entrée, de ce qu'elle a écrit elle-même — fiches, préparations,
-protocoles, lignes de TROD, vaccins, dispositifs et cascades ; **jamais
-un patient, une liste de contrôle ni une phrase imprimée**. Une entrée
+protocoles, lignes de TROD, vaccins, dispositifs et cascades, et, cochées
+une à une, ses listes de contrôle et ses phrases imprimées réécrites
+(les conseils compris) ; **jamais un patient**. Une entrée
 se publie par « Publier sur la carte », sur sa page (une préparation du
 Codex, par exemple : l'huile d'arnica de l'officine), ou dans « Mes
 publications… », qui liste tout ce que l'officine a écrit, coché ou

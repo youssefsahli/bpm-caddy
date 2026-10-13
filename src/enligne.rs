@@ -67,6 +67,13 @@ pub fn own_offers(edits: &[Edit], kind: Kind) -> Vec<Offer> {
     if kind.is_private() {
         return Vec::new();
     }
+    own_offers_any(edits, kind)
+}
+
+/// [`own_offers`], privées comprises : une liste ou une phrase que
+/// l'officine a cochée « Publier sur la carte », une à une — jamais
+/// autrement (`repertoire::catalogue_with`).
+pub fn own_offers_any(edits: &[Edit], kind: Kind) -> Vec<Offer> {
     // **Les seuls champs dont la dernière version est d'ici** : une
     // officine appairée qui a réécrit un champ l'a écrit pour son réseau,
     // pas pour le répertoire public, et pas au nom de celle-ci.

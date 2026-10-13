@@ -17,10 +17,11 @@
 //!
 //! # Ce qui protège quoi
 //!
-//! * **Rien de privé n'y entre.** Ni patient, ni liste de contrôle, ni
-//!   phrase imprimée, ni journal des ruptures : des fiches, préparations,
-//!   protocoles, lignes de TROD, vaccins, dispositifs et cascades — ce
-//!   que l'officine a de toute façon choisi d'écrire pour qu'on le lise.
+//! * **Rien n'y entre sans être coché.** Jamais un patient. Des fiches,
+//!   préparations, protocoles, lignes de TROD, vaccins, dispositifs,
+//!   cascades, listes et phrases imprimées — chacune cochée « Publier sur
+//!   la carte » par l'officine (`published_entries`) —, et son journal des
+//!   ruptures si elle l'a choisi, sans initiales.
 //! * **Signé.** La carte de visite est signée par la clé de l'officine
 //!   sur le réseau (`network::device_hex`) et porte l'empreinte de son
 //!   catalogue. Le répertoire vérifie avant de garder, **et chaque poste
@@ -284,7 +285,7 @@ pub fn digest(catalogue: &[u8]) -> String {
 /// sortes publiques, chaque entrée à sa dernière version — et le compte
 /// par sorte que sa carte annonce.
 pub fn catalogue_of(edits: &[versions::Edit]) -> (Vec<u8>, Vec<(String, u32)>) {
-    catalogue_where(edits, |_, _| true)
+    catalogue_where(edits, |k, _| !k.is_private())
 }
 
 /// [`catalogue_of`], réduit aux entrées que `here` dit encore là (sorte,
@@ -295,6 +296,25 @@ pub fn catalogue_where(
     here: impl Fn(Kind, &str) -> bool,
 ) -> (Vec<u8>, Vec<(String, u32)>) {
     catalogue_with(edits, here, &[])
+}
+
+/// **Le nom sous lequel une sorte voyage au répertoire.** Une liste ou une
+/// phrase n'y paraît que cochée, une à une, et sous un nom à elle : une
+/// version d'avant refusait une carte entière qui annonçait `liste` ou
+/// `texte` ; un nom qu'elle ne connaît pas, elle le laisse passer chez qui
+/// héberge et l'écarte article par article chez qui lit.
+pub fn wire_key(kind: Kind) -> &'static str {
+    match kind {
+        Kind::Liste => "listepublique",
+        Kind::Texte => "textepublic",
+        k => k.key(),
+    }
+}
+
+/// L'inverse : jamais `liste` ni `texte` sous leur nom d'officine à
+/// officine appairée.
+pub fn kind_of_wire(key: &str) -> Option<Kind> {
+    Kind::ALL.into_iter().find(|k| wire_key(*k) == key)
 }
 
 /// La sorte d'article qui porte un événement du journal des ruptures.
@@ -361,8 +381,10 @@ pub fn catalogue_with(
     if !articles.is_empty() {
         parts.push((SUPPLY_KIND.to_owned(), articles.len() as u32));
     }
-    for kind in Kind::ALL.into_iter().filter(|k| !k.is_private()) {
-        let own = crate::enligne::own_offers(edits, kind);
+    // Toutes les sortes : `here` ne laisse passer que ce que l'officine a
+    // coché, et c'est la seule porte d'une liste ou d'une phrase.
+    for kind in Kind::ALL {
+        let own = crate::enligne::own_offers_any(edits, kind);
         let mut n = 0_u32;
         for o in own.into_iter().filter(|o| here(kind, &o.card)) {
             if articles.len() >= ARTICLES_MAX {
@@ -371,7 +393,7 @@ pub fn catalogue_with(
             // La règle de qui lit, appliquée avant d'écrire : un article
             // qu'un poste écarterait ferait refuser tout le catalogue.
             let Some(article) = admitted(Article {
-                kind: kind.key().to_owned(),
+                kind: wire_key(kind).to_owned(),
                 card: o.card,
                 name: o.name,
                 day: o.day,
@@ -383,7 +405,7 @@ pub fn catalogue_with(
             articles.push(article);
         }
         if n > 0 {
-            parts.push((kind.key().to_owned(), n));
+            parts.push((wire_key(kind).to_owned(), n));
         }
     }
     // Trop gros : les dernières entrées tombent, jamais la carte entière.
@@ -484,7 +506,7 @@ fn admitted(mut a: Article) -> Option<Article> {
         let e = supply_of(&a, "")?;
         return (e.product == a.name && e.day == a.day && a.fields.len() == 1).then_some(a);
     }
-    let kind = versions::kind_of_key(&a.kind).filter(|k| !k.is_private())?;
+    let kind = kind_of_wire(&a.kind)?;
     a.fields
         .retain(|(f, v)| v.len() <= VALUE_MAX && versions::admissible(kind, f, v));
     (!a.fields.is_empty()
@@ -540,7 +562,7 @@ pub fn check(fiche: &Fiche, catalogue: &[u8]) -> Result<usize, &'static str> {
 /// Un article en offre de la fenêtre « En ligne », au nom de l'officine
 /// qui le publie.
 pub fn offer_of(article: &Article, from: &str) -> Option<crate::enligne::Offer> {
-    let kind = versions::kind_of_key(&article.kind)?;
+    let kind = kind_of_wire(&article.kind)?;
     Some(crate::enligne::Offer {
         kind,
         card: article.card.clone(),
@@ -1435,6 +1457,36 @@ mod tests {
         assert_eq!(articles.len(), 1, "{articles:?}");
         assert_eq!(articles[0].name, "Méthadone sirop");
         assert_eq!(parts, vec![("codex".to_owned(), 1)]);
+    }
+
+    /// **Une liste ou une phrase cochée voyage sous un nom à elle** : jamais
+    /// `liste` ni `texte`, qu'une version d'avant refusait jusqu'à la carte
+    /// entière ; un nom qu'elle ne connaît pas, fait de minuscules, passe
+    /// chez qui héberge. Non cochée, elle ne part pas.
+    #[test]
+    fn a_ticked_list_travels_under_its_own_name() {
+        let edits = [
+            edit(Kind::Liste, "Ouverture", "titre", "Ouverture", ""),
+            edit(Kind::Liste, "Fermeture", "titre", "Fermeture", ""),
+        ];
+        let (bytes, parts) = catalogue_with(
+            &edits,
+            |k, card| k == Kind::Liste && card == versions::key("Ouverture"),
+            &[],
+        );
+        assert_eq!(parts, vec![("listepublique".to_owned(), 1)]);
+        for k in [Kind::Liste, Kind::Texte] {
+            let w = wire_key(k);
+            assert!(w.bytes().all(|b| b.is_ascii_lowercase()));
+            assert!(versions::kind_of_key(w).is_none());
+            assert_eq!(kind_of_wire(w), Some(k));
+            assert_eq!(kind_of_wire(k.key()), None);
+        }
+        let fiche = card(1, 10, &bytes, parts);
+        assert!(check(&fiche, &bytes).is_ok());
+        let read = read_catalogue(&fiche, &bytes).unwrap();
+        assert_eq!(read.len(), 1);
+        assert_eq!(offer_of(&read[0], "x").unwrap().kind, Kind::Liste);
     }
 
     /// **Les ruptures publiées voyagent dans le catalogue** : lues au nom de

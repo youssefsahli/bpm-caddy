@@ -55791,15 +55791,22 @@ impl Db {
         // privées — les publierait. Versionnées à partir du jour où
         // l'officine coche, elles partent aussi telles qu'elles sont ce
         // jour-là, et non avec tout ce qu'elles ont dit avant.
+        //
+        // **Et celles que l'officine a cochées « Publier sur la carte »**,
+        // une à une : c'est le seul chemin d'une liste vers le répertoire,
+        // et il passe par une version.
         let private =
             self.principal_shares().listes || self.net_networks()?.iter().any(|n| n.shares.listes);
-        if private {
-            names.extend(
-                self.checklist_entries()?
-                    .into_iter()
-                    .map(|(_, e)| (Kind::Liste, e)),
-            );
-        }
+        let published = self.published_entries()?;
+        let ticked = |kind: Kind, name: &str| {
+            published.contains(&(kind.key().to_owned(), crate::versions::key(name)))
+        };
+        names.extend(
+            self.checklist_entries()?
+                .into_iter()
+                .filter(|(_, e)| private || ticked(Kind::Liste, e))
+                .map(|(_, e)| (Kind::Liste, e)),
+        );
         {
             let texts = self.cascades()?;
             names.extend(
@@ -55817,7 +55824,7 @@ impl Db {
         // Les phrases réécrites ici, et celles qui ont une histoire : une
         // phrase rendue à son texte livré n'a plus de ligne, et ce retour
         // est une version comme une autre.
-        if private {
+        {
             let mut stmt = self
                 .conn
                 .prepare("SELECT key FROM content_overrides")
@@ -55826,7 +55833,10 @@ impl Db {
                 .query_map([], |r| r.get::<_, String>(0))
                 .map_err(|e| e.to_string())?;
             for k in rows {
-                names.push((Kind::Texte, k.map_err(|e| e.to_string())?));
+                let k = k.map_err(|e| e.to_string())?;
+                if private || ticked(Kind::Texte, &k) {
+                    names.push((Kind::Texte, k));
+                }
             }
         }
         if private {
@@ -56232,6 +56242,31 @@ impl Db {
             Kind::Codex => names("SELECT name FROM preparations"),
             Kind::Protocole => names("SELECT title FROM protocols"),
             _ => Ok(self.offer_locals(kind)?.into_keys().collect()),
+        }
+    }
+
+    /// Les listes et les phrases réécrites que l'officine tient, par nom —
+    /// ce que « Mes publications » propose de cocher avant même qu'elles
+    /// aient une version.
+    pub fn private_entry_names(&self, kind: crate::versions::Kind) -> Result<Vec<String>, String> {
+        use crate::versions::Kind;
+        match kind {
+            Kind::Liste => Ok(self
+                .checklist_entries()?
+                .into_iter()
+                .map(|(_, e)| e)
+                .collect()),
+            Kind::Texte => {
+                let mut stmt = self
+                    .conn
+                    .prepare("SELECT key FROM content_overrides ORDER BY key")
+                    .map_err(|e| e.to_string())?;
+                let rows = stmt
+                    .query_map([], |r| r.get::<_, String>(0))
+                    .map_err(|e| e.to_string())?;
+                rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+            }
+            _ => Ok(Vec::new()),
         }
     }
 
@@ -59261,6 +59296,38 @@ mod tests {
     /// **Une liste ou une phrase ne se versionne pas tant que l'officine
     /// ne partage pas** : au journal, elle irait aux autres postes, et un
     /// poste d'une version d'avant la publierait.
+    /// Une liste cochée « Publier sur la carte » se versionne sans réseau
+    /// qui partage les listes — elle seule : l'autre reste hors du journal.
+    #[test]
+    fn a_ticked_list_is_versioned_alone() {
+        use crate::versions::Kind;
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-ticked-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("a.db"), "secret").unwrap();
+        db.add_checklist("Ouverture", "Le matin").unwrap();
+        db.add_checklist("Coffre", "Le soir").unwrap();
+        let names = db.private_entry_names(Kind::Liste).unwrap();
+        let ouverture = names
+            .iter()
+            .find(|n| n.contains("Ouverture"))
+            .unwrap()
+            .clone();
+        db.set_published(Kind::Liste, &crate::versions::key(&ouverture), true, "", "")
+            .unwrap();
+        db.version_shared_entries("AB").unwrap();
+        let lists: Vec<String> = db
+            .card_edits()
+            .unwrap()
+            .into_iter()
+            .filter(|e| e.kind == Kind::Liste)
+            .map(|e| e.card_name)
+            .collect();
+        assert!(!lists.is_empty());
+        assert!(lists.iter().all(|n| *n == ouverture), "{lists:?}");
+    }
+
     #[test]
     fn private_entries_are_not_versioned_until_shared() {
         use crate::versions::Kind;
