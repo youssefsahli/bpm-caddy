@@ -223,6 +223,10 @@ pub struct Finding {
     /// The analyte it is about.
     pub code: &'static str,
     pub text: String,
+    /// Une règle qu'une valeur bornée ne tranche pas (« >5,8 » sous un
+    /// seuil de 6) : la valeur rendue, que [`resolve`] met en tête —
+    /// « à vérifier », jamais un verdict qu'on ne sait pas. Vide sinon.
+    pub unsure: String,
 }
 
 /// Which side of a threshold triggers a rule.
@@ -333,6 +337,7 @@ pub fn read(readings: &[Reading], treatments: &[crate::revue::Treatment]) -> Vec
                     interval_text(a),
                     a.note
                 ),
+                unsure: String::new(),
             });
         }
     }
@@ -340,17 +345,31 @@ pub fn read(readings: &[Reading], treatments: &[crate::revue::Treatment]) -> Vec
         let Some(r) = latest.get(rule.code) else {
             continue;
         };
-        let hit = match rule.side {
-            Side::Above => r.effective() >= rule.threshold,
-            // **Strictement au-dessous**, comme le disent les textes
-            // (« inférieur à ») et comme le panneau rénal lit ses paliers :
-            // à un DFG de 30 tout rond, la biologie annonçait la
-            // contre-indication de la metformine pendant que le rein, sur
-            // le même dossier, disait « dose à réduire ». Un potassium de
-            // 3,5 n'est pas une hypokaliémie. Au-dessus, le seuil reste
-            // compris : c'est le côté de la prudence.
-            Side::Below => r.effective() < rule.threshold,
+        // Une valeur bornée tranche une règle quand toute valeur qu'elle
+        // permet tombe du même côté du seuil ; sinon la règle s'annonce
+        // « à vérifier ».
+        let (v, t) = (r.value, rule.threshold);
+        let open = match (rule.side, r.bound) {
+            (Side::Above, "<") => v > t,
+            (Side::Above, "≤") => v >= t,
+            (Side::Above, ">" | "≥") => v < t,
+            (Side::Below, "<") => v > t,
+            (Side::Below, "≤") => v >= t,
+            (Side::Below, ">" | "≥") => v < t,
+            _ => false,
         };
+        let hit = open
+            || match rule.side {
+                Side::Above => r.effective() >= rule.threshold,
+                // **Strictement au-dessous**, comme le disent les textes
+                // (« inférieur à ») et comme le panneau rénal lit ses paliers :
+                // à un DFG de 30 tout rond, la biologie annonçait la
+                // contre-indication de la metformine pendant que le rein, sur
+                // le même dossier, disait « dose à réduire ». Un potassium de
+                // 3,5 n'est pas une hypokaliémie. Au-dessus, le seuil reste
+                // compris : c'est le côté de la prudence.
+                Side::Below => r.effective() < rule.threshold,
+            };
         if !hit {
             continue;
         }
@@ -358,9 +377,26 @@ pub fn read(readings: &[Reading], treatments: &[crate::revue::Treatment]) -> Vec
             continue;
         }
         out.push(Finding {
-            severity: rule.severity,
+            // Ce qu'on ne sait pas ne crie pas plus fort qu'un avertissement.
+            severity: if open {
+                rule.severity.min(Severity::Warn)
+            } else {
+                rule.severity
+            },
             code: rule.code,
             text: rule.text.to_owned(),
+            unsure: if open {
+                format!("{}{}", value_text(r.value, r.bound), {
+                    let u = find(rule.code).map_or("", |a| a.unit);
+                    if u.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" {u}")
+                    }
+                })
+            } else {
+                String::new()
+            },
         });
     }
     // Loudest first; inside one severity, the order of the catalogue.
@@ -457,6 +493,24 @@ pub fn phrases() -> Vec<(String, &'static str, &'static str)> {
 /// phrase a été réécrite se retrouve quand même, puisque c'est le
 /// tableau qu'on interroge et non la sortie.
 pub fn resolve(findings: Vec<Finding>, over: &crate::content::Overrides) -> Vec<Finding> {
+    resolve_words(findings, over)
+        .into_iter()
+        .map(|f| {
+            if f.unsure.is_empty() {
+                return f;
+            }
+            Finding {
+                text: format!(
+                    "À vérifier — la valeur rendue ({}) ne dit pas de quel côté du seuil elle tombe : {}",
+                    f.unsure, f.text
+                ),
+                ..f
+            }
+        })
+        .collect()
+}
+
+fn resolve_words(findings: Vec<Finding>, over: &crate::content::Overrides) -> Vec<Finding> {
     let table = addressed();
     findings
         .into_iter()
@@ -2068,6 +2122,37 @@ mod tests {
             class,
             tags,
         }
+    }
+
+    /// **Une valeur bornée qui ne tranche pas une règle la dit « à
+    /// vérifier »** : « <45 » sous un seuil de 30 n'est ni sous 30 ni
+    /// au-dessus ; « <15 » l'est sûrement ; « >60 » sûrement pas. Le texte
+    /// de la règle reste le sien, la valeur rendue en tête, et la sévérité
+    /// ne dépasse pas l'avertissement.
+    #[test]
+    fn a_bounded_value_that_straddles_a_rule_is_to_be_checked() {
+        let treatments = [treat("Glucophage 1000 mg", "metformine", "biguanide", "")];
+        let found = |value: f64, bound: &'static str| {
+            let readings = [Reading {
+                code: "DFG",
+                value,
+                date: "2026-09-11",
+                bound,
+            }];
+            resolve(
+                read(&readings, &treatments),
+                &crate::content::Overrides::default(),
+            )
+            .into_iter()
+            .find(|f| f.text.contains("metformine"))
+        };
+        let open = found(45.0, "<").expect("à vérifier");
+        assert!(open.text.starts_with("À vérifier"), "{}", open.text);
+        assert!(open.text.contains("<45"), "{}", open.text);
+        assert!(open.severity <= Severity::Warn);
+        let sure = found(15.0, "<").expect("sûrement sous 30");
+        assert!(!sure.text.starts_with("À vérifier"));
+        assert!(found(60.0, ">").is_none());
     }
 
     /// Toute lecture s'édite, et toute réécriture arrive sur le bilan.

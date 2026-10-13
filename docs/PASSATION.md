@@ -130,10 +130,10 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   par phrase reste à faire) ;
 - rein : un résultat « <15 » se lit au-dessous de 15, et une borne qui
   laisse un palier ouvert donne « à vérifier » (fait le 13/10,
-  `Reading::bound`, `renal::read_bounded`). Reste : les règles de
-  `biology` (potassium « >6 »…) jugent encore une borne comme la valeur
-  la plus proche — elles ne disent pas « à vérifier » quand l'intervalle
-  chevauche un seuil ;
+  `Reading::bound`, `renal::read_bounded`), et les règles de `biology`
+  disent « à vérifier » quand une borne chevauche leur seuil (fait le
+  13/10). Reste : la lecture d'intervalle (« élevé », « bas ») juge
+  encore une borne à son nombre ;
   une vingtaine de lignes « Entre X et Y » ont encore `below: Y` (Y
   exclu) — à relire contre chaque RCP (les trois anticoagulant et
   cotrimoxazole sont faits) ; metformine « Entre 45 et 60 » est 45–59
