@@ -461,10 +461,18 @@ pub fn offer_of(article: &Article, from: &str) -> Option<crate::enligne::Offer> 
 }
 
 /// **Combien de catalogues un balayage demande** : avec la liste, sous
-/// les trente appels par adresse et par minute que le répertoire tient —
-/// un balayage ne se fait pas refuser la fin de sa propre lecture.
-pub const SWEEP_MOST: usize = 24;
-const _: () = assert!(SWEEP_MOST < CALLS_PER_MINUTE);
+/// les trente appels par adresse et par minute que le répertoire tient,
+/// en laissant de quoi à l'annonce et aux autres postes derrière la même
+/// adresse — un balayage ne se fait pas refuser la fin de sa propre
+/// lecture. Deux balayages sont espacés de [`SWEEP_EVERY`].
+pub const SWEEP_MOST: usize = 20;
+const _: () = assert!(SWEEP_MOST + 1 + 4 <= CALLS_PER_MINUTE);
+
+/// L'écart entre deux balayages : la minute que le répertoire compte.
+pub const SWEEP_EVERY: Duration = Duration::from_secs(60);
+
+/// Le temps qu'un balayage prend au plus, liste comprise.
+pub const SWEEP_BUDGET: Duration = Duration::from_secs(90);
 
 /// Ce que les catalogues gardés en mémoire pèsent au plus : un
 /// répertoire qui en annonce de très gros ne fait pas grossir l'écran
@@ -474,10 +482,14 @@ pub const SWEEP_BYTES: usize = 32 << 20;
 /// **Les officines dont un balayage lit le catalogue** : présentes, pas
 /// celle-ci, avec un catalogue annoncé, et pas déjà lu sous la même
 /// empreinte (`held`) ; les ouvertes d'abord, puis les plus récemment
-/// vues — au plus `most`.
+/// vues — l'heure d'une carte bornée à `now`, qu'une carte datée de
+/// demain ne passe pas devant —, et celles qui n'ont pas répondu
+/// (`failed`) en dernier : elles ne prennent pas la place des autres à
+/// chaque balayage. Au plus `most`.
 pub fn to_sweep<'a>(
     list: &'a [Fiche],
     held: impl Fn(&Fiche) -> bool,
+    failed: impl Fn(&Fiche) -> bool,
     me: &str,
     now: u64,
     most: usize,
@@ -492,13 +504,16 @@ pub fn to_sweep<'a>(
                 && !held(f)
         })
         .collect();
-    out.sort_by_key(|f| (!f.online(now), std::cmp::Reverse(f.seq)));
+    out.sort_by_key(|f| (failed(f), !f.online(now), std::cmp::Reverse(f.seq.min(now))));
     out.truncate(most);
     out
 }
 
-/// Ce qu'un catalogue lu pèse en mémoire, à peu près : ses textes.
+/// Ce qu'un catalogue lu pèse en mémoire, à peu près : ses textes et ce
+/// que chaque chaîne coûte en plus d'elle-même — trois fois, gardé une
+/// fois et copié deux tant que « En ligne » le montre.
 pub fn weight(articles: &[Article]) -> usize {
+    const STRING: usize = std::mem::size_of::<String>();
     articles
         .iter()
         .map(|a| {
@@ -508,11 +523,12 @@ pub fn weight(articles: &[Article]) -> usize {
                 + a.day.len()
                 + a.fields
                     .iter()
-                    .map(|(f, v)| f.len() + v.len())
+                    .map(|(f, v)| f.len() + v.len() + 2 * STRING)
                     .sum::<usize>()
-                + 64
+                + std::mem::size_of::<Article>()
         })
-        .sum()
+        .sum::<usize>()
+        * 3
 }
 
 /// Le verbe d'une demande.
@@ -1023,12 +1039,24 @@ mod tests {
             empty,
         ];
         let held = |f: &Fiche| f.device == "held" && f.catalogue == "d5";
-        let order: Vec<&str> = to_sweep(&list, held, "me", now, 10)
-            .iter()
-            .map(|f| f.device.as_str())
-            .collect();
-        assert_eq!(order, ["open", "old", "older"]);
-        assert_eq!(to_sweep(&list, held, "me", now, 1).len(), 1);
+        let order = |list: &[Fiche], failed: &dyn Fn(&Fiche) -> bool, most: usize| -> Vec<String> {
+            to_sweep(list, held, failed, "me", now, most)
+                .iter()
+                .map(|f| f.device.clone())
+                .collect()
+        };
+        assert_eq!(order(&list, &|_| false, 10), ["open", "old", "older"]);
+        assert_eq!(order(&list, &|_| false, 1).len(), 1);
+        // Celle qui n'a pas répondu passe en dernier, ouverte ou non.
+        assert_eq!(
+            order(&list, &|f| f.device == "open", 10),
+            ["old", "older", "open"]
+        );
+        // Une carte datée de demain ne passe pas devant une carte d'à
+        // l'instant.
+        let mut later = vec![fiche("now", 0, "d", true), fiche("future", 0, "d", true)];
+        later[1].seq = now + 1000;
+        assert_eq!(order(&later, &|_| false, 10), ["now", "future"]);
         let a = Article {
             kind: "codex".to_owned(),
             card: "x".to_owned(),

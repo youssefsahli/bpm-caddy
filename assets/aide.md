@@ -1232,9 +1232,10 @@ parcourt le partage d'une seule.
 
 « Tout le répertoire… » cherche, au-delà du réseau, chez **toutes les
 officines de la carte** (voir « Carte des officines ») : le poste lit le
-partage de chacune — vingt-quatre au plus par lecture, les ouvertes
-d'abord ; « Lire la suite » lit les suivantes — et la fenêtre les montre
-ensemble, chaque entrée au nom de l'officine et de sa commune. Un partage
+partage de chacune — vingt au plus par lecture, les ouvertes d'abord ;
+« Lire la suite » lit les suivantes, une lecture par minute — et la
+fenêtre les montre ensemble, chaque entrée au nom des officines qui la
+partagent, avec leur commune. Un partage
 déjà lu ne se relit que quand l'officine l'a changé. Rien ne s'y compare
 à l'historique : elles ne sont pas appairées.
 

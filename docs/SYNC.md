@@ -911,12 +911,17 @@ clé de réseau n'y passe.
   officines) : au registre à la commune dite, sous un autre nom,
   ailleurs, ou absent — signalé, jamais refusé, et jamais une preuve.
 * **Balayer** (« Tout le répertoire… ») : la liste, puis au plus
-  `SWEEP_MOST` (24) catalogues — sous les trente appels par minute que
-  le répertoire tient —, les ouvertes d'abord, chacun vérifié comme
-  ci-dessus. Le poste les garde en mémoire sous l'empreinte de la carte
-  (relus quand elle change, oubliés quand l'officine quitte la liste,
-  `SWEEP_BYTES` au plus, les moins récemment vues écartées d'abord) ;
-  rien n'est écrit sur le disque.
+  `SWEEP_MOST` (20) catalogues — sous les trente appels par minute que
+  le répertoire tient, avec de quoi pour l'annonce —, un balayage par
+  minute (`SWEEP_EVERY`), 90 secondes en tout (`SWEEP_BUDGET`), arrêté
+  à deux refus de suite. Les ouvertes d'abord (l'heure d'une carte bornée
+  à maintenant), celles qui n'ont pas répondu en dernier ; chaque
+  catalogue vérifié comme ci-dessus. Le poste les garde en mémoire sous
+  l'empreinte de la carte (relus quand elle change, oubliés quand
+  l'officine quitte la liste, `SWEEP_BYTES` au plus — les lus depuis le
+  plus longtemps, à l'horloge d'ici, écartés d'abord, jamais ceux du
+  balayage même) ; rien n'est écrit sur le disque. Une même entrée chez
+  plusieurs officines est une offre à leurs noms.
 
 Ses bornes : une carte de 4 Kio, un catalogue de 2 Mio **dans sa forme
 exacte** (re-sérialisé, il doit redonner les mêmes octets, et le compte

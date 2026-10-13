@@ -19,10 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   commune in one click. Flagged, never refused, and never a proof.
 - « Tout le répertoire… » in « En ligne » (and « Chercher dans tout le
   répertoire… » on the map): search every officine on the map at once,
-  Soulseek-style. The post reads each officine's signed catalogue (24 per
-  pass, open ones first, « Lire la suite » for the rest), verifies it,
-  keeps it in memory under the card's digest, and lists every entry under
-  the officine's name and commune, each taken in one gesture.
+  Soulseek-style. The post reads each officine's signed catalogue (20 per
+  pass and one pass a minute, under the directory's call limit; open ones
+  first, « Lire la suite » for the rest), verifies it, keeps it in memory
+  under the card's digest, and lists every entry under the names and
+  communes of the officines sharing it, each taken in one gesture.
 - The map's list filters by name, commune or postcode, and once the
   officine has chosen its commune, lists the nearest first with their
   distance as the crow flies.

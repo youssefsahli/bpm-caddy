@@ -10977,47 +10977,68 @@ impl Session {
 
     /// **Read the whole directory's share**: the list, then the catalogues
     /// not already held under the same digest — the open officines
-    /// first, at most `SWEEP_MOST`, on its own thread. It opens in « En
-    /// ligne », on `kind` when one is asked for, searched for `query`.
+    /// first, those that failed last, at most `SWEEP_MOST`, within
+    /// `SWEEP_BUDGET`, on its own thread, and one sweep a minute (the
+    /// minute the directory counts its calls by). It opens in « En
+    /// ligne » on `kind` when one is asked for, searched for `query`.
     #[cfg(feature = "sync")]
-    fn carte_sweep(&mut self, kind: Option<crate::versions::Kind>, query: &str) -> bool {
+    fn carte_sweep(
+        &mut self,
+        kind: Option<crate::versions::Kind>,
+        query: &str,
+        open: bool,
+    ) -> SweepStart {
         if self.carte.job.is_some() {
-            return false;
+            return SweepStart::Busy;
+        }
+        if let Some(wait) = self.sweep_wait() {
+            return SweepStart::Wait(wait);
         }
         self.read_presence();
         let Some(address) = self.carte.presence.address() else {
-            return false;
+            return SweepStart::NoDirectory;
         };
         let me = crate::network::device_hex(&self.db).unwrap_or_default();
         let held: std::collections::HashMap<String, String> = self
             .carte
             .catalogues
             .iter()
-            .map(|(d, (digest, _))| (d.clone(), digest.clone()))
+            .map(|(d, (digest, _, _))| (d.clone(), digest.clone()))
             .collect();
+        let failed = self.carte.sweep_failed.clone();
         let query = query.to_owned();
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
+            let started = Instant::now();
+            let left = || crate::repertoire::SWEEP_BUDGET.saturating_sub(started.elapsed());
             let list = crate::repertoire::list(&address, Duration::from_secs(8));
             let mut got = Vec::new();
             if let Ok(list) = &list {
-                let started = Instant::now();
                 let picks = crate::repertoire::to_sweep(
                     list,
                     |f| held.get(&f.device) == Some(&f.catalogue),
+                    |f| failed.get(&f.device) == Some(&f.catalogue),
                     &me,
                     crate::repertoire::unix_now(),
                     crate::repertoire::SWEEP_MOST,
                 );
+                let mut refused = 0;
                 for f in picks {
-                    // Une lecture qui traîne n'en retient pas l'écran : la
-                    // suite se lira au prochain balayage.
-                    if started.elapsed() > Duration::from_secs(90) {
+                    // Une lecture ne dépasse pas ce qui reste du budget —
+                    // une connexion et quatre fois son attente : la suite
+                    // se lira au prochain balayage.
+                    let patience = Duration::from_secs(8).min(left() / 5);
+                    if patience < Duration::from_secs(1) {
                         break;
                     }
-                    let read =
-                        crate::repertoire::fetch_catalogue(&address, f, Duration::from_secs(8));
+                    let read = crate::repertoire::fetch_catalogue(&address, f, patience);
+                    // Deux refus de suite : le répertoire ne répond plus,
+                    // on ne frappe pas encore dix-huit fois.
+                    refused = if read.is_err() { refused + 1 } else { 0 };
                     got.push((f.clone(), read));
+                    if refused >= 2 {
+                        break;
+                    }
                 }
             }
             let _ = tx.send(CarteAnswer::Sweep(Box::new(Sweep {
@@ -11025,15 +11046,28 @@ impl Session {
                 got,
                 kind,
                 query,
+                open,
             })));
         });
         self.carte.job = Some(rx);
-        true
+        self.carte.last_sweep = Some(Instant::now());
+        SweepStart::Started
+    }
+
+    /// How many seconds before the next sweep may start.
+    #[cfg(feature = "sync")]
+    fn sweep_wait(&self) -> Option<u64> {
+        let since = self.carte.last_sweep?.elapsed();
+        (since < crate::repertoire::SWEEP_EVERY)
+            .then(|| (crate::repertoire::SWEEP_EVERY - since).as_secs().max(1))
     }
 
     /// What a sweep brought back: the catalogues kept (only under the
-    /// digest the directory lists now, within `SWEEP_BYTES`, the least
-    /// recently seen dropped first), and « En ligne » opened on them.
+    /// digest the directory lists now, within `SWEEP_BYTES`, those read
+    /// longest ago dropped first and never one this sweep read), the
+    /// identical entries of several officines merged into one offer, and
+    /// « En ligne » shown on them — the window already open keeps what
+    /// was typed in it; a closed one reopens only when the map asked.
     #[cfg(feature = "sync")]
     fn carte_swept(&mut self, sweep: Sweep) {
         let Sweep {
@@ -11041,6 +11075,7 @@ impl Session {
             got,
             kind,
             query,
+            open,
         } = sweep;
         let list = match list {
             Ok(list) => list,
@@ -11055,15 +11090,22 @@ impl Session {
         };
         self.carte.note = None;
         self.set_carte_list(list);
-        let mut failed = 0;
+        let now_read = Instant::now();
+        let mut fresh: std::collections::HashSet<String> = std::collections::HashSet::new();
         for (f, read) in got {
             match read {
                 Ok(articles) => {
+                    self.carte.sweep_failed.remove(&f.device);
+                    fresh.insert(f.device.clone());
                     self.carte
                         .catalogues
-                        .insert(f.device.clone(), (f.catalogue.clone(), articles));
+                        .insert(f.device.clone(), (f.catalogue.clone(), articles, now_read));
                 }
-                Err(_) => failed += 1,
+                Err(_) => {
+                    self.carte
+                        .sweep_failed
+                        .insert(f.device.clone(), f.catalogue.clone());
+                }
             }
         }
         let listed: std::collections::HashMap<&str, &crate::repertoire::Fiche> = self
@@ -11072,7 +11114,12 @@ impl Session {
             .iter()
             .map(|f| (f.device.as_str(), f))
             .collect();
-        self.carte.catalogues.retain(|d, (digest, _)| {
+        self.carte.catalogues.retain(|d, (digest, _, _)| {
+            listed
+                .get(d.as_str())
+                .is_some_and(|f| &f.catalogue == digest)
+        });
+        self.carte.sweep_failed.retain(|d, digest| {
             listed
                 .get(d.as_str())
                 .is_some_and(|f| &f.catalogue == digest)
@@ -11081,33 +11128,47 @@ impl Session {
             .carte
             .catalogues
             .values()
-            .map(|(_, a)| crate::repertoire::weight(a))
+            .map(|(_, a, _)| crate::repertoire::weight(a))
             .sum();
         if total > crate::repertoire::SWEEP_BYTES {
-            let mut by_age: Vec<(u64, String)> = self
+            // L'heure de lecture d'ici, jamais celle qu'une carte se donne :
+            // une officine qui s'annonce sans cesse ne pousse pas les autres
+            // dehors.
+            let mut by_age: Vec<(Instant, String)> = self
                 .carte
                 .catalogues
-                .keys()
-                .map(|d| (listed.get(d.as_str()).map_or(0, |f| f.seq), d.clone()))
+                .iter()
+                .filter(|(d, _)| !fresh.contains(d.as_str()))
+                .map(|(d, (_, _, at))| (*at, d.clone()))
                 .collect();
             by_age.sort();
             for (_, d) in by_age {
                 if total <= crate::repertoire::SWEEP_BYTES {
                     break;
                 }
-                if let Some((_, a)) = self.carte.catalogues.remove(&d) {
+                if let Some((_, a, _)) = self.carte.catalogues.remove(&d) {
                     total -= crate::repertoire::weight(&a);
                 }
             }
         }
         let me = crate::network::device_hex(&self.db).unwrap_or_default();
         let now = crate::repertoire::unix_now();
-        let sharing =
-            crate::repertoire::to_sweep(&self.carte.list, |_| false, &me, now, usize::MAX);
+        let sharing = crate::repertoire::to_sweep(
+            &self.carte.list,
+            |_| false,
+            |_| false,
+            &me,
+            now,
+            usize::MAX,
+        );
         let mut read = 0;
         let mut offers: Vec<crate::enligne::Offer> = Vec::new();
+        // La même entrée chez vingt officines est une offre, au nom des
+        // vingt — comme le journal du réseau les montre.
+        type Same = (String, String, Vec<(String, String)>);
+        let mut same: std::collections::HashMap<Same, usize> = std::collections::HashMap::new();
         for f in &sharing {
-            let Some((_, articles)) = self.carte.catalogues.get(&f.device) else {
+            let Some((_, articles, _)) = self.carte.catalogues.get(&f.device) else {
                 continue;
             };
             read += 1;
@@ -11117,14 +11178,37 @@ impl Session {
             } else {
                 format!("{} ({})", f.nom, f.commune)
             };
-            offers.extend(
-                articles
-                    .iter()
-                    .filter_map(|a| crate::repertoire::offer_of(a, &from)),
-            );
+            for o in articles
+                .iter()
+                .filter_map(|a| crate::repertoire::offer_of(a, &from))
+            {
+                let key = (o.kind.key().to_owned(), o.card.clone(), o.fields.clone());
+                match same.get(&key) {
+                    Some(&i) => {
+                        let merged = &mut offers[i];
+                        merged.from.push(from.clone());
+                        if o.day > merged.day {
+                            merged.day = o.day;
+                        }
+                    }
+                    None => {
+                        same.insert(key, offers.len());
+                        offers.push(o);
+                    }
+                }
+            }
         }
         let total = sharing.len();
+        let failed = sharing
+            .iter()
+            .filter(|f| {
+                !self.carte.catalogues.contains_key(&f.device)
+                    && self.carte.sweep_failed.contains_key(&f.device)
+            })
+            .count();
+        let current = self.online.as_ref().map(|o| o.kind);
         let Some(kind) = kind
+            .or(current)
             .filter(|k| offers.iter().any(|o| o.kind == *k))
             .or_else(|| {
                 crate::versions::Kind::ALL
@@ -11144,18 +11228,31 @@ impl Session {
             self.carte.note = Some((false, note));
             return;
         };
-        self.online = Some(Online {
-            kind,
-            query,
-            network: true,
-            remote: Some(Remote {
-                officine: tr("online_everyone").to_owned(),
-                device: String::new(),
-                offers,
-                everyone: Some((read, total, failed)),
-            }),
-            ..Online::default()
-        });
+        let remote = Remote {
+            officine: tr("online_everyone").to_owned(),
+            device: String::new(),
+            offers,
+            everyone: Some((read, total, failed)),
+        };
+        match &mut self.online {
+            // Ce que l'opérateur a tapé ou coché pendant la lecture reste.
+            Some(online) => {
+                online.kind = kind;
+                online.remote = Some(remote);
+                online.rows_rev = None;
+                online.note = None;
+            }
+            None if open => {
+                self.online = Some(Online {
+                    kind,
+                    query,
+                    network: true,
+                    remote: Some(remote),
+                    ..Online::default()
+                });
+            }
+            None => {}
+        }
     }
 
     /// Ask the directory for one officine's catalogue; it opens in « En
@@ -14914,7 +15011,16 @@ struct Online {
     /// Le partage d'une officine du répertoire, parcouru sans appairage :
     /// les offres viennent de son catalogue, pas du journal.
     remote: Option<Remote>,
+    /// Les lignes que la recherche garde, et ce qu'elle demandait — avec
+    /// `rows_gen`, compté à chaque relecture des lignes.
+    shown: Vec<usize>,
+    shown_for: Option<(String, String, bool, u64)>,
+    rows_gen: u64,
 }
+
+/// Combien de lignes « En ligne » dessine au plus : au-delà, il dit le
+/// total et demande d'affiner.
+const ONLINE_ROWS_MOST: usize = 300;
 
 /// Ce qu'une autre officine publie au répertoire, parcouru dans « En
 /// ligne » : son nom, sa clé, et ses offres de toutes sortes.
@@ -14949,6 +15055,21 @@ struct Sweep {
     )>,
     kind: Option<crate::versions::Kind>,
     query: String,
+    /// Rouvrir « En ligne » s'il a été fermé entre-temps : seulement quand
+    /// la carte l'a demandé.
+    open: bool,
+}
+
+/// Ce qu'une demande de balayage devient.
+#[cfg(feature = "sync")]
+#[derive(Debug, PartialEq, Eq)]
+enum SweepStart {
+    Started,
+    /// Une autre lecture du répertoire est en cours.
+    Busy,
+    /// Le précédent est trop proche : dans tant de secondes.
+    Wait(u64),
+    NoDirectory,
 }
 
 /// **La carte des officines** : ce que la base dit de la présence de
@@ -14978,7 +15099,13 @@ struct Carte {
     points: Vec<Option<(crate::geo::Zone, [f32; 2])>>,
     /// Les catalogues déjà lus, par officine : l'empreinte de sa carte et
     /// ses articles — relus seulement quand l'empreinte change.
-    catalogues: std::collections::HashMap<String, (String, Vec<crate::repertoire::Article>)>,
+    catalogues:
+        std::collections::HashMap<String, (String, Vec<crate::repertoire::Article>, Instant)>,
+    /// Celles qui n'ont pas répondu, sous l'empreinte de leur carte : lues
+    /// en dernier au balayage suivant.
+    sweep_failed: std::collections::HashMap<String, String>,
+    /// Le dernier balayage commencé : un par minute.
+    last_sweep: Option<Instant>,
     /// Ce que le registre dit du numéro que l'officine tape, et la commune
     /// qu'il en propose — lus quand le numéro, la commune ou le nom
     /// changent, jamais à chaque image.
@@ -63946,10 +64073,23 @@ impl App {
             session.carte_browse(&d);
         }
         if sweep {
-            session.carte_sweep(None, "");
+            if let Some(note) = Self::sweep_note(session.carte_sweep(None, "", true)) {
+                session.carte.note = Some(note);
+            }
         }
         if save {
             session.carte_save(operator);
+        }
+    }
+
+    /// What a sweep that did not start says, and why.
+    #[cfg(feature = "sync")]
+    fn sweep_note(start: SweepStart) -> Option<(bool, String)> {
+        match start {
+            SweepStart::Started => None,
+            SweepStart::Busy => Some((false, tr("online_sweep_busy").to_owned())),
+            SweepStart::Wait(s) => Some((false, trf("online_sweep_wait", s))),
+            SweepStart::NoDirectory => Some((true, tr("online_no_directory").to_owned())),
         }
     }
 
@@ -64084,6 +64224,7 @@ impl App {
             }
             online.sources = sources;
             online.rows_rev = Some(session.edits_rev);
+            online.rows_gen += 1;
         }
         let kind = online.kind;
         let mut take: Option<usize> = None;
@@ -64223,14 +64364,34 @@ impl App {
                     .max_height(body_h)
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
+                        // Ce que la recherche garde, relu quand elle change —
+                        // tout le répertoire tient des milliers d'entrées.
+                        let asked = (
+                            online.query.clone(),
+                            online.from.clone(),
+                            online.only_absent,
+                            online.rows_gen,
+                        );
+                        if online.shown_for.as_ref() != Some(&asked) {
+                            let kept: Vec<usize> = online
+                                .rows
+                                .iter()
+                                .enumerate()
+                                .filter(|(_, (o, here, _))| {
+                                    o.matches(&online.query)
+                                        && (online.from.is_empty() || o.from.contains(&online.from))
+                                        && (!online.only_absent || *here == Here::Absent)
+                                })
+                                .map(|(i, _)| i)
+                                .collect();
+                            online.shown = kept;
+                            online.shown_for = Some(asked);
+                        }
                         let mut shown = 0_usize;
-                        for (i, (o, here, summary)) in online.rows.iter().enumerate() {
-                            if !o.matches(&online.query)
-                                || (!online.from.is_empty() && !o.from.contains(&online.from))
-                                || (online.only_absent && *here != Here::Absent)
-                            {
+                        for &i in online.shown.iter().take(ONLINE_ROWS_MOST) {
+                            let Some((o, here, summary)) = online.rows.get(i) else {
                                 continue;
-                            }
+                            };
                             shown += 1;
                             ui.horizontal_wrapped(|ui| {
                                 // Le nom d'aujourd'hui, pas l'identité sous
@@ -64304,6 +64465,16 @@ impl App {
                             );
                             ui.add_space(4.0);
                         }
+                        if online.shown.len() > ONLINE_ROWS_MOST {
+                            ui.label(
+                                egui::RichText::new(trn(
+                                    "online_more_rows",
+                                    &[&online.shown.len(), &ONLINE_ROWS_MOST],
+                                ))
+                                .size(motif::pt(ui, 11.0))
+                                .color(motif::text_dim()),
+                            );
+                        }
                         if shown == 0 {
                             ui.label(tr(if online.rows.is_empty() {
                                 "online_none"
@@ -64349,13 +64520,10 @@ impl App {
         }
         #[cfg(feature = "sync")]
         if sweep {
-            online.note = Some(if session.carte_sweep(Some(kind), &online.query) {
-                (false, tr("online_sweeping").to_owned())
-            } else if session.carte.job.is_some() {
-                (false, tr("carte_reading").to_owned())
-            } else {
-                (true, tr("online_no_directory").to_owned())
-            });
+            online.note = Some(
+                Self::sweep_note(session.carte_sweep(Some(kind), &online.query, false))
+                    .unwrap_or((false, tr("online_sweeping").to_owned())),
+            );
         }
         if !close {
             session.online = Some(online);
@@ -95019,19 +95187,6 @@ mod tests {
         assert_eq!(merge_team_notes(base, base, base), base);
     }
 
-    /// A session on a scratch database, for the notebook tests.
-    ///
-    /// The guard comes back with the session and not instead of it: it
-    /// removes the directory when it drops, and dropping it here would
-    /// delete the database out from under the session it just opened.
-    /// Ce qu'un autre poste écrit de l'officine arrive **sans qu'on se
-    /// reverrouille**.
-    ///
-    /// L'officine vit dans la base et vaut pour tous les postes ; elle
-    /// ne parvenait au poste voisin qu'à son déverrouillage suivant.
-    /// Celui qui n'avait rien vu rouvrait Options › Officine sur un
-    /// texte périmé, le corrigeait, et se faisait refuser l'écriture :
-    /// le conflit était réel, et c'est l'écran qui le fabriquait.
     /// **Un balayage du répertoire** : ce qui est lu se garde sous
     /// l'empreinte de la carte, « En ligne » s'ouvre sur tout à la fois en
     /// disant combien ont été lues et combien n'ont pas répondu, et un
@@ -95075,6 +95230,7 @@ mod tests {
             ],
             kind: Some(crate::versions::Kind::Codex),
             query: "gélule".to_owned(),
+            open: true,
         });
         let online = session.online.as_ref().expect("En ligne s'ouvre");
         assert_eq!(online.query, "gélule");
@@ -95083,6 +95239,39 @@ mod tests {
         assert_eq!(remote.offers.len(), 1);
         assert_eq!(remote.offers[0].from, ["Pharmacie A (Brest)"]);
         assert_eq!(session.carte.catalogues.len(), 1);
+        assert_eq!(session.carte.sweep_failed.len(), 1);
+        // La suite : la même entrée chez une seconde officine est une
+        // offre à leurs deux noms, et ce qu'on a tapé pendant la lecture
+        // reste.
+        session.online.as_mut().unwrap().query = "x".to_owned();
+        let article = session.carte.catalogues.values().next().unwrap().1[0].clone();
+        session.carte_swept(super::Sweep {
+            list: Ok(list.clone()),
+            got: vec![(list[1].clone(), Ok(vec![article]))],
+            kind: None,
+            query: "autre".to_owned(),
+            open: false,
+        });
+        let online = session.online.as_ref().unwrap();
+        assert_eq!(online.query, "x");
+        let remote = online.remote.as_ref().unwrap();
+        assert_eq!(remote.everyone, Some((2, 2, 0)));
+        assert_eq!(remote.offers.len(), 1);
+        assert_eq!(
+            remote.offers[0].from,
+            ["Pharmacie A (Brest)", "Pharmacie B (Brest)"]
+        );
+        assert!(session.carte.sweep_failed.is_empty());
+        // Fermée, la fenêtre ne se rouvre pas d'elle-même.
+        session.online = None;
+        session.carte_swept(super::Sweep {
+            list: Ok(list.clone()),
+            got: Vec::new(),
+            kind: None,
+            query: String::new(),
+            open: false,
+        });
+        assert!(session.online.is_none());
         // Une nouvelle carte, un autre catalogue : l'ancien ne s'offre plus.
         session.online = None;
         session.carte_swept(super::Sweep {
@@ -95090,12 +95279,26 @@ mod tests {
             got: Vec::new(),
             kind: None,
             query: String::new(),
+            open: true,
         });
         assert!(session.carte.catalogues.is_empty());
         assert!(session.online.is_none());
         assert!(session.carte.note.is_some());
     }
 
+    /// A session on a scratch database, for the notebook tests.
+    ///
+    /// The guard comes back with the session and not instead of it: it
+    /// removes the directory when it drops, and dropping it here would
+    /// delete the database out from under the session it just opened.
+    /// Ce qu'un autre poste écrit de l'officine arrive **sans qu'on se
+    /// reverrouille**.
+    ///
+    /// L'officine vit dans la base et vaut pour tous les postes ; elle
+    /// ne parvenait au poste voisin qu'à son déverrouillage suivant.
+    /// Celui qui n'avait rien vu rouvrait Options › Officine sur un
+    /// texte périmé, le corrigeait, et se faisait refuser l'écriture :
+    /// le conflit était réel, et c'est l'écran qui le fabriquait.
     #[test]
     fn what_another_post_writes_of_the_officine_arrives_without_relocking() {
         let dir =
