@@ -38,30 +38,30 @@ enum State {
 /// lancement de la nouvelle version verse donc ce qui était déjà écrit,
 /// et les postes suivants le lisent au lieu de le redemander.
 fn adopt_officine(config: &mut Config, session: &mut Session) {
-    // Les réglages de l'officine suivent le même chemin : ceux de la
-    // base, ou, sans eux, ceux que ce poste avait changés.
-    let day = session.today.clone();
+    // **Les réglages de l'officine : ceux de la base**, s'il y en a. Rien
+    // n'y est versé d'ici au déverrouillage : `config.toml` garde les
+    // valeurs par défaut de la version qui l'a écrit, et un poste qui
+    // n'avait jamais rien réglé y aurait versé de vieux honoraires ou des
+    // forfaits vides par-dessus les réglages d'un autre. Une section
+    // arrive dans la base la première fois qu'on la règle dans Options.
+    // Ce poste en avait d'autres : il le dit, une fois.
+    let mut differed: Vec<&str> = Vec::new();
     for key in SHARED_SECTIONS {
-        let raw = session.db.setting(key);
-        match raw {
-            Some(raw) => {
-                if section_read(config, key, &raw) {
-                    session.shared_seen.insert(key, raw);
-                }
+        let Some(raw) = session.db.setting(key) else {
+            continue;
+        };
+        let local_set = !section_untouched(config, key);
+        let same = section_is(config, key, &raw);
+        if section_read(config, key, &raw) {
+            if local_set && !same {
+                differed.push(key);
             }
-            None if section_untouched(config, key) => {}
-            None => {
-                if let Some(text) = section_text(config, key) {
-                    if session
-                        .db
-                        .set_setting(key, &text, None, &day, "")
-                        .unwrap_or(false)
-                    {
-                        session.shared_seen.insert(key, text);
-                    }
-                }
-            }
+            session.shared_seen.insert(key, raw);
         }
+    }
+    if !differed.is_empty() {
+        let names: Vec<&str> = differed.iter().map(|k| section_label(k)).collect();
+        session.error = Some(trf("reglages_differed", names.join(", ")));
     }
     session.cycle_months = config.rules.cycle_months.max(1);
     session.loc_notice_days = config.locations.notice_days;
@@ -401,11 +401,31 @@ fn section_is(c: &Config, key: &str, raw: &str) -> bool {
     section_read(&mut read, key, raw) && section_text(&read, key) == section_text(c, key)
 }
 
+/// Le nom d'une section, tel qu'Options le montre.
+fn section_label(key: &str) -> &'static str {
+    match key {
+        MENTIONS_KEY => tr("opts_shared_mentions"),
+        BILLING_KEY => tr("opts_shared_billing"),
+        RULES_KEY => tr("opts_shared_rules"),
+        _ => tr("opts_shared_locations"),
+    }
+}
+
 /// La section n'a jamais été touchée sur ce poste : elle ne s'écrit pas
 /// dans une base qui n'en a pas — sinon le premier poste mis à jour
 /// remplaçait les réglages des autres par les valeurs d'usine.
 fn section_untouched(c: &Config, key: &str) -> bool {
     section_text(c, key) == section_text(&Config::default(), key)
+}
+
+/// Les montants des forfaits tels qu'ils se tapent, un par forfait — à
+/// refaire chaque fois que les forfaits sont remplacés, sans quoi les
+/// champs montrent d'autres montants que ceux qui s'enregistrent.
+fn loc_fee_text_of(l: &crate::config::LocationsConfig) -> Vec<String> {
+    l.forfaits
+        .iter()
+        .map(|f| crate::codex::format_quantity(f.fee))
+        .collect()
 }
 
 /// Les mentions telles que la base les porte, lues.
@@ -6076,6 +6096,7 @@ struct Session {
     /// fermées.
     shared_seen: std::collections::HashMap<&'static str, String>,
     shared_fresh: std::collections::HashMap<&'static str, String>,
+
     /// Ce qu'un **autre poste** a écrit de l'officine et que celui-ci
     /// n'a pas encore pris.
     ///
@@ -18919,12 +18940,7 @@ impl OptionsEditor {
             keep_seen: None,
             shared_seen: std::collections::HashMap::new(),
             page,
-            loc_fee_text: config
-                .locations
-                .forfaits
-                .iter()
-                .map(|f| crate::codex::format_quantity(f.fee))
-                .collect(),
+            loc_fee_text: loc_fee_text_of(&config.locations),
             cfg: config.clone(),
             db_path_text: config
                 .database
@@ -19137,6 +19153,7 @@ impl App {
             }
             editor.shared_seen.insert(key, raw);
         }
+        editor.loc_fee_text = loc_fee_text_of(&editor.cfg.locations);
         if let Some(days) = editor
             .keep_seen
             .as_deref()
@@ -21147,12 +21164,7 @@ impl App {
                     "forfaits" => OptionsPage::Locations,
                     _ => OptionsPage::Pharmacy,
                 },
-                loc_fee_text: config
-                    .locations
-                    .forfaits
-                    .iter()
-                    .map(|f| crate::codex::format_quantity(f.fee))
-                    .collect(),
+                loc_fee_text: loc_fee_text_of(&config.locations),
                 cfg: config.clone(),
                 db_path_text: String::new(),
                 message: None,
@@ -85448,6 +85460,9 @@ impl eframe::App for App {
                     }
                     session.cycle_months = self.config.rules.cycle_months.max(1);
                     session.loc_notice_days = self.config.locations.notice_days;
+                    // Les résumés et les renouvellements se comptent avec
+                    // ces deux-là : relus tout de suite.
+                    session.refresh_dashboard();
                 }
             }
         }
@@ -89094,6 +89109,14 @@ impl eframe::App for App {
                         .options
                         .as_ref()
                         .and_then(|e| e.shared_seen.get(key).cloned().flatten());
+                    // Écrit par une version que celle-ci ne sait pas lire :
+                    // jamais par-dessus — l'enregistrement d'un thème ne
+                    // remplace pas les règles d'un poste plus récent.
+                    if let Some(read) = &seen {
+                        if !section_read(&mut self.config.clone(), key, read) {
+                            continue;
+                        }
+                    }
                     let changed = match &seen {
                         Some(read) => !section_is(&self.config, key, read),
                         None => section_text(&self.config, key) != section_text(&before, key),
@@ -89121,6 +89144,7 @@ impl eframe::App for App {
                                 section_read(&mut self.config, key, r);
                                 if let Some(editor) = &mut self.options {
                                     section_read(&mut editor.cfg, key, r);
+                                    editor.loc_fee_text = loc_fee_text_of(&editor.cfg.locations);
                                 }
                                 session.shared_seen.insert(key, r.clone());
                             }

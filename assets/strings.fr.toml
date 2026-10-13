@@ -2212,6 +2212,11 @@ care_due_text = "Délivrance notée : ce patient a ses traitements remis à l'in
 care_due_text_named = "Délivrance notée : les traitements sont remis à {}. Imprimer la feuille de prises ?"
 care_due_open = "Ouvrir l'onglet"
 care_due_later = "Plus tard"
+opts_shared_mentions = "mentions"
+opts_shared_billing = "facturation"
+opts_shared_rules = "règles"
+opts_shared_locations = "locations"
+reglages_differed = "Ce poste réglait autrement que l'officine : {}. Ce sont désormais ceux de l'officine qui s'appliquent ici ; Options les montre."
 reglages_stale = "Un autre poste a changé ces réglages de l'officine : voici ce qu'il a écrit."
 care_stale = "Un autre poste a changé ce réglage : voici ce qu'il a écrit."
 

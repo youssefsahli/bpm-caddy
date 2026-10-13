@@ -223,10 +223,12 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   vivent dans `config.toml` — deux postes peuvent facturer ou bloquer un
   même patient autrement — **fait le 14/10** : `[pharmacy]` a son chemin
   (fusion champ par champ), les mentions, la facturation, les règles et
-  les locations passent par `SHARED_SECTIONS` (adoptées au
-  déverrouillage seulement si ce poste les a changées, reprises d'un
-  autre poste options fermées, écrites contre ce que la fenêtre avait
-  lu). Un poste d'une version d'avant lit encore son `config.toml` ;
+  les locations passent par `SHARED_SECTIONS` (lues de la base au
+  déverrouillage, jamais versées d'un `config.toml` — il garde les
+  défauts de la version qui l'a écrit —, versées la première fois
+  qu'on les règle dans Options, reprises d'un autre poste options
+  fermées, écrites contre ce que la fenêtre avait lu, jamais par-dessus
+  une section qu'une version plus récente a écrite). Un poste d'une version d'avant lit encore son `config.toml` ;
 - options ouvertes au verrouillage : mises de côté et rendues au
   déverrouillage (fait le 13/10) ;
 - réécritures orphelines : une clé dérivée d'un libellé (âge, grossesse,
