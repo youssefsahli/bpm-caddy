@@ -117,6 +117,9 @@ pub struct Finding {
     pub below: Option<u16>,
     pub conduct: &'static str,
     pub source: &'static str,
+    /// Un DFG est noté, mais rendu borné, et la borne laisse un palier
+    /// ouvert : la ligne ne conclut pas, et ce n'est pas un DFG manquant.
+    pub bounded: bool,
 }
 
 /// Ce que le rein fait à cette ordonnance, à ce DFG.
@@ -150,6 +153,10 @@ pub fn read(treatments: &[crate::revue::Treatment], dfg: Option<f64>) -> Vec<Fin
 }
 
 /// Ce qu'une ligne dit d'un DFG rendu borné qui ne permet pas de conclure.
+/// Ce qu'une ligne dit sans DFG au dossier.
+pub const MISSING: &str =
+    "Ce traitement s'adapte à la fonction rénale ; aucun DFG n'est noté au dossier.";
+
 pub const BOUNDED: &str = "Le DFG est rendu borné par le laboratoire : il ne dit pas de quel côté d'un seuil de ce traitement il se trouve — à vérifier avec la valeur exacte.";
 
 /// [`read`], pour un DFG rendu avec sa borne de laboratoire (`bound` :
@@ -240,9 +247,10 @@ pub fn read_bounded(
                 conduct: match hit {
                     Some(s) => s.conduct,
                     None if open => BOUNDED,
-                    None => "Ce traitement s'adapte à la fonction rénale ; aucun DFG n'est noté au dossier.",
+                    None => MISSING,
                 },
                 source: a.source,
+                bounded: open,
             });
             break;
         }
@@ -314,10 +322,23 @@ fn addressed() -> Vec<(String, &'static str)> {
         .collect()
 }
 
+/// Les deux lignes sans verdict — sans DFG, et sous une borne qui ne
+/// tranche pas —, réécrivables comme les conduites.
+fn undecided_phrases() -> [(String, &'static str); 2] {
+    [
+        (
+            crate::content::key(DOC, "sans_verdict", "manquant"),
+            MISSING,
+        ),
+        (crate::content::key(DOC, "sans_verdict", "borne"), BOUNDED),
+    ]
+}
+
 /// Toutes les conduites du panneau, avec leur adresse.
 pub fn phrases() -> Vec<(String, &'static str, &'static str)> {
     addressed()
         .into_iter()
+        .chain(undecided_phrases())
         .map(|(key, conduct)| (key, "conduite", conduct))
         .collect()
 }
@@ -342,12 +363,20 @@ pub fn resolve(findings: Vec<Finding>, over: &crate::content::Overrides) -> Vec<
                         &id,
                         &format!("dfg{}", address_below(f.label, s.below)),
                     )
+                })
+                // Sans palier, la ligne sans verdict : sa propre adresse.
+                .or_else(|| {
+                    undecided_phrases()
+                        .into_iter()
+                        .find(|(_, p)| *p == f.conduct)
+                        .map(|(k, _)| k)
                 });
             Resolved {
                 conduct: match &key {
                     Some(k) => over.get(k, f.conduct).to_owned(),
                     None => f.conduct.to_owned(),
                 },
+                bounded: f.bounded,
                 treatment: f.treatment,
                 label: f.label,
                 level: f.level,
@@ -369,6 +398,8 @@ pub struct Resolved {
     pub below: Option<u16>,
     pub conduct: String,
     pub source: &'static str,
+    /// Comme sur `Finding` : une borne qui ne tranche pas.
+    pub bounded: bool,
 }
 
 impl Resolved {
@@ -2248,7 +2279,8 @@ mod tests {
     #[test]
     fn every_renal_conduct_is_editable_and_every_rewrite_arrives() {
         let listed = phrases();
-        assert_eq!(listed.len(), addressed().len());
+        // Les paliers, et les deux lignes sans verdict.
+        assert_eq!(listed.len(), addressed().len() + 2);
 
         let treatments = [crate::revue::Treatment {
             name: "Metformine",
@@ -2266,6 +2298,16 @@ mod tests {
         );
         for f in resolve(found.clone(), &over) {
             assert!(f.conduct.starts_with("réécrit:"), "{}", f.conduct);
+        }
+        // Les lignes sans verdict aussi : sans DFG, et sous une borne qui
+        // ne tranche pas.
+        for (dfg, bound) in [(None, ""), (Some(40.0), "<")] {
+            let undecided = resolve(read_bounded(&treatments, dfg, bound), &over);
+            assert!(!undecided.is_empty());
+            for f in undecided {
+                assert!(f.conduct.starts_with("réécrit:rein"), "{}", f.conduct);
+                assert_eq!(f.bounded, bound == "<");
+            }
         }
         // Sans réécriture, la conduite est celle du RCP — et le niveau
         // ne bouge jamais : c'est un seuil, pas une tournure.

@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The kidney panel's two lines without a verdict — no DFG on file, and a
+  bounded DFG that leaves a tier open — are printed phrases the officine
+  may rewrite in « Textes », like every tier's conduct.
+
 ## [0.424.0] - 2026-10-13
 
 ### Fixed

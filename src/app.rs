@@ -26330,7 +26330,7 @@ impl App {
                                 format!("{} — {} sous {b} mL/min", f.treatment, l.label())
                             }
                             // Un DFG rendu borné n'est pas un DFG manquant.
-                            _ if f.conduct == crate::renal::BOUNDED => {
+                            _ if f.bounded => {
                                 format!("{} — {}", f.treatment, tr("renal_bounded"))
                             }
                             _ => format!("{} — {}", f.treatment, tr("renal_unknown")),
@@ -47858,7 +47858,7 @@ impl App {
             };
             let head = match (f.level, f.below) {
                 (Some(l), Some(b)) => format!("{} — {} sous {b} mL/min", f.treatment, l.label()),
-                _ if f.conduct == crate::renal::BOUNDED => {
+                _ if f.bounded => {
                     format!("{} — {}", f.treatment, tr("renal_bounded"))
                 }
                 _ => format!("{} — {}", f.treatment, tr("renal_unknown")),
@@ -92467,6 +92467,7 @@ mod tests {
                 below: Some(30),
                 conduct: String::new(),
                 source: "",
+                bounded: false,
             }],
             gravidity: &[],
             crush: quiet.crush,
