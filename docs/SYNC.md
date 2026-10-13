@@ -579,9 +579,11 @@ le texte livré, écrite par `set_content` contre ce qui s'imprimait) son
 nom ou son téléphone : leurs versions ne partent que si
 `NetShares::listes` est coché (non par défaut, colonne `share_listes`),
 et elles **ne se versionnent même pas** tant qu'aucun réseau ne les
-partage : au journal, elles iraient aux autres postes, et un poste d'une
-version d'avant (qui lit une sorte inconnue comme une fiche) les
-publierait. Cochées, elles partent telles qu'elles sont ce jour-là. Pour
+partage — sauf une à une, cochées « Publier sur la carte »
+(`published_entries`) : au journal, elles iraient aux autres postes, et
+un poste d'une version d'avant la 0.413 (qui lit une sorte inconnue comme
+une fiche) les publierait — d'où : tous les postes à jour avant de
+cocher. Cochées, elles partent telles qu'elles sont ce jour-là. Pour
 la même raison, les étiquettes et les sources d'un dispositif voyagent
 sous `etiquettes` et `references` (`versions::dispositif_column`) : sous
 `tags` et `sources`, une version d'avant les publiait comme ceux d'une
@@ -906,8 +908,16 @@ clé de réseau n'y passe.
   `ruptures::public_events` : les siennes, sans initiales ; lues au nom
   de la carte signée par `supply_of`, qu'une version d'avant écarte
   article par article) :
-  jamais une liste, une phrase, ce qu'une officine appairée a réécrit, ni
-  un patient, ni un nom qu'elle a reçu. Décochée, ou l'adresse changée,
+  jamais une liste ni une phrase qu'elle n'a pas cochée (cochées, elles
+  voyagent sous `listepublique` et `textepublic`, `repertoire::wire_key`,
+  qu'une version d'avant écarte article par article), ce qu'une officine
+  appairée a réécrit, un patient, ni un nom qu'elle a reçu. Une rupture
+  y part sans initiales ni note, jamais un retrait ; prise sur la carte,
+  elle entre au journal sous `carte:<clé>:<uid>` (`taken_uid`) pour
+  qu'un identifiant copié ne prenne pas la place de l'événement d'une
+  officine appairée. Avant chaque annonce, ce qui a été écrit ou coché
+  passe en version (`version_shared_entries`) : sans réseau appairé,
+  rien d'autre ne versionne une préparation ou une liste. Décochée, ou l'adresse changée,
   une carte de départ la retire. Le réglage retient le répertoire qui a
   **reçu** la dernière carte (`parue`, `parue_le`) : un départ manqué,
   un redémarrage ou un autre poste le rattrape, sans jamais retenir la
@@ -942,7 +952,8 @@ clé de réseau n'y passe.
   balayage même) ; rien n'est écrit sur le disque. Une même entrée chez
   plusieurs officines est une offre à leurs noms.
 * **Prendre leur version** d'une entrée qu'on a (`Session::take_theirs`,
-  `Db::take_entry_values`) : jamais une sorte privée, jamais une valeur
+  `Db::take_entry_values`) : une liste ou une phrase seulement d'un
+  réseau qui les partage ou cochée par son auteur ; jamais une valeur
   que `versions::admissible` refuse, jamais le nom d'une fiche ; chaque
   champ qui diffère, tous ou aucun, contre ce que la base disait quand la
   ligne a été lue. Une version locale le porte (sans source : c'est

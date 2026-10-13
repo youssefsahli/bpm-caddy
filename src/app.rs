@@ -11591,6 +11591,7 @@ impl Session {
             self.carte.note = Some((true, tr("carte_need_name").to_owned()));
             return;
         }
+        let _ = self.db.version_shared_entries(&self.operator);
         self.reload_card_edits();
         let here = self.cards_here();
         let supply = self.public_supply(self.carte.presence.ruptures);
@@ -12076,8 +12077,14 @@ impl Session {
         } else {
             Vec::new()
         };
-        if present {
-            let _ = self.db.prune_published();
+        // Ce qui a été écrit ou coché depuis passe d'abord en version : sans
+        // réseau appairé, rien d'autre ne versionne une préparation ou une
+        // liste cochée, et le catalogue ne porte que des versions.
+        // Une centaine de millisecondes sur une base livrée, toutes les dix
+        // minutes, et seulement pour une officine qui paraît et a coché.
+        if present && !self.db.published_entries().unwrap_or_default().is_empty() {
+            let _ = self.db.version_shared_entries(&self.operator);
+            self.reload_card_edits();
         }
         let here = if present {
             self.cards_here()
@@ -12608,6 +12615,7 @@ impl Session {
     /// kinds and still holds, each with its mark — composed once, here.
     #[cfg(feature = "sync")]
     fn open_publications(&mut self) {
+        let _ = self.db.version_shared_entries(&self.operator);
         self.reload_card_edits();
         let _ = self.db.prune_published();
         self.published = None;
@@ -72370,19 +72378,21 @@ impl App {
                         .map(|f| f.nom.clone())
                         .unwrap_or_else(|| Self::remote_key(device));
                     articles.iter().filter_map(move |a| {
-                        let mut e = crate::repertoire::supply_of(a, &officine)?;
-                        e.uid = crate::repertoire::taken_uid(device, &e.uid);
-                        Some(e)
+                        let e = crate::repertoire::supply_of(a, &officine)?;
+                        Some((crate::repertoire::taken_uid(device, &e.uid), e))
                     })
                 })
                 // Ce que l'officine publierait elle-même : ni daté de
                 // demain, ni d'au-delà de l'horizon.
-                .filter(|e| {
+                .filter(|(_, e)| {
                     crate::date::days_between(&e.day, &today)
                         .is_some_and(|d| (0..=crate::ruptures::HORIZON_DAYS).contains(&d))
                 })
-                .map(|e| {
-                    let here = held.contains(e.uid.as_str());
+                // Déjà là sous son identifiant d'origine — reçu d'un réseau
+                // appairé — ou pris de la carte : jamais deux fois.
+                .map(|(taken, mut e)| {
+                    let here = held.contains(e.uid.as_str()) || held.contains(taken.as_str());
+                    e.uid = taken;
                     (e, here)
                 })
                 .collect();

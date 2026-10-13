@@ -46462,7 +46462,34 @@ impl Db {
                 (id, title, subject, expected_title),
             )
             .map_err(|e| e.to_string())?;
+        // Une liste sans identité figée se reconnaît à son titre : publiée,
+        // elle le reste sous le nouveau.
+        let frozen: String = self
+            .conn
+            .query_row("SELECT origin FROM checklists WHERE id = ?1", [id], |r| {
+                r.get(0)
+            })
+            .unwrap_or_default();
+        if n == 1 && frozen.trim().is_empty() {
+            self.move_published("liste", expected_title, title)?;
+        }
         Ok(n == 1)
+    }
+
+    /// Une entrée publiée sur la carte et renommée reste publiée, sous sa
+    /// nouvelle clé.
+    fn move_published(&self, kind: &str, old: &str, new: &str) -> Result<(), String> {
+        let (old, new) = (crate::versions::key(old), crate::versions::key(new));
+        if old != new {
+            self.conn
+                .execute(
+                    "UPDATE OR IGNORE published_entries SET card = ?1
+                     WHERE kind = ?2 AND card = ?3",
+                    (&new, kind, &old),
+                )
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
     }
 
     /// Supprimer une liste **et ses lignes** : une ligne orpheline est
@@ -46608,6 +46635,9 @@ impl Db {
                 (title, subject, id, expected_title),
             )
             .map_err(|e| e.to_string())?;
+        if changed == 1 {
+            self.move_published("protocole", expected_title, title)?;
+        }
         Ok(changed == 1)
     }
 
@@ -55853,14 +55883,15 @@ impl Db {
                 }
             }
         }
-        if private {
-            names.extend(
-                edits
-                    .iter()
-                    .filter(|e| e.kind == Kind::Texte)
-                    .map(|e| (Kind::Texte, e.card_name.clone())),
-            );
-        }
+        // Une phrase rendue à son texte livré écrit ce retour — aussi pour
+        // une phrase cochée : sans lui, la carte publierait encore la
+        // réécriture d'avant.
+        names.extend(
+            edits
+                .iter()
+                .filter(|e| e.kind == Kind::Texte && (private || ticked(Kind::Texte, &e.card_name)))
+                .map(|e| (Kind::Texte, e.card_name.clone())),
+        );
         // **Une entrée, une fois.** Deux lignes encore nommées « Nouveau
         // médicament » ont la même identité : la première serait
         // versionnée deux fois et la seconde jamais.
@@ -56291,10 +56322,30 @@ impl Db {
     /// qu'une lecture a échoué. Rend combien de lignes sont parties.
     pub fn prune_published(&self) -> Result<usize, String> {
         let mut gone = 0;
-        for (kind, card) in self.published_entries()? {
+        let today = self.today_iso().unwrap_or_default();
+        let mut stmt = self
+            .conn
+            .prepare("SELECT kind, card, since FROM published_entries")
+            .map_err(|e| e.to_string())?;
+        let rows: Vec<(String, String, String)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<_, _>>()
+            .map_err(|e| e.to_string())?;
+        for (kind, card, since) in rows {
             let Some(k) = crate::versions::kind_of_key(&kind) else {
                 continue;
             };
+            // **Jamais une coche toute fraîche** : l'entrée arrive d'un autre
+            // poste sur un autre flux que sa coche, et l'effacer avant
+            // qu'elle arrive effacerait la coche partout. Ni une phrase :
+            // toutes les adresses sont toujours là, sauf pour un poste d'une
+            // autre version.
+            if k == crate::versions::Kind::Texte
+                || crate::date::days_between(&since, &today).is_none_or(|d| d < 2)
+            {
+                continue;
+            }
             let Ok(here) = self.entry_keys(k) else {
                 continue;
             };
@@ -59572,8 +59623,21 @@ mod tests {
             .unwrap()
             .contains(&("codex".to_owned(), renamed.clone())));
         assert_eq!(db.prune_published().unwrap(), 0);
-        db.set_published(Kind::Codex, &crate::versions::key("Disparue"), true, "", "")
+        // Cochée aujourd'hui, l'entrée peut encore arriver d'un autre poste :
+        // gardée. Cochée il y a longtemps et absente : oubliée.
+        db.set_published(Kind::Codex, &crate::versions::key("En route"), true, "", "")
             .unwrap();
+        assert_eq!(db.prune_published().unwrap(), 0);
+        db.set_published(Kind::Codex, &crate::versions::key("En route"), false, "", "")
+            .unwrap();
+        db.set_published(
+            Kind::Codex,
+            &crate::versions::key("Disparue"),
+            true,
+            "2020-01-01",
+            "",
+        )
+        .unwrap();
         assert_eq!(db.prune_published().unwrap(), 1);
         assert_eq!(db.published_entries().unwrap().len(), 1);
     }
