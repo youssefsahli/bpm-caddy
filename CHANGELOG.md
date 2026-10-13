@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.429.0] - 2026-10-13
+
 ### Added
 
 - Nurse sheet (« Feuille de l'infirmier(ère) »), a new tab in the patient
@@ -22,6 +24,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are. Every dispensing noted on a flagged file (« délivrance n° »)
   offers the sheet — print, open the tab, or later; nothing prints by
   itself. The template is editable like every printed document.
+
+### Fixed
+
+- The patient file's « Fil » scrolled in jumps and left blank space: every
+  row now has exactly the height promised to the virtualised list.
+- An options window given back after a lock now saves against the
+  officine settings it had read: a change made on another post meanwhile
+  goes through the merge or the notice instead of being overwritten, and
+  its armed buttons do not survive the lock.
 
 ## [0.428.0] - 2026-10-13
 
