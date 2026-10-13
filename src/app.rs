@@ -10793,10 +10793,12 @@ impl Session {
         if offer.kind.is_private() {
             return Ok(false);
         }
+        let takeable = Self::takeable_fields(offer);
         let theirs = |f: &str| {
-            offer
-                .field(f)
-                .filter(|v| crate::versions::admissible(offer.kind, f, v))
+            takeable
+                .iter()
+                .find(|(k, _)| k == f)
+                .map(|(_, v)| v.as_str())
         };
         let was = |f: &str| shown.iter().find(|(l, _)| *l == f).map(|(_, v)| v.as_str());
         if offer.kind == Kind::Fiche {
@@ -10834,7 +10836,9 @@ impl Session {
             if done {
                 // Une fiche ouverte montre ce qui vient d'être pris, et
                 // s'enregistrera contre lui.
-                if self.drug_form.as_ref().is_some_and(|d| d.id == card.id) {
+                // Jamais par-dessus une saisie : en cours d'écriture, la fiche
+                // garde ce qu'on y tape, et son enregistrement se dira refusé.
+                if self.drug_reading && self.drug_form.as_ref().is_some_and(|d| d.id == card.id) {
                     self.drug_form = Some(new.clone());
                     self.drug_base = Some(new);
                 }
@@ -10852,8 +10856,29 @@ impl Session {
         if fields.is_empty() {
             return Ok(false);
         }
+        // Tous ou aucun, jusqu'aux champs qui ne changent pas : l'entrée
+        // entière dit encore ce que la ligne montrait.
+        let whole: Vec<(String, String)> = shown
+            .iter()
+            .map(|(f, v)| ((*f).to_owned(), v.clone()))
+            .collect();
         self.db
-            .take_entry_values(offer.kind, &offer.card, &fields, &self.operator)
+            .take_entry_values(offer.kind, &offer.card, &fields, &whole, &self.operator)
+    }
+
+    /// What « Prendre leur version » would write of an offer: the fields
+    /// its kind admits, never a card's name (it comes from the list, never
+    /// from the peer).
+    fn takeable_fields(offer: &crate::enligne::Offer) -> Vec<(String, String)> {
+        offer
+            .fields
+            .iter()
+            .filter(|(f, v)| {
+                !(offer.kind == crate::versions::Kind::Fiche && f == "name")
+                    && crate::versions::admissible(offer.kind, f, v)
+            })
+            .cloned()
+            .collect()
     }
 
     /// An offer taken: the list it belongs to is read again.
@@ -63841,7 +63866,11 @@ impl App {
                         if let Ok(list) = session.db.drugs() {
                             session.set_drugs(list);
                         }
-                        if session.drug_form.as_ref().is_some_and(|d| d.id == card.id) {
+                        // Une fiche en cours de saisie garde ce qu'on y tape :
+                        // son enregistrement se dira refusé, et le reprendra.
+                        if session.drug_reading
+                            && session.drug_form.as_ref().is_some_and(|d| d.id == card.id)
+                        {
                             session.drug_form = Some(new.clone());
                             session.drug_base = Some(new);
                         }
@@ -64874,7 +64903,18 @@ impl App {
                 .filter(|o| kind != crate::versions::Kind::Texte || labels.contains_key(&o.name))
                 .map(|o| {
                     let mine = locals.get(&o.card);
-                    let here = crate::enligne::here(&o, mine.map(Vec::as_slice));
+                    // D'une officine du répertoire, « différente » se lit sur
+                    // ce que « Prendre leur version » écrirait : jamais le nom
+                    // d'une fiche, jamais une valeur irrecevable.
+                    let here = if remote {
+                        let takeable = crate::enligne::Offer {
+                            fields: Session::takeable_fields(&o),
+                            ..o.clone()
+                        };
+                        crate::enligne::here(&takeable, mine.map(Vec::as_slice))
+                    } else {
+                        crate::enligne::here(&o, mine.map(Vec::as_slice))
+                    };
                     let summary = Self::offer_summary(&o);
                     let shown = (remote && here == crate::enligne::Here::Differs)
                         .then(|| mine.cloned())
@@ -96107,6 +96147,26 @@ mod tests {
             .unwrap();
         assert_eq!(last.value, "leur valeur");
         assert!(!last.revert);
+        // Un champ qu'on ne prend pas, changé entre-temps : rien non plus.
+        let offer2 = crate::enligne::Offer {
+            fields: vec![(field.to_owned(), "encore la leur".to_owned())],
+            ..offer.clone()
+        };
+        let snap = session.db.offer_locals(Kind::Codex).unwrap()[&card].clone();
+        let other = snap[1].0;
+        assert!(session
+            .db
+            .set_entry_field(
+                Kind::Codex,
+                &name,
+                other,
+                "changé ailleurs",
+                &snap[1].1,
+                "AB",
+                false
+            )
+            .unwrap());
+        assert!(!session.take_theirs(&offer2, &snap).unwrap());
         // Une fiche : jamais son nom.
         session.db.add_drug("Paracétamol test").unwrap();
         let fcard = crate::versions::key("Paracétamol test");

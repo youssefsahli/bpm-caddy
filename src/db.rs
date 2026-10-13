@@ -56023,10 +56023,21 @@ impl Db {
         kind: crate::versions::Kind,
         card: &str,
         fields: &[(String, String, String)],
+        whole: &[(String, String)],
         operator: &str,
     ) -> Result<bool, String> {
         let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let done = (|| -> Result<bool, String> {
+            // `whole` : l'entrée entière telle que l'écran la montrait — un
+            // champ qu'on ne prend pas, changé entre-temps, refuse aussi.
+            let Some((_, _, now)) = self.entry_fields(kind, card)? else {
+                return Ok(false);
+            };
+            for (f, v) in whole {
+                if now.iter().any(|(k, mine)| k == f && mine != v) {
+                    return Ok(false);
+                }
+            }
             for (field, value, shown) in fields {
                 if !self.set_entry_field_in(kind, card, field, value, shown, operator, false)? {
                     return Ok(false);
@@ -58945,6 +58956,7 @@ mod tests {
                         "périmé".to_owned(),
                     ),
                 ],
+                &[],
                 "CD",
             )
             .unwrap();
@@ -58960,6 +58972,7 @@ mod tests {
                     (a.to_owned(), "leur valeur A".to_owned(), local(a)),
                     (b.to_owned(), "leur valeur B".to_owned(), local(b)),
                 ],
+                &[],
                 "CD",
             )
             .unwrap());
