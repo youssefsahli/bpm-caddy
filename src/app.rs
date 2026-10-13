@@ -10947,10 +10947,22 @@ impl Session {
     /// and still listed.
     #[cfg(feature = "sync")]
     fn set_carte_list(&mut self, list: Vec<crate::repertoire::Fiche>) {
+        self.carte.checks = list
+            .iter()
+            .map(|f| crate::finess::check(&f.finess, &f.code_postal, &f.commune, &f.nom))
+            .collect();
+        // Une commune que la liste ignore se pose encore à celle du
+        // registre, quand le registre la met là où elle dit être.
         self.carte.points = list
             .iter()
-            .map(|f| {
-                let c = crate::geo::commune(&f.code_postal, &f.commune)?;
+            .zip(&self.carte.checks)
+            .map(|(f, check)| {
+                let c = crate::geo::commune(&f.code_postal, &f.commune).or(match check {
+                    Some(crate::finess::Check::Here { entry, .. }) => {
+                        crate::finess::commune_of(entry)
+                    }
+                    _ => None,
+                })?;
                 let zone = crate::geo::zone_of(c.dep);
                 Some((zone, crate::geo::project(zone, c.lon, c.lat)))
             })
@@ -14703,6 +14715,8 @@ struct Carte {
     /// sa zone) — calculé une fois par lecture.
     list: Vec<crate::repertoire::Fiche>,
     points: Vec<Option<(crate::geo::Zone, [f32; 2])>>,
+    /// Ce que le registre FINESS dit de chacune — lu une fois par lecture.
+    checks: Vec<Option<crate::finess::Check>>,
     listed: bool,
     /// Quand le répertoire a été lu : revenu à l'onglet après deux
     /// minutes, on le relit — « ouverte » ne reste pas d'hier.
@@ -14943,6 +14957,13 @@ fn demo_directory() -> Vec<crate::repertoire::Fiche> {
                     nom: nom.to_owned(),
                     commune: c.nom.to_owned(),
                     code_postal: c.postcode.to_owned(),
+                    // Un numéro qu'aucune officine ne porte : la démonstration
+                    // montre la pastille cerclée sans nommer une vraie officine.
+                    finess: if town == "Brest" {
+                        "999999999".to_owned()
+                    } else {
+                        String::new()
+                    },
                     parts: parts.into_iter().map(|(k, n)| (k.to_owned(), n)).collect(),
                     present: true,
                     ..crate::repertoire::Fiche::default()
@@ -63200,7 +63221,13 @@ impl App {
                     egui::Stroke::new(2.0_f32, motif::text()),
                 );
             }
-            for (f, point) in session.carte.list.iter().zip(&session.carte.points) {
+            for (i, (f, point)) in session
+                .carte
+                .list
+                .iter()
+                .zip(&session.carte.points)
+                .enumerate()
+            {
                 let Some((zone, p)) = point else {
                     continue;
                 };
@@ -63216,6 +63243,12 @@ impl App {
                 } else {
                     painter.circle_filled(pos, r, motif::bg());
                     painter.circle_stroke(pos, r, egui::Stroke::new(1.5_f32, motif::text_dim()));
+                }
+                // Ce que le registre contredit : un second cercle, pour que
+                // la forme le dise autant que la couleur.
+                let check = session.carte.checks.get(i).copied().flatten();
+                if check.is_some_and(|c| Self::carte_finess_verdict(c).2 == motif::Pict::Stop) {
+                    painter.circle_stroke(pos, r * 1.4, egui::Stroke::new(1.5_f32, motif::alert()));
                 }
                 if session.carte.pick.as_deref() == Some(f.device.as_str()) || resp.hovered() {
                     painter.circle_stroke(pos, r * 1.8, egui::Stroke::new(2.0_f32, motif::text()));
@@ -63233,6 +63266,14 @@ impl App {
                     ui.label(
                         egui::RichText::new(Self::carte_status(f, now)).size(motif::pt(ui, 11.0)),
                     );
+                    if let Some(c) = check {
+                        let (word, color, _) = Self::carte_finess_verdict(c);
+                        ui.label(
+                            egui::RichText::new(word)
+                                .size(motif::pt(ui, 11.0))
+                                .color(color),
+                        );
+                    }
                 });
             }
         });
@@ -63253,6 +63294,67 @@ impl App {
         _config: &Config,
     ) {
         ui.label(tr("carte_no_sync"));
+    }
+
+    /// What the FINESS register says of a declared number, as a word, its
+    /// colour and its mark.
+    #[cfg(feature = "sync")]
+    fn carte_finess_verdict(
+        check: crate::finess::Check,
+    ) -> (&'static str, egui::Color32, motif::Pict) {
+        use crate::finess::Check;
+        match check {
+            Check::Here { renamed: false, .. } => (
+                tr("carte_finess_here"),
+                motif::text_dim(),
+                motif::Pict::Check,
+            ),
+            Check::Here { renamed: true, .. } => {
+                (tr("carte_finess_renamed"), motif::warn(), motif::Pict::Warn)
+            }
+            Check::Elsewhere(_) => (
+                tr("carte_finess_elsewhere"),
+                motif::alert(),
+                motif::Pict::Stop,
+            ),
+            Check::Absent => (tr("carte_finess_absent"), motif::alert(), motif::Pict::Stop),
+        }
+    }
+
+    /// The register's reading of a declared FINESS: the verdict, the
+    /// number, and what the register writes under it.
+    #[cfg(feature = "sync")]
+    fn carte_finess(ui: &mut egui::Ui, finess: &str, check: crate::finess::Check) {
+        use crate::finess::Check;
+        let (word, color, mark) = Self::carte_finess_verdict(check);
+        motif::badge(ui, word, Some(mark), color, mark != motif::Pict::Check);
+        let small = motif::pt(ui, 11.0);
+        let line = match check {
+            Check::Here { entry, .. } | Check::Elsewhere(entry) => trn(
+                "carte_finess_entry",
+                &[
+                    &finess.trim().to_uppercase(),
+                    &entry.nom,
+                    &entry.code_postal,
+                    &entry.ville,
+                ],
+            ),
+            Check::Absent => trn(
+                "carte_finess_unknown",
+                &[
+                    &finess.trim().to_uppercase(),
+                    &crate::db::format_french_date(crate::finess::AS_OF),
+                ],
+            ),
+        };
+        ui.add(
+            egui::Label::new(
+                egui::RichText::new(line)
+                    .size(small)
+                    .color(motif::text_dim()),
+            )
+            .wrap(),
+        );
     }
 
     /// A label cut to what a button of `width` shows, with « … » — a
@@ -63343,12 +63445,18 @@ impl App {
                         .pick
                         .as_ref()
                         .and_then(|d| session.carte.list.iter().find(|f| &f.device == d));
+                    let chosen_check = session
+                        .carte
+                        .pick
+                        .as_ref()
+                        .and_then(|d| session.carte.list.iter().position(|f| &f.device == d))
+                        .and_then(|i| session.carte.checks.get(i).copied().flatten());
                     if let Some(f) = chosen {
                         motif::section(ui, f.nom.as_str());
                         dim(&Self::carte_place(f), ui);
                         ui.label(Self::carte_status(f, now));
-                        if !f.finess.is_empty() {
-                            dim(&trf("carte_finess_line", &f.finess), ui);
+                        if let Some(check) = chosen_check {
+                            Self::carte_finess(ui, &f.finess, check);
                         }
                         if let Some(fp) = crate::repertoire::fingerprint(&f.device) {
                             dim(&trf("carte_key_line", fp), ui);
@@ -63449,6 +63557,34 @@ impl App {
                             .char_limit(9)
                             .hint_text(motif::hint(tr("carte_finess_hint"))),
                     );
+                    // Ce que le registre écrit sous le numéro tapé : la
+                    // commune s'en reprend d'un clic, le nom se change dans
+                    // Options › Officine.
+                    if session.carte.finess.trim().len() == 9 {
+                        let (cp, commune) = session.carte.commune.clone().unwrap_or_default();
+                        if let Some(check) = crate::finess::check(
+                            &session.carte.finess,
+                            &cp,
+                            &commune,
+                            &config.pharmacy.name,
+                        ) {
+                            Self::carte_finess(ui, &session.carte.finess, check);
+                            if let crate::finess::Check::Elsewhere(entry) = check {
+                                if let Some(c) = crate::finess::commune_of(entry) {
+                                    if motif::button(
+                                        ui,
+                                        &trn("carte_finess_take", &[&c.nom, &c.postcode]),
+                                    )
+                                    .clicked()
+                                    {
+                                        session.carte.commune =
+                                            Some((c.postcode.to_owned(), c.nom.to_owned()));
+                                        session.locate_me();
+                                    }
+                                }
+                            }
+                        }
+                    }
                     if motif::button(ui, tr("carte_save")).clicked() {
                         save = true;
                     }

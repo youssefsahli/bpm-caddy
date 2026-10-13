@@ -38,6 +38,8 @@ pub mod enligne;
 pub mod entretien;
 pub mod facets;
 pub mod favorites;
+#[cfg(all(feature = "sync", feature = "desktop"))]
+pub mod finess;
 pub mod fuzzy;
 #[cfg(all(feature = "sync", feature = "desktop"))]
 pub mod geo;

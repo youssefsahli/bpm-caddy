@@ -1237,8 +1237,15 @@ qui paraissent au **répertoire** : une pastille par officine, à sa
 commune — pleine si elle est ouverte, creuse sinon, avec depuis quand
 elle n'a pas été vue. Le carré est cette officine. Choisie sur la carte
 ou dans la liste, une officine dit sa commune, son FINESS s'il est
-écrit (déclaré, non vérifié), l'empreinte de sa clé et ce qu'elle
-partage ; « Parcourir… » ouvre son partage dans la fenêtre « En
+écrit, l'empreinte de sa clé et ce qu'elle partage. Le FINESS se lit
+au **registre public** livré avec l'application : « Au registre
+FINESS » quand le registre met l'officine à sa commune, « Autre nom au
+registre » quand il l'y met sous un autre nom, « Ailleurs au
+registre » ou « Absent du registre » sinon — ces deux derniers cerclent
+aussi sa pastille. Le registre dit ce qui ne colle pas ; il ne prouve
+rien, n'importe qui pouvant écrire le numéro d'une autre. En écrivant
+le sien, l'officine voit ce que le registre dit d'elle, et en reprend
+la commune d'un clic. « Parcourir… » ouvre son partage dans la fenêtre « En
 ligne », où chaque entrée se prend d'un geste. **Aucun appairage** :
 rien n'entre de soi-même, et son nom n'est prouvé que par l'empreinte,
 à comparer de vive voix.
@@ -1256,7 +1263,8 @@ cascades — **jamais un patient, une liste de contrôle ni une phrase
 imprimée**. Décocher la retire du répertoire.
 
 Les contours des départements et les communes viennent de l'IGN, de
-l'INSEE et de geo.api.gouv.fr (Licence Ouverte).
+l'INSEE et de geo.api.gouv.fr, le registre des officines de FINESS
+(data.gouv.fr) — tous en Licence Ouverte.
 
 # Ruptures
 

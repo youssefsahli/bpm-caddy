@@ -88,7 +88,7 @@ pub fn communes() -> &'static [Commune] {
 /// Un nom replié pour la recherche : sans accent ni casse, les traits
 /// d'union et les apostrophes comme des espaces — « saint etienne »
 /// trouve « Saint-Étienne ».
-fn folded(text: &str) -> String {
+pub(crate) fn folded(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for c in text.chars().map(crate::fuzzy::fold) {
         let c = if c.is_alphanumeric() { c } else { ' ' };

@@ -906,7 +906,10 @@ clé de réseau n'y passe.
   catalogue, et ce qui peut entrer (`versions::admissible`, sortes
   publiques connues). L'officine qui héberge ne peut ni changer un mot,
   ni parler à la place d'une autre ; « ouverte » se lit à l'heure de la
-  carte signée, contre l'horloge de qui lit.
+  carte signée, contre l'horloge de qui lit. Le FINESS déclaré se lit
+  au registre livré (`src/finess.rs`, l'extraction publique réduite aux
+  officines) : au registre à la commune dite, sous un autre nom,
+  ailleurs, ou absent — signalé, jamais refusé, et jamais une preuve.
 
 Ses bornes : une carte de 4 Kio, un catalogue de 2 Mio **dans sa forme
 exacte** (re-sérialisé, il doit redonner les mêmes octets, et le compte

@@ -46,7 +46,9 @@ line in that test.
   `relay` (the stateless relay between an unreachable post and a phone)
   and `repertoire` (the directory an officine hosts: who appears on the
   map, signed, and what each shares) — all under `sync`; `geo`
-  (département outlines and communes, for the map),
+  (département outlines and communes, for the map), `finess` (the
+  officines of the public FINESS register, read against what a card
+  declares),
   `enligne` (the network journal read as offers to search and take), `release`, `maintenance`, `date`, `fuzzy`, `strings`).
 - `launcher/` — `bpm-caddy-launcher`, auto-updates from GitHub Releases;
   does not depend on the app crate.

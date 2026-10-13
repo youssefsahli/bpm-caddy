@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The map reads each declared FINESS number against the public register
+  (the 20,003 officines of the FINESS extraction of 4 May 2026, shipped
+  with the app): « Au registre FINESS », « Autre nom au registre »,
+  « Ailleurs au registre » or « Absent du registre », with the register's
+  name and town beside it; the last two also ring the officine's dot.
+  Typing one's own number shows what the register says and offers its
+  commune in one click. Flagged, never refused, and never a proof.
+
 ## [0.416.0] - 2026-10-13
 
 ### Added
