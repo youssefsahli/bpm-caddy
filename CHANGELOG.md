@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the value, at warning level at most — never a verdict nobody knows. The
   hedge is part of the reading itself, so the dashboard's call list and
   the companion show it too, and its phrase is rewritable in « Textes ».
+  The level beside a bounded value follows the same rule: « <45 » of a DFG
+  may be low or critically low, so it reads « à interpréter », and the
+  reading says « peut-être effondré », at warning level.
 
 ## [0.423.0] - 2026-10-13
 

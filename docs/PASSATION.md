@@ -132,8 +132,9 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   laisse un palier ouvert donne « à vérifier » (fait le 13/10,
   `Reading::bound`, `renal::read_bounded`), et les règles de `biology`
   disent « à vérifier » quand une borne chevauche leur seuil (fait le
-  13/10). Reste : la lecture d'intervalle (« élevé », « bas ») juge
-  encore une borne à son nombre ;
+  13/10), comme la lecture d'intervalle : une borne qui couvre deux
+  niveaux se lit « à interpréter », en disant le pire qu'elle permet
+  (`biology::reading_level`) ;
   une vingtaine de lignes « Entre X et Y » ont encore `below: Y` (Y
   exclu) — à relire contre chaque RCP (les trois anticoagulant et
   cotrimoxazole sont faits) ; metformine « Entre 45 et 60 » est 45–59

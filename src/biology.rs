@@ -74,6 +74,32 @@ pub fn level(a: &Analyte, value: f64) -> Level {
     }
 }
 
+/// Les deux niveaux qu'une valeur bornée permet : à sa borne, et au bout
+/// ouvert de la borne (« <60 » : jusqu'à zéro). Égaux pour une valeur
+/// sans borne.
+pub fn levels_bounded(a: &Analyte, value: f64, sign: &str) -> (Level, Level) {
+    let near = level(a, effective(value, sign));
+    let far = match sign {
+        "<" | "≤" => level(a, f64::NEG_INFINITY),
+        ">" | "≥" => level(a, f64::INFINITY),
+        _ => near,
+    };
+    (near, far)
+}
+
+/// **Le niveau d'un résultat, borne comprise** : celui que toute valeur
+/// permise partage, sinon `Unknown` — « à interpréter » : « <60 » d'un
+/// DFG peut être bas ou effondré, et l'écran ne choisit pas pour le
+/// laboratoire.
+pub fn reading_level(a: &Analyte, value: f64, sign: &str) -> Level {
+    let (near, far) = levels_bounded(a, value, sign);
+    if near == far {
+        near
+    } else {
+        Level::Unknown
+    }
+}
+
 /// The interval as it reads on screen ("3,5 – 5,0 mmol/L"), or an empty
 /// string for an analyte that has none.
 pub fn interval_text(a: &Analyte) -> String {
@@ -319,7 +345,36 @@ pub fn read(readings: &[Reading], treatments: &[crate::revue::Treatment]) -> Vec
         let Some(a) = find(code) else {
             continue;
         };
-        let lv = level(a, r.effective());
+        let (lv, far) = levels_bounded(a, r.value, r.bound);
+        // Une borne qui couvre deux niveaux : « à interpréter », en disant
+        // le pire qu'elle permet — un avertissement s'il est critique.
+        if lv != far {
+            let worst = if far.critical() || !lv.notable() {
+                far
+            } else {
+                lv
+            };
+            out.push(Finding {
+                severity: if worst.critical() {
+                    Severity::Warn
+                } else {
+                    Severity::Info
+                },
+                code: a.code,
+                text: format!(
+                    "{} {} {} — {} : peut-être {} ({}). {}",
+                    a.label,
+                    value_text(r.value, r.bound),
+                    a.unit,
+                    level_word(Level::Unknown),
+                    level_word(worst),
+                    interval_text(a),
+                    a.note
+                ),
+                unsure: String::new(),
+            });
+            continue;
+        }
         if lv.notable() {
             out.push(Finding {
                 severity: if lv.critical() {
@@ -2181,6 +2236,12 @@ mod tests {
             .into_iter()
             .find(|f| f.text.contains("metformine"))
         };
+        // La ligne d'intervalle : « <45 » d'un DFG peut être bas ou
+        // effondré — à interpréter, peut-être effondré.
+        let a = find("DFG").unwrap();
+        assert_eq!(reading_level(a, 45.0, "<"), Level::Unknown);
+        assert_eq!(reading_level(a, 45.0, ""), level(a, 45.0));
+        assert_eq!(reading_level(a, 120.0, ">"), level(a, 121.0));
         // Lu sans résoudre — le tableau de bord, le compagnon — aussi.
         let raw = read(
             &[Reading {

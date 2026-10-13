@@ -28721,14 +28721,10 @@ impl App {
                                         // interval to be read against.
                                         match crate::biology::find(&r.code) {
                                             Some(a) => {
-                                                let level = crate::biology::level(
+                                                let level = crate::biology::reading_level(
                                                     a,
-                                                    crate::biology::effective(
-                                                        r.value,
-                                                        crate::biology::bound_sign(
-                                                            r.value, &r.remark,
-                                                        ),
-                                                    ),
+                                                    r.value,
+                                                    crate::biology::bound_sign(r.value, &r.remark),
                                                 );
                                                 if level.notable() {
                                                     ui.label(
@@ -30143,10 +30139,7 @@ impl App {
                 let bound = crate::biology::bound_sign(r.value, &r.remark);
                 let level = crate::biology::find(&r.code)
                     .map(|a| {
-                        crate::biology::level_word(crate::biology::level(
-                            a,
-                            crate::biology::effective(r.value, bound),
-                        ))
+                        crate::biology::level_word(crate::biology::reading_level(a, r.value, bound))
                     })
                     .unwrap_or("")
                     .to_owned();
