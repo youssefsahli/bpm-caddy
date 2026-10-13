@@ -10120,7 +10120,6 @@ impl Session {
             .collect()
     }
 
-    /// The label a tab shows: the view's name, or the file's.
     /// A tab's name in « Aller à… » and its recents: without a count, which
     /// a remembered label would keep after it went down.
     fn goto_label(&self, tab: &WorkTab) -> String {
@@ -10130,6 +10129,7 @@ impl Session {
         }
     }
 
+    /// The label a tab shows: the view's name, or the file's.
     fn tab_label(&self, tab: &WorkTab) -> String {
         match tab {
             WorkTab::Dashboard => tr("tab_dashboard").to_owned(),
@@ -10981,6 +10981,14 @@ impl Session {
         self.carte.presence_raw = raw;
     }
 
+    /// Whether an answer read at `address` is still about the directory
+    /// the base names — not one left (or changed by another post) while it
+    /// was read.
+    #[cfg(feature = "sync")]
+    fn carte_still_at(&self, address: &str) -> bool {
+        self.carte_address().unwrap_or_default() == address
+    }
+
     /// The directory address the base holds now — read apart from
     /// `carte.presence`, against which the form writes.
     #[cfg(feature = "sync")]
@@ -11055,10 +11063,8 @@ impl Session {
     fn carte_list_from(&mut self, address: String) {
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
-            let _ = tx.send(CarteAnswer::List(crate::repertoire::list(
-                &address,
-                Duration::from_secs(8),
-            )));
+            let read = crate::repertoire::list(&address, Duration::from_secs(8));
+            let _ = tx.send(CarteAnswer::List(address, read));
         });
         self.carte.job = Some(rx);
     }
@@ -11139,6 +11145,7 @@ impl Session {
                 }
             }
             let _ = tx.send(CarteAnswer::Sweep(Box::new(Sweep {
+                address,
                 list,
                 got,
                 kind,
@@ -11171,12 +11178,16 @@ impl Session {
         // premier : un balayage peut durer plus d'une minute.
         self.carte.last_sweep = Some(Instant::now());
         let Sweep {
+            address,
             list,
             got,
             kind,
             query,
             open,
         } = sweep;
+        if !self.carte_still_at(&address) {
+            return;
+        }
         let list = match list {
             Ok(list) => list,
             Err(e) => {
@@ -11841,12 +11852,15 @@ impl Session {
     #[cfg(feature = "sync")]
     fn carte_answer(&mut self, answer: CarteAnswer) {
         match answer {
-            CarteAnswer::List(Ok(list)) => {
+            // D'un répertoire quitté pendant la lecture : ni sa liste, ni
+            // son erreur.
+            CarteAnswer::List(address, _) if !self.carte_still_at(&address) => {}
+            CarteAnswer::List(_, Ok(list)) => {
                 self.carte.note = None;
                 self.set_carte_list(list);
             }
             CarteAnswer::Sweep(sweep) => self.carte_swept(*sweep),
-            CarteAnswer::List(Err(e)) => {
+            CarteAnswer::List(_, Err(e)) => {
                 self.carte.note = Some((true, trf("carte_unreachable", &e)));
             }
             CarteAnswer::Catalogue(fiche, Ok(articles)) => {
@@ -15231,7 +15245,8 @@ struct Remote {
 /// Ce que le fil du répertoire rapporte.
 #[cfg(feature = "sync")]
 enum CarteAnswer {
-    List(Result<Vec<crate::repertoire::Fiche>, String>),
+    /// L'adresse lue, et ce qu'elle a répondu.
+    List(String, Result<Vec<crate::repertoire::Fiche>, String>),
     Sweep(Box<Sweep>),
     Catalogue(
         Box<crate::repertoire::Fiche>,
@@ -15248,6 +15263,9 @@ type CarteRefresh = (String, Result<Vec<crate::repertoire::Fiche>, String>);
 /// chacun contre sa carte), et ce que « En ligne » ouvrira.
 #[cfg(feature = "sync")]
 struct Sweep {
+    /// Le répertoire lu : une réponse d'un répertoire qu'on a quitté
+    /// entre-temps ne s'installe pas.
+    address: String,
     list: Result<Vec<crate::repertoire::Fiche>, String>,
     got: Vec<(
         crate::repertoire::Fiche,
@@ -95871,6 +95889,17 @@ mod tests {
             .unwrap();
         session.set_carte_list(vec![fiche("x"), fiche("y"), fiche("z")]);
         assert_eq!(session.carte_fresh, 0);
+        // Une liste demandée à l'ancien répertoire, arrivée après le
+        // changement : elle ne s'installe pas, ne fausse pas le relevé.
+        session.carte_answer(super::CarteAnswer::List(
+            "ancien.example:7747".to_owned(),
+            Ok(vec![fiche("p"), fiche("q")]),
+        ));
+        assert_eq!(session.carte.list.len(), 3);
+        assert!(session
+            .carte_seen
+            .as_ref()
+            .is_some_and(|s| !s.contains(&"p".repeat(64))));
     }
 
     /// **Un balayage du répertoire** : ce qui est lu se garde sous
@@ -95909,6 +95938,7 @@ mod tests {
             fiche("b", "Pharmacie B", "db"),
         ];
         session.carte_swept(super::Sweep {
+            address: String::new(),
             list: Ok(list.clone()),
             got: vec![
                 (list[0].clone(), Ok(vec![article])),
@@ -95934,6 +95964,7 @@ mod tests {
         session.online.as_mut().unwrap().query = "x".to_owned();
         let article = session.carte.catalogues.values().next().unwrap().1[0].clone();
         session.carte_swept(super::Sweep {
+            address: String::new(),
             list: Ok(list.clone()),
             got: vec![(list[1].clone(), Ok(vec![article]))],
             kind: None,
@@ -95953,6 +95984,7 @@ mod tests {
         // Fermée, la fenêtre ne se rouvre pas d'elle-même.
         session.online = None;
         session.carte_swept(super::Sweep {
+            address: String::new(),
             list: Ok(list.clone()),
             got: Vec::new(),
             kind: None,
@@ -95963,6 +95995,7 @@ mod tests {
         // Une nouvelle carte, un autre catalogue : l'ancien ne s'offre plus.
         session.online = None;
         session.carte_swept(super::Sweep {
+            address: String::new(),
             list: Ok(vec![fiche("a", "Pharmacie A", "da2")]),
             got: Vec::new(),
             kind: None,
