@@ -45,9 +45,13 @@ filtre ce qui manque ici, parcourt une officine — deux relectures,
 corrigées) a passé son smoke dans les quatre formes (634ea4b) ; la
 0.416.0 (la carte des officines : un répertoire qu'une officine
 héberge, sans appairage — cinq relectures dont deux de sécurité,
-corrigées) a passé son smoke dans les quatre formes (309fddd) : **c'est
-elle à publier** — `git tag v0.416.0 309fddd && git push origin
-v0.416.0` (à défaut, la 0.415.0 : `git tag v0.415.0 634ea4b`) ; les étiquettes intermédiaires n'ont jamais été
+corrigées) a passé son smoke dans les quatre formes (309fddd) ; la
+0.417.0 (le FINESS déclaré lu au registre public livré, tout le
+répertoire cherché d'un geste, la liste de la carte filtrée et triée par
+distance — chaque commit relu, quatre relectures corrigées) a passé son
+smoke dans les quatre formes (d0d8a48) : **c'est elle à publier** —
+`git tag v0.417.0 d0d8a48 && git push origin v0.417.0` (à défaut, la
+0.416.0 : `git tag v0.416.0 309fddd`) ; les étiquettes intermédiaires n'ont jamais été
 posées, et **la 0.395.0 ne se publie pas** (elle lisait mal les doses de
 charge et les titrations, corrigé dans la 0.396.0).
 
