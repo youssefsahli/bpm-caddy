@@ -151,10 +151,9 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
 - carnet : deux postes peuvent ouvrir le même flacon dans les deux
   secondes (le lot proposé, le lot périmé ou d'un autre vaccin, et le
   lot reçu déjà périmé : faits le 13/10) ;
-- impression d'un entretien : une section vide de la fiche s'imprime en
-  titre seul ; « (aucun traitement enregistré) », « Médecin traitant »
-  et « {a} ans » écrits en dur dans `pdf.rs`, et le CR imprime « né(e)
-  le  » sans date ;
+- impression d'un entretien : fait le 13/10 (les phrases de `pdf.rs` dans
+  `strings.fr.toml`, « — » pour une naissance inconnue et sous une liste
+  vide) ;
 - **le document d'équipe (`notes_equipe.md`) est un fichier en clair**
   à côté de la base, que son modèle invite à remplir de noms
   (« Patients à recontacter ») : hors du chiffrement, hors des copies et

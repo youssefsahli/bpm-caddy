@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Printed papers: a file without a birth date prints « — » instead of an
+  empty « né(e) le », an entretien with nothing to cover prints « — »
+  under its heading, and the last phrases written in `pdf.rs` (no
+  treatment, médecin traitant, age) moved to `strings.fr.toml`.
+
 ## [0.422.0] - 2026-10-13
 
 ### Added

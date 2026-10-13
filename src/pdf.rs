@@ -381,10 +381,20 @@ fn sample_patient() -> Patient {
     }
 }
 
+/// A birth date as printed: « — » when the file has none, never an empty
+/// « né(e) le ».
+fn born_on(iso: &str) -> String {
+    if iso.trim().is_empty() {
+        "—".to_owned()
+    } else {
+        crate::db::format_french_date(iso)
+    }
+}
+
 /// One markup list line per treatment, each value escaped.
 fn treatments_markup(treats: &[Drug]) -> String {
     if treats.is_empty() {
-        return format!("- #{}", typst_str("(aucun traitement enregistré)"));
+        return format!("- #{}", typst_str(crate::strings::tr("pdf_no_treatment")));
     }
     treats
         .iter()
@@ -421,7 +431,7 @@ fn fill_cr_template(
     next_rdv: &str,
 ) -> String {
     let physician = if patient.physician.trim().is_empty() {
-        "Médecin traitant"
+        crate::strings::tr("pdf_physician")
     } else {
         patient.physician.trim()
     };
@@ -450,10 +460,7 @@ fn fill_cr_template(
             ),
             (
                 "{{BIRTH_DATE}}",
-                format!(
-                    "#{}",
-                    typst_str(&crate::db::format_french_date(&patient.birth_date))
-                ),
+                format!("#{}", typst_str(&born_on(&patient.birth_date))),
             ),
             ("{{KIND}}", format!("#{}", typst_str(kind.label()))),
             ("{{DATE}}", format!("#{}", typst_str(date))),
@@ -972,15 +979,18 @@ fn bilan_values(data: &BilanData, pharmacy: &PharmacyConfig) -> Vec<(&'static st
     ));
     src.push_str("#v(2mm)#line(length: 100%, stroke: 0.8pt)#v(3mm)\n");
     src.push_str(&format!(
-        "#text(14pt, weight: \"bold\")[#{}] #h(4mm) #text(10pt)[né(e) le #{}]\n",
+        "#text(14pt, weight: \"bold\")[#{}] #h(4mm) #text(10pt)[#{}]\n",
         typst_str(&data.patient.full_name()),
-        typst_str(&crate::db::format_french_date(&data.patient.birth_date))
+        typst_str(&crate::strings::trf(
+            "pdf_born_on",
+            born_on(&data.patient.birth_date)
+        ))
     ));
     let mut header = Vec::new();
     if !data.patient.physician.trim().is_empty() {
-        header.push(format!(
-            "Médecin traitant : {}",
-            data.patient.physician.trim()
+        header.push(crate::strings::trf(
+            "pdf_physician_line",
+            data.patient.physician.trim(),
         ));
     }
     if !data.patient.phone.trim().is_empty() {
@@ -1961,10 +1971,7 @@ fn traitement_values(data: &FicheData, pharmacy: &PharmacyConfig) -> Vec<(&'stat
         ),
         (
             "{{BIRTH_DATE}}",
-            format!(
-                "#{}",
-                typst_str(&crate::db::format_french_date(&data.patient.birth_date))
-            ),
+            format!("#{}", typst_str(&born_on(&data.patient.birth_date))),
         ),
         ("{{DATE}}", format!("#{}", typst_str(data.today))),
         ("{{PRESCRIBER}}", prescriber),
@@ -2831,10 +2838,7 @@ fn conciliation_values(
         ),
         (
             "{{BIRTH_DATE}}",
-            format!(
-                "#{}",
-                typst_str(&crate::db::format_french_date(&data.patient.birth_date))
-            ),
+            format!("#{}", typst_str(&born_on(&data.patient.birth_date))),
         ),
         ("{{DATE}}", format!("#{}", typst_str(data.today))),
         ("{{PHYSICIAN}}", physician),
@@ -4289,6 +4293,11 @@ fn typst_str(s: &str) -> String {
 /// so a point that wraps continues under its text and not under the
 /// box.
 fn checklist_markup(points: &[&str]) -> String {
+    // Rien à couvrir : un tiret sous le titre, plutôt qu'un titre seul qui
+    // a l'air d'une page tronquée.
+    if points.is_empty() {
+        return "#\"—\"".to_owned();
+    }
     points
         .iter()
         .map(|point| {
@@ -4373,11 +4382,11 @@ fn interview_values(
     let birth = if paper.patient.birth_date.trim().is_empty() {
         "—".to_owned()
     } else {
-        crate::db::format_french_date(&paper.patient.birth_date)
+        born_on(&paper.patient.birth_date)
     };
     let age = paper.age.map_or_else(
         || crate::strings::tr("trod_pdf_no_age").to_owned(),
-        |a| format!("{a} ans"),
+        |a| crate::strings::trf("pdf_age", a),
     );
     vec![
         ("{{PHARMACY_NAME}}", s(&pharmacy.name)),
@@ -4596,10 +4605,7 @@ fn fill_ordonnance_template(
             ),
             (
                 "{{BIRTH_DATE}}",
-                format!(
-                    "#{}",
-                    typst_str(&crate::db::format_french_date(&patient.birth_date))
-                ),
+                format!("#{}", typst_str(&born_on(&patient.birth_date))),
             ),
             ("{{INDICATION}}", format!("#{}", typst_str(indication))),
             ("{{DATE}}", format!("#{}", typst_str(today))),
@@ -4746,7 +4752,7 @@ fn vaccination_carnet_values(
         rows.push_str("[], [], [], [], [], [], [],\n");
     }
     let head = typst_str(&patient.full_name());
-    let born = typst_str(&crate::db::format_french_date(&patient.birth_date));
+    let born = typst_str(&born_on(&patient.birth_date));
     // The foot of the page is the officine's own mention, and there is
     // no line at all until it writes one.
     let foot = if mention.trim().is_empty() {
@@ -5549,7 +5555,7 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
             ("{{PATIENT_NAME}}", s(&patient.full_name())),
             (
                 "{{BIRTH_DATE}}",
-                s(&crate::db::format_french_date(&patient.birth_date)),
+                s(&born_on(&patient.birth_date)),
             ),
             ("{{KIND}}", s(InterviewKind::Bpm.label())),
             ("{{DATE}}", s("24/08/2026")),
@@ -6938,7 +6944,7 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
             ("{{PATIENT_NAME}}", s(&patient.full_name())),
             (
                 "{{BIRTH_DATE}}",
-                s(&crate::db::format_french_date(&patient.birth_date)),
+                s(&born_on(&patient.birth_date)),
             ),
             (
                 "{{INDICATION}}",
@@ -7802,10 +7808,7 @@ fn watch_sheet_values(data: &WatchSheet, pharmacy: &PharmacyConfig) -> Vec<(&'st
         ),
         (
             "{{BIRTH_DATE}}",
-            format!(
-                "#{}",
-                typst_str(&crate::db::format_french_date(&data.patient.birth_date))
-            ),
+            format!("#{}", typst_str(&born_on(&data.patient.birth_date))),
         ),
         ("{{DATE}}", format!("#{}", typst_str(data.today))),
         ("{{ROWS}}", body),
@@ -8098,12 +8101,12 @@ fn trod_values(p: &TrodPaper, pharmacy: &PharmacyConfig) -> Vec<(&'static str, S
     };
     let age = p.age.map_or_else(
         || crate::strings::tr("trod_pdf_no_age").to_owned(),
-        |a| format!("{a} ans"),
+        |a| crate::strings::trf("pdf_age", a),
     );
     let birth = if p.patient.birth_date.trim().is_empty() {
         "—".to_owned()
     } else {
-        crate::db::format_french_date(&p.patient.birth_date)
+        born_on(&p.patient.birth_date)
     };
     vec![
         ("{{PHARMACY_NAME}}", s(&pharmacy.name)),
@@ -8220,7 +8223,7 @@ fn trod_letter_values(p: &TrodPaper, pharmacy: &PharmacyConfig) -> Vec<(&'static
     let birth = if p.patient.birth_date.trim().is_empty() {
         "—".to_owned()
     } else {
-        crate::db::format_french_date(&p.patient.birth_date)
+        born_on(&p.patient.birth_date)
     };
     vec![
         ("{{PHARMACY_NAME}}", s(&pharmacy.name)),
@@ -8402,12 +8405,12 @@ fn vaccination_values(
     };
     let age = p.age.map_or_else(
         || crate::strings::tr("trod_pdf_no_age").to_owned(),
-        |a| format!("{a} ans"),
+        |a| crate::strings::trf("pdf_age", a),
     );
     let birth = if p.patient.birth_date.trim().is_empty() {
         "—".to_owned()
     } else {
-        crate::db::format_french_date(&p.patient.birth_date)
+        born_on(&p.patient.birth_date)
     };
     vec![
         ("{{PHARMACY_NAME}}", s(&pharmacy.name)),
