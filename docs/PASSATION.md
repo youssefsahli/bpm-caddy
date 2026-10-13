@@ -156,11 +156,11 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   (sans mot de passe) ; l'export tourne encore dans l'image — à passer à
   un fil (un paquet porte depuis le 13/10 la taille et l'empreinte de
   chaque fichier, et un paquet coupé se refuse) ;
-- **changement de mot de passe interrompu** (coupure de courant entre
-  deux fichiers) : la base et ses fichiers de pièces et de registre
-  restent sous deux clés, et aucune ne les ouvre tous — à prévoir : une
-  marque « changement en cours » et l'ouverture avec l'ancienne clé pour
-  finir ; les autres postes sur la même base reçoivent « file is not a
+- **changement de mot de passe interrompu** : fait le 13/10 — deux
+  témoins chiffrés l'un par l'autre (`rekey_witnesses`), et l'ouverture
+  remet les trois fichiers sous le mot de passe tapé (`finish_rekey`) ;
+  un verrou sur le témoin empêche un autre poste de défaire un changement
+  en cours. Les autres postes sur la même base reçoivent « file is not a
   database » sans explication ; mots de passe non effacés de la mémoire
   (`zeroize`) ; pas d'action « créer une nouvelle base ici » maintenant
   qu'un chemin écrit et absent est refusé ;

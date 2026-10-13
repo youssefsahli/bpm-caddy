@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A password change interrupted between its three files (a power cut, a
+  crash) no longer leaves the base, scans and register under two keys
+  that no password opens together. Before rekeying, each password is kept
+  in a small file encrypted by the other; reopening with either the old
+  or the new password puts all three files under the one typed, and the
+  two files are removed. While a change is running on another post (its
+  lock held), opening waits instead of undoing it.
+
 ### Changed
 
 - « Copier la base vers… », the bundle (« paquet ») and the daily copies
