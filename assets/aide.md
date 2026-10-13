@@ -1371,6 +1371,18 @@ quatre-vingt-dix jours sans mise à jour n'est plus « en cours ».
 Le journal n'est pas modifiable ; une erreur se retire, et le retrait
 reste enregistré.
 
+**Sur la carte des officines.** Une officine qui paraît sur la carte
+peut y publier ses ruptures et substitutions : « Publier les ruptures et
+substitutions », dans « Cette officine sur la carte ». Partent celles
+qu'elle a notées elle-même, des quatre-vingt-dix derniers jours, sans
+celles retirées et **sans les initiales** de qui les a notées — jamais
+ce qu'elle a reçu d'une autre. « Sur la carte… », dans la vue Ruptures,
+montre ce que les officines du répertoire publient, lu dans les
+catalogues déjà parcourus (« Chercher dans tout le répertoire… » les lit
+tous) ; « Prendre » ajoute un événement au journal d'ici, au nom de
+l'officine qui l'a publié, et il compte alors dans les substitutions
+proposées sur la fiche.
+
 # Réseau d'officines
 
 Les officines d'un groupement peuvent partager ce journal : « Réseau

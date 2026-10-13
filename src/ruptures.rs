@@ -436,6 +436,41 @@ pub fn decode(bytes: &[u8]) -> Option<Event> {
     })
 }
 
+/// Combien d'événements une officine publie au plus sur la carte.
+pub const PUBLIC_MOST: usize = 100;
+
+/// **Ce que l'officine publie de son journal sur la carte des
+/// officines**, si elle l'a choisi : ses propres événements (jamais ce
+/// qu'elle a reçu), des [`HORIZON_DAYS`] derniers jours, ni retirés ni
+/// retraits eux-mêmes — le plus récent d'abord, [`PUBLIC_MOST`] au plus.
+/// Sans initiales : la carte est lue par n'importe qui, et qui a noté
+/// l'événement ne regarde que l'officine.
+pub fn public_events(events: &[Event], today: &str) -> Vec<Event> {
+    let withdrawn: std::collections::HashSet<&str> = events
+        .iter()
+        .filter(|e| e.kind == Kind::Retrait && e.source.is_empty())
+        .map(|e| e.refers.as_str())
+        .collect();
+    let mut out: Vec<Event> = events
+        .iter()
+        .filter(|e| {
+            e.source.is_empty()
+                && e.kind != Kind::Retrait
+                && !withdrawn.contains(e.uid.as_str())
+                && crate::date::days_between(&e.day, today)
+                    .is_some_and(|d| (0..=HORIZON_DAYS).contains(&d))
+        })
+        .cloned()
+        .map(|mut e| {
+            e.operator.clear();
+            e
+        })
+        .collect();
+    out.sort_by(|a, b| b.day.cmp(&a.day));
+    out.truncate(PUBLIC_MOST);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -547,6 +582,30 @@ mod tests {
             source: source.to_owned(),
             refers: String::new(),
         }
+    }
+
+    /// Ce qui part sur la carte : les siens, récents, non retirés, sans
+    /// initiales — jamais ce qu'une autre officine a envoyé.
+    #[test]
+    fn only_recent_own_living_events_go_public() {
+        let old = ev("a:1", "2026-01-01", Kind::Rupture, "Diprosone", "", "");
+        let live = ev("a:2", "2026-10-01", Kind::Rupture, "Locoid", "", "");
+        let sub = ev(
+            "a:3",
+            "2026-10-05",
+            Kind::Substitution,
+            "Locoid",
+            "Betneval",
+            "",
+        );
+        let gone = ev("a:4", "2026-10-06", Kind::Rupture, "Erreur", "", "");
+        let mut retrait = ev("a:5", "2026-10-07", Kind::Retrait, "", "", "");
+        retrait.refers = "a:4".into();
+        let theirs = ev("b:1", "2026-10-08", Kind::Rupture, "Dafalgan", "", "Gare");
+        let out = public_events(&[old, live, sub, gone, retrait, theirs], "2026-10-13");
+        let uids: Vec<&str> = out.iter().map(|e| e.uid.as_str()).collect();
+        assert_eq!(uids, ["a:3", "a:2"]);
+        assert!(out.iter().all(|e| e.operator.is_empty()));
     }
 
     /// **Un retrait ne vaut que de l'auteur de l'événement** : un membre

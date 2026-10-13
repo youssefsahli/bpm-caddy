@@ -900,7 +900,12 @@ clé de réseau n'y passe.
   journal garde les versions d'une entrée supprimée, qui ne se publie
   plus), **et qu'elle a cochée « Publier sur la carte »** (table
   `published_entries`, sorte et clé, qui voyage entre les postes sur le
-  flux Officine ; lue par `App::cards_here`) :
+  flux Officine ; lue par `App::cards_here`) — et, si elle l'a choisi
+  (`Presence::ruptures`), ses ruptures et substitutions récentes en
+  articles de sorte `rupture` (`repertoire::supply_articles`,
+  `ruptures::public_events` : les siennes, sans initiales ; lues au nom
+  de la carte signée par `supply_of`, qu'une version d'avant écarte
+  article par article) :
   jamais une liste, une phrase, ce qu'une officine appairée a réécrit, ni
   un patient, ni un nom qu'elle a reçu. Décochée, ou l'adresse changée,
   une carte de départ la retire. Le réglage retient le répertoire qui a

@@ -5496,6 +5496,11 @@ struct Session {
     /// plus donnés. Refaite à chaque image, elle relisait tout le journal
     /// du réseau par produit, soixante fois par seconde.
     rupt_view: Option<((u64, String), Vec<RuptRow>)>,
+    /// « Sur la carte » : ce que les officines du répertoire publient de
+    /// leurs ruptures — ouverte, son filtre, et les lignes relues contre
+    /// (les catalogues lus, `supply_rev`).
+    #[cfg(feature = "sync")]
+    rupt_map: Option<RuptMap>,
     /// Ce qu'une synchronisation automatique du réseau vient d'apprendre,
     /// et quand : la barre d'état le dit un moment.
     net_news: Option<(Instant, String)>,
@@ -6609,6 +6614,8 @@ impl Session {
             care: None,
             care_sheet: None,
             care_due: None,
+            #[cfg(feature = "sync")]
+            rupt_map: None,
             published: None,
             #[cfg(feature = "sync")]
             publications: None,
@@ -11059,6 +11066,7 @@ impl Session {
             let p = self.carte.presence.clone();
             self.carte.address.clone_from(&p.adresse);
             self.carte.paraitre = p.paraitre;
+            self.carte.ruptures = p.ruptures;
             self.carte.finess.clone_from(&p.finess);
             self.carte.commune = (!p.code_postal.is_empty()).then_some((p.code_postal, p.commune));
             self.carte.buffers_from = Some(self.carte.presence_raw.clone());
@@ -11535,6 +11543,17 @@ impl Session {
         }
     }
 
+    /// The supply events this officine publishes on the map, when it chose
+    /// to: its own, recent, living, without initials.
+    #[cfg(feature = "sync")]
+    fn public_supply(&self, wanted: bool) -> Vec<crate::repertoire::Article> {
+        if !wanted {
+            return Vec::new();
+        }
+        let events = self.db.supply_events().unwrap_or_default();
+        crate::repertoire::supply_articles(&crate::ruptures::public_events(&events, &self.today))
+    }
+
     /// The entries this base holds now, by kind and key — what the
     /// catalogue may publish: the journal keeps a deleted entry's versions.
     #[cfg(feature = "sync")]
@@ -11571,9 +11590,12 @@ impl Session {
         }
         self.reload_card_edits();
         let here = self.cards_here();
-        let (bytes, _) = crate::repertoire::catalogue_where(&self.card_edits, |k, card| {
-            here.contains(&(k.key(), card.to_owned()))
-        });
+        let supply = self.public_supply(self.carte.presence.ruptures);
+        let (bytes, _) = crate::repertoire::catalogue_with(
+            &self.card_edits,
+            |k, card| here.contains(&(k.key(), card.to_owned())),
+            &supply,
+        );
         let articles: Vec<crate::repertoire::Article> =
             serde_json::from_slice(&bytes).unwrap_or_default();
         let offers: Vec<crate::enligne::Offer> = articles
@@ -11677,6 +11699,7 @@ impl Session {
         let next = crate::repertoire::Presence {
             adresse: self.carte.address.trim().to_owned(),
             paraitre: self.carte.paraitre,
+            ruptures: self.carte.ruptures,
             code_postal,
             commune,
             finess,
@@ -12055,12 +12078,15 @@ impl Session {
         } else {
             std::collections::HashSet::new()
         };
+        let supply = self.public_supply(present && p.ruptures);
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let (catalogue, parts) = if present {
-                crate::repertoire::catalogue_where(&edits, |k, card| {
-                    here.contains(&(k.key(), card.to_owned()))
-                })
+                crate::repertoire::catalogue_with(
+                    &edits,
+                    |k, card| here.contains(&(k.key(), card.to_owned())),
+                    &supply,
+                )
             } else {
                 (Vec::new(), Vec::new())
             };
@@ -15608,6 +15634,23 @@ enum MessagesTo {
     Group,
 }
 
+/// Un événement publié sur la carte, et s'il est déjà au journal d'ici.
+#[cfg(feature = "sync")]
+type MapEvent = (crate::ruptures::Event, bool);
+
+/// La fenêtre « Ruptures sur la carte ».
+#[cfg(feature = "sync")]
+#[derive(Default)]
+struct RuptMap {
+    filter: String,
+    /// Ce qu'un balayage qui n'est pas parti dit, et si c'est une erreur.
+    note: Option<(bool, String)>,
+    /// (empreintes des catalogues lus, `supply_rev`) et les lignes :
+    /// l'événement, au nom de l'officine qui le publie, et s'il est déjà au
+    /// journal d'ici.
+    rows: Option<((String, u64), Vec<MapEvent>)>,
+}
+
 /// « Mes publications » : un filtre, et ce que l'officine a écrit des
 /// sortes publiques — (sorte, nom, jour de sa dernière version, publiée).
 #[cfg(feature = "sync")]
@@ -15772,6 +15815,8 @@ struct Carte {
     /// Les tampons de saisie.
     address: String,
     paraitre: bool,
+    /// « Publier les ruptures », tel qu'il se tape.
+    ruptures: bool,
     commune_query: String,
     finess: String,
     /// La commune choisie dans les propositions : (code postal, nom).
@@ -65541,6 +65586,8 @@ impl App {
                     );
                     motif::checkbox(ui, &mut session.carte.paraitre, tr("carte_appear"))
                         .on_hover_text(tr("carte_appear_tooltip"));
+                    motif::checkbox(ui, &mut session.carte.ruptures, tr("carte_ruptures"))
+                        .on_hover_text(tr("carte_ruptures_tooltip"));
                     if let Some((cp, nom)) = &session.carte.commune {
                         ui.label(trn("carte_commune_chosen", &[nom, cp]));
                     }
@@ -72096,6 +72143,174 @@ impl App {
     /// Un pharmacien arrivé la semaine dernière y lit ce que l'équipe sait
     /// depuis des mois ; c'est l'écran que la question « Diprosone est en
     /// rupture, qu'est-ce qu'on donne ? » appelle.
+    /// **Ruptures sur la carte** : ce que les officines du répertoire
+    /// publient de leur journal, lu dans les catalogues déjà parcourus —
+    /// et « Prendre » le met au journal d'ici, à leur nom. Un historique,
+    /// jamais une équivalence.
+    #[cfg(feature = "sync")]
+    fn rupt_map_window(ctx: &egui::Context, session: &mut Session) {
+        let Some(mut win) = session.rupt_map.take() else {
+            return;
+        };
+        let mut digests: Vec<&str> = session
+            .carte
+            .catalogues
+            .values()
+            .map(|(d, _, _)| d.as_str())
+            .collect();
+        digests.sort_unstable();
+        let key = (digests.concat(), session.supply_rev);
+        if win.rows.as_ref().map(|(k, _)| k) != Some(&key) {
+            let held: std::collections::HashSet<&str> = session
+                .supply_events
+                .iter()
+                .map(|e| e.uid.as_str())
+                .collect();
+            let mut rows: Vec<MapEvent> = session
+                .carte
+                .catalogues
+                .iter()
+                .flat_map(|(device, (_, articles, _))| {
+                    let officine = session
+                        .carte
+                        .list
+                        .iter()
+                        .find(|f| f.device == *device)
+                        .map(|f| f.nom.clone())
+                        .unwrap_or_else(|| Self::remote_key(device));
+                    articles
+                        .iter()
+                        .filter_map(move |a| crate::repertoire::supply_of(a, &officine))
+                })
+                .map(|e| {
+                    let here = held.contains(e.uid.as_str());
+                    (e, here)
+                })
+                .collect();
+            rows.sort_by(|a, b| {
+                crate::fuzzy::sort_key(&a.0.product)
+                    .cmp(&crate::fuzzy::sort_key(&b.0.product))
+                    .then(b.0.day.cmp(&a.0.day))
+            });
+            win.rows = Some((key, rows));
+        }
+        let mut close = false;
+        let mut take: Option<crate::ruptures::Event> = None;
+        let mut sweep = false;
+        let screen = ctx.screen_rect();
+        let shown = egui::Window::new(tr("rupt_map_title"))
+            .collapsible(false)
+            .resizable(false)
+            .fixed_size(dialog_size(screen.size(), egui::vec2(660.0, 520.0)))
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("rupt_map_hint"))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+                ui.horizontal_wrapped(|ui| {
+                    motif::field(
+                        ui,
+                        chars_wide(ui, 28.0).min(ui.available_width()),
+                        egui::TextEdit::singleline(&mut win.filter)
+                            .hint_text(motif::hint(tr("publications_filter"))),
+                    );
+                    if motif::button(ui, tr("carte_sweep"))
+                        .on_hover_text(tr("rupt_map_sweep_tooltip"))
+                        .clicked()
+                    {
+                        sweep = true;
+                    }
+                });
+                if let Some((bad, note)) = &win.note {
+                    ui.label(egui::RichText::new(note.as_str()).color(if *bad {
+                        motif::alert()
+                    } else {
+                        motif::text_dim()
+                    }));
+                }
+                let footer = Self::row_height(ui) + ui.spacing().item_spacing.y * 2.0;
+                let body_h = (ui.available_height() - footer).max(Self::row_height(ui) * 4.0);
+                let wanted = win.filter.trim().to_owned();
+                let rows = win.rows.as_ref().map(|(_, r)| r.as_slice()).unwrap_or(&[]);
+                egui::ScrollArea::vertical()
+                    .id_salt("rupt_map_body")
+                    .max_height(body_h)
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        if rows.is_empty() {
+                            ui.label(
+                                egui::RichText::new(tr("rupt_map_none")).color(motif::text_dim()),
+                            );
+                        }
+                        for (e, here) in rows {
+                            if !wanted.is_empty()
+                                && !crate::fuzzy::contains_folded(&e.product, &wanted)
+                                && !crate::fuzzy::contains_folded(&e.other, &wanted)
+                                && !crate::fuzzy::contains_folded(&e.source, &wanted)
+                            {
+                                continue;
+                            }
+                            let what = match e.kind {
+                                crate::ruptures::Kind::Rupture => {
+                                    trf("rupt_journal_rupture", &e.product)
+                                }
+                                crate::ruptures::Kind::Levee => {
+                                    trf("rupt_journal_levee", &e.product)
+                                }
+                                _ => trn("rupt_journal_subst", &[&e.product, &e.other]),
+                            };
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(what);
+                                ui.label(
+                                    egui::RichText::new(format!(
+                                        "{} · {}",
+                                        db::format_french_date(&e.day),
+                                        e.source
+                                    ))
+                                    .size(motif::pt(ui, 10.5))
+                                    .color(motif::text_faint()),
+                                );
+                                if *here {
+                                    ui.label(
+                                        egui::RichText::new(tr("rupt_map_held"))
+                                            .size(motif::pt(ui, 10.5))
+                                            .color(motif::text_dim()),
+                                    );
+                                } else if motif::button(ui, tr("rupt_map_take"))
+                                    .on_hover_text(tr("rupt_map_take_tooltip"))
+                                    .clicked()
+                                {
+                                    take = Some(e.clone());
+                                }
+                            });
+                        }
+                    });
+                ui.horizontal_wrapped(|ui| {
+                    if motif::button(ui, tr("tpl_close")).clicked() {
+                        close = true;
+                    }
+                });
+            });
+        motif::dialog_relief(ctx, &shown);
+        if let Some(e) = take {
+            match session.db.receive_supply_events(&[e]) {
+                Ok(_) => session.reload_supply(),
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if sweep {
+            win.note = Self::sweep_note(session.carte_sweep(None, "", false));
+        }
+        if !close && !ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+            session.rupt_map = Some(win);
+        }
+    }
+
     fn ruptures_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
         let body = motif::visible_rect(ui);
         let band = Self::title_band_height(
@@ -72104,6 +72319,7 @@ impl App {
             [
                 Self::heading_width(ui, tr("rupt_view_title")),
                 Self::button_width(ui, tr("net_open")),
+                Self::button_width(ui, tr("rupt_map_open")),
             ]
             .into_iter(),
             tr("rupt_view_subtitle"),
@@ -72122,7 +72338,17 @@ impl App {
                 {
                     session.net_window = Some(NetWindow::opened(&session.db));
                 }
+                #[cfg(feature = "sync")]
+                if motif::button(ui, tr("rupt_map_open"))
+                    .on_hover_text(tr("rupt_map_open_tooltip"))
+                    .clicked()
+                    && session.rupt_map.is_none()
+                {
+                    session.rupt_map = Some(RuptMap::default());
+                }
             });
+            #[cfg(feature = "sync")]
+            Self::rupt_map_window(ui.ctx(), session);
             ui.add(
                 egui::Label::new(
                     egui::RichText::new(tr("rupt_view_subtitle"))

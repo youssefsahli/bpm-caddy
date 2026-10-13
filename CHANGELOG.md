@@ -19,6 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   settings. An officine already on the map publishes nothing after the
   upgrade until it ticks its entries.
 
+### Added
+
+- Ruptures and substitutions on the officines' map, opt-in: « Publier les
+  ruptures et substitutions » adds the officine's own events of the last
+  ninety days — without the initials of who noted them, never what it
+  received — to its directory catalogue. « Sur la carte… » in the
+  Ruptures view lists what the directory's officines publish, searchable,
+  and « Prendre » adds an event to the local journal under the publishing
+  officine's name (as signed by its card). Older versions skip these
+  entries without refusing the catalogue.
+
 ## [0.430.0] - 2026-10-13
 
 ### Fixed

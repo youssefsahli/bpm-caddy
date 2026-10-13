@@ -149,6 +149,10 @@ pub struct Presence {
     pub code_postal: String,
     pub commune: String,
     pub finess: String,
+    /// Publier aussi ses ruptures et substitutions (`ruptures::
+    /// public_events`) dans son catalogue. Non par défaut : le journal dit
+    /// ce que l'officine n'a pas en stock, et ce n'est pas à tout le monde.
+    pub ruptures: bool,
     /// **Le répertoire qui a reçu la dernière carte de l'officine**, et
     /// quand (heure Unix) — retenu dans la base : quitter ce répertoire
     /// lui doit un départ, qu'un départ manqué, un redémarrage ou un autre
@@ -290,8 +294,73 @@ pub fn catalogue_where(
     edits: &[versions::Edit],
     here: impl Fn(Kind, &str) -> bool,
 ) -> (Vec<u8>, Vec<(String, u32)>) {
-    let mut articles = Vec::new();
+    catalogue_with(edits, here, &[])
+}
+
+/// La sorte d'article qui porte un événement du journal des ruptures.
+///
+/// Pas une `versions::Kind` : un événement ne se réécrit pas et ne se
+/// « prend » pas comme une fiche — il entre au journal de qui le lit, au
+/// nom de l'officine qui l'a publié. Une version d'avant ne connaît pas
+/// cette sorte et laisse l'article de côté, sans refuser le catalogue
+/// (`read_catalogue` juge article par article).
+pub const SUPPLY_KIND: &str = "rupture";
+const SUPPLY_FIELD: &str = "evenement";
+
+/// Les événements qu'une officine publie, en articles : l'événement entier,
+/// encodé comme entre officines appairées, sans le nom de l'officine — c'est
+/// la carte signée qui le dit.
+pub fn supply_articles(events: &[crate::ruptures::Event]) -> Vec<Article> {
+    events
+        .iter()
+        .take(crate::ruptures::PUBLIC_MOST)
+        .map(|e| Article {
+            kind: SUPPLY_KIND.to_owned(),
+            card: e.uid.clone(),
+            name: e.product.clone(),
+            day: e.day.clone(),
+            fields: vec![(
+                SUPPLY_FIELD.to_owned(),
+                String::from_utf8(crate::ruptures::encode(e, "")).unwrap_or_default(),
+            )],
+        })
+        .collect()
+}
+
+/// L'événement qu'un article porte, au nom de l'officine dont la carte l'a
+/// signé — jamais du nom écrit dans l'événement — et sans initiales.
+pub fn supply_of(article: &Article, officine: &str) -> Option<crate::ruptures::Event> {
+    if article.kind != SUPPLY_KIND {
+        return None;
+    }
+    let (_, text) = article.fields.iter().find(|(f, _)| f == SUPPLY_FIELD)?;
+    let mut e = crate::ruptures::decode(text.as_bytes())?;
+    if e.uid != article.card {
+        return None;
+    }
+    e.source = officine.to_owned();
+    e.operator.clear();
+    Some(e)
+}
+
+/// [`catalogue_where`], et les événements du journal que l'officine a
+/// choisi de publier — d'abord, pour qu'un grand catalogue ne les pousse
+/// pas dehors.
+pub fn catalogue_with(
+    edits: &[versions::Edit],
+    here: impl Fn(Kind, &str) -> bool,
+    supply: &[Article],
+) -> (Vec<u8>, Vec<(String, u32)>) {
+    let mut articles: Vec<Article> = supply
+        .iter()
+        .take(crate::ruptures::PUBLIC_MOST)
+        .cloned()
+        .filter_map(admitted)
+        .collect();
     let mut parts = Vec::new();
+    if !articles.is_empty() {
+        parts.push((SUPPLY_KIND.to_owned(), articles.len() as u32));
+    }
     for kind in Kind::ALL.into_iter().filter(|k| !k.is_private()) {
         let own = crate::enligne::own_offers(edits, kind);
         let mut n = 0_u32;
@@ -408,6 +477,13 @@ pub fn read_catalogue(fiche: &Fiche, bytes: &[u8]) -> Option<Vec<Article>> {
 /// se lisent, un nom et une clé. La même règle pour qui publie et pour qui
 /// lit.
 fn admitted(mut a: Article) -> Option<Article> {
+    if a.kind == SUPPLY_KIND {
+        // Un seul champ, l'événement, qui se lit et nomme la même clé.
+        a.fields
+            .retain(|(f, v)| f == SUPPLY_FIELD && v.len() <= VALUE_MAX);
+        let e = supply_of(&a, "")?;
+        return (e.product == a.name && e.day == a.day && a.fields.len() == 1).then_some(a);
+    }
     let kind = versions::kind_of_key(&a.kind).filter(|k| !k.is_private())?;
     a.fields
         .retain(|(f, v)| v.len() <= VALUE_MAX && versions::admissible(kind, f, v));
@@ -1359,6 +1435,59 @@ mod tests {
         assert_eq!(articles.len(), 1, "{articles:?}");
         assert_eq!(articles[0].name, "Méthadone sirop");
         assert_eq!(parts, vec![("codex".to_owned(), 1)]);
+    }
+
+    /// **Les ruptures publiées voyagent dans le catalogue** : lues au nom de
+    /// l'officine dont la carte est signée, jamais de celui qu'un
+    /// événement écrirait ; un article dont la clé ne nomme pas son
+    /// événement, ou qui ne se lit pas, est écarté seul.
+    #[test]
+    fn published_ruptures_travel_in_the_catalogue() {
+        let e = crate::ruptures::Event {
+            uid: "base:7".to_owned(),
+            day: "2026-10-10".to_owned(),
+            kind: crate::ruptures::Kind::Substitution,
+            product: "Locoid crème".to_owned(),
+            product_dci: String::new(),
+            other: "Betneval crème".to_owned(),
+            other_dci: String::new(),
+            outcome: crate::ruptures::Outcome::Accepted,
+            note: String::new(),
+            operator: String::new(),
+            source: String::new(),
+            refers: String::new(),
+        };
+        let mut supply = supply_articles(&[e]);
+        let mut forged = supply[0].clone();
+        forged.card = "autre:1".to_owned();
+        supply.push(forged);
+        let mut broken = supply[0].clone();
+        broken.card = "base:8".to_owned();
+        broken.fields = vec![(SUPPLY_FIELD.to_owned(), "{pas un événement".to_owned())];
+        supply.push(broken);
+        let (bytes, parts) = catalogue_with(
+            &[edit(Kind::Codex, "Lugol", "form", "solution", "")],
+            |_, _| true,
+            &supply,
+        );
+        assert_eq!(
+            parts,
+            vec![(SUPPLY_KIND.to_owned(), 1), ("codex".to_owned(), 1)]
+        );
+        let fiche = card(1, 10, &bytes, parts);
+        let read = read_catalogue(&fiche, &bytes).unwrap();
+        let events: Vec<_> = read
+            .iter()
+            .filter_map(|a| supply_of(a, "Pharmacie du Port"))
+            .collect();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].source, "Pharmacie du Port");
+        assert_eq!(events[0].other, "Betneval crème");
+        // Une rupture n'est pas une offre « En ligne ».
+        assert!(read
+            .iter()
+            .filter(|a| a.kind == SUPPLY_KIND)
+            .all(|a| offer_of(a, "x").is_none()));
     }
 
     /// **Une carte se vérifie, et ne se falsifie pas** : un mot changé,
