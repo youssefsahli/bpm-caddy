@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.423.0] - 2026-10-13
+
 ### Fixed
 
 - Printed papers: a file without a birth date prints « — » instead of an
