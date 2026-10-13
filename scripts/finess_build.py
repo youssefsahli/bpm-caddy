@@ -39,7 +39,8 @@ rows = []
 for r in csv.reader(open(src, encoding='utf-8'), delimiter=';'):
     if r[0] != 'structureet' or r[18] != '620':
         continue
-    nom = words(r[4] or r[3])
+    # Des guillemets autour d'un nom ne sont pas du nom.
+    nom = words((r[4] or r[3]).replace('"', ' '))
     cp, _, ville = r[15].partition(' ')
     ville = words(ville)
     assert len(r[1]) == 9 and len(cp) == 5, r

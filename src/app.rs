@@ -63981,12 +63981,14 @@ impl App {
         }
         let mut chose: Option<&'static crate::finess::Officine> = None;
         for o in &editor.registre.hits {
-            let text = format!(
-                "{} · {} {} · FINESS {}",
-                crate::finess::pretty(o.nom),
-                o.code_postal,
-                crate::finess::pretty(o.ville),
-                o.finess
+            let text = trn(
+                "opts_registre_hit",
+                &[
+                    &crate::finess::pretty(o.nom),
+                    &o.code_postal,
+                    &crate::finess::town_name(o),
+                    &o.finess,
+                ],
             );
             let label = Self::carte_elide(ui, &text, w);
             // Coupée, l'étiquette perd d'abord le numéro : la bulle le dit.

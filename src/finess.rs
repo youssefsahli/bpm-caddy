@@ -190,9 +190,32 @@ pub fn pretty(text: &str) -> String {
         "hameau",
         "traverse",
     ];
-    const UPPER: [&str; 22] = [
+    const UPPER: [&str; 24] = [
         "SELARL", "SELAS", "SELAFA", "SEL", "SAS", "SARL", "EURL", "SNC", "SPFPL", "SELEURL",
         "SELURL", "SELASU", "SASU", "ZAC", "ZI", "ZA", "ZUP", "RN", "RD", "CD", "CC", "RER",
+        "CCAL", "ZC",
+    ];
+    // Les types de voie qui sont aussi des mots d'un nom : en minuscules
+    // seulement après un numéro.
+    const STREET: [&str; 18] = [
+        "centre",
+        "mail",
+        "carrefour",
+        "zone",
+        "parc",
+        "val",
+        "tour",
+        "porte",
+        "clos",
+        "domaine",
+        "village",
+        "bourg",
+        "plan",
+        "station",
+        "plage",
+        "gare",
+        "cour",
+        "grande",
     ];
     // Henri IV, Napoléon III, le XVe corps.
     const ROMAN: [&str; 20] = [
@@ -204,36 +227,64 @@ pub fn pretty(text: &str) -> String {
     let mut word = String::new();
     // `dotted` : le mot est suivi d'un point — une initiale, « A. Martin »,
     // jamais la préposition « à ».
-    let flush = |word: &mut String, out: &mut String, first: &mut bool, dotted: bool| {
-        if word.is_empty() {
-            return;
-        }
-        let lower = word.to_lowercase();
-        let upper = word.to_uppercase();
-        let shouting = word.chars().any(char::is_uppercase);
-        if shouting && (UPPER.contains(&upper.as_str()) || ROMAN.contains(&upper.as_str())) {
-            out.push_str(&upper);
-        } else if !*first && !dotted && SMALL.contains(&lower.as_str()) {
-            out.push_str(&lower);
-        } else {
-            let mut c = lower.chars();
-            if let Some(h) = c.next() {
-                out.extend(h.to_uppercase());
-                out.push_str(c.as_str());
+    // Le mot d'avant : un numéro de rue, après lequel un type de voie se
+    // lit en minuscules (« 1 centre commercial », mais « Pharmacie du
+    // Centre »).
+    let mut numbered = false;
+    // `dotted` : le mot est suivi d'un point, `after_dot` : précédé — une
+    // lettre d'un sigle, « S.E.L.A.R.L », jamais l'article « l ».
+    let mut flush =
+        |word: &mut String, out: &mut String, first: &mut bool, dotted: bool, after_dot: bool| {
+            if word.is_empty() {
+                return;
             }
-        }
-        *first = false;
-        word.clear();
-    };
+            let lower = word.to_lowercase();
+            let upper = word.to_uppercase();
+            let shouting = word.chars().any(char::is_uppercase);
+            let letters: String = upper.chars().filter(|c| c.is_alphabetic()).collect();
+            let has_digit = word.chars().any(|c| c.is_ascii_digit());
+            // « RN7 », « D2L », « 2B » ; pas « 2ÈME ».
+            let code = has_digit
+                && !letters.is_empty()
+                && letters.chars().count() <= 2
+                && !["E", "ER", "EME", "ÈME", "ME"].contains(&letters.as_str());
+            let after_number = numbered;
+            numbered =
+                has_digit || (numbered && ["bis", "ter", "quater"].contains(&lower.as_str()));
+            if shouting
+                && (UPPER.contains(&upper.as_str())
+                    || ROMAN.contains(&upper.as_str())
+                    || code
+                    || (after_dot && letters.chars().count() == 1))
+            {
+                out.push_str(&upper);
+            } else if !*first
+                && !dotted
+                && (SMALL.contains(&lower.as_str())
+                    || (after_number && STREET.contains(&lower.as_str())))
+            {
+                out.push_str(&lower);
+            } else {
+                let mut c = lower.chars();
+                if let Some(h) = c.next() {
+                    out.extend(h.to_uppercase());
+                    out.push_str(c.as_str());
+                }
+            }
+            *first = false;
+            word.clear();
+        };
+    let mut after_dot = false;
     for c in text.chars() {
         if c.is_alphanumeric() {
             word.push(c);
         } else {
-            flush(&mut word, &mut out, &mut first, c == '.');
+            flush(&mut word, &mut out, &mut first, c == '.', after_dot);
+            after_dot = c == '.';
             out.push(c);
         }
     }
-    flush(&mut word, &mut out, &mut first, false);
+    flush(&mut word, &mut out, &mut first, false, after_dot);
     out
 }
 
@@ -250,17 +301,23 @@ pub fn phone(digits: &str) -> String {
     }
 }
 
+/// La ville d'une officine du registre, écrite, sans le « CEDEX » de son
+/// acheminement.
+pub fn town_name(o: &Officine) -> String {
+    let ville = match o.ville.find(" CEDEX") {
+        Some(i) => &o.ville[..i],
+        None => o.ville,
+    };
+    pretty(ville)
+}
+
 /// L'adresse d'une officine du registre, en une ligne : la rue, puis le
 /// code postal et la ville — la ville en dernier, que l'annonce sur le
 /// réseau local lit (`network::town_of`).
 pub fn address_line(o: &Officine) -> String {
     // « BORDEAUX CEDEX » : l'acheminement d'un courrier, pas la ville
     // qu'on annonce.
-    let ville = match o.ville.find(" CEDEX") {
-        Some(i) => &o.ville[..i],
-        None => o.ville,
-    };
-    let town = format!("{} {}", o.code_postal, pretty(ville));
+    let town = format!("{} {}", o.code_postal, town_name(o));
     if o.adresse.is_empty() {
         town
     } else {
@@ -414,15 +471,23 @@ pub fn suggest(nom: &str, code_postal: &str, commune: &str) -> Vec<&'static Offi
         return Vec::new();
     }
     let code_postal = code_postal.trim();
-    register()
+    let mine = name_words(nom);
+    let mut hits: Vec<&'static Officine> = register()
         .iter()
         .filter(|o| {
             (o.code_postal == code_postal
                 || (dep_of(o.code_postal) == dep_of(code_postal) && same_town(o.ville, commune)))
+                // Un nom fait des seuls mots communs (« PHARMACIE LE »)
+                // irait à toutes : il ne suggère rien.
+                && !name_words(o.nom).is_empty()
                 && same_name(nom, o.nom)
         })
-        .take(4)
-        .collect()
+        .collect();
+    // Le même code postal, puis le même nom exactement : dans une grande
+    // ville, la « Pharmacie centrale » du 15e passe avant celles du 2e.
+    hits.sort_by_key(|o| (o.code_postal != code_postal, name_words(o.nom) != mine));
+    hits.truncate(4);
+    hits
 }
 
 /// La commune de la liste livrée où le registre met une officine : celle
@@ -521,6 +586,17 @@ mod tests {
         assert_eq!(pretty("ZI LES PALUDS, RN 113"), "ZI les Paluds, RN 113");
         assert_eq!(pretty("lieu-dit LES BOURBES"), "Lieu-dit les Bourbes");
         assert_eq!(pretty("1 lieu-dit LES BOURBES"), "1 lieu-dit les Bourbes");
+        assert_eq!(pretty("S.E.L.A.R.L PHARMACIE"), "S.E.L.A.R.L Pharmacie");
+        assert_eq!(pretty("2 RN7"), "2 RN7");
+        assert_eq!(
+            pretty("32 avenue DE LA 2ÈME D.I."),
+            "32 avenue de la 2ème D.I."
+        );
+        assert_eq!(
+            pretty("1 centre commercial LES ARCADES"),
+            "1 centre commercial les Arcades"
+        );
+        assert_eq!(pretty("PHARMACIE DU CENTRE"), "Pharmacie du Centre");
         assert_eq!(phone("0474380226"), "04 74 38 02 26");
         assert_eq!(phone("123"), "123");
         let o = Officine {
@@ -589,6 +665,16 @@ mod tests {
         assert!(suggest(o.nom, o.code_postal, "Thoiry").contains(&o));
         assert!(suggest(o.nom, "78770", "Thoiry").iter().all(|x| x != &o));
         assert!(suggest("Pharmacie", o.code_postal, "Thoiry").is_empty());
+        // Dans une grande ville, la sienne d'abord ; jamais un nom vide —
+        // une officine sur dix, que le test reste court.
+        for o in register().iter().step_by(10) {
+            if name_words(o.nom).is_empty() {
+                continue;
+            }
+            let hits = suggest(o.nom, o.code_postal, o.ville);
+            assert!(hits.contains(&o), "{} {}", o.finess, o.nom);
+            assert!(hits.iter().all(|h| !name_words(h.nom).is_empty()));
+        }
     }
 
     /// Un homonyme dans un autre département n'est pas la ville du
