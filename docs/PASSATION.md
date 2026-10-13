@@ -172,10 +172,10 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   vide) ;
 - le document d'équipe vit dans la base chiffrée (réglage `team_doc`,
   compare-and-set ; l'ancien `notes_equipe.md` repris puis vidé — fait le
-  13/10). Reste : sa fusion entre deux postes ramène une ligne que
-  l'autre avait rayée et duplique une ligne reformulée ; deux postes à
-  bases séparées qui l'écrivent en même temps lèvent un conflit à
-  arbitrer ;
+  13/10 ; deux postes se fondent ligne à ligne, `replica::merge_team_doc`).
+  Reste : la fusion par lignes ramène une ligne que l'autre avait rayée
+  et duplique une ligne reformulée ; au-delà de ~16 Ko, les notes ne
+  voyagent plus (le volet le dit) ;
 - une transmission écrite dans les deux secondes après minuit se range au
   jour nouveau pendant que la page montre encore la veille ;
 - tables de référence : `edited_table_keys` et `all_table_cells`

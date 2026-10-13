@@ -48104,6 +48104,18 @@ impl Db {
             .ok()
     }
 
+    /// [`Db::setting`], qui distingue « rien d'écrit » d'une lecture qui a
+    /// échoué (une base partagée occupée) : `Ok(None)` n'est que le premier.
+    pub fn setting_read(&self, key: &str) -> Result<Option<String>, String> {
+        use rusqlite::OptionalExtension;
+        self.conn
+            .query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| {
+                r.get::<_, String>(0)
+            })
+            .optional()
+            .map_err(|e| e.to_string())
+    }
+
     /// Écrire un réglage, **contre la valeur qu'on avait sous les yeux**.
     ///
     /// `false` quand un autre poste l'a changé entre-temps : l'appelant
@@ -57021,6 +57033,7 @@ impl Db {
             }
             let mut outcome = decide(op, t.append_only, local.as_ref());
             crate::replica::merge_officine(op, local.as_ref(), &mut outcome);
+            crate::replica::merge_team_doc(op, local.as_ref(), &mut outcome);
             // **Un dossier que le registre de ce poste cite ne part pas**,
             // même quand la suppression vient d'ailleurs : l'autre poste
             // n'a vérifié que son propre registre, et une délivrance faite

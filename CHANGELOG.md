@@ -15,8 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with patient names, outside the encryption and the backups. They are
   read only once a session is open, saved against what this post last
   read (another post's lines merged in), travel to the other posts like
-  every officine setting, and are forgotten at lock. The old file is
-  brought in once, then emptied of its contents.
+  every officine setting — two posts' lines merged line by line, never a
+  question — and are forgotten at lock (kept for the next unlock if the
+  last save could not be written). The old file is folded in whenever it
+  still holds notes, then emptied; only the reference post seeds the
+  template; the pane says when the notes grow too long to travel.
 
 ## [0.426.0] - 2026-10-13
 

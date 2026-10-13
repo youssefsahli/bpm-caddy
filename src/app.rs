@@ -2829,31 +2829,19 @@ fn notes_box(
 }
 
 /// La clé sous laquelle la base garde les notes d'équipe.
-const TEAM_DOC_KEY: &str = "team_doc";
+const TEAM_DOC_KEY: &str = crate::replica::TEAM_DOC;
+
+/// Ce que les notes d'équipe peuvent peser pour voyager encore : une mise à
+/// jour porte l'ancienne valeur et la nouvelle, sous la borne d'un
+/// enregistrement (`replica` : 40 000 octets) — au-delà, elle ne part plus.
+const TEAM_DOC_TRAVELS: usize = 16_000;
 
 /// Union-merge for the shared team notes: keep our text, append the
 /// lines another PC added since the common `base` (lines we deleted
 /// ourselves stay deleted). Notes are lists — line granularity is the
 /// natural unit, and appending beats losing a colleague's reminder.
 fn merge_team_notes(base: &str, ours: &str, theirs: &str) -> String {
-    use std::collections::HashSet;
-    let ours_set: HashSet<&str> = ours.lines().collect();
-    let base_set: HashSet<&str> = base.lines().collect();
-    let added: Vec<&str> = theirs
-        .lines()
-        .filter(|l| !l.trim().is_empty() && !ours_set.contains(l) && !base_set.contains(l))
-        .collect();
-    if added.is_empty() {
-        return ours.to_owned();
-    }
-    let mut out = ours.trim_end().to_owned();
-    out.push('\n');
-    for line in added {
-        out.push('\n');
-        out.push_str(line);
-    }
-    out.push('\n');
-    out
+    crate::replica::merge_lines(base, ours, theirs)
 }
 
 /// The master password can be kept in the OS credential manager
@@ -18278,6 +18266,9 @@ pub struct App {
     /// Les notes d'équipe ont été lues de la base pour cette session : elles
     /// n'existent qu'une fois la base ouverte, et s'effacent au verrouillage.
     doc_loaded: bool,
+    /// Des notes qu'un verrouillage n'a pas pu enregistrer : (base, texte),
+    /// fondues dans la base au déverrouillage suivant.
+    doc_pending: Option<(String, String)>,
     /// Whether the notes editor currently has keyboard focus (don't
     /// swap the text under the cursor).
     doc_focused: bool,
@@ -20769,6 +20760,7 @@ impl App {
             doc_text,
             doc_dirty: false,
             doc_loaded: false,
+            doc_pending: None,
             doc_last_edit: Instant::now(),
             doc_error: None,
             doc_focused: false,
@@ -21053,7 +21045,12 @@ impl App {
                 Ok(true) => {
                     self.doc_dirty = false;
                     self.doc_base = self.doc_text.clone();
-                    self.doc_error = notice;
+                    // Trop long pour voyager vers les autres postes : le dire.
+                    self.doc_error = if self.doc_text.len() > TEAM_DOC_TRAVELS {
+                        Some(tr("docs_too_long").to_owned())
+                    } else {
+                        notice
+                    };
                     return;
                 }
                 // Écrit ailleurs entre la lecture et l'écriture : relire, fondre.
@@ -21068,40 +21065,71 @@ impl App {
     }
 
     /// **Read the team notes from the base**, once a session is open. The
-    /// first time on a base, the notes the post kept in a plain file next
-    /// to it (`notes_equipe.md`, before 0.427) are brought in — and the
-    /// file is emptied of them: names of patients had no business in a
-    /// clear file outside the encryption and the backups.
+    /// notes this post kept in a plain file next to the base
+    /// (`notes_equipe.md`, before 0.427) are folded in — whenever the file
+    /// still holds some, even after another post brought its own — and the
+    /// file is then emptied of them: names of patients had no business in a
+    /// clear file outside the encryption and the backups. A read that fails
+    /// (a shared base busy) is retried at the next frame, never taken for
+    /// « no notes ». Only the reference post seeds the template; another
+    /// waits for it to arrive.
     fn load_team_doc(&mut self) {
         let operator = self.operator.trim().to_owned();
         let State::Unlocked(session) = &self.state else {
             return;
         };
-        let text = match session.db.setting(TEAM_DOC_KEY) {
-            Some(t) => t,
-            None => {
-                let path = self.config.team_doc_path();
-                let from_file = std::fs::read_to_string(&path)
-                    .ok()
-                    .filter(|t| t.trim() != tr("team_doc_moved").trim());
-                let text = from_file
-                    .clone()
-                    .unwrap_or_else(|| tr("team_doc_template").to_owned());
-                // Le premier venu l'écrit ; un autre poste qui a pris les
-                // devants a déjà mis le sien.
-                let wrote = session
-                    .db
-                    .set_setting(TEAM_DOC_KEY, &text, None, &session.today, &operator)
-                    .unwrap_or(false);
-                if wrote && from_file.is_some() {
-                    let _ = std::fs::write(&path, tr("team_doc_moved"));
-                }
-                session.db.setting(TEAM_DOC_KEY).unwrap_or(text)
-            }
+        let Ok(stored) = session.db.setting_read(TEAM_DOC_KEY) else {
+            return;
         };
+        let path = self.config.team_doc_path();
+        let from_file = std::fs::read_to_string(&path).ok().filter(|t| {
+            let t = t.trim();
+            !t.is_empty() && t != tr("team_doc_moved").trim() && t != tr("team_doc_template").trim()
+        });
+        let seeds = session.db.seeds_here();
+        let wanted = match (&stored, &from_file) {
+            (Some(s), Some(f)) => Some(merge_team_notes("", s, f)),
+            (None, Some(f)) => Some(f.clone()),
+            (None, None) if seeds => Some(tr("team_doc_template").to_owned()),
+            _ => None,
+        };
+        if let Some(text) = wanted.filter(|w| stored.as_deref() != Some(w.as_str())) {
+            let wrote = session
+                .db
+                .set_setting(
+                    TEAM_DOC_KEY,
+                    &text,
+                    stored.as_deref(),
+                    &session.today,
+                    &operator,
+                )
+                .unwrap_or(false);
+            // Le fichier ne se vide qu'une fois ses lignes dans la base.
+            if !wrote {
+                return;
+            }
+        }
+        if from_file.is_some() {
+            let _ = std::fs::write(&path, tr("team_doc_moved"));
+        }
+        let Ok(now) = session.db.setting_read(TEAM_DOC_KEY) else {
+            return;
+        };
+        let text = now.unwrap_or_default();
         self.doc_base = text.clone();
-        self.doc_text = text;
-        self.doc_dirty = false;
+        // Ce qui n'avait pas pu s'enregistrer avant le verrouillage revient,
+        // fondu dans ce que la base porte.
+        match self.doc_pending.take() {
+            Some((base, mine)) => {
+                self.doc_text = merge_team_notes(&base, &text, &mine);
+                self.doc_dirty = self.doc_text != text;
+                self.doc_last_edit = Instant::now();
+            }
+            None => {
+                self.doc_text = text;
+                self.doc_dirty = false;
+            }
+        }
         self.doc_loaded = true;
     }
 
@@ -21110,7 +21138,18 @@ impl App {
     fn close_team_doc(&mut self) {
         if self.doc_dirty {
             self.doc_focused = false;
-            self.save_doc();
+            for _ in 0..3 {
+                self.save_doc();
+                if !self.doc_dirty {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(150));
+            }
+            // Toujours pas écrites (base occupée) : gardées pour le
+            // prochain déverrouillage, plutôt que perdues.
+            if self.doc_dirty {
+                self.doc_pending = Some((self.doc_base.clone(), self.doc_text.clone()));
+            }
         }
         self.doc_text.clear();
         self.doc_base.clear();
@@ -87584,6 +87623,12 @@ impl eframe::App for App {
                 if [target.clone(), db::scans_path(&target), db::stups_path(&target)]
                     .iter()
                     .any(|p| session.db.is_live(p)));
+            // Les notes d'équipe en cours d'écriture partent avec la copie :
+            // enregistrées après elle, elles restaient dans l'ancienne base.
+            if !(same || onto_live) && self.doc_dirty {
+                self.doc_focused = false;
+                self.save_doc();
+            }
             let result = if same || onto_live {
                 Err(tr("opts_db_same").to_owned())
             } else if let State::Unlocked(session) = &mut self.state {
