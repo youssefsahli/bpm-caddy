@@ -74297,6 +74297,16 @@ impl App {
                         // **L'invitation d'abord** : pendant qu'elle est
                         // ouverte, son code est ce qu'on est venu lire —
                         // en bas de la liste, il fallait le chercher.
+                        if w.waiting.is_some() {
+                            // Fermer la porte tout de suite : le fil
+                            // l'entend dans la seconde.
+                            if motif::button(ui, tr("posts_invite_cancel")).clicked() {
+                                if let Some((rx, answers)) = w.job.take() {
+                                    drop(answers);
+                                    w.job = Some((rx, std::sync::mpsc::channel().0));
+                                }
+                            }
+                        }
                         if let Some(code) = &w.waiting {
                             // **Le code seul, en grand** : l'invitation
                             // s'annonce sur le réseau local, l'autre poste

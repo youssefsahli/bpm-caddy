@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   may rewrite in « Textes », like every tier's conduct.
 - Posts: removing a post (« × ») and « Fonder un autre groupe » take two
   clicks — the first arms the button, which then says what it will do.
+- An open invitation closes within a second with « Annuler
+  l'invitation », by closing the window, or by locking — it used to keep
+  the door open up to five minutes.
 
 ## [0.424.0] - 2026-10-13
 

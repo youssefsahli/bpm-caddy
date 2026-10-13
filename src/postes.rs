@@ -846,15 +846,34 @@ pub fn run(
             // par ce qui reste des cinq minutes.
             let until = std::time::Instant::now() + INVITE_PATIENCE;
             let mut tries = 0;
+            let mut cancelled = false;
             let mut per_ip: std::collections::HashMap<std::net::IpAddr, usize> = Default::default();
             let outcome = loop {
                 let left = until.saturating_duration_since(std::time::Instant::now());
                 if left.is_zero() || tries >= INVITE_TRIES {
                     break None;
                 }
+                // **L'écran qui n'attend plus ferme la porte** : annulée,
+                // ou la session verrouillée — le canal des réponses n'a
+                // plus personne au bout. Elle restait ouverte cinq minutes.
+                if matches!(
+                    answers.try_recv(),
+                    Err(std::sync::mpsc::TryRecvError::Disconnected)
+                ) {
+                    cancelled = true;
+                    break None;
+                }
+                // Par tranches d'une seconde, pour l'entendre.
+                let slice = left.min(Duration::from_secs(1));
+                let started = std::time::Instant::now();
                 // Qui se tait plus de huit secondes est lâché : une
                 // connexion muette ne tient pas la porte cinq minutes.
-                let Ok(link) = door.accept_with(left, TALK_PATIENCE) else {
+                let Ok(link) = door.accept_with(slice, TALK_PATIENCE) else {
+                    // La tranche écoulée sans appel : on réécoute. Une
+                    // erreur rendue avant elle en est une vraie.
+                    if started.elapsed() >= slice {
+                        continue;
+                    }
                     break None;
                 };
                 // Trois essais par adresse : quelques connexions de rebut
@@ -900,6 +919,9 @@ pub fn run(
                 let _ = tx.send(Progress::Status(tr("posts_invite_retry").to_owned()));
             };
             announcing.store(false, std::sync::atomic::Ordering::SeqCst);
+            if cancelled {
+                return Ok(tr("posts_invite_cancelled").to_owned());
+            }
             let Some((session, admitted_ip)) = outcome else {
                 return Err(tr(if tries == 0 {
                     "posts_err_nobody"
@@ -3066,6 +3088,58 @@ mod tests {
             .expect("une réponse");
         release.join().unwrap();
         assert!(matches!(first, Progress::Waiting(_)), "{first:?}");
+    }
+
+    /// **L'écran qui n'attend plus ferme l'invitation** : le canal des
+    /// réponses lâché (annuler, verrouiller), la porte se ferme dans la
+    /// seconde — et le port se rouvre.
+    #[test]
+    fn an_invitation_closes_when_the_screen_lets_go() {
+        let (dir, _s, db) = post("invite-cancel");
+        Posts::load(&db)
+            .unwrap()
+            .found(&db, "Comptoir 1", "2026-09-25")
+            .unwrap();
+        drop(db);
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let (yes, answers) = std::sync::mpsc::channel::<bool>();
+        let rx = spawn(
+            Job::Invite {
+                port,
+                for_device: None,
+                companion: false,
+            },
+            dir.join("poste.db"),
+            "secret".to_owned(),
+            "2026-09-25".to_owned(),
+            answers,
+        );
+        let first = rx.recv_timeout(Duration::from_secs(10)).expect("ouverte");
+        assert!(matches!(first, Progress::Waiting(_)), "{first:?}");
+        let asked = std::time::Instant::now();
+        drop(yes);
+        let end = loop {
+            if let p @ (Progress::Done(_) | Progress::Failed(_)) =
+                rx.recv_timeout(Duration::from_secs(5)).expect("fermée")
+            {
+                break p;
+            }
+        };
+        assert!(
+            asked.elapsed() < Duration::from_secs(4),
+            "{:?}",
+            asked.elapsed()
+        );
+        assert!(
+            matches!(&end, Progress::Done(said) if said == crate::strings::tr("posts_invite_cancelled")),
+            "{end:?}"
+        );
+        // La porte est rendue.
+        assert!(bpm_sync::link::Door::open(&format!("0.0.0.0:{port}")).is_ok());
     }
 
     #[test]

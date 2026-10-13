@@ -161,10 +161,9 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
 - postes : deux postes invités en même temps par deux postes différents
   reçoivent le même numéro, donc les mêmes blocs d'identifiants (ne
   laisser inviter que la référence ?) ; deux postes qui se désignent
-  référence avant de se parler numérotent tous deux ; verrouiller
-  pendant une invitation laisse la porte ouverte jusqu'à six minutes,
-  sans bouton pour l'annuler (« × » et « Fonder un autre groupe » : deux
-  clics depuis le 13/10) ;
+  référence avant de se parler numérotent tous deux (une invitation se
+  ferme dans la seconde quand on l'annule ou qu'on verrouille, et « × »
+  et « Fonder un autre groupe » se font en deux clics : faits le 13/10) ;
 - carnet : deux postes peuvent ouvrir le même flacon dans les deux
   secondes (le lot proposé, le lot périmé ou d'un autre vaccin, et le
   lot reçu déjà périmé : faits le 13/10) ;

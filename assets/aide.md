@@ -1511,7 +1511,9 @@ affiché. Le poste de référence installe le contenu livré avec les mises
 à jour. Il ne se retire ni ne quitte le groupe tant que d'autres postes y
 restent : en désigner un autre d'abord. Retirer un poste (« × ») et
 « Fonder un autre groupe » se font en deux clics : le premier arme le
-bouton, qui dit alors ce qu'il va faire.
+bouton, qui dit alors ce qu'il va faire. Une invitation ouverte se
+ferme dans la seconde avec « Annuler l'invitation », en fermant la
+fenêtre ou en verrouillant.
 
 **L'officine** (nom, adresse, pharmacien, n° AM, équipe, horaires) se
 corrige depuis n'importe quel poste, dans Options › Officine. Deux postes
