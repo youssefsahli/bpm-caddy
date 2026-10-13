@@ -57,10 +57,8 @@ répertoire en IPv6, sans transfert de port, et ses bornes par abonné et
 par réseau — trois relectures de sécurité, corrigées) a passé son smoke
 dans les quatre formes (2b58429) ; la 0.420.0 (l'onglet de la carte
 compte les officines apparues, « En ligne » déplie une entrée en entier
-— relus, corrigés) a passé son smoke dans les quatre formes (da6c454) :
-la 0.420.0, `git tag v0.420.0 da6c454 && git push origin
-v0.420.0` (à défaut, la 0.419.0 : `git tag v0.419.0 2b58429`) ; la
-0.421.0 (« En ligne » filtre « Différentes d'ici » et prend la version
+— relus, corrigés) a passé son smoke dans les quatre formes (da6c454) ;
+la 0.421.0 (« En ligne » filtre « Différentes d'ici » et prend la version
 d'une officine du répertoire — deux relectures, corrigées) a passé son
 smoke dans les quatre formes (d0d0162) : **c'est elle à publier** —
 `git tag v0.421.0 d0d0162 && git push origin v0.421.0` (à défaut, la
