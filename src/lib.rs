@@ -46,6 +46,7 @@ pub mod geo;
 pub mod graph;
 pub mod gravidity;
 pub mod hepatic;
+pub mod infirmier;
 pub mod insulin;
 pub mod intake;
 pub mod location;

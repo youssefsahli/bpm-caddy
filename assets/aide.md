@@ -248,6 +248,28 @@ La feuille s'imprime à l'attention du prescripteur, avec un cadre
 réservé à sa réponse. Elle ne constitue pas un avis médical et le
 mentionne.
 
+## Feuille de l'infirmier(ère)
+
+Pour un patient dont l'infirmier(ère) vient chercher les traitements,
+l'onglet « Infirmier » retient la case « Traitement remis à
+l'infirmier(ère) », son nom et son téléphone — un réglage de
+l'officine, le même sur tous les postes.
+
+La feuille range les traitements **par moment** — matin, midi, soir,
+coucher —, dans l'ordre où l'on remplit un pilulier. Trois styles au
+choix : « Simple », une case à cocher par prise ; « Détaillée », la
+quantité, le repas et les remarques de la posologie, avec une ligne
+« préparé le / par » ; « Grille », un médicament par ligne et les
+moments en colonnes. La posologie est lue comme pour le plan de prise :
+une prise à la demande reste hors des moments, un rythme non quotidien
+s'écrit en toutes lettres, une posologie non comprise passe telle
+quelle. Rien n'est ajouté ; le prescripteur décide.
+
+Quand la case est cochée, chaque délivrance notée sur une ligne du
+dossier (« délivrance n° ») propose la feuille : « Imprimer la
+feuille… », « Ouvrir l'onglet » ou « Plus tard ». Rien ne s'imprime
+sans le geste.
+
 # Croisement
 
 L'écran « Croisement » applique les mêmes analyses à une liste libre,

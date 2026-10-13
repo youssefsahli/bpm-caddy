@@ -1283,7 +1283,7 @@ const GUIDE_SECTIONS: &[(&str, &str)] = &[
     ),
     (
         "Le dossier patient",
-        "Le bandeau du haut porte l'identité, les traitements rattachés au référentiel médicaments (une puce par médicament, cliquable), et les éléments relevés automatiquement : les interactions entre ces traitements, et la revue d'ordonnance. En dessous, sept onglets : les entretiens, le fil du dossier, le carnet de vaccination, la biologie, les locations de matériel, la conciliation de sortie et les pièces numérisées.",
+        "Le bandeau du haut porte l'identité, les traitements rattachés au référentiel médicaments (une puce par médicament, cliquable), et les éléments relevés automatiquement : les interactions entre ces traitements, et la revue d'ordonnance. En dessous, huit onglets : les entretiens, le fil du dossier, le carnet de vaccination, la biologie, les locations de matériel, la conciliation de sortie, les pièces numérisées et la feuille de l'infirmier(ère).",
     ),
     (
         "Créer et suivre un entretien",
@@ -1381,6 +1381,203 @@ pub fn plan_source(
         &template_source("plan", template_path)?,
         &plan_values(data, pharmacy),
     ))
+}
+
+/// Ce que la feuille de l'infirmier(ère) porte : le dossier, ce que
+/// l'officine en retient, et la feuille rangée par moment.
+pub struct NurseData<'a> {
+    pub patient: &'a Patient,
+    /// Déjà en français.
+    pub today: &'a str,
+    pub care: &'a crate::infirmier::Care,
+    pub sheet: &'a crate::infirmier::Sheet,
+    /// La mention de l'officine, vide si elle n'en a pas écrit.
+    pub mention: &'a str,
+}
+
+/// La feuille de l'infirmier(ère), à remettre avec les boîtes.
+pub fn open_infirmier(
+    data: &NurseData,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        fill(
+            &template_source("infirmier", template_path)?,
+            &infirmier_values(data, pharmacy),
+        ),
+        &format!("infirmier_{}", data.patient.id),
+    )
+}
+
+const MARKERS_INFIRMIER: &[&str] = &[
+    "{{PATIENT_NAME}}",
+    "{{DATE}}",
+    "{{NURSE}}",
+    "{{SHEET}}",
+    "{{PHARMACY_NAME}}",
+    "{{PHARMACY_PHONE}}",
+    "{{MENTION}}",
+];
+
+const DEFAULT_INFIRMIER_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 1.6cm)
+#set text(size: 12pt, lang: "fr", hyphenate: true)
+
+#align(center)[#text(17pt, weight: "bold")[Plan de prises]]
+#v(1mm)
+#align(center)[#text(11pt)[{{PATIENT_NAME}} — remis le {{DATE}}]]
+#align(center)[#text(10pt)[{{NURSE}}]]
+#v(5mm)
+
+{{SHEET}}
+
+#v(5mm)
+#text(10pt)[Votre pharmacie : {{PHARMACY_NAME}} — {{PHARMACY_PHONE}}]
+{{MENTION}}
+"##;
+
+/// La feuille, dans le style que l'officine a choisi pour ce patient.
+fn infirmier_sheet_markup(
+    style: crate::infirmier::Style,
+    sheet: &crate::infirmier::Sheet,
+) -> String {
+    use crate::infirmier::Style;
+    use crate::intake::Moment;
+    let t = |s: &str| format!("#{}", typst_str(s));
+    // Le moment sans la quantité : une marque, jamais un « 1 » inventé.
+    let qty = |q: &Option<String>| q.clone().unwrap_or_else(|| "•".to_owned());
+    let mut out = String::new();
+    let heading = |out: &mut String, title: &str| {
+        out.push_str(&format!(
+            "#v(2mm)\n#text(13pt, weight: \"bold\")[{}]\n#v(1mm)\n",
+            t(title)
+        ));
+    };
+    match style {
+        Style::Simple | Style::Detaillee => {
+            for m in Moment::ALL {
+                let doses = &sheet.moments[m.index()];
+                heading(&mut out, m.label());
+                if doses.is_empty() {
+                    out.push_str(&format!("#text(fill: luma(120))[{}]\n", t("—")));
+                    continue;
+                }
+                if style == Style::Simple {
+                    for d in doses {
+                        out.push_str(&format!(
+                            "#box(width: 3.6mm, height: 3.6mm, stroke: 0.8pt) #h(2mm) *{}* #h(1fr) {}\\\n",
+                            t(&d.name),
+                            t(&qty(&d.quantity))
+                        ));
+                    }
+                } else {
+                    out.push_str(
+                        "#table(columns: (1fr, auto, 1.2fr), inset: 6pt, stroke: 0.6pt,\n",
+                    );
+                    out.push_str("  [*Médicament*], [*Quantité*], [*Remarques*],\n");
+                    for d in doses {
+                        out.push_str(&format!(
+                            "  [{}], [{}], [{}],\n",
+                            t(&d.name),
+                            t(&qty(&d.quantity)),
+                            t(&d.note)
+                        ));
+                    }
+                    out.push_str(")\n#text(9.5pt)[Préparé le ............ par ............]\n");
+                }
+            }
+        }
+        Style::Grille => {
+            // Un médicament par ligne, dans l'ordre où la feuille les a
+            // rencontrés.
+            let mut names: Vec<&str> = Vec::new();
+            for m in Moment::ALL {
+                for d in &sheet.moments[m.index()] {
+                    if !names.contains(&d.name.as_str()) {
+                        names.push(&d.name);
+                    }
+                }
+            }
+            out.push_str("#table(columns: (1fr, auto, auto, auto, auto), inset: 7pt, stroke: 0.6pt, align: (left, center, center, center, center),\n");
+            out.push_str("  [*Médicament*], [*Matin*], [*Midi*], [*Soir*], [*Coucher*],\n");
+            for n in &names {
+                out.push_str(&format!("  [*{}*]", t(n)));
+                for m in Moment::ALL {
+                    let cell = sheet.moments[m.index()]
+                        .iter()
+                        .find(|d| d.name == *n)
+                        .map(|d| qty(&d.quantity))
+                        .unwrap_or_default();
+                    out.push_str(&format!(", [{}]", t(&cell)));
+                }
+                out.push_str(",\n");
+            }
+            if names.is_empty() {
+                out.push_str("  [], [], [], [], [],\n");
+            }
+            out.push_str(")\n");
+        }
+    }
+    // Hors des moments, toujours écrit : une prise à la demande n'entre
+    // pas au pilulier, un rythme non quotidien se lit en toutes lettres.
+    for (title, rows) in [
+        ("Moment à convenir", &sheet.daily),
+        ("Si besoin", &sheet.on_demand),
+        ("Pas tous les jours", &sheet.cyclic),
+        ("Posologie à lire telle quelle", &sheet.unread),
+    ] {
+        if rows.is_empty() {
+            continue;
+        }
+        heading(&mut out, title);
+        for a in rows {
+            out.push_str(&format!("*{}* : {}\\\n", t(&a.name), t(&a.text)));
+        }
+    }
+    out
+}
+
+fn infirmier_values(data: &NurseData, pharmacy: &PharmacyConfig) -> Vec<(&'static str, String)> {
+    let nurse = [data.care.nom.trim(), data.care.telephone.trim()]
+        .into_iter()
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join(" — ");
+    let nurse = if nurse.is_empty() {
+        String::new()
+    } else {
+        format!("#{}", typst_str(&format!("Infirmier(ère) : {nurse}")))
+    };
+    let mention = if data.mention.trim().is_empty() {
+        String::new()
+    } else {
+        format!(
+            "#v(3mm)\n#text(8.5pt, style: \"italic\")[#{}]",
+            typst_str(data.mention.trim())
+        )
+    };
+    vec![
+        (
+            "{{PATIENT_NAME}}",
+            format!("#{}", typst_str(&data.patient.full_name())),
+        ),
+        ("{{DATE}}", format!("#{}", typst_str(data.today))),
+        ("{{NURSE}}", nurse),
+        (
+            "{{SHEET}}",
+            infirmier_sheet_markup(data.care.style, data.sheet),
+        ),
+        (
+            "{{PHARMACY_NAME}}",
+            format!("#{}", typst_str(&pharmacy.name)),
+        ),
+        (
+            "{{PHARMACY_PHONE}}",
+            format!("#{}", typst_str(&pharmacy.phone)),
+        ),
+        ("{{MENTION}}", mention),
+    ]
 }
 
 const MARKERS_PLAN: &[&str] = &[
@@ -5107,6 +5304,12 @@ pub const DOCS: &[Doc] = &[
         default: DEFAULT_PLAN_TEMPLATE,
     },
     Doc {
+        key: "infirmier",
+        label: "tpl_target_infirmier",
+        markers: MARKERS_INFIRMIER,
+        default: DEFAULT_INFIRMIER_TEMPLATE,
+    },
+    Doc {
         key: "traitement",
         label: "tpl_target_traitement",
         markers: MARKERS_TRAITEMENT,
@@ -5580,6 +5783,35 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
                 ("{{DAY}}", day.to_owned()),
                 ("{{ENTRIES}}", entries.to_owned()),
             ]
+        }
+        // La feuille de l'infirmier(ère) montre ce qu'elle range : des
+        // prises placées, une à la demande, une hebdomadaire.
+        "infirmier" => {
+            let line = |name: &str, poso: &str| {
+                (name.to_owned(), poso.to_owned(), crate::intake::read(poso))
+            };
+            let sheet = crate::infirmier::sheet(&[
+                line("Metformine 1000 mg", "1 comprimé matin et soir, au repas"),
+                line("Kardégic 75 mg", "1 sachet le matin"),
+                line("Atorvastatine 20 mg", "1 comprimé le soir"),
+                line("Doliprane 1 g", "1 comprimé si besoin, 3 par jour maximum"),
+                line("Méthotrexate 10 mg", "1 comprimé le lundi, une fois par semaine"),
+            ]);
+            infirmier_values(
+                &NurseData {
+                    patient: &patient,
+                    today: "24/08/2026",
+                    care: &crate::infirmier::Care {
+                        remis: true,
+                        nom: "Mme Durand".to_owned(),
+                        telephone: "06 00 00 00 00".to_owned(),
+                        style: crate::infirmier::Style::Simple,
+                    },
+                    sheet: &sheet,
+                    mention: "",
+                },
+                &pharmacy,
+            )
         }
         "plan" => plan_values(
             &PlanData {
@@ -8631,6 +8863,50 @@ mod tests {
     /// des autres tests, dont plusieurs remplissent leurs pages de texte
     /// hostile pour prouver l'échappement — une lettre au médecin pleine
     /// de « #eval » est le gardien qui fonctionne, pas un aperçu.
+    /// **Les trois feuilles de l'infirmier(ère) compilent**, avec ce
+    /// qu'elles rangent hors des moments, et un nom qui porte un guillemet.
+    #[test]
+    fn every_nurse_sheet_style_compiles() {
+        let line =
+            |name: &str, poso: &str| (name.to_owned(), poso.to_owned(), crate::intake::read(poso));
+        let sheet = crate::infirmier::sheet(&[
+            line("Metformine \"1000\" mg", "1 comprimé matin et soir"),
+            line("Doliprane 1 g", "1 comprimé si besoin"),
+            line(
+                "Méthotrexate 10 mg",
+                "1 comprimé le lundi, une fois par semaine",
+            ),
+            line("Crème X", "selon l'avis du dermatologue"),
+        ]);
+        let patient = sample_patient();
+        for style in crate::infirmier::Style::ALL {
+            let care = crate::infirmier::Care {
+                remis: true,
+                nom: "Mme Durand".to_owned(),
+                telephone: String::new(),
+                style,
+            };
+            let filled = fill(
+                DEFAULT_INFIRMIER_TEMPLATE,
+                &infirmier_values(
+                    &NurseData {
+                        patient: &patient,
+                        today: "24/08/2026",
+                        care: &care,
+                        sheet: &sheet,
+                        mention: "Document remis à titre informatif.",
+                    },
+                    &sample_pharmacy(),
+                ),
+            );
+            let world = PdfWorld::new(filled);
+            assert!(
+                typst::compile::<PagedDocument>(&world).output.is_ok(),
+                "style {style:?}"
+            );
+        }
+    }
+
     #[test]
     fn every_default_template_compiles_with_its_sample_values() {
         let out = std::env::var("BPM_CADDY_TEST_PDF_OUT").ok();

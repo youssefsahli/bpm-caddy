@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Nurse sheet (« Feuille de l'infirmier(ère) »), a new tab in the patient
+  file: for a patient whose nurse collects the medicines, the officine
+  ticks « Traitement remis à l'infirmier(ère) », notes the nurse's name and
+  phone (a base setting, the same on every post), and picks one of three
+  sheets — « Simple » (a checkbox per dose under morning, noon, evening,
+  bedtime), « Détaillée » (quantity, meal and remarks, with a « préparé le
+  / par » line) or « Grille » (one medicine per row, moments in columns).
+  The posology is read by the same reader as the intake plan: on-demand,
+  non-daily and unreadable lines stay out of the moments, written as they
+  are. Every dispensing noted on a flagged file (« délivrance n° »)
+  offers the sheet — print, open the tab, or later; nothing prints by
+  itself. The template is editable like every printed document.
+
 ## [0.428.0] - 2026-10-13
 
 ### Fixed

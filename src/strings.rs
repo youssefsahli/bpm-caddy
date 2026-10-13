@@ -1853,7 +1853,7 @@ livre = "Une phrase qui n'est plus livrée"
                 format!(
                     "{} onglets",
                     match crate::app::PatientTab::ALL.len() {
-                        7 => "sept",
+                        8 => "huit",
                         n => panic!(
                             "le dossier porte {n} onglets : l'écrire en toutes \
                              lettres dans le mode d'emploi et ici"
