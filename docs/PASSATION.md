@@ -86,7 +86,9 @@ l'officine — corrigé dans la suivante) ; la 0.429.0 (la feuille de
 l'infirmier(ère) — relue, corrigée) a passé son smoke dans les quatre
 formes (afd99c9), étiquetée le 13/10 ; la 0.430.0 (copies par étapes
 bornées, changement de mot de passe interrompu repris, publication
-entière ou rien — trois relectures, corrigées) est à passer au smoke.
+entière ou rien — trois relectures, corrigées) a passé son smoke dans
+les quatre formes (66c9e41), étiquetée le 13/10 — première publication
+par la tâche finale `publish`.
 Les versions 0.398 à 0.420 n'ont jamais été étiquetées : le lanceur est
 resté sur la 0.397.0 jusqu'au 13/10 ; désormais chaque version dont le
 smoke passe s'étiquette aussitôt ; les étiquettes intermédiaires n'ont jamais été
