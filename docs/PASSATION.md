@@ -119,8 +119,12 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   à dire, ou à découper à l'écriture ; une réécriture périmée ne
   s'accepte plus qu'en la retapant (un geste « garder le texte livré »
   par phrase reste à faire) ;
-- rein : un résultat « <15 » se lit au-dessous de 15 (fait le 13/10,
-  `biology::bounded`, dans les quatre lectures et la liste de veille) ;
+- rein : un résultat « <15 » se lit au-dessous de 15, et une borne qui
+  laisse un palier ouvert donne « à vérifier » (fait le 13/10,
+  `Reading::bound`, `renal::read_bounded`). Reste : les règles de
+  `biology` (potassium « >6 »…) jugent encore une borne comme la valeur
+  la plus proche — elles ne disent pas « à vérifier » quand l'intervalle
+  chevauche un seuil ;
   une vingtaine de lignes « Entre X et Y » ont encore `below: Y` (Y
   exclu) — à relire contre chaque RCP (les trois anticoagulant et
   cotrimoxazole sont faits) ; metformine « Entre 45 et 60 » est 45–59

@@ -110,7 +110,9 @@ refusée et l'écran se recharge, sans écraser la saisie de l'autre poste.
 Sous la biologie, six lectures de la même ordonnance : interprétation
 des résultats, surveillance biologique en retard, adaptation à la
 clairance (un résultat tapé avec sa borne de laboratoire, « <15 », se
-lit au-dessous de 15 et s'écrit « <15 »), grossesse et allaitement,
+lit au-dessous de 15 et s'écrit « <15 » ; une borne qui ne dit pas de
+quel côté d'un seuil du traitement elle tombe — « <30 » pour un palier
+de 15, « >40 » pour un palier de 50 — donne « à vérifier »), grossesse et allaitement,
 sujet âgé, et interactions sur les
 cytochromes.
 

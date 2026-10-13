@@ -146,6 +146,23 @@ fn claims(a: &Adaptation, hay: &str) -> bool {
 }
 
 pub fn read(treatments: &[crate::revue::Treatment], dfg: Option<f64>) -> Vec<Finding> {
+    read_bounded(treatments, dfg, "")
+}
+
+/// Ce qu'une ligne dit d'un DFG rendu borné qui ne permet pas de conclure.
+const BOUNDED: &str = "Le DFG est rendu borné par le laboratoire : il ne dit pas de quel côté d'un seuil de ce traitement il se trouve — à vérifier avec la valeur exacte.";
+
+/// [`read`], pour un DFG rendu avec sa borne de laboratoire (`bound` :
+/// « < », « ≤ », « > », « ≥ », ou rien). **Un palier ne se conclut que
+/// si toute valeur que la borne permet le franchit** : « <30 » franchit
+/// sûrement le palier de 30, mais peut-être aussi celui de 15 ; « >60 »
+/// ne dit rien d'un palier de 80. Quand un palier reste ouvert, la ligne
+/// ne conclut pas — à vérifier, jamais un verdict qu'on ne sait pas.
+pub fn read_bounded(
+    treatments: &[crate::revue::Treatment],
+    dfg: Option<f64>,
+    bound: &str,
+) -> Vec<Finding> {
     let mut out: Vec<Finding> = Vec::new();
     for t in treatments {
         // **Un antidote n'est pas ce qu'il corrige** : la Lederfoline
@@ -171,16 +188,37 @@ pub fn read(treatments: &[crate::revue::Treatment], dfg: Option<f64>) -> Vec<Fin
             // se réduit sous 60 et se contre-indique sous 30, lue à 28,
             // est contre-indiquée. Le premier de la liste dirait
             // « réduire la dose » d'un traitement qu'il faut arrêter.
-            let hit = dfg.and_then(|v| {
-                a.steps
-                    .iter()
-                    .filter(|s| v < f64::from(s.below))
-                    .min_by_key(|s| s.below)
+            // Sûrement sous ce seuil, sûrement au-dessus, ou on ne sait pas.
+            let surely_below = |v: f64, t: f64| match bound {
+                "<" => v <= t,
+                "≤" => v < t,
+                ">" | "≥" => false,
+                _ => v < t,
+            };
+            let surely_above = |v: f64, t: f64| match bound {
+                "<" | "≤" => false,
+                _ => v >= t,
+            };
+            let open = dfg.is_some_and(|v| {
+                a.steps.iter().any(|s| {
+                    let t = f64::from(s.below);
+                    !surely_below(v, t) && !surely_above(v, t)
+                })
             });
+            let hit = if open {
+                None
+            } else {
+                dfg.and_then(|v| {
+                    a.steps
+                        .iter()
+                        .filter(|s| surely_below(v, f64::from(s.below)))
+                        .min_by_key(|s| s.below)
+                })
+            };
             // Sans DFG, la ligne existe et ne conclut pas. Avec un DFG
             // au-dessus de tous les seuils, il n'y a rien à dire du
             // tout — et le silence est la bonne réponse.
-            if dfg.is_some() && hit.is_none() {
+            if dfg.is_some() && hit.is_none() && !open {
                 continue;
             }
             out.push(Finding {
@@ -188,10 +226,11 @@ pub fn read(treatments: &[crate::revue::Treatment], dfg: Option<f64>) -> Vec<Fin
                 label: a.label,
                 level: hit.map(|s| s.level),
                 below: hit.map(|s| s.below),
-                conduct: hit.map_or(
-                    "Ce traitement s'adapte à la fonction rénale ; aucun DFG n'est noté au dossier.",
-                    |s| s.conduct,
-                ),
+                conduct: match hit {
+                    Some(s) => s.conduct,
+                    None if open => BOUNDED,
+                    None => "Ce traitement s'adapte à la fonction rénale ; aucun DFG n'est noté au dossier.",
+                },
                 source: a.source,
             });
             break;
@@ -2369,9 +2408,9 @@ mod tests {
         }
     }
 
-    /// **« <15 » est au-dessous de 15** : un DFG rendu borné par le
-    /// laboratoire, rangé 15 avec sa borne en remarque, tombe au palier
-    /// « au-dessous de 15 » et non à « entre 15 et 49 ».
+    /// **« <15 » est au-dessous de 15**, et une borne qui laisse un
+    /// palier ouvert ne conclut pas : « <30 » ne dit pas s'il est sous 15,
+    /// « >40 » s'il est sous 50 — à vérifier.
     #[test]
     fn a_bounded_dfg_falls_below_its_bound() {
         let t = crate::revue::Treatment {
@@ -2380,12 +2419,22 @@ mod tests {
             class: "",
             tags: "",
         };
-        let at = |dfg: f64| read(&[t], Some(dfg))[0].level;
-        assert_eq!(at(15.0), Some(Level::Reduce));
-        assert_eq!(
-            at(crate::biology::effective(15.0, "<")),
-            Some(Level::Contraindicated)
-        );
+        let at = |dfg: f64, bound: &str| {
+            read_bounded(&[t], Some(dfg), bound)
+                .first()
+                .map(|f| (f.level, f.conduct == BOUNDED))
+        };
+        assert_eq!(at(15.0, ""), Some((Some(Level::Reduce), false)));
+        // « <15 » : sûrement au-dessous de 15 et de 50.
+        assert_eq!(at(15.0, "<"), Some((Some(Level::Contraindicated), false)));
+        // « <30 » : sous 50 sûrement, sous 15 peut-être — à vérifier.
+        assert_eq!(at(30.0, "<"), Some((None, true)));
+        // « >60 » : au-dessus de tous ses seuils — rien à dire.
+        assert_eq!(at(60.0, ">"), None);
+        // « >40 » : sous 50 ou non, on ne sait pas.
+        assert_eq!(at(40.0, ">"), Some((None, true)));
+        // « ≤15 » : peut-être 15 même, qui n'est pas sous 15.
+        assert_eq!(at(15.0, "≤"), Some((None, true)));
     }
 
     /// **La table est une règle, pas de la prose.** Chaque entrée porte

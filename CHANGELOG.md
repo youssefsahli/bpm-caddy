@@ -17,7 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A biology result typed with its laboratory bound, « <15 », is read just
   below 15 by every rule and table — rivaroxaban's « au-dessous de 15 »
   rather than « entre 15 et 49 » — and written back « <15 »; « >90 » just
-  above, « ≤ » and « ≥ » as the bound itself.
+  above, « ≤ » and « ≥ » as the bound itself. The kidney table concludes
+  only when every value the bound allows falls in the same tier: « <30 »
+  for a drug with tiers at 50 and 15, or « >40 » for a tier at 50,
+  answers « à vérifier ».
 
 ## [0.422.0] - 2026-10-13
 

@@ -4869,8 +4869,8 @@ struct Session {
     /// Ce que le rein impose au dossier ouvert, **déjà résolu**.
     renal: Vec<crate::renal::Resolved>,
     renal_dfg: Option<f64>,
-    /// Le DFG tel que le laboratoire l'a rendu, borne comprise (« <15 »).
-    renal_dfg_shown: String,
+    /// La borne de laboratoire du DFG du dossier (« < » pour « <15 »).
+    renal_dfg_bound: String,
     /// Le jour de ce DFG, ISO ; vide sans DFG.
     renal_dfg_on: String,
     /// Ce qu'on peut écraser de l'ordonnance ouverte, ligne par ligne
@@ -6302,7 +6302,7 @@ impl Session {
             bio_findings: Vec::new(),
             renal: Vec::new(),
             renal_dfg: None,
-            renal_dfg_shown: String::new(),
+            renal_dfg_bound: String::new(),
             renal_dfg_on: String::new(),
             crush: Vec::new(),
             gravidity: Vec::new(),
@@ -12509,10 +12509,10 @@ impl Session {
     /// The file's DFG as written: the laboratory's bound when it gave one
     /// (« <15 »), otherwise the value the tables read.
     fn renal_dfg_text(&self, v: f64) -> String {
-        if self.renal_dfg_shown.starts_with(['<', '>', '≤', '≥']) {
-            self.renal_dfg_shown.clone()
-        } else {
+        if self.renal_dfg_bound.is_empty() {
             renal_dfg_text(v)
+        } else {
+            crate::biology::value_text(v, &self.renal_dfg_bound)
         }
     }
 
@@ -13400,13 +13400,15 @@ impl Session {
         // Comparé **brut** — arrondi, 29,6 devenait 30 et taisait le
         // « contre-indiqué sous 30 » ; l'écran l'écrit au dixième sous
         // les seuils, voir `renal_dfg_text`.
-        let dfg = latest.map(|r| r.effective());
-        // Ce qui s'écrit : le nombre rendu et sa borne.
-        self.renal_dfg_shown = latest
-            .map(|r| crate::biology::value_text(r.value, r.bound))
-            .unwrap_or_default();
+        // Le nombre rendu, et sa borne : c'est la table qui juge de quel
+        // côté d'un seuil il est, ou s'il ne le dit pas.
+        let dfg = latest.map(|r| r.value);
+        self.renal_dfg_bound = latest.map(|r| r.bound.to_owned()).unwrap_or_default();
         self.renal_dfg_on = latest.map(|r| r.date.to_owned()).unwrap_or_default();
-        self.renal = crate::renal::resolve(crate::renal::read(&terms, dfg), &self.content);
+        self.renal = crate::renal::resolve(
+            crate::renal::read_bounded(&terms, dfg, &self.renal_dfg_bound),
+            &self.content,
+        );
         self.renal_dfg = dfg;
         // Et la question qu'on pose au téléphone, celle de l'EHPAD :
         // « peut-on écraser ? ». Elle ne dépend d'aucun chiffre, donc
@@ -83452,7 +83454,14 @@ fn companion_signals(
     }
     // Le rein, au DFG du dossier quand il y en a un. Sans chiffre la
     // puce dit qu'il manque, et ne conclut pas.
-    if let Some(f) = crate::renal::resolve(crate::renal::read(&one, dfg), over)
+    // La borne du DFG du dossier, lue dans sa biologie : « <30 » ne se
+    // juge pas comme 30.
+    let bound = bio
+        .iter()
+        .filter(|r| r.code.eq_ignore_ascii_case("DFG") && Some(r.value) == dfg)
+        .max_by(|a, b| a.date.cmp(b.date))
+        .map_or("", |r| r.bound);
+    if let Some(f) = crate::renal::resolve(crate::renal::read_bounded(&one, dfg, bound), over)
         .into_iter()
         .next()
     {
