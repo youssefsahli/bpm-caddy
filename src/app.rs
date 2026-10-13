@@ -5621,6 +5621,9 @@ struct Session {
     /// The last search across every reference table, and its question.
     table_hits: Vec<(usize, usize, Vec<String>)>,
     table_hits_key: Option<(String, u64)>,
+    /// Les tables que l'équipe a corrigées, lues contre `table_rev` : la
+    /// liste les marque, et les relisait à chaque image.
+    table_edited: Option<(u64, std::collections::HashSet<String>)>,
     drug_form: Option<Drug>,
     /// A card opens as a monograph to read; "Modifier" switches to the
     /// editable form.
@@ -6565,6 +6568,7 @@ impl Session {
             table_rev: 0,
             table_hits: Vec::new(),
             table_hits_key: None,
+            table_edited: None,
             drug_form: None,
             drug_reading: true,
             class_note: String::new(),
@@ -62992,7 +62996,15 @@ impl App {
     /// The list panel: five families, the tables under each, and the
     /// keyboard to walk them.
     fn tables_list(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) {
-        let edited = session.db.edited_table_keys().unwrap_or_default();
+        if session.table_edited.as_ref().map(|(rev, _)| *rev) != Some(session.table_rev) {
+            let keys = session.db.edited_table_keys().unwrap_or_default();
+            session.table_edited = Some((session.table_rev, keys));
+        }
+        let edited = session
+            .table_edited
+            .as_ref()
+            .map(|(_, k)| k.clone())
+            .unwrap_or_default();
         let mut pick: Option<usize> = None;
         motif::panel(ui, rect, Some(tr("tables_list")), |ui| {
             let body = ui.available_rect_before_wrap();

@@ -184,10 +184,10 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   notes ne voyagent plus (le volet le dit) ;
 - une transmission écrite dans les deux secondes après minuit se range au
   jour nouveau pendant que la page montre encore la veille ;
-- tables de référence : `edited_table_keys` et `all_table_cells`
-  relus à chaque image (à mémoriser contre `table_rev`) ; survol de la
-  carte : la mémoire `GraphPairKey` ne suit ni la biologie ni la fiche
-  modifiées ici ; la note de pied de la carte est mesurée avec 99 et
+- tables de référence : les tables corrigées se relisent contre
+  `table_rev` (fait le 13/10 ; `all_table_cells` n'est lu qu'au clic et
+  dans la recherche mémorisée) ; survol de la carte : `GraphPairKey`
+  suit `file_rev` depuis le 13/10 ; la note de pied de la carte est mesurée avec 99 et
   sans `graph_hidden_ring` ; infobulles des arêtes pendant un
   glissement ;
 - suppression d'un dossier entre postes : une ligne (biologie, dose,
