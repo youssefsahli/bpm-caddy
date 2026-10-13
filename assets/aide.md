@@ -1262,7 +1262,8 @@ registre » ou « Absent du registre » sinon — ces deux derniers cerclent
 aussi sa pastille. Le registre dit ce qui ne colle pas ; il ne prouve
 rien, n'importe qui pouvant écrire le numéro d'une autre. En écrivant
 le sien, l'officine voit ce que le registre dit d'elle, et en reprend
-la commune d'un clic. « Parcourir… » ouvre son partage dans la fenêtre « En
+la commune d'un clic ; sans numéro écrit, la carte propose celui que le
+registre donne à une officine de son nom, à sa commune. « Parcourir… » ouvre son partage dans la fenêtre « En
 ligne », où chaque entrée se prend d'un geste ; « Chercher dans tout le
 répertoire… » y ouvre celui de toutes à la fois. **Aucun appairage** :
 rien n'entre de soi-même, et son nom n'est prouvé que par l'empreinte,

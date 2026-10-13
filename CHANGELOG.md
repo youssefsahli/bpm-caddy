@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   by number or by words of its name and town, and fills in its name,
   address and phone in one click (to check, then save). The register
   extract now carries the street and phone.
+- With no FINESS typed, the map's form offers the number the register
+  gives to an officine of this name at this commune.
 - A hosting officine copies its directory address in one click, to paste
   into a message to the others.
 

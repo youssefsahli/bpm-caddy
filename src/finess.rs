@@ -405,6 +405,26 @@ pub fn check(finess: &str, code_postal: &str, commune: &str, nom: &str) -> Optio
     })
 }
 
+/// **Les officines du registre qu'une officine pourrait être** : à sa
+/// commune (son code postal, ou sa ville dans le même département) et
+/// sous son nom — ce qui suggère son FINESS quand elle ne l'a pas écrit.
+/// Rien quand le nom ne dit rien de plus que « Pharmacie ».
+pub fn suggest(nom: &str, code_postal: &str, commune: &str) -> Vec<&'static Officine> {
+    if name_words(nom).is_empty() || code_postal.trim().is_empty() {
+        return Vec::new();
+    }
+    let code_postal = code_postal.trim();
+    register()
+        .iter()
+        .filter(|o| {
+            (o.code_postal == code_postal
+                || (dep_of(o.code_postal) == dep_of(code_postal) && same_town(o.ville, commune)))
+                && same_name(nom, o.nom)
+        })
+        .take(4)
+        .collect()
+}
+
 /// La commune de la liste livrée où le registre met une officine : celle
 /// de son code postal dont le nom est la ville, ou la seule de ce code.
 /// Un code de plusieurs communes dont aucune n'a le nom de la ville — un
@@ -556,6 +576,19 @@ mod tests {
             "Sorges et Ligueux en Périgord"
         ));
         assert!(!same_town("PARIS", "Paris-l'Hôpital"));
+    }
+
+    /// Une officine nommée à sa commune se retrouve ; un nom qui ne dit
+    /// que « Pharmacie » ne suggère rien.
+    #[test]
+    fn a_named_officine_at_its_town_is_suggested() {
+        let o = register()
+            .iter()
+            .find(|o| o.ville == "THOIRY" && o.code_postal.starts_with("01"))
+            .unwrap();
+        assert!(suggest(o.nom, o.code_postal, "Thoiry").contains(&o));
+        assert!(suggest(o.nom, "78770", "Thoiry").iter().all(|x| x != &o));
+        assert!(suggest("Pharmacie", o.code_postal, "Thoiry").is_empty());
     }
 
     /// Un homonyme dans un autre département n'est pas la ville du

@@ -15138,6 +15138,9 @@ struct Carte {
     order: Vec<(usize, Option<u32>)>,
     order_for: Option<(String, u64)>,
     rev: u64,
+    /// Les officines du registre que celle-ci pourrait être, pour son nom
+    /// et sa commune — relues quand l'un ou l'autre change.
+    suggested: Option<([String; 3], Vec<&'static crate::finess::Officine>)>,
     /// Ce que le registre FINESS dit de chacune — lu une fois par lecture.
     checks: Vec<Option<crate::finess::Check>>,
     listed: bool,
@@ -64240,6 +64243,33 @@ impl App {
                     // Ce que le registre écrit sous le numéro tapé : la
                     // commune s'en reprend d'un clic, le nom se change dans
                     // Options › Officine.
+                    // Pas encore de FINESS : celui que le registre donne à
+                    // une officine de ce nom, à cette commune.
+                    if session.carte.finess.trim().is_empty() {
+                        if let Some((cp, commune)) = session.carte.commune.clone() {
+                            let asked = [config.pharmacy.name.clone(), cp, commune];
+                            if session.carte.suggested.as_ref().map(|(a, _)| a) != Some(&asked) {
+                                let hits = crate::finess::suggest(&asked[0], &asked[1], &asked[2]);
+                                session.carte.suggested = Some((asked, hits));
+                            }
+                            let mut take: Option<&'static str> = None;
+                            if let Some((_, hits)) = &session.carte.suggested {
+                                for o in hits {
+                                    let text = trn(
+                                        "carte_finess_suggest",
+                                        &[&o.finess, &crate::finess::pretty(o.nom)],
+                                    );
+                                    let label = Self::carte_elide(ui, &text, w);
+                                    if motif::button(ui, &label).on_hover_text(&text).clicked() {
+                                        take = Some(o.finess);
+                                    }
+                                }
+                            }
+                            if let Some(n) = take {
+                                session.carte.finess = n.to_owned();
+                            }
+                        }
+                    }
                     if session.carte.finess.trim().len() == 9 {
                         let (cp, commune) = session.carte.commune.clone().unwrap_or_default();
                         let asked = [
