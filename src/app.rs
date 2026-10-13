@@ -46,6 +46,10 @@ fn adopt_officine(config: &mut Config, session: &mut Session) {
             config.disclaimers = shared;
             session.mentions_seen = raw;
         }
+        // Ce poste n'en a pas : la base reste sans, pour qu'un poste qui en
+        // a les y verse — sinon le premier poste mis à jour effaçait
+        // celles des autres.
+        None if config.disclaimers == crate::config::DisclaimersConfig::default() => {}
         None => {
             if let Ok(text) = toml::to_string(&config.disclaimers) {
                 let day = session.today.clone();
@@ -15714,9 +15718,17 @@ enum MessagesTo {
     Group,
 }
 
-/// Une ligne de l'ordonnance de vaccination : le vaccin, ce qu'elle en
-/// dit, retenue ou non.
-type VaccOrdLine = (String, String, bool);
+/// Une ligne de l'ordonnance de vaccination.
+struct VaccOrdLine {
+    /// Le vaccin.
+    label: String,
+    /// Ce que le calendrier en dit : une aide, jamais imprimée.
+    hint: String,
+    /// Ce que la ligne imprimera — dose, schéma, rappel —, écrit au
+    /// comptoir.
+    text: String,
+    on: bool,
+}
 
 /// Un événement publié sur la carte, et s'il est déjà au journal d'ici.
 #[cfg(feature = "sync")]
@@ -25610,12 +25622,19 @@ impl App {
                             ui.label(egui::RichText::new(tr("vord_none")).color(motif::text_dim()));
                         }
                         let w = ui.available_width();
-                        for (label, what, on) in rows.iter_mut() {
-                            motif::checkbox(ui, on, label.as_str());
+                        for row in rows.iter_mut() {
+                            motif::checkbox(ui, &mut row.on, row.label.as_str());
+                            if !row.hint.trim().is_empty() {
+                                ui.label(
+                                    egui::RichText::new(row.hint.as_str())
+                                        .size(motif::pt(ui, 10.5))
+                                        .color(motif::text_faint()),
+                                );
+                            }
                             motif::field(
                                 ui,
                                 w,
-                                egui::TextEdit::singleline(what)
+                                egui::TextEdit::singleline(&mut row.text)
                                     .hint_text(motif::hint(tr("vord_line_hint"))),
                             );
                             ui.add_space(2.0);
@@ -25625,7 +25644,7 @@ impl App {
                     let options: Vec<(String, String)> = session
                         .vacc_catalogue
                         .iter()
-                        .filter(|v| !rows.iter().any(|(l, _, _)| *l == v.label))
+                        .filter(|v| !rows.iter().any(|r| r.label == v.label))
                         .map(|v| (v.label.clone(), v.label.clone()))
                         .collect();
                     if !options.is_empty() {
@@ -25642,7 +25661,7 @@ impl App {
                     }
                 });
                 ui.horizontal_wrapped(|ui| {
-                    let any = rows.iter().any(|(_, _, on)| *on);
+                    let any = rows.iter().any(|r| r.on);
                     if motif::button_enabled(ui, tr("vord_print"), any).clicked() {
                         print = true;
                     }
@@ -25653,15 +25672,26 @@ impl App {
             });
         motif::dialog_relief(ctx, &shown);
         if let Some(label) = add {
-            rows.push((label, String::new(), true));
+            rows.push(VaccOrdLine {
+                label,
+                hint: String::new(),
+                text: String::new(),
+                on: true,
+            });
+        }
+        // Une ligne cochée et vide ne part pas : un nom de vaccin sans dose
+        // ni schéma n'est pas une ligne d'ordonnance.
+        if print && rows.iter().any(|r| r.on && r.text.trim().is_empty()) {
+            print = false;
+            session.error = Some(tr("vord_line_empty").to_owned());
         }
         if print {
             let lines: Vec<crate::ordonnance::Line> = rows
                 .iter()
-                .filter(|(_, _, on)| *on)
-                .map(|(label, what, _)| crate::ordonnance::Line {
-                    name: label.clone(),
-                    posology: what.trim().to_owned(),
+                .filter(|r| r.on)
+                .map(|r| crate::ordonnance::Line {
+                    name: r.label.clone(),
+                    posology: r.text.trim().to_owned(),
                     caution: String::new(),
                 })
                 .collect();
@@ -30239,12 +30269,6 @@ impl App {
         let mut ddr_write: Option<String> = None;
         let mut open_catalogue = false;
         let mut open_prescription = false;
-        // Ce que le calendrier doit, retenu d'avance, et dit comme il le
-        // dit : la ligne de l'ordonnance reprend son détail, à corriger.
-        let prescribed: Vec<VaccOrdLine> = owed
-            .iter()
-            .map(|l| (l.label.to_owned(), l.detail.clone(), true))
-            .collect();
         motif::panel(ui, rect, Some(tr("vacc_due_section")), |ui| {
             // **La grossesse en cours**, facultative : sa date donne le
             // terme, et le terme les vaccins de la grossesse. Pas pour un
@@ -30425,6 +30449,22 @@ impl App {
             }
         }
         if open_prescription {
+            // Ce que le calendrier doit : coché d'avance seulement ce qui est
+            // dû ; une question à poser (facteur de risque, grossesse) reste
+            // à cocher. Son détail aide à écrire la ligne, il ne s'imprime
+            // pas.
+            let prescribed: Vec<VaccOrdLine> = session
+                .vacc_due
+                .iter()
+                .filter(|l| l.level != vaccines::DueLevel::Ok)
+                .filter(|l| vaccines::CATALOGUE.iter().any(|v| v.code == l.code))
+                .map(|l| VaccOrdLine {
+                    label: l.label.to_owned(),
+                    hint: l.detail.clone(),
+                    text: String::new(),
+                    on: l.level == vaccines::DueLevel::Due,
+                })
+                .collect();
             session.vacc_ord = Some((patient.id, prescribed));
         }
         if open_catalogue && session.vacc_cat_edit.is_none() {
@@ -88982,8 +89022,15 @@ impl eframe::App for App {
                 }
                 // Les mentions, à la base contre ce que la fenêtre avait lu
                 // — rien d'écrit si elles n'ont pas changé.
-                if self.config.disclaimers != before.disclaimers {
-                    let seen = self.options.as_ref().and_then(|e| e.mentions_seen.clone());
+                // Changées ou non se juge contre ce que la fenêtre avait lu de
+                // la base — comme la durée du journal —, pas contre la
+                // configuration du poste, qui peut avoir du retard sur elle.
+                let seen = self.options.as_ref().and_then(|e| e.mentions_seen.clone());
+                let changed = match mentions_of(seen.as_deref()) {
+                    Some(read) => self.config.disclaimers != read,
+                    None => self.config.disclaimers != before.disclaimers,
+                };
+                if changed {
                     match toml::to_string(&self.config.disclaimers) {
                         Ok(text) => match session.db.set_setting(
                             MENTIONS_KEY,
@@ -88993,6 +89040,7 @@ impl eframe::App for App {
                             &session.operator,
                         ) {
                             Ok(true) => {
+                                session.mentions_fresh = None;
                                 session.mentions_seen = Some(text.clone());
                                 if let Some(editor) = &mut self.options {
                                     editor.mentions_seen = Some(text);
@@ -89007,6 +89055,7 @@ impl eframe::App for App {
                                         editor.mentions_seen = raw.clone();
                                     }
                                 }
+                                session.mentions_fresh = None;
                                 session.mentions_seen = raw;
                                 session.stale("mentions_stale");
                             }

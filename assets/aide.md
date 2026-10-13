@@ -637,12 +637,13 @@ vaccination » ; mise en page, modèle `vaccin`.
 ## Ordonnance de vaccination
 
 Dans l'onglet Vaccinations du dossier, « Prescrire… » compose
-l'ordonnance : les vaccins que le calendrier doit d'après le carnet
-sont cochés d'avance, chacun avec ce que le calendrier en dit, et
-« Ajouter un vaccin… » prend tout autre vaccin du catalogue de
-l'officine. Chaque ligne s'imprime telle qu'elle est écrite — dose,
-schéma, rappel : à corriger avant d'imprimer, le choix revient au
-pharmacien. L'ordonnance part par le modèle « Ordonnance », signée de
+l'ordonnance : les vaccins que le calendrier dit dus d'après le carnet
+sont cochés d'avance ; ceux qu'il propose d'évaluer (facteur de risque,
+grossesse) restent à cocher. Ce que le calendrier en dit s'affiche sous
+chacun, sans s'imprimer, et « Ajouter un vaccin… » prend tout autre
+vaccin du catalogue de l'officine. Chaque ligne cochée s'écrit — dose,
+schéma, rappel — et s'imprime telle qu'elle est écrite ; une ligne
+cochée et vide empêche l'impression. Le choix revient au pharmacien. L'ordonnance part par le modèle « Ordonnance », signée de
 l'opérateur, avec les mentions écrites dans Options › Mentions ; rien
 n'est inscrit au carnet.
 
