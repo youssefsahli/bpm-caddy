@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   held the shared files for the whole copy, and the other posts' writes
   waited, then failed. Maintenance snapshots, which hold no password,
   still use `VACUUM INTO`.
+  A step-by-step copy always ends: after three restarts (another post
+  writing) or ten seconds, the rest is copied at once, and a source locked
+  for more than five seconds is an error rather than an endless wait. The
+  copy is compacted afterwards, so it does not carry the encrypted remains
+  of deleted records; and the register is copied first, the base last.
 
 ## [0.429.0] - 2026-10-13
 

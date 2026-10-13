@@ -1672,22 +1672,72 @@ const MIGRATIONS: &[&str] = &[
     )",
 ];
 
-/// The folder the daily backups live in: `backups/` beside the base.
 /// Copier une base SQLCipher **par petites étapes** vers `path`, chiffrée
 /// du même mot de passe — voir [`Db::backup_stepwise`]. Une écriture d'un
 /// autre poste passe entre deux paquets de pages au lieu d'attendre la
 /// fin de la copie.
+///
+/// **Et la copie finit toujours.** SQLite la reprend du début chaque fois
+/// qu'une autre connexion écrit dans la source : au comptoir d'une
+/// officine à trois postes, elle pouvait ne jamais aboutir, et deux des
+/// copies se font dans l'image — la fenêtre ne répondait plus. Après
+/// trois reprises ou [`STEPWISE_PATIENCE`], le reste se copie d'un coup,
+/// sous un seul verrou de lecture, comme le faisait `VACUUM INTO`. Une
+/// source verrouillée plus de cinq secondes de suite est une erreur, et
+/// non une attente sans fin.
+///
+/// La copie est compactée ensuite : l'API copie aussi les pages libres, où
+/// dorment, chiffrés, les restes de ce qui a été supprimé — une copie qui
+/// sort de l'officine ne doit pas les emporter.
 fn stepwise_copy(src: &Connection, path: &Path, password: &str, what: &str) -> Result<(), String> {
+    use rusqlite::backup::StepResult;
     let mut out = Connection::open(path).map_err(|e| format!("{what} : {e}"))?;
     out.pragma_update(None, "key", password)
         .map_err(|e| format!("{what} : {e}"))?;
-    let backup =
-        rusqlite::backup::Backup::new(src, &mut out).map_err(|e| format!("{what} : {e}"))?;
-    backup
-        .run_to_completion(128, std::time::Duration::from_millis(15), None)
+    {
+        let backup =
+            rusqlite::backup::Backup::new(src, &mut out).map_err(|e| format!("{what} : {e}"))?;
+        let started = std::time::Instant::now();
+        let mut blocked_since: Option<std::time::Instant> = None;
+        let mut remaining = i32::MAX;
+        let mut restarts = 0;
+        loop {
+            let whole = restarts >= 3 || started.elapsed() > STEPWISE_PATIENCE;
+            match backup
+                .step(if whole { -1 } else { 128 })
+                .map_err(|e| format!("{what} : {e}"))?
+            {
+                StepResult::Done => break,
+                StepResult::More => {
+                    blocked_since = None;
+                    let now = backup.progress().remaining;
+                    if now > remaining {
+                        restarts += 1;
+                    }
+                    remaining = now;
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                }
+                // Busy, Locked, et ce qu'une version suivante ajouterait :
+                // on réessaie, mais pas plus de cinq secondes d'affilée.
+                _ => {
+                    let since = *blocked_since.get_or_insert_with(std::time::Instant::now);
+                    if since.elapsed() > std::time::Duration::from_secs(5) {
+                        return Err(format!("{what} : base occupée par un autre poste"));
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(15));
+                }
+            }
+        }
+    }
+    out.execute_batch("VACUUM")
         .map_err(|e| format!("{what} : {e}"))
 }
 
+/// Combien de temps une copie par étapes laisse passer les écritures
+/// avant de copier le reste d'un coup.
+const STEPWISE_PATIENCE: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// The folder the daily backups live in: `backups/` beside the base.
 pub fn backup_dir(db_path: &Path) -> PathBuf {
     db_path
         .parent()
@@ -42860,8 +42910,11 @@ impl Db {
         }
         let with_scans = self.scan_weight()?.0 > 0;
         let written = match password {
+            // Le registre d'abord, la base en dernier, comme la copie du
+            // jour : la base copiée porte alors chaque dossier qu'une ligne
+            // du registre copié cite.
             Some(pw) => self
-                .backup_stepwise(&parts[0], pw)
+                .backup_stups_stepwise(&parts[2], pw)
                 .and_then(|()| {
                     if with_scans {
                         self.backup_scans_stepwise(&parts[1], pw)
@@ -42869,9 +42922,9 @@ impl Db {
                         Ok(())
                     }
                 })
-                .and_then(|()| self.backup_stups_stepwise(&parts[2], pw)),
+                .and_then(|()| self.backup_stepwise(&parts[0], pw)),
             None => self
-                .backup_to(&parts[0])
+                .backup_stups_to(&parts[2])
                 .and_then(|()| {
                     if with_scans {
                         self.backup_scans_to(&parts[1])
@@ -42879,7 +42932,7 @@ impl Db {
                         Ok(())
                     }
                 })
-                .and_then(|()| self.backup_stups_to(&parts[2])),
+                .and_then(|()| self.backup_to(&parts[0])),
         };
         if let Err(e) = written {
             for p in &parts {
@@ -42999,9 +43052,10 @@ impl Db {
         let scans = stage.join(BUNDLE_SCANS);
         let stups = stage.join(BUNDLE_STUPS);
         // Par étapes : le paquet se fait pendant que le comptoir écrit.
-        self.backup_stepwise(&base, password)?;
-        self.backup_scans_stepwise(&scans, password)?;
+        // Le registre d'abord, la base en dernier : voir `copy_whole_to`.
         self.backup_stups_stepwise(&stups, password)?;
+        self.backup_scans_stepwise(&scans, password)?;
+        self.backup_stepwise(&base, password)?;
 
         // Le paquet est réécrit et jamais complété : un export par
         // dessus un autre laisserait la moitié d'hier sous la moitié
@@ -58619,9 +58673,6 @@ mod tests {
         assert_eq!(age_on("", "2026-08-26"), None);
     }
 
-    /// **Les lignes TROD sont celles de l'officine** : semées une fois,
-    /// réécrites sous compare-and-set, et une ligne supprimée ne revient
-    /// pas au lancement suivant.
     /// **La copie par étapes est une vraie copie** — chiffrée du même mot
     /// de passe, avec ce que la base tenait — **et ne bloque pas une
     /// écriture concurrente** : un autre poste écrit pendant qu'elle
@@ -58661,6 +58712,9 @@ mod tests {
         assert!(Db::open(&copy, "autre").is_err(), "et elle est chiffrée");
     }
 
+    /// **Les lignes TROD sont celles de l'officine** : semées une fois,
+    /// réécrites sous compare-and-set, et une ligne supprimée ne revient
+    /// pas au lancement suivant.
     #[test]
     fn the_trod_lines_are_seeded_once_and_then_the_team_s() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-trod-{}", std::process::id()));
@@ -66715,6 +66769,54 @@ mod tests {
             }
             assert!(rekey_witnesses(&path).iter().all(|w| !w.exists()));
         }
+    }
+
+    /// **Une copie par étapes finit, même quand un autre poste écrit sans
+    /// arrêt.** SQLite la reprend du début à chaque écriture d'une autre
+    /// connexion : sans borne, elle tournait tant que le comptoir
+    /// travaillait. Après quelques reprises, le reste part d'un coup.
+    #[test]
+    fn a_stepwise_copy_ends_while_another_post_keeps_writing() {
+        let dir =
+            std::env::temp_dir().join(format!("bpm-caddy-stepwise-busy-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("source.db");
+        let db = Db::open(&path, "secret").unwrap();
+        // Assez de pages pour plusieurs étapes.
+        db.conn.execute_batch("CREATE TABLE lest (b BLOB)").unwrap();
+        for _ in 0..64 {
+            db.conn
+                .execute("INSERT INTO lest VALUES (zeroblob(32768))", [])
+                .unwrap();
+        }
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let writer = {
+            let (path, stop) = (path.clone(), stop.clone());
+            std::thread::spawn(move || {
+                let other = probe_key(&path, "secret").unwrap();
+                while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                    let _ = other.execute("INSERT INTO lest VALUES (zeroblob(64))", []);
+                }
+            })
+        };
+        let copy = dir.join("copie.db");
+        let started = std::time::Instant::now();
+        let done = db.backup_stepwise(&copy, "secret");
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        writer.join().unwrap();
+        done.unwrap();
+        assert!(
+            started.elapsed() < STEPWISE_PATIENCE + std::time::Duration::from_secs(10),
+            "la copie a duré {:?}",
+            started.elapsed()
+        );
+        let n: i64 = probe_key(&copy, "secret")
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM lest", [], |r| r.get(0))
+            .unwrap();
+        assert!(n >= 64);
     }
 
     /// Un changement abouti ne laisse aucun témoin derrière lui.

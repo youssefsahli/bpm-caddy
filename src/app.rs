@@ -185,7 +185,7 @@ fn officine_clashes(
 }
 
 /// Run [`daily_backup`] on a background thread with its own connection:
-/// `VACUUM INTO` rewrites the whole encrypted file, and doing that
+/// a copy rewrites the whole encrypted file, and doing that
 /// synchronously over a network share would freeze the UI at unlock.
 fn spawn_daily_backup(
     db_path: std::path::PathBuf,
