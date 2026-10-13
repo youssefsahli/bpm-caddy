@@ -64,7 +64,11 @@ smoke dans les quatre formes (d0d0162), **étiquetée et publiée le
 13/10** ; la 0.422.0 (ce que l'officine publie se voit avant de
 paraître, une entrée supprimée ne se publie plus, le carnet avertit d'un
 lot périmé ou d'un autre vaccin — relus, corrigés) a passé son smoke
-dans les quatre formes (0e8b170), **étiquetée et publiée le 13/10**.
+dans les quatre formes (0e8b170), **étiquetée et publiée le 13/10** ;
+la 0.423.0 (un résultat borné par le laboratoire se lit et s'écrit comme
+il a été rendu, le rein ne conclut que ce que la borne permet — trois
+relectures cliniques, corrigées) a passé son smoke dans les quatre
+formes (d568444), étiquetée le 13/10.
 Les versions 0.398 à 0.420 n'ont jamais été étiquetées : le lanceur est
 resté sur la 0.397.0 jusqu'au 13/10 ; désormais chaque version dont le
 smoke passe s'étiquette aussitôt ; les étiquettes intermédiaires n'ont jamais été
