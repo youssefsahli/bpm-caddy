@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   officine's card carries, exactly as it leaves, shown in « En ligne »
   before appearing.
 
+### Fixed
+
+- Vaccination record: a lot typed that the stock says is expired on the
+  day of the dose, or filed under another vaccine, is flagged under the
+  entry (nothing is refused); choosing another vaccine replaces the lot
+  proposed for the previous one unless it was retyped; a lot received
+  already expired is refused.
+
 ## [0.421.0] - 2026-10-13
 
 ### Changed

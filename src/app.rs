@@ -4761,6 +4761,11 @@ struct Session {
     /// field) and the catalogue entry it was picked from.
     vacc_new: db::Vaccination,
     vacc_new_date: String,
+    /// Le lot que le choix d'un vaccin a proposé : un autre vaccin le
+    /// remplace tant qu'on ne l'a pas retouché.
+    vacc_lot_proposed: Option<String>,
+    /// Ce que le stock dit du lot tapé (lot, vaccin, jour de la dose).
+    vacc_lot_warn: Option<([String; 3], Option<crate::campagne::LotWarning>)>,
     /// Où les flèches se posent dans les suggestions de vaccin.
     ///
     /// Le champ a remplacé une liste déroulante **et** un champ libre :
@@ -6260,6 +6265,8 @@ impl Session {
             travels: Vec::new(),
             vacc_new: db::Vaccination::default(),
             vacc_new_date: String::new(),
+            vacc_lot_proposed: None,
+            vacc_lot_warn: None,
             vacc_cursor: 0,
             focus_vacc_name: false,
             vacc_edit: None,
@@ -25345,6 +25352,38 @@ impl App {
                                 print = true;
                             }
                         });
+                        // Le lot tapé, lu contre le stock : périmé le jour de
+                        // la dose, ou celui d'un autre vaccin. Relu quand le
+                        // lot, le vaccin ou la date changent.
+                        let given = if session.vacc_new_date.trim().is_empty() {
+                            today.clone()
+                        } else {
+                            Self::parse_carnet_date(&session.vacc_new_date, &today)
+                                .unwrap_or_else(|_| today.clone())
+                        };
+                        let asked = [
+                            session.vacc_new.lot.clone(),
+                            session.vacc_new.code.clone(),
+                            given,
+                        ];
+                        if session.vacc_lot_warn.as_ref().map(|(a, _)| a) != Some(&asked) {
+                            let lots = session.db.vaccine_lots().unwrap_or_default();
+                            let warn = crate::campagne::lot_warning(
+                                &lots, &asked[1], &asked[0], &asked[2],
+                            );
+                            session.vacc_lot_warn = Some((asked, warn));
+                        }
+                        if let Some((_, Some(w))) = &session.vacc_lot_warn {
+                            let text = match w {
+                                crate::campagne::LotWarning::Expired(on) => {
+                                    trf("vacc_lot_expired", db::format_french_date(on))
+                                }
+                                crate::campagne::LotWarning::OtherVaccine(product) => {
+                                    trf("vacc_lot_other", product)
+                                }
+                            };
+                            motif::badge(ui, &text, Some(motif::Pict::Warn), motif::alert(), true);
+                        }
                         // Ce que le catalogue reconnaît dans ce qui est
                         // tapé : des rangées, les flèches et Entrée,
                         // comme le champ qui ajoute un traitement. Rien
@@ -25405,10 +25444,16 @@ impl App {
                                 // proposé : c'est lui qu'on écoule, et
                                 // c'est le champ qu'on tapait à chaque
                                 // injection. Un lot déjà tapé reste.
-                                if session.vacc_new.lot.trim().is_empty() {
-                                    if let Some(lot) = session.first_usable_lot(&v.code) {
-                                        session.vacc_new.lot = lot;
-                                    }
+                                // Un lot proposé pour le vaccin d'avant, que
+                                // personne n'a retouché, cède au lot du
+                                // nouveau — ou à rien.
+                                let proposed = session.vacc_lot_proposed.as_deref();
+                                if session.vacc_new.lot.trim().is_empty()
+                                    || proposed == Some(session.vacc_new.lot.as_str())
+                                {
+                                    let lot = session.first_usable_lot(&v.code).unwrap_or_default();
+                                    session.vacc_new.lot = lot.clone();
+                                    session.vacc_lot_proposed = (!lot.is_empty()).then_some(lot);
                                 }
                             }
                         }
@@ -58136,6 +58181,15 @@ impl App {
             match (received, expiry) {
                 _ if camp.new_lot.lot.trim().is_empty() => {
                     camp.error = Some(tr("camp_lot_missing").to_owned());
+                }
+                // Un lot déjà périmé ne se reçoit pas : une date mal
+                // tapée, le plus souvent, à corriger avant qu'il s'écoule.
+                (Ok(n), Ok(exp))
+                    if n > 0
+                        && !exp.is_empty()
+                        && crate::date::days_between(&today, &exp).is_some_and(|d| d < 0) =>
+                {
+                    camp.error = Some(trf("camp_lot_expired", db::format_french_date(&exp)));
                 }
                 (Ok(n), Ok(exp)) if n > 0 => {
                     let mut lot = camp.new_lot.clone();

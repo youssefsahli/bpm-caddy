@@ -967,6 +967,49 @@ fn expiry_error() -> String {
     crate::strings::tr("camp_expiry_error").to_owned()
 }
 
+/// Ce qu'un lot tapé au carnet contredit dans le stock.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LotWarning {
+    /// Le lot est en stock, périmé le jour de la dose (sa péremption).
+    Expired(String),
+    /// Le lot est en stock sous un autre vaccin (sa spécialité).
+    OtherVaccine(String),
+}
+
+/// **Un lot tapé au carnet, lu contre le stock** : périmé le jour de la
+/// dose, ou celui d'un autre vaccin. Un lot que le stock ne connaît pas
+/// ne dit rien — toutes les officines ne tiennent pas leur stock ici —,
+/// et rien n'est refusé : le pharmacien décide, averti.
+pub fn lot_warning(lots: &[Lot], code: &str, typed: &str, given_on: &str) -> Option<LotWarning> {
+    let typed = norm_lot(typed);
+    if typed.is_empty() {
+        return None;
+    }
+    let same: Vec<&Lot> = lots.iter().filter(|l| norm_lot(&l.lot) == typed).collect();
+    let mine: Vec<&Lot> = same
+        .iter()
+        .copied()
+        .filter(|l| code.is_empty() || l.code.is_empty() || l.code == code)
+        .collect();
+    if mine.is_empty() {
+        return same
+            .first()
+            .map(|l| LotWarning::OtherVaccine(l.product.clone()));
+    }
+    // Périmé seulement si aucun lot de ce numéro ne l'est pas : deux
+    // réceptions du même lot disent la même date.
+    let expired = |l: &&Lot| {
+        let e = l.expires_on.trim();
+        !e.is_empty() && crate::date::days_between(given_on, e).is_some_and(|d| d < 0)
+    };
+    if mine.iter().all(expired) {
+        return mine
+            .first()
+            .map(|l| LotWarning::Expired(l.expires_on.trim().to_owned()));
+    }
+    None
+}
+
 /// Les lots utilisables pour un vaccin, à proposer au carnet : ni
 /// périmés ni épuisés, la péremption la plus proche d'abord (on écoule
 /// le plus ancien).
@@ -2007,6 +2050,37 @@ pub fn season_csv(rows: &[[String; 10]]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_typed_lot_reads_against_the_stock() {
+        let lot = |code: &str, product: &str, n: &str, exp: &str| Lot {
+            code: code.to_owned(),
+            product: product.to_owned(),
+            lot: n.to_owned(),
+            expires_on: exp.to_owned(),
+            ..Lot::default()
+        };
+        let lots = vec![
+            lot("GRIPPE", "Vaxigrip", "FL25-208", "2026-06-30"),
+            lot("COVID", "Comirnaty", "CX1", "2027-01-31"),
+            lot("GRIPPE", "Efluelda", "EF9", "2027-03-31"),
+        ];
+        let day = "2026-10-13";
+        assert_eq!(
+            lot_warning(&lots, "GRIPPE", "fl25 208", day),
+            Some(LotWarning::Expired("2026-06-30".to_owned()))
+        );
+        assert_eq!(
+            lot_warning(&lots, "GRIPPE", "cx1", day),
+            Some(LotWarning::OtherVaccine("Comirnaty".to_owned()))
+        );
+        assert_eq!(lot_warning(&lots, "GRIPPE", "EF9", day), None);
+        // Inconnu du stock, ou rien de tapé : rien à dire.
+        assert_eq!(lot_warning(&lots, "GRIPPE", "ZZ", day), None);
+        assert_eq!(lot_warning(&lots, "GRIPPE", "", day), None);
+        // Une dose notée avant la péremption : pas périmé.
+        assert_eq!(lot_warning(&lots, "GRIPPE", "FL25-208", "2026-06-01"), None);
+    }
 
     fn dose(code: &'static str, date: &'static str) -> vaccines::Dose<'static> {
         vaccines::Dose { code, date }

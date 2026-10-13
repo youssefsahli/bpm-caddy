@@ -970,7 +970,11 @@ planifie l'acte du sujet. Une campagne sans vaccin n'a ni lots, ni
 registre du jour, ni export.
 
 Dans le carnet d'un dossier, le choix d'un vaccin propose le lot en
-stock qui périme le premier. Une remarque s'affiche sous la saisie quand
+stock qui périme le premier ; choisir un autre vaccin remplace ce lot
+tant qu'on ne l'a pas retouché. Un lot tapé que le stock dit périmé le
+jour de la dose, ou rangé sous un autre vaccin, s'annonce sous la
+saisie — sans rien empêcher. Un lot reçu déjà périmé est refusé : la
+date de péremption est à vérifier. Une remarque s'affiche sous la saisie quand
 la dose appelle une vérification : âge minimal de la vaccination à
 l'officine, délai depuis la dernière dose de COVID-19, préférence pour
 Efluelda ou Fluad à 65 ans et plus, Arexvy et COVID-19 le même jour,
