@@ -78,7 +78,9 @@ corrigés) a passé son smoke dans les quatre formes (e9e5884), étiquetée
 le 13/10 ; la 0.426.0 (dossier d'échange de toute taille,
 bulletin qui dit ce qui déborde, console bornée en lignes — relus,
 corrigés) a passé son smoke dans les quatre formes (b6519a7), étiquetée
-le 13/10.
+le 13/10 ; la 0.427.0 (les notes d'équipe dans la base chiffrée —
+trois relectures, corrigées) a passé son smoke dans les quatre formes
+(23bec61), étiquetée le 13/10.
 Les versions 0.398 à 0.420 n'ont jamais été étiquetées : le lanceur est
 resté sur la 0.397.0 jusqu'au 13/10 ; désormais chaque version dont le
 smoke passe s'étiquette aussitôt ; les étiquettes intermédiaires n'ont jamais été

@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.428.0] - 2026-10-13
+
 ### Fixed
 
 - A bundle (« paquet ») records each file's size and BLAKE3 fingerprint,
