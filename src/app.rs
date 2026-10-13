@@ -11557,14 +11557,10 @@ impl Session {
                     HOSTED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                     self.carte.hosting = Some((port, stop));
                     let (tx, rx) = std::sync::mpsc::channel();
+                    self.carte.host_v6_at = Some(Instant::now());
                     std::thread::spawn(move || {
                         let v4 = crate::reach::open_mapping(port).map(|a| a.to_string());
-                        let v6: Vec<String> = crate::reach::global_ipv6()
-                            .into_iter()
-                            .take(2)
-                            .map(|a| std::net::SocketAddr::from((a, port)).to_string())
-                            .collect();
-                        let _ = tx.send((v4, v6));
+                        let _ = tx.send((v4, Self::host_v6_of(port)));
                     });
                     self.carte.host_reach = Some(rx);
                 }
@@ -11578,6 +11574,42 @@ impl Session {
                 self.carte.host_reach = None;
             }
         }
+        // Une adresse IPv6 change (les adresses temporaires tournent) : relue
+        // toutes les dix minutes tant que le poste héberge.
+        if let (Some((port, _)), None) = (&self.carte.hosting, &self.carte.v6_job) {
+            if self
+                .carte
+                .host_v6_at
+                .is_some_and(|t| t.elapsed() > Duration::from_secs(600))
+            {
+                let port = *port;
+                let (tx, rx) = std::sync::mpsc::channel();
+                std::thread::spawn(move || {
+                    let _ = tx.send(Self::host_v6_of(port));
+                });
+                self.carte.v6_job = Some(rx);
+                self.carte.host_v6_at = Some(Instant::now());
+            }
+        }
+        if let Some(rx) = &self.carte.v6_job {
+            if let Ok(v6) = rx.try_recv() {
+                if self.carte.hosting.is_some() {
+                    self.carte.host_v6 = v6;
+                }
+                self.carte.v6_job = None;
+            }
+        }
+    }
+
+    /// This post's public IPv6 addresses at the directory's port, as the
+    /// other officines would type them.
+    #[cfg(feature = "sync")]
+    fn host_v6_of(port: u16) -> Vec<String> {
+        crate::reach::global_ipv6()
+            .into_iter()
+            .take(2)
+            .map(|a| std::net::SocketAddr::from((a, port)).to_string())
+            .collect()
     }
 
     /// Sign and send the officine's card — or its departure from the
@@ -15193,8 +15225,11 @@ struct Carte {
     host_failed: Option<(u16, String)>,
     host_reach: Option<std::sync::mpsc::Receiver<(Option<String>, Vec<String>)>>,
     host_public: Option<String>,
-    /// Les adresses IPv6 publiques de ce poste, au port du répertoire.
+    /// Les adresses IPv6 publiques de ce poste, au port du répertoire,
+    /// quand elles ont été lues, et leur relecture en cours.
     host_v6: Vec<String>,
+    host_v6_at: Option<Instant>,
+    v6_job: Option<std::sync::mpsc::Receiver<Vec<String>>>,
 }
 
 /// Ce qu'une annonce rapporte : le répertoire, carte (`true`) ou départ,
@@ -15279,6 +15314,8 @@ impl Carte {
         });
         self.host_public = None;
         self.host_v6.clear();
+        self.host_v6_at = None;
+        self.v6_job = None;
     }
 }
 
@@ -64364,6 +64401,9 @@ impl App {
                             if motif::button(ui, tr("carte_host_copy")).clicked() {
                                 copied = Some(a.clone());
                             }
+                        }
+                        if !session.carte.host_v6.is_empty() {
+                            dim(tr("carte_host_v6_note"), ui);
                         }
                         if session.carte.host_reach.is_some() {
                             dim(tr("carte_host_seeking"), ui);

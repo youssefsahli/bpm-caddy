@@ -19,7 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The directory's per-address limits count a subscriber, not an address:
   an IPv6 caller is its /64 prefix, so it can no longer slip under every
-  limit by changing address on each call.
+  limit by changing address on each call — and a network (an IPv6 /48,
+  an IPv4 /24) has its own, coarser limits, so thousands of /64s held
+  by one person can neither fill the directory nor lock out callers.
+- The directory's IPv6 socket is IPv6-only on every system, and a port
+  held by another program on either stack is an error rather than an
+  address that leads elsewhere.
+- The host's IPv6 addresses skip down links and VPN tunnels, are read
+  again every ten minutes, and come with a warning: they can change, and
+  the box should let in this post and port only, never drop its IPv6
+  firewall.
 
 ## [0.418.0] - 2026-10-13
 

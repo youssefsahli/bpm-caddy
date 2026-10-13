@@ -940,8 +940,13 @@ connexions dont 4 par adresse, 30 appels par adresse et par minute
 (une table élaguée à la seconde, qui ne grossit pas sous les coups).
 « Adresse » veut dire **abonné** (`repertoire::caller`) : une IPv4, ou
 le préfixe `/64` d'une IPv6 — un abonné en tient des milliards et
-passerait sinon sous chaque borne en changeant d'adresse ; une IPv4 vue
-par une prise double pile compte comme elle-même ;
+passerait sinon sous chaque borne en changeant d'adresse. Un cran
+au-dessus, le **réseau** (`repertoire::network` : un `/48`, ce qu'un
+tunnel gratuit donne à une seule personne, ou un `/24`) a les siennes :
+64 appelants dans la table, 64 cartes et 32 Mio, 8 connexions. Deux
+prises, chacune sa pile (l'IPv6 en `IPV6_V6ONLY` partout), et un port
+tenu ailleurs, sur l'une ou l'autre, est une erreur plutôt qu'une
+adresse donnée où répondrait un autre programme ;
 cinq secondes pour dire sa préface, puis **une échéance unique** de
 trente secondes pour la demande entière, lecture et écriture. Une carte n'est reçue que signée depuis moins d'une demi-heure
 (et pas au-delà dans l'avenir) et plus récente que tout ce qu'on a vu de

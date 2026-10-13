@@ -67,6 +67,7 @@ bpm-sync = { path = "sync", optional = true }
 # `sync` : un binaire sans réseau n'en contient rien.
 igd-next = { version = "0.17", optional = true }
 if-addrs = { version = "0.15", optional = true }
+socket2 = { version = "0.6", optional = true }
 
 [features]
 # Le réseau d'officines (voir `src/network.rs`) est livré : il ne
@@ -75,7 +76,7 @@ if-addrs = { version = "0.15", optional = true }
 # permanence. Un binaire construit avec `--no-default-features
 # --features desktop` n'en contient toujours rien.
 default = ["sync", "desktop"]
-sync = ["dep:bpm-sync", "dep:igd-next", "dep:if-addrs"]
+sync = ["dep:bpm-sync", "dep:igd-next", "dep:if-addrs", "dep:socket2"]
 # The desktop application: the egui window, Typst printing, the system
 # keyring and file dialogs. Everything else in the library — the base,
 # the clinical tables, replication, the posts' and the network's sync —

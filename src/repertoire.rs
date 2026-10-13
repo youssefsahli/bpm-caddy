@@ -93,6 +93,14 @@ const PREFACE_WAIT: Duration = Duration::from_secs(5);
 /// ce qu'une adresse peut y occuper.
 const MOST_LISTED: usize = 2000;
 const LISTED_PER_ADDRESS: usize = 16;
+/// Les mêmes bornes pour un **réseau** (`network`) — un `/48` en IPv6,
+/// ce qu'un tunnel gratuit ou un serveur loué donne à une seule personne,
+/// un `/24` en IPv4 : soixante-cinq mille `/64` ne remplissent pas le
+/// répertoire, ni ne tiennent toutes ses connexions.
+const LISTED_PER_NETWORK: usize = 64;
+const BYTES_PER_NETWORK: usize = 32 * 1024 * 1024;
+const CALLERS_PER_NETWORK: usize = 64;
+const OPEN_PER_NETWORK: usize = 8;
 const BYTES_PER_ADDRESS: usize = 8 * 1024 * 1024;
 /// Combien d'officines parties il se rappelle.
 const MOST_GONE: usize = 4096;
@@ -666,13 +674,25 @@ impl Store {
         // Les bornes par adresse, comptées **à chaque annonce** : une carte
         // qui change d'adresse entre dans le compte de la nouvelle.
         let (mut here, mut here_bytes) = (0_usize, weight);
+        let (mut near, mut near_bytes) = (0_usize, weight);
+        let net = network(from);
         for (device, l) in &self.listed {
-            if *device != fiche.device && l.from == from {
+            if *device == fiche.device {
+                continue;
+            }
+            if l.from == from {
                 here += 1;
                 here_bytes += l.weight;
             }
+            if network(l.from) == net {
+                near += 1;
+                near_bytes += l.weight;
+            }
         }
         if here >= LISTED_PER_ADDRESS || here_bytes > BYTES_PER_ADDRESS {
+            return Err("adresse");
+        }
+        if near >= LISTED_PER_NETWORK || near_bytes > BYTES_PER_NETWORK {
             return Err("adresse");
         }
         let held = self.listed.get(&fiche.device).map_or(0, |l| l.weight);
@@ -742,8 +762,15 @@ impl Calls {
             });
             self.pruned = Some(now);
         }
-        if self.seen.len() >= 8192 && !self.seen.contains_key(&ip) {
-            return false;
+        if !self.seen.contains_key(&ip) {
+            if self.seen.len() >= 8192 {
+                return false;
+            }
+            // Un réseau ne remplit pas la table de ses `/64`.
+            let net = network(ip);
+            if self.seen.keys().filter(|k| network(**k) == net).count() >= CALLERS_PER_NETWORK {
+                return false;
+            }
         }
         let v = self.seen.entry(ip).or_default();
         v.retain(|t| now.duration_since(*t) < minute);
@@ -773,20 +800,59 @@ pub fn caller(ip: IpAddr) -> IpAddr {
     }
 }
 
+/// **Le réseau d'un appelant**, pour les bornes d'un cran au-dessus : le
+/// `/24` d'une IPv4, le `/48` d'une IPv6.
+pub fn network(ip: IpAddr) -> IpAddr {
+    match caller(ip) {
+        IpAddr::V4(v4) => {
+            let o = v4.octets();
+            IpAddr::V4(std::net::Ipv4Addr::new(o[0], o[1], o[2], 0))
+        }
+        IpAddr::V6(v6) => {
+            let s = v6.segments();
+            IpAddr::V6(std::net::Ipv6Addr::new(s[0], s[1], s[2], 0, 0, 0, 0, 0))
+        }
+    }
+}
+
+/// La prise IPv6 du répertoire, **IPv6 seulement** sur tous les systèmes :
+/// l'IPv4 a sa propre prise, et un port IPv4 tenu par un autre programme
+/// se dit au lieu de passer inaperçu. `None` : ce poste n'a pas d'IPv6.
+fn bind_v6(port: u16) -> std::io::Result<Option<TcpListener>> {
+    use socket2::{Domain, Protocol, SockAddr, Socket, Type};
+    let socket = match Socket::new(Domain::IPV6, Type::STREAM, Some(Protocol::TCP)) {
+        Ok(s) => s,
+        Err(_) => return Ok(None),
+    };
+    socket.set_only_v6(true)?;
+    // Ce que la bibliothèque standard fait sous Unix : un répertoire
+    // arrêté puis rouvert reprend son port sans attendre.
+    #[cfg(unix)]
+    socket.set_reuse_address(true)?;
+    let at = std::net::SocketAddr::from((std::net::Ipv6Addr::UNSPECIFIED, port));
+    match socket.bind(&SockAddr::from(at)) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::AddrNotAvailable => return Ok(None),
+        Err(e) => return Err(e),
+    }
+    socket.listen(128)?;
+    Ok(Some(socket.into()))
+}
+
+/// Des connexions ouvertes, par appelant ou par réseau.
+type Counts = HashMap<IpAddr, usize>;
+
 /// **Tenir le répertoire** sur `port` jusqu'à ce que `stop` passe à vrai,
 /// en IPv6 et en IPv4 : en IPv6 la box n'a qu'à laisser passer, sans
 /// ouverture de port. Rend tout de suite ; le répertoire vit sur ses
 /// propres fils.
 pub fn serve(port: u16, stop: Arc<AtomicBool>) -> std::io::Result<()> {
-    // `[::]` d'abord : sous Linux il prend aussi l'IPv4, et `0.0.0.0` est
-    // alors refusé — ce qui est bien ; sous Windows il ne prend que
-    // l'IPv6, et `0.0.0.0` prend le reste.
-    let v6 = TcpListener::bind(("::", port));
-    let v4 = TcpListener::bind(("0.0.0.0", port));
-    let listeners: Vec<TcpListener> = match (v6, v4) {
-        (Err(e), Err(_)) => return Err(e),
-        (a, b) => [a.ok(), b.ok()].into_iter().flatten().collect(),
-    };
+    // Deux prises, chacune sa pile, et l'une ou l'autre prise ailleurs est
+    // une erreur : la carte ne donne pas une adresse où répondrait un
+    // autre programme.
+    let v6 = bind_v6(port)?;
+    let v4 = TcpListener::bind(("0.0.0.0", port))?;
+    let listeners: Vec<TcpListener> = std::iter::once(v4).chain(v6).collect();
     for l in &listeners {
         l.set_nonblocking(true)?;
     }
@@ -795,7 +861,9 @@ pub fn serve(port: u16, stop: Arc<AtomicBool>) -> std::io::Result<()> {
     let open = Arc::new(AtomicUsize::new(0));
     // Les connexions ouvertes par adresse : une adresse n'en tient que
     // quelques-unes, jamais toutes.
-    let by_address: Arc<Mutex<HashMap<IpAddr, usize>>> = Arc::default();
+    // Les connexions ouvertes par adresse et par réseau : une adresse n'en
+    // tient que quelques-unes, un réseau guère plus.
+    let by_address: Arc<Mutex<(Counts, Counts)>> = Arc::default();
     std::thread::spawn(move || {
         let mut turn = 0_usize;
         while !stop.load(Ordering::SeqCst) {
@@ -824,12 +892,18 @@ pub fn serve(port: u16, stop: Arc<AtomicBool>) -> std::io::Result<()> {
             if !calls.admit(ip) || open.load(Ordering::SeqCst) >= MOST_CONNECTIONS {
                 continue;
             }
+            let net = network(ip);
             let held = by_address.lock().map(|mut m| {
-                let n = m.entry(ip).or_default();
-                if *n >= OPEN_PER_ADDRESS {
+                let (here, near) = &mut *m;
+                let (h, n) = (
+                    here.get(&ip).copied().unwrap_or(0),
+                    near.get(&net).copied().unwrap_or(0),
+                );
+                if h >= OPEN_PER_ADDRESS || n >= OPEN_PER_NETWORK {
                     false
                 } else {
-                    *n += 1;
+                    here.insert(ip, h + 1);
+                    near.insert(net, n + 1);
                     true
                 }
             });
@@ -846,10 +920,13 @@ pub fn serve(port: u16, stop: Arc<AtomicBool>) -> std::io::Result<()> {
                 let _ = answer(stream, ip, &store);
                 open.fetch_sub(1, Ordering::SeqCst);
                 if let Ok(mut m) = by_address.lock() {
-                    if let Some(n) = m.get_mut(&ip) {
-                        *n = n.saturating_sub(1);
-                        if *n == 0 {
-                            m.remove(&ip);
+                    let (here, near) = &mut *m;
+                    for (map, key) in [(here, ip), (near, net)] {
+                        if let Some(n) = map.get_mut(&key) {
+                            *n = n.saturating_sub(1);
+                            if *n == 0 {
+                                map.remove(&key);
+                            }
                         }
                     }
                 }
@@ -1072,21 +1149,73 @@ mod tests {
         assert_ne!(caller(a), caller(other));
     }
 
-    /// Le répertoire répond en IPv6 comme en IPv4.
+    /// Le répertoire répond en IPv6 comme en IPv4, chacune sur sa prise.
     #[test]
     fn the_directory_answers_on_both_stacks() {
-        let port = {
-            let probe = TcpListener::bind(("127.0.0.1", 0)).unwrap();
-            probe.local_addr().unwrap().port()
-        };
-        let stop = Arc::new(AtomicBool::new(false));
-        serve(port, Arc::clone(&stop)).unwrap();
+        // Arrêté même si une assertion tombe.
+        struct Stop(Arc<AtomicBool>);
+        impl Drop for Stop {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::SeqCst);
+            }
+        }
+        let stop = Stop(Arc::new(AtomicBool::new(false)));
+        // Un port libre à l'instant peut être pris l'instant d'après :
+        // quelques essais.
+        let port = (0..20)
+            .find_map(|_| {
+                let port = TcpListener::bind(("127.0.0.1", 0))
+                    .ok()?
+                    .local_addr()
+                    .ok()?
+                    .port();
+                serve(port, Arc::clone(&stop.0)).ok().map(|()| port)
+            })
+            .expect("un port libre");
         assert!(list(&format!("127.0.0.1:{port}"), Duration::from_secs(4)).is_ok());
         // Une machine sans IPv6 n'a pas de boucle `::1` : rien à dire.
         if TcpListener::bind(("::1", 0)).is_ok() {
             assert!(list(&format!("[::1]:{port}"), Duration::from_secs(4)).is_ok());
         }
-        stop.store(true, Ordering::SeqCst);
+    }
+
+    /// Un réseau qui tient des milliers de `/64` ne remplit ni la table
+    /// des appelants ni le répertoire.
+    #[test]
+    fn a_network_of_many_prefixes_is_one_neighbourhood() {
+        let in_48 = |k: u16| -> IpAddr { format!("2001:470:1:{k:x}::1").parse().unwrap() };
+        assert_eq!(network(in_48(1)), network(in_48(2000)));
+        assert_ne!(caller(in_48(1)), caller(in_48(2)));
+        let v4: IpAddr = "203.0.113.7".parse().unwrap();
+        assert_eq!(network(v4), "203.0.113.0".parse::<IpAddr>().unwrap());
+        let mut calls = Calls::default();
+        let admitted = (0..2000).filter(|k| calls.admit(in_48(*k))).count();
+        assert_eq!(admitted, CALLERS_PER_NETWORK);
+        // Un autre réseau passe encore.
+        assert!(calls.admit("2a01:cb00::1".parse().unwrap()));
+        // Le répertoire : au plus LISTED_PER_NETWORK cartes d'un réseau.
+        let mut store = Store::default();
+        let now = 1_000_000;
+        let mut listed = 0;
+        for k in 0..200u16 {
+            let d = device((k % 250) as u8 + 1);
+            let fiche = sign(
+                Fiche {
+                    seq: now,
+                    nom: format!("O{k}"),
+                    present: true,
+                    ..Fiche::default()
+                },
+                &d,
+            );
+            if store
+                .admit(fiche, Vec::new(), 10, caller(in_48(k)), now)
+                .is_ok()
+            {
+                listed += 1;
+            }
+        }
+        assert_eq!(listed, LISTED_PER_NETWORK);
     }
 
     #[test]

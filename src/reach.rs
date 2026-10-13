@@ -64,6 +64,10 @@ pub fn global_ipv6() -> Vec<Ipv6Addr> {
     let mut out: Vec<Ipv6Addr> = if_addrs::get_if_addrs()
         .unwrap_or_default()
         .into_iter()
+        // Ni un lien coupé, ni un tunnel (un VPN) : on ne les compose pas
+        // depuis Internet, et un tunnel dirait à qui le lit par où sort
+        // ce poste.
+        .filter(|i| i.is_oper_up() && !i.is_p2p())
         .filter_map(|i| match i.ip() {
             IpAddr::V6(a) if is_global_v6(&a) => Some(a),
             _ => None,
