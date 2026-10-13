@@ -235,6 +235,13 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   signer les binaires (minisign/ed25519), embarquer la clé publique
   dans le lanceur, refuser sans signature (les actions sont épinglées
   par empreinte et la publication se fait sans cache depuis le 13/10) ;
+- **carte, postes de versions mêlées** : un poste d'avant la 0.431
+  annonce encore tout ce que l'officine a écrit (il ignore les coches de
+  `published_entries`), et en enregistrant « Cette officine sur la
+  carte » il réécrit le réglage sans `ruptures` — l'option se décoche.
+  Tant qu'un tel poste tourne, la carte alterne entre les deux
+  catalogues ; à régler par une version minimale pour paraître, ou à
+  dire à l'officine de mettre tous ses postes à jour ;
 - `release.yml` : les constructions passent leurs fichiers à une tâche
   finale `publish`, qui exige les six binaires des postes avant de
   publier (fait le 13/10, à voir tourner à la 0.430.0 : la 0.427.0 était

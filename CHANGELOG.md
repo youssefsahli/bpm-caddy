@@ -17,18 +17,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lines, vaccines, devices, cascades — each ticked or not, with a search.
   Only ticked entries reach the directory; paired networks keep their own
   settings. An officine already on the map publishes nothing after the
-  upgrade until it ticks its entries.
+  upgrade until it ticks its entries. A renamed preparation stays
+  published; a deleted entry's mark is forgotten, so it never comes back
+  published unticked.
 
 ### Added
 
 - Ruptures and substitutions on the officines' map, opt-in: « Publier les
   ruptures et substitutions » adds the officine's own events of the last
-  ninety days — without the initials of who noted them, never what it
-  received — to its directory catalogue. « Sur la carte… » in the
+  ninety days — without the initials of who noted them nor their free
+  note, never withdrawals nor what it received — to its directory
+  catalogue. « Sur la carte… » in the
   Ruptures view lists what the directory's officines publish, searchable,
   and « Prendre » adds an event to the local journal under the publishing
-  officine's name (as signed by its card). Older versions skip these
-  entries without refusing the catalogue.
+  officine's name (as signed by its card), under an identifier prefixed
+  by that card's key, so a copied identifier cannot pre-empt a paired
+  officine's real event. Older versions skip these entries without
+  refusing the catalogue.
 - Checklists and rewritten printed phrases (the counselling sheets
   included) can be published on the map too, one by one, from « Mes
   publications… »: a ticked one is versioned even when no paired network

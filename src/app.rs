@@ -11348,6 +11348,7 @@ impl Session {
     /// was typed in it; a closed one reopens only when the map asked.
     #[cfg(feature = "sync")]
     fn carte_swept(&mut self, sweep: Sweep) {
+        self.carte.catalogues_rev = self.carte.catalogues_rev.wrapping_add(1);
         // La minute que le répertoire compte part du dernier appel, pas du
         // premier : un balayage peut durer plus d'une minute.
         self.carte.last_sweep = Some(Instant::now());
@@ -12071,6 +12072,9 @@ impl Session {
         } else {
             Vec::new()
         };
+        if present {
+            let _ = self.db.prune_published();
+        }
         let here = if present {
             self.cards_here()
         } else {
@@ -12601,6 +12605,8 @@ impl Session {
     #[cfg(feature = "sync")]
     fn open_publications(&mut self) {
         self.reload_card_edits();
+        let _ = self.db.prune_published();
+        self.published = None;
         let published = self.db.published_entries().unwrap_or_default();
         let mut rows = Vec::new();
         for kind in crate::versions::Kind::ALL {
@@ -12632,6 +12638,7 @@ impl Session {
     }
 
     /// Is this entry published on the officines' map? Read once, kept.
+    #[cfg(feature = "sync")]
     fn is_published(&mut self, kind: crate::versions::Kind, name: &str) -> bool {
         if self.published.is_none() {
             self.published = Some(self.db.published_entries().unwrap_or_default());
@@ -12641,8 +12648,16 @@ impl Session {
             .is_some_and(|set| set.contains(&(kind.key().to_owned(), crate::versions::key(name))))
     }
 
-    /// Publish an entry on the map, or take it back.
-    fn set_published(&mut self, kind: crate::versions::Kind, name: &str, on: bool, operator: &str) {
+    /// Publish an entry on the map, or take it back. Said back: `false`
+    /// when the base refused, and the mark on screen goes back with it.
+    #[cfg(feature = "sync")]
+    fn set_published(
+        &mut self,
+        kind: crate::versions::Kind,
+        name: &str,
+        on: bool,
+        operator: &str,
+    ) -> bool {
         let today = self.today.clone();
         match self
             .db
@@ -12652,6 +12667,7 @@ impl Session {
             Err(e) => self.error = Some(e),
         }
         self.published = None;
+        self.is_published(kind, name) == on
     }
 
     /// The nurse setting of a file, read from the base when the file
@@ -15652,10 +15668,10 @@ struct RuptMap {
     filter: String,
     /// Ce qu'un balayage qui n'est pas parti dit, et si c'est une erreur.
     note: Option<(bool, String)>,
-    /// (empreintes des catalogues lus, `supply_rev`) et les lignes :
+    /// (`catalogues_rev`, `supply_rev`, aujourd'hui) et les lignes :
     /// l'événement, au nom de l'officine qui le publie, et s'il est déjà au
     /// journal d'ici.
-    rows: Option<((String, u64), Vec<MapEvent>)>,
+    rows: Option<((u64, u64, String), Vec<MapEvent>)>,
 }
 
 /// « Mes publications » : un filtre, et ce que l'officine a écrit des
@@ -15839,6 +15855,9 @@ struct Carte {
     /// ses articles — relus seulement quand l'empreinte change.
     catalogues:
         std::collections::HashMap<String, (String, Vec<crate::repertoire::Article>, Instant)>,
+    /// Avancé à chaque balayage reçu : ce qui se relit des catalogues (les
+    /// ruptures de la carte) se relit contre lui, pas à chaque image.
+    catalogues_rev: u64,
     /// Celles qui n'ont pas répondu, sous l'empreinte de leur carte : lues
     /// en dernier au balayage suivant.
     sweep_failed: std::collections::HashMap<String, String>,
@@ -45889,6 +45908,7 @@ impl App {
                             session.entry_versions =
                                 Some((crate::versions::Kind::Codex, prep.name.clone()));
                         }
+                        #[cfg(feature = "sync")]
                         Self::publish_toggle(
                             ui,
                             session,
@@ -65897,7 +65917,15 @@ impl App {
             });
         motif::dialog_relief(ctx, &shown);
         if let Some((kind, name, on)) = toggled {
-            session.set_published(kind, &name, on, operator);
+            if !session.set_published(kind, &name, on, operator) {
+                if let Some(row) = win
+                    .rows
+                    .iter_mut()
+                    .find(|(k, n, _, _)| *k == kind && *n == name)
+                {
+                    row.3 = !on;
+                }
+            }
         }
         if !close && !ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
             session.publications = Some(win);
@@ -65928,6 +65956,7 @@ impl App {
 
     /// « Publier sur la carte » for one entry: ticked, the entry joins the
     /// catalogue this officine shows on the officines' map.
+    #[cfg(feature = "sync")]
     fn publish_toggle(
         ui: &mut egui::Ui,
         session: &mut Session,
@@ -65940,7 +65969,7 @@ impl App {
             .on_hover_text(tr("publish_toggle_tooltip"))
             .changed()
         {
-            session.set_published(kind, name, on, operator);
+            let _ = session.set_published(kind, name, on, operator);
         }
     }
 
@@ -72161,20 +72190,18 @@ impl App {
         let Some(mut win) = session.rupt_map.take() else {
             return;
         };
-        let mut digests: Vec<&str> = session
-            .carte
-            .catalogues
-            .values()
-            .map(|(d, _, _)| d.as_str())
-            .collect();
-        digests.sort_unstable();
-        let key = (digests.concat(), session.supply_rev);
+        let key = (
+            session.carte.catalogues_rev,
+            session.supply_rev,
+            session.today.clone(),
+        );
         if win.rows.as_ref().map(|(k, _)| k) != Some(&key) {
             let held: std::collections::HashSet<&str> = session
                 .supply_events
                 .iter()
                 .map(|e| e.uid.as_str())
                 .collect();
+            let today = session.today.clone();
             let mut rows: Vec<MapEvent> = session
                 .carte
                 .catalogues
@@ -72187,9 +72214,17 @@ impl App {
                         .find(|f| f.device == *device)
                         .map(|f| f.nom.clone())
                         .unwrap_or_else(|| Self::remote_key(device));
-                    articles
-                        .iter()
-                        .filter_map(move |a| crate::repertoire::supply_of(a, &officine))
+                    articles.iter().filter_map(move |a| {
+                        let mut e = crate::repertoire::supply_of(a, &officine)?;
+                        e.uid = crate::repertoire::taken_uid(device, &e.uid);
+                        Some(e)
+                    })
+                })
+                // Ce que l'officine publierait elle-même : ni daté de
+                // demain, ni d'au-delà de l'horizon.
+                .filter(|e| {
+                    crate::date::days_between(&e.day, &today)
+                        .is_some_and(|d| (0..=crate::ruptures::HORIZON_DAYS).contains(&d))
                 })
                 .map(|e| {
                     let here = held.contains(e.uid.as_str());

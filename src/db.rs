@@ -48984,6 +48984,20 @@ impl Db {
                 ],
             )
             .map_err(|e| e.to_string())?;
+        // Renommée, une préparation publiée le reste, sous son nouveau nom.
+        let (old, renamed) = (
+            crate::versions::key(&expected.name),
+            crate::versions::key(&new.name),
+        );
+        if changed == 1 && old != renamed {
+            self.conn
+                .execute(
+                    "UPDATE OR IGNORE published_entries SET card = ?1
+                     WHERE kind = 'codex' AND card = ?2",
+                    (&renamed, &old),
+                )
+                .map_err(|e| e.to_string())?;
+        }
         Ok(changed == 1)
     }
 
@@ -56270,6 +56284,33 @@ impl Db {
         }
     }
 
+    /// **Oublier ce qui était publié et n'est plus là** : une entrée
+    /// supprimée, puis recréée un jour sous le même nom, ne doit pas
+    /// reparaître publiée sans que personne l'ait cochée. Une sorte qui ne
+    /// se relit pas est laissée telle quelle — jamais tout effacé parce
+    /// qu'une lecture a échoué. Rend combien de lignes sont parties.
+    pub fn prune_published(&self) -> Result<usize, String> {
+        let mut gone = 0;
+        for (kind, card) in self.published_entries()? {
+            let Some(k) = crate::versions::kind_of_key(&kind) else {
+                continue;
+            };
+            let Ok(here) = self.entry_keys(k) else {
+                continue;
+            };
+            if !here.contains(&card) {
+                gone += self
+                    .conn
+                    .execute(
+                        "DELETE FROM published_entries WHERE kind = ?1 AND card = ?2",
+                        (&kind, &card),
+                    )
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        Ok(gone)
+    }
+
     /// Les entrées que l'officine publie sur la carte : (sorte, clé).
     pub fn published_entries(&self) -> Result<std::collections::HashSet<(String, String)>, String> {
         let mut stmt = self
@@ -59512,6 +59553,29 @@ mod tests {
         db.set_published(Kind::Codex, &arnica, false, "", "")
             .unwrap();
         assert!(db.published_entries().unwrap().is_empty());
+        // Renommée, elle reste publiée ; supprimée, elle est oubliée.
+        let id = db.add_preparation("Huile d'arnica").unwrap();
+        db.set_published(Kind::Codex, &arnica, true, "", "")
+            .unwrap();
+        let was = db
+            .preparations()
+            .unwrap()
+            .into_iter()
+            .find(|p| p.id == id)
+            .unwrap();
+        let mut next = was.clone();
+        next.name = "Huile d'arnica 10 %".to_owned();
+        assert!(db.update_preparation(&next, &was).unwrap());
+        let renamed = crate::versions::key("Huile d'arnica 10 %");
+        assert!(db
+            .published_entries()
+            .unwrap()
+            .contains(&("codex".to_owned(), renamed.clone())));
+        assert_eq!(db.prune_published().unwrap(), 0);
+        db.set_published(Kind::Codex, &crate::versions::key("Disparue"), true, "", "")
+            .unwrap();
+        assert_eq!(db.prune_published().unwrap(), 1);
+        assert_eq!(db.published_entries().unwrap().len(), 1);
     }
 
     #[test]

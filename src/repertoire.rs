@@ -348,19 +348,35 @@ pub fn supply_articles(events: &[crate::ruptures::Event]) -> Vec<Article> {
 }
 
 /// L'événement qu'un article porte, au nom de l'officine dont la carte l'a
-/// signé — jamais du nom écrit dans l'événement — et sans initiales.
+/// signé — jamais du nom écrit dans l'événement —, sans initiales ni note.
+///
+/// **Jamais un retrait** : une officine ne publie pas les siens
+/// (`ruptures::public_events`), et un retrait lu sur la carte, sous le nom
+/// qu'une carte se donne, retirerait ici les événements d'une officine
+/// appairée qui porte ce nom.
 pub fn supply_of(article: &Article, officine: &str) -> Option<crate::ruptures::Event> {
-    if article.kind != SUPPLY_KIND {
+    if article.kind != SUPPLY_KIND || article.name.trim().is_empty() {
         return None;
     }
     let (_, text) = article.fields.iter().find(|(f, _)| f == SUPPLY_FIELD)?;
     let mut e = crate::ruptures::decode(text.as_bytes())?;
-    if e.uid != article.card {
+    if e.uid != article.card || e.kind == crate::ruptures::Kind::Retrait {
         return None;
     }
     e.source = officine.to_owned();
     e.operator.clear();
+    e.note.clear();
     Some(e)
+}
+
+/// **L'identifiant sous lequel un événement lu sur la carte entre au
+/// journal d'ici** : celui de l'événement, précédé de la clé qui a signé
+/// la carte. Un identifiant se devine (`<base>:<numéro>`) : pris tel quel,
+/// celui qu'une officine de la carte aurait copié prendrait la place de
+/// l'événement véritable d'une officine appairée, qui serait ensuite
+/// ignoré à son arrivée.
+pub fn taken_uid(device: &str, uid: &str) -> String {
+    format!("carte:{device}:{uid}")
 }
 
 /// [`catalogue_where`], et les événements du journal que l'officine a
@@ -504,7 +520,14 @@ fn admitted(mut a: Article) -> Option<Article> {
         a.fields
             .retain(|(f, v)| f == SUPPLY_FIELD && v.len() <= VALUE_MAX);
         let e = supply_of(&a, "")?;
-        return (e.product == a.name && e.day == a.day && a.fields.len() == 1).then_some(a);
+        // Les bornes de qui héberge, redites ici : un nom trop long
+        // ferait refuser la carte entière, pas seulement l'article.
+        return (e.product == a.name
+            && e.day == a.day
+            && a.fields.len() == 1
+            && a.card.len() <= ENTRY_NAME_MAX
+            && a.name.len() <= ENTRY_NAME_MAX)
+            .then_some(a);
     }
     let kind = kind_of_wire(&a.kind)?;
     a.fields
@@ -1535,6 +1558,20 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].source, "Pharmacie du Port");
         assert_eq!(events[0].other, "Betneval crème");
+        // Un retrait ne se lit jamais sur la carte : sous le nom qu'une
+        // carte se donne, il retirerait ici ce qu'une officine appairée
+        // de ce nom a publié.
+        let mut withdraw = supply_articles(&[crate::ruptures::Event {
+            uid: "base:9".to_owned(),
+            kind: crate::ruptures::Kind::Retrait,
+            refers: "base:7".to_owned(),
+            product: String::new(),
+            ..events[0].clone()
+        }]);
+        assert!(supply_of(&withdraw[0], "x").is_none());
+        withdraw[0].name = "Locoid crème".to_owned();
+        assert!(supply_of(&withdraw[0], "x").is_none());
+        assert_ne!(taken_uid("abc", "base:7"), "base:7");
         // Une rupture n'est pas une offre « En ligne ».
         assert!(read
             .iter()
