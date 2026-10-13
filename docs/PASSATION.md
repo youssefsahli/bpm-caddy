@@ -156,11 +156,13 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   (sans mot de passe) ; l'export tourne encore dans l'image — à passer à
   un fil (un paquet porte depuis le 13/10 la taille et l'empreinte de
   chaque fichier, et un paquet coupé se refuse) ;
-- **changement de mot de passe interrompu** : fait le 13/10 — deux
-  témoins chiffrés l'un par l'autre (`rekey_witnesses`), et l'ouverture
-  remet les trois fichiers sous le mot de passe tapé (`finish_rekey`) ;
-  un verrou sur le témoin empêche un autre poste de défaire un changement
-  en cours. Les autres postes sur la même base reçoivent « file is not a
+- **changement de mot de passe interrompu** : fait le 13/10 — un témoin
+  chiffré par le nouveau mot de passe porte l'ancien (`rekey_witness`),
+  et l'ouverture avec le nouveau finit le changement (`finish_rekey`) ;
+  l'ancien ne défait jamais rien. Un verrou à part (`<base>_mdp.verrou`,
+  fichier vide qui reste) est tenu pendant le changement et la reprise —
+  au mieux sur un partage réseau, où un verrou peut ne valoir que
+  localement. Les autres postes sur la même base reçoivent « file is not a
   database » sans explication ; mots de passe non effacés de la mémoire
   (`zeroize`) ; pas d'action « créer une nouvelle base ici » maintenant
   qu'un chemin écrit et absent est refusé ;

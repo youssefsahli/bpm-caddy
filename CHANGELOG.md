@@ -12,11 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A password change interrupted between its three files (a power cut, a
   crash) no longer leaves the base, scans and register under two keys
-  that no password opens together. Before rekeying, each password is kept
-  in a small file encrypted by the other; reopening with either the old
-  or the new password puts all three files under the one typed, and the
-  two files are removed. While a change is running on another post (its
-  lock held), opening waits instead of undoing it.
+  that no password opens together. Before rekeying, the old password is
+  kept in a small file encrypted by the new one; reopening with the new
+  password finishes the change and removes it. The old password never
+  undoes anything — it is told a change was interrupted — so a revoked
+  password cannot claw a change back. A change still running on another
+  post (its lock held) is not resumed.
 
 ### Changed
 
@@ -27,10 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   waited, then failed. Maintenance snapshots, which hold no password,
   still use `VACUUM INTO`.
   A step-by-step copy always ends: after three restarts (another post
-  writing) or ten seconds, the rest is copied at once, and a source locked
-  for more than five seconds is an error rather than an endless wait. The
-  copy is compacted afterwards, so it does not carry the encrypted remains
-  of deleted records; and the register is copied first, the base last.
+  writing), or ten seconds after the first, the rest is copied at once, and a source locked
+  for more than five seconds is an error rather than an endless wait. A
+  copy with free pages is compacted afterwards (without a journal), so it
+  does not carry the encrypted remains of deleted records; and the
+  register is copied first, the base last.
 
 ## [0.429.0] - 2026-10-13
 

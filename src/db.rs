@@ -1681,14 +1681,18 @@ const MIGRATIONS: &[&str] = &[
 /// qu'une autre connexion écrit dans la source : au comptoir d'une
 /// officine à trois postes, elle pouvait ne jamais aboutir, et deux des
 /// copies se font dans l'image — la fenêtre ne répondait plus. Après
-/// trois reprises ou [`STEPWISE_PATIENCE`], le reste se copie d'un coup,
+/// trois reprises, ou [`STEPWISE_PATIENCE`] après la première, le reste
+/// se copie d'un coup — une copie longue que personne ne dérange reste
+/// par étapes jusqu'au bout,
 /// sous un seul verrou de lecture, comme le faisait `VACUUM INTO`. Une
 /// source verrouillée plus de cinq secondes de suite est une erreur, et
 /// non une attente sans fin.
 ///
-/// La copie est compactée ensuite : l'API copie aussi les pages libres, où
-/// dorment, chiffrés, les restes de ce qui a été supprimé — une copie qui
-/// sort de l'officine ne doit pas les emporter.
+/// La copie est compactée ensuite quand elle a des pages libres : l'API
+/// les copie aussi, et y dorment, chiffrés, les restes de ce qui a été
+/// supprimé — une copie qui sort de l'officine ne doit pas les emporter.
+/// Sans journal : une copie à moitié faite est jetée de toute façon, et
+/// le journal doublait la place prise à la destination.
 fn stepwise_copy(src: &Connection, path: &Path, password: &str, what: &str) -> Result<(), String> {
     use rusqlite::backup::StepResult;
     let mut out = Connection::open(path).map_err(|e| format!("{what} : {e}"))?;
@@ -1697,12 +1701,13 @@ fn stepwise_copy(src: &Connection, path: &Path, password: &str, what: &str) -> R
     {
         let backup =
             rusqlite::backup::Backup::new(src, &mut out).map_err(|e| format!("{what} : {e}"))?;
-        let started = std::time::Instant::now();
+        let mut first_restart: Option<std::time::Instant> = None;
         let mut blocked_since: Option<std::time::Instant> = None;
         let mut remaining = i32::MAX;
         let mut restarts = 0;
         loop {
-            let whole = restarts >= 3 || started.elapsed() > STEPWISE_PATIENCE;
+            let whole =
+                restarts >= 3 || first_restart.is_some_and(|t| t.elapsed() > STEPWISE_PATIENCE);
             match backup
                 .step(if whole { -1 } else { 128 })
                 .map_err(|e| format!("{what} : {e}"))?
@@ -1713,6 +1718,7 @@ fn stepwise_copy(src: &Connection, path: &Path, password: &str, what: &str) -> R
                     let now = backup.progress().remaining;
                     if now > remaining {
                         restarts += 1;
+                        first_restart.get_or_insert_with(std::time::Instant::now);
                     }
                     remaining = now;
                     std::thread::sleep(std::time::Duration::from_millis(2));
@@ -1729,12 +1735,18 @@ fn stepwise_copy(src: &Connection, path: &Path, password: &str, what: &str) -> R
             }
         }
     }
-    out.execute_batch("VACUUM")
-        .map_err(|e| format!("{what} : {e}"))
+    let free: i64 = out
+        .query_row("PRAGMA freelist_count", [], |r| r.get(0))
+        .map_err(|e| format!("{what} : {e}"))?;
+    if free > 0 {
+        out.execute_batch("PRAGMA journal_mode = OFF; VACUUM;")
+            .map_err(|e| format!("{what} : {e}"))?;
+    }
+    Ok(())
 }
 
-/// Combien de temps une copie par étapes laisse passer les écritures
-/// avant de copier le reste d'un coup.
+/// Combien de temps, après la première reprise, une copie par étapes
+/// laisse passer les écritures avant de copier le reste d'un coup.
 const STEPWISE_PATIENCE: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// The folder the daily backups live in: `backups/` beside the base.
@@ -42079,26 +42091,61 @@ pub fn stups_path(db_path: &Path) -> PathBuf {
     side_path(db_path, "stups")
 }
 
-/// **Les deux témoins d'un changement de mot de passe en cours.**
+/// **Le témoin d'un changement de mot de passe en cours.**
 ///
 /// Les trois fichiers se rechiffrent l'un après l'autre ; une coupure
 /// entre deux les laissait sous deux clés, et aucun mot de passe ne les
-/// ouvrait tous. Avant de commencer, chaque mot de passe est rangé dans un
-/// petit fichier chiffré par **l'autre** : celui qui ouvre `ancien` y
-/// trouve le nouveau, celui qui ouvre `nouveau` y trouve l'ancien. Rouvrir
-/// avec l'un ou l'autre suffit alors à finir — voir [`finish_rekey`]. Ils
-/// sont effacés dès que le changement aboutit ou se défait.
-fn rekey_witnesses(db_path: &Path) -> [PathBuf; 2] {
-    [
-        side_path(db_path, "mdp_ancien"),
-        side_path(db_path, "mdp_nouveau"),
-    ]
+/// ouvrait tous. Avant de commencer, l'ancien mot de passe est rangé dans
+/// un petit fichier chiffré par **le nouveau** : rouvrir avec le nouveau
+/// suffit à finir — voir [`finish_rekey`]. Dans un seul sens, et c'est
+/// voulu : un témoin chiffré par l'ancien livrerait le nouveau à qui ne
+/// connaît que l'ancien — la personne même qu'un changement de mot de
+/// passe écarte d'ordinaire. Celui-ci ne livre l'ancien qu'à qui sait
+/// déjà le nouveau.
+fn rekey_witness(db_path: &Path) -> PathBuf {
+    side_path(db_path, "mdp_nouveau")
 }
 
-/// Ouvrir un fichier SQLCipher avec `key`, et le lire : c'est ainsi que
-/// SQLCipher dit qu'une clé est fausse.
+/// Le verrou d'un changement de mot de passe : un fichier vide à part, que
+/// SQLite ne lit jamais (un verrou sur le témoin lui-même empêchait, sous
+/// Windows, de le lire). Tenu pendant tout le changement et pendant toute
+/// la reprise ; le système le rend si le poste s'arrête. Sur un partage
+/// réseau, un verrou peut ne valoir que pour le poste qui le pose : la
+/// garde est au mieux.
+fn rekey_lock(db_path: &Path) -> Result<std::fs::File, String> {
+    let path = db_path.with_file_name(format!(
+        "{}_mdp.verrou",
+        db_path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "bpm_caddy".to_owned())
+    ));
+    let f = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&path)
+        .map_err(|e| e.to_string())?;
+    match f.try_lock() {
+        Ok(()) => Ok(f),
+        Err(std::fs::TryLockError::WouldBlock) => Err(
+            "Un changement de mot de passe est en cours sur un autre poste : réessayez dans un \
+             instant."
+                .to_owned(),
+        ),
+        Err(std::fs::TryLockError::Error(e)) => Err(e.to_string()),
+    }
+}
+
+/// Ouvrir un fichier SQLCipher **existant** avec `key`, et le lire : c'est
+/// ainsi que SQLCipher dit qu'une clé est fausse. Jamais de création — un
+/// fichier absent n'est pas un fichier sous une autre clé.
 fn probe_key(path: &Path, key: &str) -> Option<Connection> {
-    let conn = Connection::open(path).ok()?;
+    let conn = Connection::open_with_flags(
+        path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .ok()?;
     conn.busy_timeout(std::time::Duration::from_secs(5)).ok()?;
     conn.pragma_update(None, "key", key).ok()?;
     conn.query_row("SELECT count(*) FROM sqlite_master", [], |r| {
@@ -42108,84 +42155,91 @@ fn probe_key(path: &Path, key: &str) -> Option<Connection> {
     Some(conn)
 }
 
-/// Écrire les deux témoins avant de rechiffrer : `ancien` chiffré par
-/// l'ancien mot de passe et portant le nouveau, `nouveau` l'inverse.
-fn write_rekey_witnesses(db_path: &Path, old: &str, new: &str) -> Result<(), String> {
-    let [ancien, nouveau] = rekey_witnesses(db_path);
-    for (path, key, other) in [(&ancien, old, new), (&nouveau, new, old)] {
-        let _ = std::fs::remove_file(path);
-        let conn = Connection::open(path).map_err(|e| e.to_string())?;
-        conn.pragma_update(None, "key", key)
-            .map_err(|e| e.to_string())?;
-        conn.execute_batch("CREATE TABLE autre (mot TEXT NOT NULL)")
-            .map_err(|e| e.to_string())?;
-        conn.execute("INSERT INTO autre (mot) VALUES (?1)", [other])
-            .map_err(|e| e.to_string())?;
-    }
+/// Écrire le témoin avant de rechiffrer : chiffré par le nouveau mot de
+/// passe, il porte l'ancien.
+fn write_rekey_witness(db_path: &Path, old: &str, new: &str) -> Result<(), String> {
+    let path = rekey_witness(db_path);
+    let _ = std::fs::remove_file(&path);
+    let conn = Connection::open(&path).map_err(|e| e.to_string())?;
+    conn.pragma_update(None, "key", new)
+        .map_err(|e| e.to_string())?;
+    conn.execute_batch("CREATE TABLE autre (mot TEXT NOT NULL)")
+        .map_err(|e| e.to_string())?;
+    conn.execute("INSERT INTO autre (mot) VALUES (?1)", [old])
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-fn remove_rekey_witnesses(db_path: &Path) {
-    for w in rekey_witnesses(db_path) {
-        let _ = std::fs::remove_file(w);
-    }
+fn remove_rekey_witness(db_path: &Path) {
+    let _ = std::fs::remove_file(rekey_witness(db_path));
 }
 
-/// **Finir un changement de mot de passe interrompu**, avec le mot de
-/// passe tapé — l'ancien ou le nouveau, le changement n'ayant jamais été
-/// confirmé, les deux sont légitimes.
+/// **Finir un changement de mot de passe interrompu.**
 ///
-/// Le témoin qu'ouvre le mot de passe tapé donne l'autre ; chacun des
-/// trois fichiers resté sous l'autre clé est remis sous celle qui a été
-/// tapée, et les témoins s'effacent. Tapé l'ancien, le changement se
-/// défait ; tapé le nouveau, il s'achève. Un mot de passe qui n'ouvre
-/// aucun témoin ne touche à rien : l'ouverture dira qu'il est faux.
+/// Tapé le nouveau, le témoin s'ouvre et donne l'ancien : chaque fichier
+/// resté sous l'ancien passe sous le nouveau, puis le témoin s'efface. Un
+/// changement qui avait abouti — le témoin seul est resté — ne fait que
+/// l'effacer.
+///
+/// Tapé l'ancien, rien n'est jamais défait : si la base s'ouvre mais
+/// qu'un autre fichier ne s'ouvre plus, l'ouverture dit qu'un changement a
+/// été interrompu et qu'il faut le nouveau mot de passe. Un mot de passe
+/// faux ne touche à rien.
+///
+/// Sous le verrou du changement, tenu jusqu'au bout : un changement en
+/// cours sur un autre poste n'est pas « repris » pendant qu'il se fait.
 fn finish_rekey(db_path: &Path, typed: &str) -> Result<(), String> {
-    let witnesses = rekey_witnesses(db_path);
-    if !witnesses.iter().any(|w| w.exists()) {
+    if !rekey_witness(db_path).exists() {
         return Ok(());
     }
-    let other = witnesses.iter().find_map(|w| {
-        probe_key(w, typed)?
-            .query_row("SELECT mot FROM autre", [], |r| r.get::<_, String>(0))
+    let _held = rekey_lock(db_path)?;
+    // Relu sous le verrou : le poste qui changeait a pu finir entre-temps.
+    let witness = rekey_witness(db_path);
+    if !witness.exists() {
+        return Ok(());
+    }
+    let files = [db_path.to_owned(), scans_path(db_path), stups_path(db_path)];
+    let present = |f: &PathBuf| std::fs::metadata(f).is_ok_and(|m| m.len() > 0);
+    let other = probe_key(&witness, typed).and_then(|c| {
+        c.query_row("SELECT mot FROM autre", [], |r| r.get::<_, String>(0))
             .ok()
     });
     let Some(other) = other else {
-        return Ok(());
-    };
-    // **Interrompu, ou en cours ailleurs ?** Le poste qui change le mot de
-    // passe tient un verrou sur le témoin jusqu'à la fin ; le système le
-    // rend si ce poste s'arrête. Tenu, on ne touche à rien : remettre un
-    // fichier sous l'ancienne clé pendant qu'un autre poste les passe sous
-    // la nouvelle les laisserait de nouveau sous deux clés.
-    if let Ok(f) = std::fs::File::open(&witnesses[0]) {
-        if matches!(f.try_lock(), Err(std::fs::TryLockError::WouldBlock)) {
+        // Pas le nouveau mot de passe. L'ancien, si la base s'ouvre avec
+        // et qu'un des deux autres non : le dire, sans rien défaire.
+        if probe_key(db_path, typed).is_some()
+            && files[1..]
+                .iter()
+                .any(|f| present(f) && probe_key(f, typed).is_none())
+        {
             return Err(
-                "Un changement de mot de passe est en cours sur un autre poste : \
-                 réessayez dans un instant."
+                "Un changement de mot de passe a été interrompu : ouvrez avec le nouveau mot \
+                 de passe pour le terminer."
                     .to_owned(),
             );
         }
-    }
-    for file in [db_path.to_owned(), scans_path(db_path), stups_path(db_path)] {
-        if !std::fs::metadata(&file).is_ok_and(|m| m.len() > 0) || probe_key(&file, typed).is_some()
-        {
+        return Ok(());
+    };
+    for file in &files {
+        if !present(file) || probe_key(file, typed).is_some() {
             continue;
         }
-        let conn = probe_key(&file, &other).ok_or_else(|| {
+        let conn = probe_key(file, &other).ok_or_else(|| {
             format!(
-                "Changement de mot de passe interrompu : {} ne s'ouvre ni avec l'ancien ni                  avec le nouveau mot de passe.",
+                "Changement de mot de passe interrompu : {} ne s'ouvre ni avec l'ancien ni avec \
+                 le nouveau mot de passe.",
                 file.display()
             )
         })?;
         conn.pragma_update(None, "rekey", typed).map_err(|e| {
             format!(
-                "Changement de mot de passe interrompu : {} n'a pas pu être remis sous le                  mot de passe tapé ({e}).",
+                "Changement de mot de passe interrompu : {} n'a pas pu passer sous le nouveau \
+                 mot de passe ({e}).",
                 file.display()
             )
         })?;
     }
-    remove_rekey_witnesses(db_path);
+    remove_rekey_witness(db_path);
     Ok(())
 }
 
@@ -42796,27 +42850,22 @@ impl Db {
         // nouveau mot de passe n'ouvrait plus rien. Ce qui a changé est
         // donc remis à l'ancienne clé au premier échec, et l'erreur dit
         // que rien n'a changé.
-        // **Et une coupure en route se rattrape.** Les témoins sont écrits
-        // avant le premier fichier : rouvrir avec l'un ou l'autre mot de
-        // passe remet alors les trois sous celui-là (`finish_rekey`).
+        // **Et une coupure en route se rattrape.** Le témoin est écrit
+        // avant le premier fichier, sous le verrou du changement : rouvrir
+        // avec le nouveau mot de passe finit alors le travail
+        // (`finish_rekey`).
         let path = self.path();
-        // Le verrou sur le témoin dit aux autres postes que le changement
-        // est en cours ; il est rendu après l'effacement des témoins.
-        let mut _held: Option<std::fs::File> = None;
-        if let Some(p) = &path {
-            let lock = |p: &Path| -> std::io::Result<std::fs::File> {
-                let f = std::fs::File::open(&rekey_witnesses(p)[0])?;
-                f.lock()?;
-                Ok(f)
-            };
-            _held = write_rekey_witnesses(p, old_password, new_password)
-                .and_then(|()| lock(p).map_err(|e| e.to_string()))
-                .map(Some)
-                .map_err(|e| {
-                    remove_rekey_witnesses(p);
-                    format!("changement du mot de passe impossible : {e}. Rien n'a changé.")
-                })?;
-        }
+        let _held = match &path {
+            Some(p) => Some(rekey_lock(p).and_then(|lock| {
+                write_rekey_witness(p, old_password, new_password)
+                    .map(|()| lock)
+                    .map_err(|e| {
+                        remove_rekey_witness(p);
+                        format!("changement du mot de passe impossible : {e}. Rien n'a changé.")
+                    })
+            })?),
+            None => None,
+        };
         let files: [(&rusqlite::Connection, &str); 3] = [
             (
                 &self.scans,
@@ -42834,22 +42883,22 @@ impl Db {
                 for (undo, _) in files.iter().take(done) {
                     back &= undo.pragma_update(None, "rekey", old_password).is_ok();
                 }
-                // Les témoins restent tant que les fichiers sont sous deux
-                // clés : ce sont eux qui permettent de finir.
+                // Le témoin reste tant que les fichiers sont sous deux
+                // clés : c'est lui qui permet de finir.
                 if back {
                     if let Some(p) = &path {
-                        remove_rekey_witnesses(p);
+                        remove_rekey_witness(p);
                     }
                 }
                 return Err(if back {
                     format!("{what} : {e}. Rien n'a changé : les trois fichiers gardent l'ancien mot de passe.")
                 } else {
-                    format!("{what} : {e}. Le retour à l'ancien mot de passe a lui aussi échoué : fermez l'application et rouvrez-la avec l'ancien ou le nouveau mot de passe — l'ouverture remet les trois fichiers sous celui qui est tapé.")
+                    format!("{what} : {e}. Le retour à l'ancien mot de passe a lui aussi échoué : fermez l'application et rouvrez-la avec le nouveau mot de passe — l'ouverture finit le changement.")
                 });
             }
         }
         if let Some(p) = &path {
-            remove_rekey_witnesses(p);
+            remove_rekey_witness(p);
         }
         Ok(())
     }
@@ -66715,60 +66764,74 @@ mod tests {
     }
 
     /// **Un changement de mot de passe coupé en route se finit à
-    /// l'ouverture**, avec l'un ou l'autre mot de passe : la coupure est
-    /// jouée en rechiffrant le seul fichier des pièces, les témoins écrits.
-    /// Tapé le nouveau, les trois passent sous le nouveau ; tapé l'ancien,
-    /// sous l'ancien. Les témoins partent, et un mot de passe faux ne
-    /// touche à rien.
+    /// l'ouverture, avec le nouveau mot de passe** : la coupure est jouée
+    /// en rechiffrant le seul fichier des pièces, le témoin écrit. Un
+    /// changement encore tenu par un autre poste ne se reprend pas ; un
+    /// mot de passe faux ne touche à rien ; l'ancien dit l'interruption sans
+    /// rien défaire ; le nouveau passe les trois fichiers sous lui et
+    /// efface le témoin.
     #[test]
-    fn an_interrupted_password_change_finishes_at_opening() {
-        for (typed, refused) in [("nouveau", "ancien"), ("ancien", "nouveau")] {
-            let dir = std::env::temp_dir().join(format!(
-                "bpm-caddy-rekey-cut-{typed}-{}",
-                std::process::id()
-            ));
-            let _ = std::fs::remove_dir_all(&dir);
-            std::fs::create_dir_all(&dir).unwrap();
-            let _swept = Swept(dir.clone());
-            let path = dir.join("coupe.db");
-            {
-                let db = Db::open(&path, "ancien").unwrap();
-                db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
-                // Une ligne au registre, pour qu'il ait de quoi peser.
-                db.stups
-                    .execute_batch("CREATE TABLE IF NOT EXISTS t (x); INSERT INTO t VALUES (1);")
-                    .unwrap();
-                db.scans
-                    .execute_batch("CREATE TABLE IF NOT EXISTS t (x); INSERT INTO t VALUES (1);")
-                    .unwrap();
-                write_rekey_witnesses(&path, "ancien", "nouveau").unwrap();
-                db.scans.pragma_update(None, "rekey", "nouveau").unwrap();
-                // La coupure : ni le registre ni la base n'ont suivi.
-            }
-            assert!(probe_key(&scans_path(&path), "nouveau").is_some());
-            assert!(probe_key(&path, "ancien").is_some());
-            // Un changement encore en cours ailleurs — son verrou tenu — ne
-            // se finit pas d'ici.
-            {
-                let held = std::fs::File::open(&rekey_witnesses(&path)[0]).unwrap();
-                held.lock().unwrap();
-                let Err(err) = Db::open(&path, typed) else {
-                    panic!("ouvert pendant un changement en cours")
-                };
-                assert!(err.contains("en cours"), "{err}");
-            }
-            // Un mot de passe faux ne touche à rien.
-            assert!(Db::open(&path, "faux").is_err());
-            assert!(rekey_witnesses(&path).iter().all(|w| w.exists()));
-            let db = Db::open(&path, typed).unwrap();
-            assert_eq!(db.patients().unwrap()[0].full_name(), "Jean Dupont");
-            drop(db);
-            for file in [path.clone(), scans_path(&path), stups_path(&path)] {
-                assert!(probe_key(&file, typed).is_some(), "{}", file.display());
-                assert!(probe_key(&file, refused).is_none(), "{}", file.display());
-            }
-            assert!(rekey_witnesses(&path).iter().all(|w| !w.exists()));
+    fn an_interrupted_password_change_finishes_with_the_new_password() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-rekey-cut-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("coupe.db");
+        {
+            let db = Db::open(&path, "ancien").unwrap();
+            db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+            db.scans
+                .execute_batch("CREATE TABLE IF NOT EXISTS t (x); INSERT INTO t VALUES (1);")
+                .unwrap();
+            write_rekey_witness(&path, "ancien", "nouveau").unwrap();
+            db.scans.pragma_update(None, "rekey", "nouveau").unwrap();
+            // La coupure : ni le registre ni la base n'ont suivi.
         }
+        let refused = |typed: &str| match Db::open(&path, typed) {
+            Ok(_) => panic!("ouvert avec {typed}"),
+            Err(e) => e,
+        };
+        // Un changement encore en cours ailleurs — son verrou tenu.
+        {
+            let _held = rekey_lock(&path).unwrap();
+            assert!(refused("nouveau").contains("en cours"));
+        }
+        assert!(Db::open(&path, "faux").is_err());
+        assert!(refused("ancien").contains("interrompu"));
+        assert!(probe_key(&scans_path(&path), "nouveau").is_some());
+        assert!(probe_key(&path, "ancien").is_some());
+        assert!(rekey_witness(&path).exists());
+        let db = Db::open(&path, "nouveau").unwrap();
+        assert_eq!(db.patients().unwrap()[0].full_name(), "Jean Dupont");
+        drop(db);
+        for file in [path.clone(), scans_path(&path), stups_path(&path)] {
+            assert!(probe_key(&file, "nouveau").is_some(), "{}", file.display());
+        }
+        assert!(!rekey_witness(&path).exists());
+    }
+
+    /// Un changement abouti ne laisse pas de témoin ; et un témoin resté
+    /// malgré tout (un effacement refusé) ne permet jamais à l'ancien mot
+    /// de passe de défaire le changement.
+    #[test]
+    fn a_finished_password_change_cannot_be_undone_by_the_old_password() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-rekey-done-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("fait.db");
+        {
+            let db = Db::open(&path, "ancien").unwrap();
+            db.change_password("ancien", "nouveau").unwrap();
+            assert!(!rekey_witness(&path).exists());
+        }
+        write_rekey_witness(&path, "ancien", "nouveau").unwrap();
+        assert!(Db::open(&path, "ancien").is_err());
+        for file in [path.clone(), scans_path(&path), stups_path(&path)] {
+            assert!(probe_key(&file, "nouveau").is_some(), "{}", file.display());
+        }
+        assert!(Db::open(&path, "nouveau").is_ok());
+        assert!(!rekey_witness(&path).exists());
     }
 
     /// **Une copie par étapes finit, même quand un autre poste écrit sans
@@ -66817,20 +66880,6 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM lest", [], |r| r.get(0))
             .unwrap();
         assert!(n >= 64);
-    }
-
-    /// Un changement abouti ne laisse aucun témoin derrière lui.
-    #[test]
-    fn a_finished_password_change_leaves_no_witness() {
-        let dir =
-            std::env::temp_dir().join(format!("bpm-caddy-rekey-clean-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let _swept = Swept(dir.clone());
-        let path = dir.join("propre.db");
-        let db = Db::open(&path, "ancien").unwrap();
-        db.change_password("ancien", "nouveau").unwrap();
-        assert!(rekey_witnesses(&path).iter().all(|w| !w.exists()));
     }
 
     #[test]
