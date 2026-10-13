@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- « Copier la base vers… », the bundle (« paquet ») and the daily copies
+  of the scans and the stupéfiants register are now taken step by step
+  (SQLite's backup API), like the daily copy of the base: `VACUUM INTO`
+  held the shared files for the whole copy, and the other posts' writes
+  waited, then failed. Maintenance snapshots, which hold no password,
+  still use `VACUUM INTO`.
+
 ## [0.429.0] - 2026-10-13
 
 ### Added

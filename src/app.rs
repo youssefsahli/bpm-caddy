@@ -218,8 +218,8 @@ fn spawn_daily_backup(
         // tous — copiée avant, un patient créé entre les deux manquait à
         // la restauration.
         if let Ok(db) = opened {
-            daily_stups_backup(&db, &db_path, keep.max(scans_keep));
-            daily_scans_backup(&db, &db_path, scans_keep);
+            daily_stups_backup(&db, &db_path, &password, keep.max(scans_keep));
+            daily_scans_backup(&db, &db_path, &password, scans_keep);
             daily_backup(&db, &db_path, &password, keep);
         }
     });
@@ -453,7 +453,7 @@ fn daily_copy(
 /// rien ne se gagne à en garder moins, et c'est le seul fichier de la
 /// maison qu'on ne peut pas reconstituer — une base perdue se ressème,
 /// un registre perdu ne se retrouve nulle part.
-fn daily_stups_backup(db: &Db, db_path: &std::path::Path, keep: usize) {
+fn daily_stups_backup(db: &Db, db_path: &std::path::Path, password: &str, keep: usize) {
     if keep == 0 {
         return;
     }
@@ -474,7 +474,10 @@ fn daily_stups_backup(db: &Db, db_path: &std::path::Path, keep: usize) {
     let dir = db::backup_dir(db_path);
     let prefix = db::backup_prefix(db_path, Some("stups"));
     let target = dir.join(format!("{prefix}{today}.db"));
-    daily_copy(&dir, &target, &prefix, keep, |to| db.backup_stups_to(to));
+    // Par étapes, comme la base : le registre s'écrit au comptoir.
+    daily_copy(&dir, &target, &prefix, keep, |to| {
+        db.backup_stups_stepwise(to, password)
+    });
 }
 
 /// La copie quotidienne du fichier des pièces, sur son propre compte.
@@ -485,7 +488,7 @@ fn daily_stups_backup(db: &Db, db_path: &std::path::Path, keep: usize) {
 /// d'un an en coûtent dix mille. L'officine choisit combien elle en
 /// garde (`[scans] backups_keep`, deux par défaut), et le choix est
 /// possible parce que les deux fichiers sont séparés.
-fn daily_scans_backup(db: &Db, db_path: &std::path::Path, keep: usize) {
+fn daily_scans_backup(db: &Db, db_path: &std::path::Path, password: &str, keep: usize) {
     if keep == 0 {
         return;
     }
@@ -498,7 +501,9 @@ fn daily_scans_backup(db: &Db, db_path: &std::path::Path, keep: usize) {
     let dir = db::backup_dir(db_path);
     let prefix = db::backup_prefix(db_path, Some("scans"));
     let target = dir.join(format!("{prefix}{today}.db"));
-    daily_copy(&dir, &target, &prefix, keep, |to| db.backup_scans_to(to));
+    daily_copy(&dir, &target, &prefix, keep, |to| {
+        db.backup_scans_stepwise(to, password)
+    });
 }
 
 /// One backup per day, in `backups/` next to the database, pruned to
@@ -88173,7 +88178,7 @@ impl eframe::App for App {
                 // Les trois fichiers, toujours, et ensemble : copier la base
                 // seule laisserait les pièces et le registre en arrière —
                 // voir `Db::copy_whole_to`.
-                session.db.copy_whole_to(&target)
+                session.db.copy_whole_to(&target, Some(&session.password))
             } else {
                 Err(tr("opts_db_locked").to_owned())
             };

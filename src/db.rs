@@ -1673,6 +1673,21 @@ const MIGRATIONS: &[&str] = &[
 ];
 
 /// The folder the daily backups live in: `backups/` beside the base.
+/// Copier une base SQLCipher **par petites étapes** vers `path`, chiffrée
+/// du même mot de passe — voir [`Db::backup_stepwise`]. Une écriture d'un
+/// autre poste passe entre deux paquets de pages au lieu d'attendre la
+/// fin de la copie.
+fn stepwise_copy(src: &Connection, path: &Path, password: &str, what: &str) -> Result<(), String> {
+    let mut out = Connection::open(path).map_err(|e| format!("{what} : {e}"))?;
+    out.pragma_update(None, "key", password)
+        .map_err(|e| format!("{what} : {e}"))?;
+    let backup =
+        rusqlite::backup::Backup::new(src, &mut out).map_err(|e| format!("{what} : {e}"))?;
+    backup
+        .run_to_completion(128, std::time::Duration::from_millis(15), None)
+        .map_err(|e| format!("{what} : {e}"))
+}
+
 pub fn backup_dir(db_path: &Path) -> PathBuf {
     db_path
         .parent()
@@ -42671,7 +42686,7 @@ impl Db {
             .map(|d| d.as_secs())
             .unwrap_or(0);
         let day = self.today_iso().unwrap_or_default();
-        self.copy_whole_to(&dir.join(format!("{stem}-{what}-{day}-{stamp}.db")))?;
+        self.copy_whole_to(&dir.join(format!("{stem}-{what}-{day}-{stamp}.db")), None)?;
         Ok(1)
     }
 
@@ -42683,7 +42698,12 @@ impl Db {
     /// destination and write onto it file by file: a full disk midway
     /// left a broken base under the real name and last week's register
     /// beside it — which the next opening took for this base's register.
-    pub fn copy_whole_to(&self, target: &Path) -> Result<(), String> {
+    ///
+    /// With the password, each file is copied **stepwise**: `VACUUM INTO`
+    /// held the shared files for the whole copy, and the other posts'
+    /// writes waited, then failed. Without it (the snapshots maintenance
+    /// takes, which hold no password), `VACUUM INTO` stays.
+    pub fn copy_whole_to(&self, target: &Path, password: Option<&str>) -> Result<(), String> {
         let finals = [target.to_path_buf(), scans_path(target), stups_path(target)];
         let part = |p: &Path| {
             let mut name = p.file_name().unwrap_or_default().to_os_string();
@@ -42695,16 +42715,28 @@ impl Db {
             let _ = std::fs::remove_file(p);
         }
         let with_scans = self.scan_weight()?.0 > 0;
-        let written = self
-            .backup_to(&parts[0])
-            .and_then(|()| {
-                if with_scans {
-                    self.backup_scans_to(&parts[1])
-                } else {
-                    Ok(())
-                }
-            })
-            .and_then(|()| self.backup_stups_to(&parts[2]));
+        let written = match password {
+            Some(pw) => self
+                .backup_stepwise(&parts[0], pw)
+                .and_then(|()| {
+                    if with_scans {
+                        self.backup_scans_stepwise(&parts[1], pw)
+                    } else {
+                        Ok(())
+                    }
+                })
+                .and_then(|()| self.backup_stups_stepwise(&parts[2], pw)),
+            None => self
+                .backup_to(&parts[0])
+                .and_then(|()| {
+                    if with_scans {
+                        self.backup_scans_to(&parts[1])
+                    } else {
+                        Ok(())
+                    }
+                })
+                .and_then(|()| self.backup_stups_to(&parts[2])),
+        };
         if let Err(e) = written {
             for p in &parts {
                 let _ = std::fs::remove_file(p);
@@ -42793,10 +42825,11 @@ impl Db {
     /// sait déjà faire. Un zip aurait demandé une dépendance de plus et
     /// aurait posé en clair le nom des fichiers qu'il porte.
     ///
-    /// Les trois copies sont prises par `VACUUM INTO`, donc
-    /// **cohérentes** même si quelqu'un écrit pendant ce temps : c'est
-    /// la même façon que la sauvegarde quotidienne, et la seule qui ne
-    /// rende pas un fichier à moitié écrit.
+    /// Les trois copies sont prises par l'API de sauvegarde de SQLite,
+    /// par étapes, donc **cohérentes** même si quelqu'un écrit pendant ce
+    /// temps — SQLite reprend une copie que l'autre a dérangée —, et sans
+    /// tenir les fichiers partagés le temps de toute la copie : c'est la
+    /// même façon que la sauvegarde quotidienne.
     /// Le mot de passe est **passé** et non retenu : cette structure
     /// n'en garde pas, et lui en faire garder un pour ce seul usage
     /// serait mettre une clé dans un objet qui vit toute la séance.
@@ -42821,9 +42854,10 @@ impl Db {
         let base = stage.join(BUNDLE_BASE);
         let scans = stage.join(BUNDLE_SCANS);
         let stups = stage.join(BUNDLE_STUPS);
-        self.backup_to(&base)?;
-        self.backup_scans_to(&scans)?;
-        self.backup_stups_to(&stups)?;
+        // Par étapes : le paquet se fait pendant que le comptoir écrit.
+        self.backup_stepwise(&base, password)?;
+        self.backup_scans_stepwise(&scans, password)?;
+        self.backup_stups_stepwise(&stups, password)?;
 
         // Le paquet est réécrit et jamais complété : un export par
         // dessus un autre laisserait la moitié d'hier sous la moitié
@@ -51642,18 +51676,31 @@ impl Db {
     /// cohérente. La destination est chiffrée avec le même mot de passe :
     /// SQLCipher copie alors les pages telles quelles.
     pub fn backup_stepwise(&self, path: &Path, password: &str) -> Result<(), String> {
-        let mut out = Connection::open(path).map_err(|e| format!("sauvegarde impossible : {e}"))?;
-        out.pragma_update(None, "key", password)
-            .map_err(|e| format!("sauvegarde impossible : {e}"))?;
-        {
-            let backup = rusqlite::backup::Backup::new(&self.conn, &mut out)
-                .map_err(|e| format!("sauvegarde impossible : {e}"))?;
-            backup
-                .run_to_completion(128, std::time::Duration::from_millis(15), None)
-                .map_err(|e| format!("sauvegarde impossible : {e}"))?;
-        }
+        stepwise_copy(&self.conn, path, password, "sauvegarde impossible")?;
         crate::telemetry::tally(crate::telemetry::Signal::Backup);
         Ok(())
+    }
+
+    /// Le fichier des pièces, par étapes comme la base : c'est lui qui
+    /// pèse, et `VACUUM INTO` le tenait d'autant plus longtemps.
+    pub fn backup_scans_stepwise(&self, path: &Path, password: &str) -> Result<(), String> {
+        stepwise_copy(
+            &self.scans,
+            path,
+            password,
+            "sauvegarde des pièces impossible",
+        )
+    }
+
+    /// Le registre, par étapes : une délivrance de stupéfiant au comptoir
+    /// n'attend pas la fin d'une copie.
+    pub fn backup_stups_stepwise(&self, path: &Path, password: &str) -> Result<(), String> {
+        stepwise_copy(
+            &self.stups,
+            path,
+            password,
+            "sauvegarde du registre impossible",
+        )
     }
 
     pub fn backup_scans_to(&self, path: &Path) -> Result<(), String> {
@@ -61733,7 +61780,7 @@ mod tests {
         // qui était là, et ne laisse aucun `.part`.
         let whole = dir.join("entiere.db");
         std::fs::write(stups_path(&whole), b"ancien registre").unwrap();
-        db.copy_whole_to(&whole).unwrap();
+        db.copy_whole_to(&whole, Some("secret")).unwrap();
         assert_ne!(
             std::fs::read(stups_path(&whole)).unwrap(),
             b"ancien registre"
@@ -61742,7 +61789,8 @@ mod tests {
         assert_eq!(there.scan_bytes(id).unwrap().0, pdf);
         drop(there);
         let nowhere = dir.join("absent").join("copie.db");
-        assert!(db.copy_whole_to(&nowhere).is_err());
+        assert!(db.copy_whole_to(&nowhere, Some("secret")).is_err());
+        assert!(db.copy_whole_to(&nowhere, None).is_err());
         let left: Vec<_> = std::fs::read_dir(&dir)
             .unwrap()
             .flatten()
