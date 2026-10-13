@@ -113,6 +113,13 @@ pub struct Snapshot {
 /// script sur un poste et échouer sur l'autre.
 const MAX_OPERATIONS: u64 = 20_000_000;
 
+/// Combien de lignes les tables peuvent rendre en tout, sur une exécution :
+/// un appel à `patients()` compte une opération pour le langage, mais
+/// recopie toutes les cartes — mille appels dans une boucle tournaient
+/// une demi-heure avant la borne d'opérations. Chaque appel compte ici
+/// ce qu'il rend.
+const MAX_HANDED: u64 = 2_000_000;
+
 /// Ce que la console rend.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Outcome {
@@ -230,12 +237,20 @@ fn engine_run(source: &str, data: &Snapshot, stop: Arc<std::sync::atomic::Atomic
     // imprime un mégaoctet à chaque tour remplissait la mémoire bien
     // avant que le compte d'opérations ne l'arrête.
     let printed_bytes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    // Les lignes que les tables ont rendues, toutes ensemble.
+    let handed = Arc::new(std::sync::atomic::AtomicU64::new(0));
     {
         let seen = Arc::clone(&printed_bytes);
         let halted = Arc::clone(&stop_seen);
+        let rows = Arc::clone(&handed);
         engine.on_progress(move |_| {
             if halted.load(std::sync::atomic::Ordering::Relaxed) {
                 return Some(rhai::Dynamic::from(crate::strings::tr("script_halted")));
+            }
+            if rows.load(std::sync::atomic::Ordering::Relaxed) > MAX_HANDED {
+                return Some(rhai::Dynamic::from(crate::strings::tr(
+                    "script_too_many_rows",
+                )));
             }
             (seen.load(std::sync::atomic::Ordering::Relaxed) > MAX_PRINTED)
                 .then(|| rhai::Dynamic::from(crate::strings::tr("script_too_long")))
@@ -275,16 +290,12 @@ fn engine_run(source: &str, data: &Snapshot, stop: Arc<std::sync::atomic::Atomic
     let patients = data.patients.clone();
     let read_patients = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let noted = Arc::clone(&read_patients);
-    // **Construit une fois, prêté ensuite** : chaque appel refaisait
-    // toutes les cartes, et une boucle qui appelait `patients()` tournait
-    // une heure avant la limite d'opérations, qui ne compte qu'un appel.
-    // Une valeur partagée se prête sans se recopier.
-    let built: Arc<std::sync::OnceLock<rhai::Dynamic>> = Arc::default();
-    engine.register_fn("patients", move || -> rhai::Dynamic {
+    // Chaque appel compte ses lignes (`MAX_HANDED`).
+    let rows = Arc::clone(&handed);
+    engine.register_fn("patients", move || {
         noted.store(true, std::sync::atomic::Ordering::Relaxed);
-        built
-            .get_or_init(|| rhai::Dynamic::from(build_patients(&patients)).into_shared())
-            .clone()
+        rows.fetch_add(patients.len() as u64, std::sync::atomic::Ordering::Relaxed);
+        build_patients(&patients)
     });
     fn build_patients(patients: &[Patient]) -> rhai::Array {
         patients
@@ -308,7 +319,9 @@ fn engine_run(source: &str, data: &Snapshot, stop: Arc<std::sync::atomic::Atomic
             .collect::<rhai::Array>()
     }
     let drugs = data.drugs.clone();
+    let rows = Arc::clone(&handed);
     engine.register_fn("medicaments", move || {
+        rows.fetch_add(drugs.len() as u64, std::sync::atomic::Ordering::Relaxed);
         drugs
             .iter()
             .map(|d| {
@@ -324,7 +337,9 @@ fn engine_run(source: &str, data: &Snapshot, stop: Arc<std::sync::atomic::Atomic
             .collect::<rhai::Array>()
     });
     let acts = data.acts.clone();
+    let rows = Arc::clone(&handed);
     engine.register_fn("entretiens", move || {
+        rows.fetch_add(acts.len() as u64, std::sync::atomic::Ordering::Relaxed);
         acts.iter()
             .map(|a| {
                 let mut m = rhai::Map::new();
@@ -338,7 +353,9 @@ fn engine_run(source: &str, data: &Snapshot, stop: Arc<std::sync::atomic::Atomic
             .collect::<rhai::Array>()
     });
     let moves = data.moves.clone();
+    let rows = Arc::clone(&handed);
     engine.register_fn("registre", move || {
+        rows.fetch_add(moves.len() as u64, std::sync::atomic::Ordering::Relaxed);
         moves
             .iter()
             .map(|l| {
@@ -395,6 +412,10 @@ fn engine_run(source: &str, data: &Snapshot, stop: Arc<std::sync::atomic::Atomic
             // script.
             error: Some(if stop_seen.load(std::sync::atomic::Ordering::Relaxed) {
                 crate::strings::tr("script_halted").to_owned()
+            } else if handed.load(std::sync::atomic::Ordering::Relaxed) > MAX_HANDED {
+                // Arrêté sur la borne des lignes : la dire, plutôt que
+                // « Script terminated ».
+                crate::strings::tr("script_too_many_rows").to_owned()
             } else {
                 e.to_string()
             }),
@@ -924,19 +945,22 @@ mod tests {
         }
     }
 
-    /// **`patients()` se prête sans se refaire**, et ce qu'un script en
-    /// fait ne change pas ce que l'appel suivant rend : mille appels sur
-    /// deux mille dossiers tiennent en un instant.
+    /// **Les tables comptent ce qu'elles rendent** : une boucle d'appels à
+    /// `patients()` s'arrête sur la borne des lignes rendues, en un
+    /// instant, au lieu de tourner une demi-heure sous celle des
+    /// opérations ; ce qu'un script fait d'un tableau ne change pas
+    /// l'appel suivant, et une valeur finale s'écrit sans marque.
     #[test]
-    fn patients_are_built_once_and_never_changed_by_a_script() {
+    fn a_loop_over_the_tables_is_stopped_by_what_they_hand_out() {
         let out = run(
-            "let a = patients(); a.push(1); a[0].nom = \"X\"; let b = patients(); [a.len, b.len, b[0].nom]",
+            "let a = patients(); a.push(1); let b = patients(); [a.len, b.len]",
             &sample(),
         );
         assert_eq!(out.error, None, "{out:?}");
-        let first = &sample().patients[0].nom;
         let n = sample().patients.len();
-        assert_eq!(out.value, format!("[{}, {n}, \"{first}\"]", n + 1));
+        assert_eq!(out.value, format!("[{}, {n}]", n + 1));
+        let out = run("patients()", &sample());
+        assert!(!out.value.contains("shared"), "{}", out.value);
         let mut big = sample();
         let one = big.patients[0].clone();
         big.patients = (0..2000)
@@ -947,13 +971,16 @@ mod tests {
             .collect();
         let started = std::time::Instant::now();
         let out = run(
-            "let n = 0; for i in 0..1000 { n += patients().len; } n",
+            "let n = 0; for i in 0..100000 { n += patients().len; } n",
             &big,
         );
-        assert_eq!(out.error, None, "{out:?}");
-        assert_eq!(out.value, "2000000");
+        assert_eq!(
+            out.error.as_deref(),
+            Some(crate::strings::tr("script_too_many_rows")),
+            "{out:?}"
+        );
         assert!(
-            started.elapsed() < std::time::Duration::from_secs(20),
+            started.elapsed() < std::time::Duration::from_secs(30),
             "{:?}",
             started.elapsed()
         );

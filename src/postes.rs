@@ -565,6 +565,11 @@ impl Posts {
                     break;
                 }
                 if let Ok(record) = Record::decode(&chunk) {
+                    // Déjà là : ni à vérifier, ni à ouvrir — le fichier d'un
+                    // poste se relit entier à chaque passage.
+                    if self.journal.has(&record.id()) {
+                        continue;
+                    }
                     // A record of a stream this post's key opens must open
                     // under it; one a companion's share does not open is
                     // kept for the graph, from a post of the group only.
@@ -579,7 +584,11 @@ impl Posts {
                 }
             }
         }
-        self.keep(db)?;
+        // Rien de neuf, rien à réécrire : tout le journal repartait dans une
+        // transaction sur la base partagée, à chaque minute.
+        if added > 0 {
+            self.keep(db)?;
+        }
         Ok(added)
     }
 

@@ -545,8 +545,8 @@ les étiquettes impriment la posologie que la base garde, et non le champ
 en cours de saisie.
 
 **Petits restes.** Bulletins : un champ trop long pour sa case, même à
-5 pt, est dit à l'impression (fait le 13/10). Console : `patients()` se construit une
-fois par script et se prête ensuite (fait le 13/10).
+5 pt, est dit à l'impression (fait le 13/10). Console : les tables comptent les lignes
+qu'elles rendent, et un script s'arrête à deux millions (fait le 13/10).
 
 **Relecture de mes propres corrections (relevé, laissé).**
 - *Ruptures* : un retrait ne vaut que de l'officine qui a écrit

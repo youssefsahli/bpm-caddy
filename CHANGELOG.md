@@ -11,14 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Exchange folder: a `.bpmposte` file is read one record at a time, so a
-  file over one gigabyte — the founding post with its scans — syncs
+  file over one gigabyte — the founding post with its attachments — syncs
   instead of being skipped without a word, and memory stays bounded.
 - Bulletins d'adhésion: a value too long for its box on the official
   form, even at the smallest size, is named when the bulletin opens — to
   shorten in the file or write by hand — instead of overflowing silently.
-- Console: `patients()` is built once per script and lent afterwards, so
-  a loop calling it no longer runs for an hour before the operation limit;
-  what a script does to the array never changes what the next call gives.
+- Console: every call to `patients()`, `medicaments()`, `entretiens()` or
+  `registre()` counts the rows it hands out, and a script that asks for
+  more than two million in all stops with a message saying so — a loop
+  calling `patients()` ran for half an hour before the operation limit.
 
 ## [0.425.0] - 2026-10-13
 
