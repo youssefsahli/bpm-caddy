@@ -675,6 +675,28 @@ mod tests {
             "l'étape « Upload to release » n'envoie plus le lanceur — \
              une officine qui installe pour la première fois n'a rien à télécharger"
         );
+        // **The release appears whole or not at all**: the builds hand
+        // their files to one final job, which refuses to publish without
+        // every post binary. Each build used to publish alone, and the
+        // release was « latest » for half an hour without this launcher's
+        // file — which answered « pas de binaire » meanwhile.
+        assert!(
+            WORKFLOW.contains("needs: [build, android]")
+                && WORKFLOW.contains("needs.build.result == 'success'")
+                && WORKFLOW.contains("files: dist/*"),
+            "la publication n'attend plus la fin de toutes les constructions"
+        );
+        assert_eq!(
+            WORKFLOW.matches("softprops/action-gh-release@").count(),
+            1,
+            "une seule tâche publie"
+        );
+        assert!(
+            WORKFLOW.contains(&format!("{} ", super::APP_ASSET))
+                || WORKFLOW.contains(&format!("{} \\", super::APP_ASSET)),
+            "{} n'est pas exigé avant la publication",
+            super::APP_ASSET
+        );
         // And the repository it asks: a fork left in there would send
         // every officine to somebody else's releases.
         assert!(

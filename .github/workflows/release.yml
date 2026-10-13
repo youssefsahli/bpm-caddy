@@ -64,14 +64,19 @@ jobs:
              "bpm-caddy-launcher-${{ matrix.suffix }}${{ matrix.ext }}"
           cp "target/${{ matrix.target }}/release/bpm-audit${{ matrix.ext }}" \
              "bpm-audit-${{ matrix.suffix }}${{ matrix.ext }}"
-      - name: Upload to release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+      # Pas encore à la publication : chaque tâche publiait seule, et la
+      # version devenait « latest » dès la première arrivée — la 0.427.0
+      # l'a été vingt-six minutes avec l'APK seul, et chaque lanceur
+      # Windows répondait « pas de binaire » jusqu'à la fin de sa tâche.
+      # `publish`, plus bas, attache tout d'un coup.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          files: |
+          name: bin-${{ matrix.suffix }}
+          if-no-files-found: error
+          path: |
             bpm-caddy-${{ matrix.suffix }}${{ matrix.ext }}
             bpm-caddy-launcher-${{ matrix.suffix }}${{ matrix.ext }}
             bpm-audit-${{ matrix.suffix }}${{ matrix.ext }}
-          generate_release_notes: true
 
   # Le compagnon Android, **signé de la clé d'importation Play** et joint à
   # la version sous `bpm-caddy-compagnon.apk`. La clé vit dans les secrets
@@ -120,7 +125,36 @@ jobs:
           ./android/verify-apk.sh "$apk"
           cp "$apk" bpm-caddy-compagnon.apk
           rm -f "$RUNNER_TEMP/upload.jks"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: apk
+          if-no-files-found: error
+          path: bpm-caddy-compagnon.apk
+
+  # **La version paraît entière, ou ne paraît pas.** Les trois binaires
+  # des postes sont exigés : sans l'un d'eux, rien n'est publié, et les
+  # lanceurs restent sur la version d'avant au lieu de trouver une
+  # « latest » sans leur fichier. L'APK suit s'il a été construit ; son
+  # échec ne retient pas les postes.
+  publish:
+    needs: [build, android]
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Every post binary is there
+        run: |
+          ls -l dist
+          for f in bpm-caddy-linux-x86_64 bpm-caddy-windows-x86_64.exe bpm-caddy-macos-arm64 \
+                   bpm-caddy-launcher-linux-x86_64 bpm-caddy-launcher-windows-x86_64.exe \
+                   bpm-caddy-launcher-macos-arm64; do
+            test -s "dist/$f" || { echo "absent : $f" >&2; exit 1; }
+          done
       - name: Upload to release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
-          files: bpm-caddy-compagnon.apk
+          files: dist/*
+          generate_release_notes: true

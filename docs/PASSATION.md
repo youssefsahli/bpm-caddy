@@ -225,10 +225,11 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   signer les binaires (minisign/ed25519), embarquer la clé publique
   dans le lanceur, refuser sans signature (les actions sont épinglées
   par empreinte et la publication se fait sans cache depuis le 13/10) ;
-- `release.yml` : chaque tâche de la matrice publie seule, la
-  publication devient « latest » avant que les trois binaires soient
-  là ; une tâche finale (ou un brouillon publié en dernier) ; et
-  `prerelease` pour une étiquette à suffixe ;
+- `release.yml` : les constructions passent leurs fichiers à une tâche
+  finale `publish`, qui exige les six binaires des postes avant de
+  publier (fait le 13/10, à voir tourner à la 0.430.0 : la 0.427.0 était
+  « latest » vingt-six minutes avec l'APK seul) ; reste `prerelease`
+  pour une étiquette à suffixe ;
 - postes : retirer un poste ne change pas la clé — un poste retiré (ou
   un téléphone retiré, avec sa part) qui se tire une identité neuve
   écrit encore, et peut inscrire sa propre ligne de `sync_posts` ; la
