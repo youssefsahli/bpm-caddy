@@ -11491,9 +11491,9 @@ impl Session {
             .filter(|k| !k.is_private())
             .flat_map(|k| {
                 self.db
-                    .offer_locals(k)
+                    .entry_keys(k)
                     .unwrap_or_default()
-                    .into_keys()
+                    .into_iter()
                     .map(move |card| (k.key(), card))
             })
             .collect()
@@ -12475,6 +12475,32 @@ impl Session {
             })
             .collect();
         self.camp.campaign = Some(campaign);
+    }
+
+    /// **Read the typed lot against the stock** — again only when the lot,
+    /// the vaccine the dose will be filed under, or its day changed — before
+    /// the carnet's band is measured, so the measurement and the drawing
+    /// see the same warning.
+    fn refresh_vacc_lot_warn(&mut self) {
+        let today = self.today.clone();
+        let given = if self.vacc_new_date.trim().is_empty() {
+            today.clone()
+        } else {
+            App::parse_carnet_date(&self.vacc_new_date, &today).unwrap_or(today)
+        };
+        // Le code sous lequel la dose s'enregistrera, pas celui d'un choix
+        // qu'on a retapé par-dessus.
+        let code = App::catalogue_code(
+            &self.vacc_catalogue,
+            &self.vacc_new.code,
+            &self.vacc_new.label,
+        );
+        let asked = [self.vacc_new.lot.clone(), code, given];
+        if self.vacc_lot_warn.as_ref().map(|(a, _)| a) != Some(&asked) {
+            let lots = self.db.vaccine_lots().unwrap_or_default();
+            let warn = crate::campagne::lot_warning(&lots, &asked[1], &asked[0], &asked[2]);
+            self.vacc_lot_warn = Some((asked, warn));
+        }
     }
 
     /// What the stock says against the lot typed for the dose being written.
@@ -24923,6 +24949,9 @@ impl App {
                 .into_iter()
                 .filter(|w| *w > 0.0),
             );
+            // Le lot lu contre le stock avant la mesure : la bande compte
+            // l'avertissement de cette image-ci, pas de la précédente.
+            session.refresh_vacc_lot_warn();
             let form_need = (Self::row_height(ui) + ui.spacing().item_spacing.y) * form_rows
                 + Self::carnet_notice_h(ui, session, config)
                 + line * 2.0;
@@ -25401,30 +25430,6 @@ impl App {
                                 print = true;
                             }
                         });
-                        // Le lot tapé, lu contre le stock : périmé le jour de
-                        // la dose, ou celui d'un autre vaccin. Relu quand le
-                        // lot, le vaccin ou la date changent.
-                        let given = if session.vacc_new_date.trim().is_empty() {
-                            today.clone()
-                        } else {
-                            Self::parse_carnet_date(&session.vacc_new_date, &today)
-                                .unwrap_or_else(|_| today.clone())
-                        };
-                        // Le code sous lequel la dose s'enregistrera, pas celui
-                        // d'un choix qu'on a retapé par-dessus.
-                        let code = Self::catalogue_code(
-                            &session.vacc_catalogue,
-                            &session.vacc_new.code,
-                            &session.vacc_new.label,
-                        );
-                        let asked = [session.vacc_new.lot.clone(), code, given];
-                        if session.vacc_lot_warn.as_ref().map(|(a, _)| a) != Some(&asked) {
-                            let lots = session.db.vaccine_lots().unwrap_or_default();
-                            let warn = crate::campagne::lot_warning(
-                                &lots, &asked[1], &asked[0], &asked[2],
-                            );
-                            session.vacc_lot_warn = Some((asked, warn));
-                        }
                         // Une ligne, tronquée, la phrase entière au survol —
                         // comptée par `carnet_notice_h`. Pas pendant qu'on
                         // corrige une ligne déjà écrite : ce lot-ci n'est

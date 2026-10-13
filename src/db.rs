@@ -55774,6 +55774,31 @@ impl Db {
     /// Les entrées d'ici d'une sorte, **par clé de voyage**, champ par
     /// champ : ce qu'« En ligne » compare aux offres. Lu une fois pour
     /// toute la liste, et non entrée par entrée.
+    /// **Les entrées d'une sorte que la base tient**, par leur clé de
+    /// voyage — celles d'`offer_locals`, sans lire leurs champs : les noms
+    /// seuls pour les fiches, les préparations et les protocoles ; les
+    /// autres sortes, peu nombreuses, par `offer_locals`.
+    pub fn entry_keys(
+        &self,
+        kind: crate::versions::Kind,
+    ) -> Result<std::collections::HashSet<String>, String> {
+        use crate::versions::{key, Kind};
+        let names = |sql: &str| -> Result<std::collections::HashSet<String>, String> {
+            let mut stmt = self.conn.prepare(sql).map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |r| r.get::<_, String>(0))
+                .map_err(|e| e.to_string())?;
+            rows.map(|n| n.map(|n| key(&n)).map_err(|e| e.to_string()))
+                .collect()
+        };
+        match kind {
+            Kind::Fiche => names("SELECT name FROM drugs"),
+            Kind::Codex => names("SELECT name FROM preparations"),
+            Kind::Protocole => names("SELECT title FROM protocols"),
+            _ => Ok(self.offer_locals(kind)?.into_keys().collect()),
+        }
+    }
+
     pub fn offer_locals(
         &self,
         kind: crate::versions::Kind,
@@ -58915,6 +58940,26 @@ mod tests {
             .unwrap());
         assert_eq!(b.checklist_items(list.id).unwrap().len(), 3);
         assert!(Kind::Liste.is_private() && !Kind::Dispositif.is_private());
+    }
+
+    /// Les clés que `entry_keys` donne sont celles d'`offer_locals` : ce
+    /// que le catalogue garde et ce que « En ligne » compare se lisent sur
+    /// les mêmes entrées.
+    #[test]
+    fn entry_keys_are_the_keys_offers_compare_against() {
+        use crate::versions::Kind;
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-keys-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("k.db"), "secret").unwrap();
+        db.add_drug("Paracétamol test").unwrap();
+        db.add_preparation("Gélule d'essai").unwrap();
+        for kind in Kind::ALL.into_iter().filter(|k| !k.is_private()) {
+            let keys = db.entry_keys(kind).unwrap();
+            let locals: std::collections::HashSet<String> =
+                db.offer_locals(kind).unwrap().into_keys().collect();
+            assert_eq!(keys, locals, "{kind:?}");
+        }
     }
 
     /// **Prendre la version d'une autre officine** : tous les champs ou
