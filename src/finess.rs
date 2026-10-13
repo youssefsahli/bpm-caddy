@@ -29,6 +29,10 @@ pub struct Officine {
     pub nom: &'static str,
     pub code_postal: &'static str,
     pub ville: &'static str,
+    /// La rue, telle que le registre l'écrit (le type de voie en entier).
+    pub adresse: &'static str,
+    /// Le téléphone, chiffres seuls.
+    pub telephone: &'static str,
 }
 
 /// Les officines du registre, dans l'ordre de leur numéro.
@@ -44,6 +48,8 @@ pub fn register() -> &'static [Officine] {
                     nom: c.next()?,
                     code_postal: c.next()?,
                     ville: c.next()?,
+                    adresse: c.next().unwrap_or(""),
+                    telephone: c.next().unwrap_or(""),
                 })
             })
             .collect();
@@ -61,6 +67,145 @@ pub fn lookup(finess: &str) -> Option<&'static Officine> {
     all.binary_search_by(|o| o.finess.cmp(finess.as_str()))
         .ok()
         .map(|i| &all[i])
+}
+
+/// **Retrouver une officine au registre** par ce qu'on en sait : un
+/// numéro FINESS par son début, ou des mots — du nom, de la ville, du
+/// code postal — qui y sont tous. Au plus `most`, dans l'ordre du
+/// registre.
+pub fn find(query: &str, most: usize) -> Vec<&'static Officine> {
+    let q = folded(query);
+    if q.chars().count() < 3 {
+        return Vec::new();
+    }
+    let upper = query.trim().to_ascii_uppercase();
+    if upper.len() <= 9 && upper.chars().all(|c| c.is_ascii_alphanumeric()) {
+        let by_number: Vec<&'static Officine> = register()
+            .iter()
+            .filter(|o| o.finess.starts_with(upper.as_str()))
+            .take(most)
+            .collect();
+        if !by_number.is_empty() {
+            return by_number;
+        }
+    }
+    let words: Vec<String> = town(&q).split(' ').map(str::to_owned).collect();
+    register()
+        .iter()
+        .filter(|o| {
+            let text = town(&format!("{} {} {}", o.nom, o.ville, o.code_postal));
+            words
+                .iter()
+                .all(|w| text.split(' ').any(|t| t.starts_with(w.as_str())))
+        })
+        .take(most)
+        .collect()
+}
+
+/// **Un texte du registre, écrit comme on l'écrit** : le registre est
+/// en capitales ; « PHARMACIE DU CENTRE » devient « Pharmacie du
+/// Centre », « 9 rue ALEXANDRE BERARD » « 9 rue Alexandre Berard ». Les
+/// petits mots et les types de voie restent en minuscules (sauf en
+/// tête), les sigles de société en capitales. Les accents que le
+/// registre n'a pas écrits ne se devinent pas.
+pub fn pretty(text: &str) -> String {
+    const SMALL: [&str; 34] = [
+        "de",
+        "du",
+        "des",
+        "la",
+        "le",
+        "les",
+        "et",
+        "en",
+        "sur",
+        "sous",
+        "aux",
+        "au",
+        "a",
+        "l",
+        "d",
+        "rue",
+        "avenue",
+        "place",
+        "boulevard",
+        "route",
+        "allée",
+        "cours",
+        "chemin",
+        "quai",
+        "impasse",
+        "square",
+        "lotissement",
+        "résidence",
+        "esplanade",
+        "faubourg",
+        "passage",
+        "promenade",
+        "bis",
+        "ter",
+    ];
+    const UPPER: [&str; 14] = [
+        "SELARL", "SELAS", "SELAFA", "SEL", "SAS", "SARL", "EURL", "SNC", "SPFPL", "SELEURL",
+        "SELURL", "SELASU", "SASU", "ZAC",
+    ];
+    let mut out = String::with_capacity(text.len());
+    let mut first = true;
+    let mut word = String::new();
+    let flush = |word: &mut String, out: &mut String, first: &mut bool| {
+        if word.is_empty() {
+            return;
+        }
+        let lower = word.to_lowercase();
+        if UPPER.contains(&word.to_uppercase().as_str()) && word.chars().any(char::is_uppercase) {
+            out.push_str(&word.to_uppercase());
+        } else if !*first && SMALL.contains(&lower.as_str()) {
+            out.push_str(&lower);
+        } else {
+            let mut c = lower.chars();
+            if let Some(h) = c.next() {
+                out.extend(h.to_uppercase());
+                out.push_str(c.as_str());
+            }
+        }
+        *first = false;
+        word.clear();
+    };
+    for c in text.chars() {
+        if c.is_alphanumeric() {
+            word.push(c);
+        } else {
+            flush(&mut word, &mut out, &mut first);
+            out.push(c);
+        }
+    }
+    flush(&mut word, &mut out, &mut first);
+    out
+}
+
+/// Un téléphone de dix chiffres écrit par paires ; tout autre reste tel
+/// quel.
+pub fn phone(digits: &str) -> String {
+    if digits.len() == 10 && digits.chars().all(|c| c.is_ascii_digit()) {
+        let pairs: Vec<&str> = (0..5)
+            .filter_map(|i| digits.get(i * 2..i * 2 + 2))
+            .collect();
+        pairs.join(" ")
+    } else {
+        digits.to_owned()
+    }
+}
+
+/// L'adresse d'une officine du registre, en une ligne : la rue, puis le
+/// code postal et la ville — la ville en dernier, que l'annonce sur le
+/// réseau local lit (`network::town_of`).
+pub fn address_line(o: &Officine) -> String {
+    let town = format!("{} {}", o.code_postal, pretty(o.ville));
+    if o.adresse.is_empty() {
+        town
+    } else {
+        format!("{}, {town}", pretty(o.adresse))
+    }
 }
 
 /// Une ville comme le registre et la liste des communes la comparent :
@@ -257,6 +402,57 @@ mod tests {
         }
         assert!(placed * 100 >= all.len() * 98, "{placed} / {}", all.len());
         assert!(named * 100 >= all.len() * 90, "{named} / {}", all.len());
+    }
+
+    #[test]
+    fn register_text_reads_as_written() {
+        assert_eq!(pretty("PHARMACIE DU CENTRE"), "Pharmacie du Centre");
+        assert_eq!(
+            pretty("SELARL PHARMACIE D'AMBERIEU"),
+            "SELARL Pharmacie d'Amberieu"
+        );
+        assert_eq!(
+            pretty("9 bis rue ALEXANDRE BERARD"),
+            "9 bis rue Alexandre Berard"
+        );
+        assert_eq!(pretty("LE MERLERAULT"), "Le Merlerault");
+        assert_eq!(pretty("SAINT-ETIENNE"), "Saint-Etienne");
+        assert_eq!(phone("0474380226"), "04 74 38 02 26");
+        assert_eq!(phone("123"), "123");
+        let o = Officine {
+            finess: "010000000",
+            nom: "PHARMACIE X",
+            code_postal: "01500",
+            ville: "AMBERIEU EN BUGEY",
+            adresse: "9 rue ALEXANDRE BERARD",
+            telephone: "",
+        };
+        assert_eq!(
+            address_line(&o),
+            "9 rue Alexandre Berard, 01500 Amberieu en Bugey"
+        );
+        // La ville en dernier : l'annonce sur le réseau local la lit.
+        #[cfg(feature = "sync")]
+        assert_eq!(
+            crate::network::town_of(&address_line(&o)),
+            "Amberieu en Bugey"
+        );
+    }
+
+    /// Une officine se retrouve par son numéro, ou par des débuts de mots
+    /// de son nom et de sa ville.
+    #[test]
+    fn an_officine_is_found_by_number_or_words() {
+        let o = register()
+            .iter()
+            .find(|o| o.ville == "THOIRY" && o.code_postal.starts_with("01"))
+            .unwrap();
+        assert_eq!(find(o.finess, 5), [o]);
+        assert!(find(&o.finess[..7], 50).contains(&o));
+        let words = format!("{} thoir", o.nom.split(' ').next_back().unwrap());
+        assert!(find(&words, 50).contains(&o), "{words}");
+        assert!(find("zz", 5).is_empty());
+        assert!(find("pharmacie", 7).len() == 7);
     }
 
     #[test]

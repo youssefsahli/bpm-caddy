@@ -17992,6 +17992,17 @@ struct OptionsEditor {
     loc_fee_text: Vec<String>,
     /// Status line; `true` marks an error.
     message: Option<(bool, String)>,
+    /// L'officine cherchée au registre FINESS.
+    registre: Registre,
+}
+
+/// **Retrouver son officine au registre FINESS** : ce qu'on tape, et
+/// les officines qui y répondent — relues quand ce qu'on tape change.
+#[derive(Default)]
+struct Registre {
+    query: String,
+    hits: Vec<&'static crate::finess::Officine>,
+    hits_for: String,
 }
 
 impl OptionsEditor {
@@ -18020,6 +18031,7 @@ impl OptionsEditor {
             confirm_reset: false,
             confirm_telemetry_clear: false,
             backup_seen: None,
+            registre: Registre::default(),
         }
     }
 }
@@ -20158,6 +20170,7 @@ impl App {
             || start_view == "forfaits"
         {
             Some(OptionsEditor {
+                registre: Registre::default(),
                 officine_seeded: false,
                 keep_seen: None,
                 page: match start_view.as_str() {
@@ -63947,9 +63960,57 @@ impl App {
         );
     }
 
+    /// **Retrouver l'officine au registre FINESS** : un champ, les
+    /// officines qui répondent, et d'un clic leur nom, leur adresse et
+    /// leur téléphone dans le formulaire — à vérifier, puis enregistrer.
+    fn registre_lookup(ui: &mut egui::Ui, editor: &mut OptionsEditor) {
+        let w = chars_wide(ui, 52.0).min(ui.available_width());
+        motif::field(
+            ui,
+            w,
+            egui::TextEdit::singleline(&mut editor.registre.query)
+                .hint_text(motif::hint(tr("opts_registre_hint"))),
+        );
+        let r = &mut editor.registre;
+        if r.hits_for != r.query {
+            r.hits = crate::finess::find(&r.query, 6);
+            r.hits_for = r.query.clone();
+        }
+        let mut chose: Option<&'static crate::finess::Officine> = None;
+        for o in &editor.registre.hits {
+            let text = format!(
+                "{} · {} {} · FINESS {}",
+                crate::finess::pretty(o.nom),
+                o.code_postal,
+                crate::finess::pretty(o.ville),
+                o.finess
+            );
+            let label = Self::carte_elide(ui, &text, w);
+            if motif::button(ui, &label).clicked() {
+                chose = Some(o);
+            }
+        }
+        if editor.registre.hits.is_empty() && editor.registre.query.trim().chars().count() >= 3 {
+            ui.label(
+                egui::RichText::new(tr("opts_registre_none"))
+                    .size(motif::pt(ui, 11.0))
+                    .color(motif::text_dim()),
+            );
+        }
+        if let Some(o) = chose {
+            let p = &mut editor.cfg.pharmacy;
+            p.name = crate::finess::pretty(o.nom);
+            p.address = crate::finess::address_line(o);
+            if !o.telephone.is_empty() {
+                p.phone = crate::finess::phone(o.telephone);
+            }
+            editor.registre = Registre::default();
+            editor.message = Some((false, trf("opts_registre_taken", o.finess)));
+        }
+    }
+
     /// A label cut to what a button of `width` shows, with « … » — a
     /// button does not wrap.
-    #[cfg(feature = "sync")]
     fn carte_elide(ui: &egui::Ui, text: &str, width: f32) -> String {
         if Self::button_width(ui, text) <= width {
             return text.to_owned();
@@ -64241,7 +64302,16 @@ impl App {
                     if let Some((port, _)) = &session.carte.hosting {
                         ui.label(trf("carte_hosting", port));
                         match &session.carte.host_public {
-                            Some(a) => dim(&trf("carte_host_public", a), ui),
+                            Some(a) => {
+                                dim(&trf("carte_host_public", a), ui);
+                                // Ce que les autres officines devront écrire :
+                                // copié, il se colle dans un message.
+                                if motif::button(ui, tr("carte_host_copy")).clicked() {
+                                    ui.ctx().copy_text(a.clone());
+                                    session.carte.note =
+                                        Some((false, tr("carte_host_copied").to_owned()));
+                                }
+                            }
                             None => dim(tr("carte_host_private"), ui),
                         }
                     } else if let Some((_, e)) = &session.carte.host_failed {
@@ -84268,6 +84338,8 @@ impl eframe::App for App {
                                         .size(motif::pt(ui, 11.0))
                                         .color(motif::text_dim()),
                                 );
+                                ui.add_space(4.0);
+                                Self::registre_lookup(ui, editor);
                                 ui.add_space(4.0);
                                 egui::Grid::new("opts_pharmacy")
                                     .num_columns(2)

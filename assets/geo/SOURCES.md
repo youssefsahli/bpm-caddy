@@ -12,7 +12,7 @@
 
 - `officines.tsv` — the pharmacies (category 620) of the FINESS
   register: FINESS number, company name, postcode and town of the
-  delivery line. Source: « FINESS Extraction du Fichier des
+  delivery line, street (the street type spelt out) and phone. Source: « FINESS Extraction du Fichier des
   établissements », <https://www.data.gouv.fr/datasets/finess-extraction-du-fichier-des-etablissements/>,
   extraction of 2026-05-04. Licence Ouverte / Open Licence (Etalab).
   Regenerate with `scripts/finess_build.py <etalab-cs1100502-stock-*.csv>

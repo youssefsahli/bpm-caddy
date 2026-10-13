@@ -1488,6 +1488,12 @@ enregistrement refusé, « Remplacer par ces valeurs » enregistre
 l'officine telle qu'affichée, pour tous les postes, sans tenir compte de
 ce qu'un autre poste y a écrit.
 
+En tête de la page, « Retrouver l'officine au registre FINESS » cherche
+dans le registre public livré avec l'application, par numéro FINESS ou
+par des mots du nom et de la ville : un clic reprend le nom, l'adresse
+et le téléphone que le registre écrit — à vérifier (le registre n'a pas
+d'accents), puis enregistrer.
+
 Les pièces scannées restent sur le poste qui les a numérisées.
 
 **Téléphones de l'équipe.** « Inviter un téléphone… » relie le téléphone

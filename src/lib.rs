@@ -38,10 +38,10 @@ pub mod enligne;
 pub mod entretien;
 pub mod facets;
 pub mod favorites;
-#[cfg(all(feature = "sync", feature = "desktop"))]
+#[cfg(feature = "desktop")]
 pub mod finess;
 pub mod fuzzy;
-#[cfg(all(feature = "sync", feature = "desktop"))]
+#[cfg(feature = "desktop")]
 pub mod geo;
 pub mod graph;
 pub mod gravidity;

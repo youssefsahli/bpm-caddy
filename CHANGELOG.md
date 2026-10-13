@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   toward the pointer, down to a town; drag to pan, double-click or
   « Toute la France » to see it whole. The overseas insets stay put, and
   an officine picked from the list comes to the centre of the zoomed map.
+- Options › Officine finds the officine in the bundled FINESS register,
+  by number or by words of its name and town, and fills in its name,
+  address and phone in one click (to check, then save). The register
+  extract now carries the street and phone.
+- A hosting officine copies its directory address in one click, to paste
+  into a message to the others.
 
 ## [0.417.0] - 2026-10-13
 
