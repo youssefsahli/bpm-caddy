@@ -931,6 +931,13 @@ clé de réseau n'y passe.
   plus longtemps, à l'horloge d'ici, écartés d'abord, jamais ceux du
   balayage même) ; rien n'est écrit sur le disque. Une même entrée chez
   plusieurs officines est une offre à leurs noms.
+* **Prendre leur version** d'une entrée qu'on a (`Session::take_theirs`,
+  `Db::take_entry_values`) : jamais une sorte privée, jamais une valeur
+  que `versions::admissible` refuse, jamais le nom d'une fiche ; chaque
+  champ qui diffère, tous ou aucun, contre ce que la base disait quand la
+  ligne a été lue. Une version locale le porte (sans source : c'est
+  désormais la version de cette officine, qui part vers son réseau et son
+  catalogue).
 
 Ses bornes : une carte de 4 Kio, un catalogue de 2 Mio **dans sa forme
 exacte** (re-sérialisé, il doit redonner les mêmes octets, et le compte

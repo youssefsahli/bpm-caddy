@@ -1232,8 +1232,11 @@ soi-même ne compte pas. Dans la fenêtre, elles viennent en tête, marquées
 garde ce qu'on peut prendre, ou ce qu'une autre officine a écrit
 autrement d'une entrée qu'on a — ses mises à jour. Pour une officine
 du répertoire, « Prendre leur version » donne à chaque champ qui
-diffère leur valeur, tous ou aucun ; la vôtre reste dans l'historique
-de l'entrée, d'où l'on y revient ; quand plusieurs officines partagent, la liste de choix
+diffère leur valeur, tous ou aucun — rien si la base a changé depuis
+la lecture de la liste ; la vôtre reste dans l'historique de l'entrée,
+d'où l'on y revient. Une fiche garde son nom. Ce qui est pris devient
+la version de cette officine : il part avec ses versions vers son
+réseau et son propre partage ; quand plusieurs officines partagent, la liste de choix
 parcourt le partage d'une seule.
 
 « Tout le répertoire… » cherche, au-delà du réseau, chez **toutes les
