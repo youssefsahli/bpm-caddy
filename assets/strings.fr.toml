@@ -4002,6 +4002,7 @@ online_scope_everyone = "Officines du répertoire lues : {} sur {}. Aucune n'est
 online_sweep_more = "Encore à lire : {}."
 online_sweep_failed = "Sans réponse : {}."
 online_sweep_next = "Lire la suite"
+online_unfold_hint = "Cliquer pour la lire en entier ; cliquer encore pour la replier."
 online_more_rows = "Entrées trouvées : {}, dont les {} premières ci-dessus. Affinez la recherche pour voir les autres."
 online_sweep_busy = "Le répertoire répond à une autre demande : réessayez dans un instant."
 online_sweep_wait = "Le répertoire compte les appels à la minute : la suite se lit dans {} s."

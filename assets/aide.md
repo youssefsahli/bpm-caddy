@@ -1214,7 +1214,9 @@ contrôle, les cascades et l'écran « Textes » — liste ce que les officines
 du réseau ont écrit de cette sorte, reçu à la dernière synchronisation :
 nom, officines, date, et ce que l'entrée est ici (« absente »,
 « identique », « différente »). La recherche porte sur le nom et ce qui
-décrit l'entrée (DCI, indication, sujet). « Prendre » ajoute une entrée
+décrit l'entrée (DCI, indication, sujet). Un clic sur son nom la déplie
+en entier — chaque champ, sans coupure — pour la lire avant de la
+prendre ; un second clic la replie. « Prendre » ajoute une entrée
 absente à la base, chaque champ à sa dernière version — y compris une
 entrée qu'on avait retirée, qui revient alors entière ; une fiche
 renommée s'offre sous son nouveau nom ; « Comparer… » ouvre l'historique d'une

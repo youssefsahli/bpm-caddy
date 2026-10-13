@@ -15208,6 +15208,9 @@ struct Online {
     shown: Vec<usize>,
     shown_for: Option<(String, String, bool, u64)>,
     rows_gen: u64,
+    /// L'entrée dépliée : les lignes lues (`rows_gen`), sa place, et son
+    /// texte entier.
+    unfolded: Option<(u64, usize, String)>,
 }
 
 /// Combien de lignes « En ligne » dessine au plus : au-delà, il dit le
@@ -64654,6 +64657,12 @@ impl App {
 
     /// What an offer's hover says: each field it carries, shortened.
     fn offer_summary(o: &crate::enligne::Offer) -> String {
+        Self::offer_text(o, Some(160))
+    }
+
+    /// Each field an offer carries, with its name — cut to `most`
+    /// characters, or whole (`None`) for reading before taking.
+    fn offer_text(o: &crate::enligne::Offer, most: Option<usize>) -> String {
         o.fields
             .iter()
             .filter(|(f, v)| !v.trim().is_empty() || (f == "value" && v.is_empty()))
@@ -64675,7 +64684,10 @@ impl App {
                     "lignes" => crate::versions::items_text(v),
                     _ => v.clone(),
                 };
-                let v: String = v.chars().take(160).collect();
+                let v: String = match most {
+                    Some(n) => v.chars().take(n).collect(),
+                    None => v,
+                };
                 format!("{label} : {v}")
             })
             .collect::<Vec<_>>()
@@ -64766,6 +64778,7 @@ impl App {
         let kind = online.kind;
         let mut take: Option<usize> = None;
         let mut compare: Option<usize> = None;
+        let mut unfold: Option<usize> = None;
         // Le bouton du réseau n'existe que dans une application qui en a.
         #[cfg_attr(not(feature = "sync"), allow(unused_mut))]
         let mut network = false;
@@ -64947,12 +64960,30 @@ impl App {
                                     .map(String::as_str)
                                     .or(today)
                                     .unwrap_or(&o.name);
-                                ui.label(
-                                    egui::RichText::new(shown)
-                                        .size(motif::pt(ui, 11.5))
-                                        .strong(),
-                                )
-                                .on_hover_text(summary.as_str());
+                                // Un clic déplie l'entrée entière : on lit une
+                                // fiche ou un protocole avant de le prendre.
+                                if ui
+                                    .add(
+                                        egui::Label::new(
+                                            egui::RichText::new(shown)
+                                                .size(motif::pt(ui, 11.5))
+                                                .strong(),
+                                        )
+                                        .sense(egui::Sense::click()),
+                                    )
+                                    .on_hover_ui(|ui| {
+                                        // Composée au survol seulement, pas à
+                                        // chaque image pour chaque ligne.
+                                        ui.label(summary.as_str());
+                                        ui.label(
+                                            egui::RichText::new(tr("online_unfold_hint"))
+                                                .color(motif::text_dim()),
+                                        );
+                                    })
+                                    .clicked()
+                                {
+                                    unfold = Some(i);
+                                }
                                 let state = match here {
                                     Here::Absent => tr("online_absent"),
                                     Here::Same => tr("online_same"),
@@ -65000,6 +65031,21 @@ impl App {
                                 .size(motif::pt(ui, 10.5))
                                 .color(motif::text_dim()),
                             );
+                            if let Some((_, _, text)) = online
+                                .unfolded
+                                .as_ref()
+                                .filter(|(g, at, _)| *g == online.rows_gen && *at == i)
+                            {
+                                ui.indent(("online_unfolded", i), |ui| {
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(text.as_str())
+                                                .size(motif::pt(ui, 11.0)),
+                                        )
+                                        .wrap(),
+                                    );
+                                });
+                            }
                             ui.add_space(4.0);
                         }
                         if online.shown.len() > ONLINE_ROWS_MOST {
@@ -65025,6 +65071,22 @@ impl App {
                 }
             });
         motif::dialog_relief(ctx, &win);
+        // Déplier une entrée, ou replier celle qui l'était : le texte entier
+        // se compose une fois, au clic.
+        if let Some(i) = unfold {
+            let again = online
+                .unfolded
+                .as_ref()
+                .is_some_and(|(g, at, _)| *g == online.rows_gen && *at == i);
+            online.unfolded = if again {
+                None
+            } else {
+                online
+                    .rows
+                    .get(i)
+                    .map(|(o, _, _)| (online.rows_gen, i, Self::offer_text(o, None)))
+            };
+        }
         if let Some(i) = take {
             let offer = online.rows[i].0.clone();
             online.note = Some(match session.db.adopt_offer(&offer) {

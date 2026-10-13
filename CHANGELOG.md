@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reads the directory by itself every ten minutes while an address is
   written, even without appearing on the map. The first reading on a
   base, or of a new directory, counts nothing.
+- « En ligne »: clicking an entry's name unfolds it whole — every field,
+  uncut — to read a card or a protocol before taking it.
 
 ## [0.419.0] - 2026-10-13
 
