@@ -264,14 +264,17 @@ pub fn unplace(zone: Zone, frame: [f32; 4], at: [f32; 2]) -> [f32; 2] {
     [b[0] + (at[0] - ox) / scale, b[1] + (at[1] - oy) / scale]
 }
 
-/// **Le centre d'une vue grossie**, gardé dans la zone : on ne fait pas
-/// glisser la France hors du cadre.
-pub fn clamp_focus(zone: Zone, focus: [f32; 2]) -> [f32; 2] {
+/// **Le centre d'une vue grossie `zoom` fois**, gardé pour que la vue
+/// reste dans la zone : on ne fait pas glisser la France hors du cadre.
+/// La marge tombe à rien quand `zoom` revient à 1 — sans saut.
+pub fn clamp_focus(zone: Zone, focus: [f32; 2], zoom: f32) -> [f32; 2] {
     let b = zone_bounds(zone);
-    [
-        focus[0].clamp(b[0], b[2].max(b[0])),
-        focus[1].clamp(b[1], b[3].max(b[1])),
-    ]
+    let keep = 1.0 - 1.0 / zoom.max(1.0);
+    let axis = |v: f32, lo: f32, hi: f32| {
+        let (c, h) = ((lo + hi) / 2.0, (hi - lo).max(0.0) / 2.0 * keep);
+        v.clamp(c - h, c + h)
+    };
+    [axis(focus[0], b[0], b[2]), axis(focus[1], b[1], b[3])]
 }
 
 /// Le centre d'une zone, projeté : la vue entière.
@@ -308,10 +311,21 @@ mod tests {
             "{c:?}"
         );
         let b = zone_bounds(Zone::Metropole);
-        assert_eq!(
-            clamp_focus(Zone::Metropole, [b[2] + 50.0, b[1] - 9.0]),
-            [b[2], b[1]]
+        let c = zone_center(Zone::Metropole);
+        // Grossie deux fois, la vue s'arrête au bord : son centre à un
+        // quart de la largeur.
+        let at2 = clamp_focus(Zone::Metropole, [b[2] + 50.0, b[1] - 9.0], 2.0);
+        assert!(
+            (at2[0] - (c[0] + (b[2] - b[0]) / 4.0)).abs() < 1e-3,
+            "{at2:?}"
         );
+        assert!(
+            (at2[1] - (c[1] - (b[3] - b[1]) / 4.0)).abs() < 1e-3,
+            "{at2:?}"
+        );
+        // Presque entière, le centre est celui de la France.
+        let at1 = clamp_focus(Zone::Metropole, [b[2], b[3]], 1.0001);
+        assert!((at1[0] - c[0]).abs() < 0.01 && (at1[1] - c[1]).abs() < 0.01);
     }
 
     #[test]

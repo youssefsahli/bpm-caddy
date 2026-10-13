@@ -15240,7 +15240,7 @@ impl Carte {
         };
         self.zoom = zoom;
         self.focus = (zoom > 1.0 && focus.iter().all(|v| v.is_finite()))
-            .then(|| crate::geo::clamp_focus(crate::geo::Zone::Metropole, focus));
+            .then(|| crate::geo::clamp_focus(crate::geo::Zone::Metropole, focus, zoom));
     }
 
     /// Arrêter le répertoire hébergé et refermer le port du routeur —
@@ -63637,7 +63637,9 @@ impl App {
             let back = ui.interact(
                 metro,
                 ui.id().with("carte_metro"),
-                egui::Sense::click_and_drag(),
+                // Glisser seulement : un clic près d'une pastille va à la
+                // pastille, comme egui l'aide à viser.
+                egui::Sense::drag(),
             );
             let (mut zoom, mut focus) = session.carte.view();
             let base = |p: [f32; 2]| crate::geo::place(crate::geo::Zone::Metropole, metro_frame, p);
@@ -63674,6 +63676,10 @@ impl App {
                             crate::geo::unplace(crate::geo::Zone::Metropole, metro_frame, shifted);
                     }
                     zoom = to;
+                    ui.input_mut(|i| {
+                        i.smooth_scroll_delta = egui::Vec2::ZERO;
+                        i.raw_scroll_delta = egui::Vec2::ZERO;
+                    });
                 }
             }
             if back.dragged() && zoom > 1.0 {
@@ -63684,9 +63690,6 @@ impl App {
                     metro_frame,
                     [fb[0] - d.x / zoom, fb[1] - d.y / zoom],
                 );
-            }
-            if back.double_clicked() {
-                zoom = 1.0;
             }
             session.carte.set_view(zoom, focus);
             let (zoom, focus) = session.carte.view();
@@ -63759,28 +63762,12 @@ impl App {
                     );
                 }
             }
-            // Grossie : de quoi revenir à toute la France, dans le coin.
-            if zoom > 1.0 {
-                let label = tr("carte_zoom_reset");
-                let size = egui::vec2(Self::button_width(ui, label), Self::button_height(ui));
-                let corner = egui::Rect::from_min_size(
-                    egui::pos2(metro.right() - size.x - 4.0, metro.top() + 4.0),
-                    size,
-                );
-                if metro.contains_rect(corner) {
-                    motif::inside(ui, corner, |ui| {
-                        if motif::button(ui, label).clicked() {
-                            session.carte.set_view(1.0, focus);
-                        }
-                    });
-                }
-            }
-            back.on_hover_text(tr("carte_zoom_tooltip"));
             // Lisible, mais jamais une pastille qui couvre trois départements
             // quand le texte grandit et que la carte, elle, reste petite.
             let r = (Self::row_height(ui) * 0.22)
                 .min(well.height().min(well.width()) * 0.018)
                 .max(3.0);
+            let mut dot_hovered = false;
             // Cette officine, là où elle a dit être : un carré, pour qu'il
             // se lise autrement qu'à sa couleur.
             if let Some((zone, p)) = session.carte.me_point {
@@ -63824,6 +63811,7 @@ impl App {
                 if check.is_some_and(|c| Self::carte_finess_verdict(c).2 == motif::Pict::Stop) {
                     painter.circle_stroke(pos, r * 1.4, egui::Stroke::new(1.5_f32, motif::alert()));
                 }
+                dot_hovered |= resp.hovered();
                 if session.carte.pick.as_deref() == Some(f.device.as_str()) || resp.hovered() {
                     painter.circle_stroke(pos, r * 1.8, egui::Stroke::new(2.0_f32, motif::text()));
                 }
@@ -63845,6 +63833,38 @@ impl App {
                         motif::badge(ui, word, Some(mark), color, mark != motif::Pict::Check);
                     }
                 });
+            }
+            // Grossie : de quoi revenir à toute la France, dans le coin —
+            // posé après les pastilles, qu'aucune ne le couvre.
+            if zoom > 1.0 {
+                let label = tr("carte_zoom_reset");
+                let size = egui::vec2(Self::button_width(ui, label), Self::button_height(ui));
+                let corner = egui::Rect::from_min_size(
+                    egui::pos2(metro.right() - size.x - 4.0, metro.top() + 4.0),
+                    size,
+                );
+                if metro.contains_rect(corner) {
+                    motif::inside(ui, corner, |ui| {
+                        if motif::button(ui, label).clicked() {
+                            session.carte.set_view(1.0, focus);
+                        }
+                    });
+                }
+            }
+            // Le double clic et la bulle d'aide du fond, seulement hors
+            // d'une pastille : egui ne montre qu'une bulle à la fois, et
+            // celle du fond, ouverte en chemin, gardait cachée celle de
+            // l'officine.
+            if !dot_hovered {
+                if back.contains_pointer()
+                    && ui.input(|i| {
+                        i.pointer
+                            .button_double_clicked(egui::PointerButton::Primary)
+                    })
+                {
+                    session.carte.set_view(1.0, focus);
+                }
+                back.on_hover_text(tr("carte_zoom_tooltip"));
             }
         });
         if let Some(p) = pick {
@@ -64232,6 +64252,19 @@ impl App {
                 });
         });
         if let Some(p) = pick {
+            // Choisie dans la liste, la carte grossie va la montrer.
+            let (zoom, _) = session.carte.view();
+            let point = session
+                .carte
+                .list
+                .iter()
+                .position(|f| f.device == p)
+                .and_then(|i| session.carte.points.get(i).copied().flatten());
+            if let Some((crate::geo::Zone::Metropole, at)) = point {
+                if zoom > 1.0 {
+                    session.carte.set_view(zoom, at);
+                }
+            }
             session.carte.pick = Some(p);
         }
         if let Some(d) = browse {
@@ -95366,7 +95399,7 @@ mod tests {
         assert_eq!(zoom, super::CARTE_ZOOM_MOST);
         assert_eq!(
             focus,
-            crate::geo::clamp_focus(crate::geo::Zone::Metropole, [999.0, -999.0])
+            crate::geo::clamp_focus(crate::geo::Zone::Metropole, [999.0, -999.0], 24.0)
         );
         carte.set_view(f32::NAN, [0.0, 0.0]);
         assert_eq!(carte.view(), (1.0, whole));

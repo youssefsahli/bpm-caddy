@@ -1248,7 +1248,8 @@ elle n'a pas été vue. Le carré est cette officine. La molette (ou le
 pincement) agrandit la métropole là où pointe la souris, jusqu'à
 l'échelle d'une ville ; on la déplace en la faisant glisser, et un
 double clic ou « Toute la France » la remet entière — les encarts
-d'outre-mer ne bougent pas. La liste à côté se
+d'outre-mer ne bougent pas ; une officine choisie dans la liste vient
+au centre de la carte grossie. La liste à côté se
 filtre par nom, commune ou code postal ; une fois la commune de
 l'officine choisie, les plus proches viennent d'abord, avec leur
 distance à vol d'oiseau. Choisie sur la carte
