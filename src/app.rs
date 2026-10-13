@@ -66460,6 +66460,7 @@ impl App {
             "alerte" => tr("carnets_field_alerte"),
             "retour" => tr("carnets_field_retour"),
             "allaitement" => tr("content_f_allaitement"),
+            "a_verifier" => tr("content_f_a_verifier"),
             "alternative" => tr("content_f_alternative"),
             "apres" => tr("content_f_apres"),
             "conduite" => tr("content_f_conduite"),

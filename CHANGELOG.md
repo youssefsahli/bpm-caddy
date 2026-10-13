@@ -13,7 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Biology rules read a bounded result like the kidney table: when the
   value the laboratory gave (« <45 », « >5,8 ») does not say which side
   of a rule's threshold it falls, the rule is shown « À vérifier », with
-  the value, at warning level at most — never a verdict nobody knows.
+  the value, at warning level at most — never a verdict nobody knows. The
+  hedge is part of the reading itself, so the dashboard's call list and
+  the companion show it too, and its phrase is rewritable in « Textes ».
 
 ## [0.423.0] - 2026-10-13
 

@@ -376,6 +376,16 @@ pub fn read(readings: &[Reading], treatments: &[crate::revue::Treatment]) -> Vec
         if !rule.needs.is_empty() && !rule.needs.iter().any(|n| takes(n)) {
             continue;
         }
+        let unsure = if open {
+            let u = find(rule.code).map_or("", |a| a.unit);
+            if u.is_empty() {
+                value_text(r.value, r.bound)
+            } else {
+                format!("{} {u}", value_text(r.value, r.bound))
+            }
+        } else {
+            String::new()
+        };
         out.push(Finding {
             // Ce qu'on ne sait pas ne crie pas plus fort qu'un avertissement.
             severity: if open {
@@ -384,19 +394,14 @@ pub fn read(readings: &[Reading], treatments: &[crate::revue::Treatment]) -> Vec
                 rule.severity
             },
             code: rule.code,
-            text: rule.text.to_owned(),
-            unsure: if open {
-                format!("{}{}", value_text(r.value, r.bound), {
-                    let u = find(rule.code).map_or("", |a| a.unit);
-                    if u.is_empty() {
-                        String::new()
-                    } else {
-                        format!(" {u}")
-                    }
-                })
+            // **La tête « à vérifier » dès la lecture** : un écran qui lit
+            // sans résoudre ne montre jamais le verdict seul.
+            text: if open {
+                hedged(HEDGE, &unsure, rule.text)
             } else {
-                String::new()
+                rule.text.to_owned()
             },
+            unsure,
         });
     }
     // Loudest first; inside one severity, the order of the catalogue.
@@ -484,7 +489,23 @@ pub fn phrases() -> Vec<(String, &'static str, &'static str)> {
             .into_iter()
             .map(|(key, r)| (key, "lecture", r.text)),
     );
+    out.push((hedge_key(), "a_verifier", HEDGE));
     out
+}
+
+/// Ce qui précède une règle qu'une valeur bornée ne tranche pas — une
+/// phrase livrée, que l'officine peut réécrire ; la valeur rendue la
+/// suit entre parenthèses.
+pub const HEDGE: &str = "À vérifier — la valeur rendue ne dit pas de quel côté du seuil elle tombe";
+
+/// L'adresse de [`HEDGE`].
+fn hedge_key() -> String {
+    crate::content::key(DOC, "borne", "a_verifier")
+}
+
+/// La tête d'une règle « à vérifier » : la phrase, et la valeur rendue.
+fn hedged(phrase: &str, value: &str, text: &str) -> String {
+    format!("{phrase} ({value}) : {text}")
 }
 
 /// Appliquer les réécritures de l'officine à ce que la biologie a lu.
@@ -493,17 +514,30 @@ pub fn phrases() -> Vec<(String, &'static str, &'static str)> {
 /// phrase a été réécrite se retrouve quand même, puisque c'est le
 /// tableau qu'on interroge et non la sortie.
 pub fn resolve(findings: Vec<Finding>, over: &crate::content::Overrides) -> Vec<Finding> {
-    resolve_words(findings, over)
+    let phrase = over.get(&hedge_key(), HEDGE).to_owned();
+    // La règle sous sa tête « à vérifier » : réécrite comme les autres,
+    // puis la tête remise, réécrite elle aussi.
+    let bare: Vec<Finding> = findings
+        .into_iter()
+        .map(|f| {
+            if f.unsure.is_empty() {
+                return f;
+            }
+            let head = hedged(HEDGE, &f.unsure, "");
+            Finding {
+                text: f.text.strip_prefix(&head).unwrap_or(&f.text).to_owned(),
+                ..f
+            }
+        })
+        .collect();
+    resolve_words(bare, over)
         .into_iter()
         .map(|f| {
             if f.unsure.is_empty() {
                 return f;
             }
             Finding {
-                text: format!(
-                    "À vérifier — la valeur rendue ({}) ne dit pas de quel côté du seuil elle tombe : {}",
-                    f.unsure, f.text
-                ),
+                text: hedged(&phrase, &f.unsure, &f.text),
                 ..f
             }
         })
@@ -2102,7 +2136,8 @@ mod tests {
             .iter()
             .filter(|a| !a.note.trim().is_empty())
             .count();
-        assert_eq!(listed.len(), RULES.len() + with_note);
+        // Et la tête « à vérifier » d'une valeur bornée.
+        assert_eq!(listed.len(), RULES.len() + with_note + 1);
         let mut all: Vec<&str> = listed.iter().map(|(k, _, _)| k.as_str()).collect();
         all.sort_unstable();
         let n = all.len();
@@ -2146,6 +2181,20 @@ mod tests {
             .into_iter()
             .find(|f| f.text.contains("metformine"))
         };
+        // Lu sans résoudre — le tableau de bord, le compagnon — aussi.
+        let raw = read(
+            &[Reading {
+                code: "DFG",
+                value: 45.0,
+                date: "2026-09-11",
+                bound: "<",
+            }],
+            &treatments,
+        );
+        assert!(raw
+            .iter()
+            .filter(|f| f.text.contains("metformine"))
+            .all(|f| f.text.starts_with("À vérifier")));
         let open = found(45.0, "<").expect("à vérifier");
         assert!(open.text.starts_with("À vérifier"), "{}", open.text);
         assert!(open.text.contains("<45"), "{}", open.text);

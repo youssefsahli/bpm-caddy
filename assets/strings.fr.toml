@@ -881,6 +881,7 @@ carnets_rewritten_all = "{} phrase(s) réécrites dans l'officine"
 
 # --- L'écran des textes imprimés : tout ce qui part sur du papier ---
 textes_title = "Textes imprimés"
+content_f_a_verifier = "Valeur bornée, à vérifier"
 content_f_allaitement = "Allaitement"
 content_f_alternative = "Alternative"
 content_f_apres = "Après l'injection"
