@@ -63986,7 +63986,8 @@ impl App {
                 o.finess
             );
             let label = Self::carte_elide(ui, &text, w);
-            if motif::button(ui, &label).clicked() {
+            // Coupée, l'étiquette perd d'abord le numéro : la bulle le dit.
+            if motif::button(ui, &label).on_hover_text(&text).clicked() {
                 chose = Some(o);
             }
         }
@@ -64000,7 +64001,10 @@ impl App {
         if let Some(o) = chose {
             let p = &mut editor.cfg.pharmacy;
             p.name = crate::finess::pretty(o.nom);
-            p.address = crate::finess::address_line(o);
+            // Sans rue au registre, une adresse déjà écrite reste.
+            if !o.adresse.is_empty() || p.address.trim().is_empty() {
+                p.address = crate::finess::address_line(o);
+            }
             if !o.telephone.is_empty() {
                 p.phone = crate::finess::phone(o.telephone);
             }

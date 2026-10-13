@@ -79,27 +79,59 @@ pub fn find(query: &str, most: usize) -> Vec<&'static Officine> {
         return Vec::new();
     }
     let upper = query.trim().to_ascii_uppercase();
-    if upper.len() <= 9 && upper.chars().all(|c| c.is_ascii_alphanumeric()) {
-        let by_number: Vec<&'static Officine> = register()
+    let by_number = || -> Vec<&'static Officine> {
+        if upper.len() > 9 || !upper.chars().all(|c| c.is_ascii_alphanumeric()) {
+            return Vec::new();
+        }
+        register()
             .iter()
             .filter(|o| o.finess.starts_with(upper.as_str()))
             .take(most)
-            .collect();
-        if !by_number.is_empty() {
-            return by_number;
-        }
-    }
+            .collect()
+    };
     let words: Vec<String> = town(&q).split(' ').map(str::to_owned).collect();
-    register()
-        .iter()
-        .filter(|o| {
-            let text = town(&format!("{} {} {}", o.nom, o.ville, o.code_postal));
-            words
-                .iter()
-                .all(|w| text.split(' ').any(|t| t.starts_with(w.as_str())))
-        })
-        .take(most)
-        .collect()
+    let by_words = || -> Vec<&'static Officine> {
+        register()
+            .iter()
+            .zip(haystack())
+            .filter(|(_, text)| {
+                words
+                    .iter()
+                    .all(|w| text.split(' ').any(|t| t.starts_with(w.as_str())))
+            })
+            .map(|(o, _)| o)
+            .take(most)
+            .collect()
+    };
+    // Cinq chiffres au plus : un code postal (ou son début) d'abord —
+    // « 06000 » est Nice, pas les numéros FINESS qui commencent ainsi.
+    let postcode = upper.len() <= 5 && upper.chars().all(|c| c.is_ascii_digit());
+    let (first, then): (
+        &dyn Fn() -> Vec<&'static Officine>,
+        &dyn Fn() -> Vec<&'static Officine>,
+    ) = if postcode {
+        (&by_words, &by_number)
+    } else {
+        (&by_number, &by_words)
+    };
+    let hits = first();
+    if hits.is_empty() {
+        then()
+    } else {
+        hits
+    }
+}
+
+/// Ce que [`find`] lit de chaque officine — son nom, sa ville et son
+/// code postal, repliés —, une fois pour toutes, dans l'ordre du registre.
+fn haystack() -> &'static [String] {
+    static TEXT: OnceLock<Vec<String>> = OnceLock::new();
+    TEXT.get_or_init(|| {
+        register()
+            .iter()
+            .map(|o| town(&format!("{} {} {}", o.nom, o.ville, o.code_postal)))
+            .collect()
+    })
 }
 
 /// **Un texte du registre, écrit comme on l'écrit** : le registre est
@@ -109,7 +141,7 @@ pub fn find(query: &str, most: usize) -> Vec<&'static Officine> {
 /// tête), les sigles de société en capitales. Les accents que le
 /// registre n'a pas écrits ne se devinent pas.
 pub fn pretty(text: &str) -> String {
-    const SMALL: [&str; 34] = [
+    const SMALL: [&str; 47] = [
         "de",
         "du",
         "des",
@@ -144,22 +176,44 @@ pub fn pretty(text: &str) -> String {
         "promenade",
         "bis",
         "ter",
+        "quater",
+        "lieu",
+        "dit",
+        "commercial",
+        "rond",
+        "point",
+        "voie",
+        "chaussée",
+        "galerie",
+        "cité",
+        "montée",
+        "hameau",
+        "traverse",
     ];
-    const UPPER: [&str; 14] = [
+    const UPPER: [&str; 22] = [
         "SELARL", "SELAS", "SELAFA", "SEL", "SAS", "SARL", "EURL", "SNC", "SPFPL", "SELEURL",
-        "SELURL", "SELASU", "SASU", "ZAC",
+        "SELURL", "SELASU", "SASU", "ZAC", "ZI", "ZA", "ZUP", "RN", "RD", "CD", "CC", "RER",
+    ];
+    // Henri IV, Napoléon III, le XVe corps.
+    const ROMAN: [&str; 20] = [
+        "II", "III", "IV", "VI", "VII", "VIII", "IX", "XI", "XII", "XIII", "XIV", "XV", "XVI",
+        "XVII", "XVIII", "XIX", "XX", "XXI", "XXII", "XXIII",
     ];
     let mut out = String::with_capacity(text.len());
     let mut first = true;
     let mut word = String::new();
-    let flush = |word: &mut String, out: &mut String, first: &mut bool| {
+    // `dotted` : le mot est suivi d'un point — une initiale, « A. Martin »,
+    // jamais la préposition « à ».
+    let flush = |word: &mut String, out: &mut String, first: &mut bool, dotted: bool| {
         if word.is_empty() {
             return;
         }
         let lower = word.to_lowercase();
-        if UPPER.contains(&word.to_uppercase().as_str()) && word.chars().any(char::is_uppercase) {
-            out.push_str(&word.to_uppercase());
-        } else if !*first && SMALL.contains(&lower.as_str()) {
+        let upper = word.to_uppercase();
+        let shouting = word.chars().any(char::is_uppercase);
+        if shouting && (UPPER.contains(&upper.as_str()) || ROMAN.contains(&upper.as_str())) {
+            out.push_str(&upper);
+        } else if !*first && !dotted && SMALL.contains(&lower.as_str()) {
             out.push_str(&lower);
         } else {
             let mut c = lower.chars();
@@ -175,11 +229,11 @@ pub fn pretty(text: &str) -> String {
         if c.is_alphanumeric() {
             word.push(c);
         } else {
-            flush(&mut word, &mut out, &mut first);
+            flush(&mut word, &mut out, &mut first, c == '.');
             out.push(c);
         }
     }
-    flush(&mut word, &mut out, &mut first);
+    flush(&mut word, &mut out, &mut first, false);
     out
 }
 
@@ -200,7 +254,13 @@ pub fn phone(digits: &str) -> String {
 /// code postal et la ville — la ville en dernier, que l'annonce sur le
 /// réseau local lit (`network::town_of`).
 pub fn address_line(o: &Officine) -> String {
-    let town = format!("{} {}", o.code_postal, pretty(o.ville));
+    // « BORDEAUX CEDEX » : l'acheminement d'un courrier, pas la ville
+    // qu'on annonce.
+    let ville = match o.ville.find(" CEDEX") {
+        Some(i) => &o.ville[..i],
+        None => o.ville,
+    };
+    let town = format!("{} {}", o.code_postal, pretty(ville));
     if o.adresse.is_empty() {
         town
     } else {
@@ -365,6 +425,24 @@ pub fn commune_of(entry: &Officine) -> Option<&'static Commune> {
 mod tests {
     use super::*;
 
+    /// Rien dans le registre que les faces livrées ne sachent dessiner :
+    /// le nom et l'adresse en sont recopiés et imprimés.
+    #[test]
+    fn the_register_holds_only_drawable_text() {
+        for o in register() {
+            for v in [o.nom, o.ville, o.adresse, o.telephone] {
+                assert!(
+                    v.chars().all(|c| (c.is_ascii() && !c.is_ascii_control())
+                        || c == '°'
+                        || (c.is_alphabetic() && (c as u32) < 0x180)),
+                    "{} {v:?}",
+                    o.finess
+                );
+                assert!(!v.contains("\"\""), "{} {v:?}", o.finess);
+            }
+        }
+    }
+
     /// Le registre livré se lit entier, trié, un numéro par officine.
     #[test]
     fn the_shipped_register_reads_whole() {
@@ -417,6 +495,12 @@ mod tests {
         );
         assert_eq!(pretty("LE MERLERAULT"), "Le Merlerault");
         assert_eq!(pretty("SAINT-ETIENNE"), "Saint-Etienne");
+        assert_eq!(pretty("8 place HENRI IV"), "8 place Henri IV");
+        assert_eq!(pretty("11 place A. LEMARIGNIER"), "11 place A. Lemarignier");
+        assert_eq!(pretty("D.BOUDOURESQUE"), "D.Boudouresque");
+        assert_eq!(pretty("ZI LES PALUDS, RN 113"), "ZI les Paluds, RN 113");
+        assert_eq!(pretty("lieu-dit LES BOURBES"), "Lieu-dit les Bourbes");
+        assert_eq!(pretty("1 lieu-dit LES BOURBES"), "1 lieu-dit les Bourbes");
         assert_eq!(phone("0474380226"), "04 74 38 02 26");
         assert_eq!(phone("123"), "123");
         let o = Officine {
@@ -452,6 +536,11 @@ mod tests {
         let words = format!("{} thoir", o.nom.split(' ').next_back().unwrap());
         assert!(find(&words, 50).contains(&o), "{words}");
         assert!(find("zz", 5).is_empty());
+        // Un code postal se lit comme un code postal, même quand des
+        // numéros FINESS commencent par les mêmes chiffres.
+        let nice = find("06000", 6);
+        assert!(!nice.is_empty());
+        assert!(nice.iter().all(|o| o.code_postal == "06000"), "{nice:?}");
         assert!(find("pharmacie", 7).len() == 7);
     }
 

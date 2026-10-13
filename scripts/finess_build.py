@@ -25,8 +25,16 @@ VOIES = {
     'PLAG': 'plage', 'VAL': 'val', 'STA': 'station', 'ARC': 'arcades', 'PRE': 'pré',
 }
 SUITE = {'B': 'bis', 'T': 'ter', 'Q': 'quater'}
+# Ce que l'extraction écrit mal : des guillemets doublés, quelques
+# caractères passés par un mauvais encodage, des caractères de commande.
+FIXES = [('""', '"'), ('\u00c3\x1b', 'U'), ('\u00c3\x88', 'È'), ('\u00c3\u00ba', 'ú'),
+         ('\x9c', 'OE'), ('\u00a6', '°'), ('\u00de', 'È'), ('\u00b2', '2'), ('`', "'")]
+def clean(text):
+    for bad, good in FIXES:
+        text = text.replace(bad, good)
+    return ''.join(c for c in text if c.isprintable())
 def words(*parts):
-    return ' '.join(' '.join(p.split()) for p in parts if p and p.strip())
+    return ' '.join(' '.join(clean(p).split()) for p in parts if p and p.strip())
 rows = []
 for r in csv.reader(open(src, encoding='utf-8'), delimiter=';'):
     if r[0] != 'structureet' or r[18] != '620':
@@ -44,6 +52,9 @@ for r in csv.reader(open(src, encoding='utf-8'), delimiter=';'):
     tel = ''.join(c for c in r[16] if c.isdigit())
     for v in (nom, ville, rue):
         assert '\t' not in v
+        # Rien que les faces livrées ne sachent dessiner.
+        assert all((c.isascii() and c.isprintable()) or c == '°'
+                   or (c.isalpha() and ord(c) < 0x180) for c in v), v
     rows.append(f'{r[1]}\t{nom}\t{cp}\t{ville}\t{rue}\t{tel}')
 rows.sort()
 with open(out, 'w', encoding='utf-8') as fh:

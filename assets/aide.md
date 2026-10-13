@@ -1270,7 +1270,9 @@ rien n'entre de soi-même, et son nom n'est prouvé que par l'empreinte,
 
 Le répertoire est tenu par une officine qui accepte de l'héberger sur
 l'un de ses postes (Options › Base, « Héberger le répertoire des
-officines », port 7747) ; il ne garde rien sur le disque. Les autres
+officines », port 7747) ; il ne garde rien sur le disque. La carte y
+montre l'adresse à donner, et « Copier l'adresse » la met dans le
+presse-papiers, à coller dans un message. Les autres
 écrivent son adresse dans « Cette officine sur la carte », choisissent
 leur commune et, si elles le veulent, cochent « Paraître sur la
 carte » : le poste annonce alors l'officine toutes les dix minutes tant
@@ -1491,8 +1493,8 @@ ce qu'un autre poste y a écrit.
 En tête de la page, « Retrouver l'officine au registre FINESS » cherche
 dans le registre public livré avec l'application, par numéro FINESS ou
 par des mots du nom et de la ville : un clic reprend le nom, l'adresse
-et le téléphone que le registre écrit — à vérifier (le registre n'a pas
-d'accents), puis enregistrer.
+et le téléphone que le registre écrit — à vérifier (le registre écrit
+le plus souvent sans accents), puis enregistrer.
 
 Les pièces scannées restent sur le poste qui les a numérisées.
 
