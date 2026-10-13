@@ -60,9 +60,14 @@ compte les officines apparues, « En ligne » déplie une entrée en entier
 — relus, corrigés) a passé son smoke dans les quatre formes (da6c454) ;
 la 0.421.0 (« En ligne » filtre « Différentes d'ici » et prend la version
 d'une officine du répertoire — deux relectures, corrigées) a passé son
-smoke dans les quatre formes (d0d0162) : **c'est elle à publier** —
-`git tag v0.421.0 d0d0162 && git push origin v0.421.0` (à défaut, la
-0.420.0 : `git tag v0.420.0 da6c454`) ; les étiquettes intermédiaires n'ont jamais été
+smoke dans les quatre formes (d0d0162), **étiquetée et publiée le
+13/10** ; la 0.422.0 (ce que l'officine publie se voit avant de
+paraître, une entrée supprimée ne se publie plus, le carnet avertit d'un
+lot périmé ou d'un autre vaccin — relus, corrigés) a passé son smoke
+dans les quatre formes (0e8b170), **étiquetée et publiée le 13/10**.
+Les versions 0.398 à 0.420 n'ont jamais été étiquetées : le lanceur est
+resté sur la 0.397.0 jusqu'au 13/10 ; désormais chaque version dont le
+smoke passe s'étiquette aussitôt ; les étiquettes intermédiaires n'ont jamais été
 posées, et **la 0.395.0 ne se publie pas** (elle lisait mal les doses de
 charge et les titrations, corrigé dans la 0.396.0).
 
