@@ -775,7 +775,7 @@ dependencies = [
 
 [[package]]
 name = "bpm-caddy"
-version = "0.418.0"
+version = "0.419.0"
 dependencies = [
  "ab_glyph",
  "blake3",
@@ -805,7 +805,7 @@ dependencies = [
 
 [[package]]
 name = "bpm-caddy-launcher"
-version = "0.418.0"
+version = "0.419.0"
 dependencies = [
  "dirs",
  "eframe",
@@ -816,7 +816,7 @@ dependencies = [
 
 [[package]]
 name = "bpm-caddy-mobile"
-version = "0.418.0"
+version = "0.419.0"
 dependencies = [
  "bpm-caddy",
  "bpm-sync",
@@ -3369,7 +3369,7 @@ dependencies = [
 
 [[package]]
 name = "motif"
-version = "0.418.0"
+version = "0.419.0"
 dependencies = [
  "eframe",
 ]
