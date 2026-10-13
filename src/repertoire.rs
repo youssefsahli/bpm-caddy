@@ -100,7 +100,7 @@ const LISTED_PER_ADDRESS: usize = 16;
 const LISTED_PER_NETWORK: usize = 64;
 const BYTES_PER_NETWORK: usize = 32 * 1024 * 1024;
 const CALLERS_PER_NETWORK: usize = 64;
-const OPEN_PER_NETWORK: usize = 8;
+const OPEN_PER_NETWORK: usize = 16;
 const BYTES_PER_ADDRESS: usize = 8 * 1024 * 1024;
 /// Combien d'officines parties il se rappelle.
 const MOST_GONE: usize = 4096;
@@ -822,7 +822,15 @@ fn bind_v6(port: u16) -> std::io::Result<Option<TcpListener>> {
     use socket2::{Domain, Protocol, SockAddr, Socket, Type};
     let socket = match Socket::new(Domain::IPV6, Type::STREAM, Some(Protocol::TCP)) {
         Ok(s) => s,
-        Err(_) => return Ok(None),
+        // Pas d'IPv6 sur ce poste (EAFNOSUPPORT : Linux, macOS, Windows) ;
+        // toute autre erreur — plus de descripteurs — en est une.
+        Err(e)
+            if e.kind() == std::io::ErrorKind::Unsupported
+                || matches!(e.raw_os_error(), Some(97 | 47 | 10047)) =>
+        {
+            return Ok(None)
+        }
+        Err(e) => return Err(e),
     };
     socket.set_only_v6(true)?;
     // Ce que la bibliothèque standard fait sous Unix : un répertoire
@@ -846,12 +854,13 @@ type Counts = HashMap<IpAddr, usize>;
 /// en IPv6 et en IPv4 : en IPv6 la box n'a qu'à laisser passer, sans
 /// ouverture de port. Rend tout de suite ; le répertoire vit sur ses
 /// propres fils.
-pub fn serve(port: u16, stop: Arc<AtomicBool>) -> std::io::Result<()> {
+pub fn serve(port: u16, stop: Arc<AtomicBool>) -> std::io::Result<bool> {
     // Deux prises, chacune sa pile, et l'une ou l'autre prise ailleurs est
     // une erreur : la carte ne donne pas une adresse où répondrait un
     // autre programme.
     let v6 = bind_v6(port)?;
     let v4 = TcpListener::bind(("0.0.0.0", port))?;
+    let on_v6 = v6.is_some();
     let listeners: Vec<TcpListener> = std::iter::once(v4).chain(v6).collect();
     for l in &listeners {
         l.set_nonblocking(true)?;
@@ -933,7 +942,7 @@ pub fn serve(port: u16, stop: Arc<AtomicBool>) -> std::io::Result<()> {
             });
         }
     });
-    Ok(())
+    Ok(on_v6)
 }
 
 /// Une prise lue et écrite **contre une seule échéance**, celle de
@@ -1169,7 +1178,7 @@ mod tests {
                     .local_addr()
                     .ok()?
                     .port();
-                serve(port, Arc::clone(&stop.0)).ok().map(|()| port)
+                serve(port, Arc::clone(&stop.0)).ok().map(|_| port)
             })
             .expect("un port libre");
         assert!(list(&format!("127.0.0.1:{port}"), Duration::from_secs(4)).is_ok());

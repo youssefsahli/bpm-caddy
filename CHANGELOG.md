@@ -25,7 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The directory's IPv6 socket is IPv6-only on every system, and a port
   held by another program on either stack is an error rather than an
   address that leads elsewhere.
-- The host's IPv6 addresses skip down links and VPN tunnels, are read
+- The host's IPv6 addresses skip down links, point-to-point tunnels and
+  (on Linux) temporary or deprecated addresses, put stable ones first,
+  are read
   again every ten minutes, and come with a warning: they can change, and
   the box should let in this post and port only, never drop its IPv6
   firewall.

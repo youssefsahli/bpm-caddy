@@ -943,7 +943,15 @@ le préfixe `/64` d'une IPv6 — un abonné en tient des milliards et
 passerait sinon sous chaque borne en changeant d'adresse. Un cran
 au-dessus, le **réseau** (`repertoire::network` : un `/48`, ce qu'un
 tunnel gratuit donne à une seule personne, ou un `/24`) a les siennes :
-64 appelants dans la table, 64 cartes et 32 Mio, 8 connexions. Deux
+64 appelants dans la table, 64 cartes et 32 Mio, 16 connexions — ce
+qu'aucune borne par préfixe ne ferme tout à fait : un abonné d'un `/56`
+peut occuper pour une minute les places IPv6 de son `/48`, et qui tient
+des dizaines de `/48` (cinq par compte de tunnel gratuit) peut encore
+remplir le répertoire ; l'IPv4 reste ouverte aux voisins. Les adresses
+IPv6 montrées à qui héberge écartent les liens coupés, les liens point à
+point (un tunnel, un modem PPP — et donc aussi pour les téléphones des
+postes), et sous Linux les adresses temporaires ou dépréciées ;
+ailleurs, celles formées sur l'adresse matérielle passent d'abord. Deux
 prises, chacune sa pile (l'IPv6 en `IPV6_V6ONLY` partout), et un port
 tenu ailleurs, sur l'une ou l'autre, est une erreur plutôt qu'une
 adresse donnée où répondrait un autre programme ;

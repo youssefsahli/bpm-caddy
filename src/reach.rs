@@ -75,7 +75,60 @@ pub fn global_ipv6() -> Vec<Ipv6Addr> {
         .collect();
     out.sort();
     out.dedup();
+    // Les adresses qui durent d'abord : une adresse temporaire (RFC 4941)
+    // tourne chaque jour et ne vit qu'une semaine — une officine qui l'a
+    // recopiée ne joindrait plus rien.
+    let flags = temporary_or_deprecated();
+    out.retain(|a| !flags.contains(a));
+    out.sort_by_key(|a| !is_eui64(a));
     out
+}
+
+/// Une adresse formée sur l'adresse matérielle (`…ff:fe…`) : stable par
+/// construction — et la seule que l'on reconnaisse sans demander au
+/// système.
+fn is_eui64(a: &Ipv6Addr) -> bool {
+    let o = a.octets();
+    o[11] == 0xff && o[12] == 0xfe
+}
+
+/// Les adresses que le système dit **temporaires** ou **dépréciées** :
+/// sous Linux, `/proc/net/if_inet6` les marque (`IFA_F_TEMPORARY`,
+/// `IFA_F_DEPRECATED`). Ailleurs, rien de sûr à lire sans dépendance :
+/// les adresses formées sur l'adresse matérielle passent d'abord.
+fn temporary_or_deprecated() -> Vec<Ipv6Addr> {
+    #[cfg(target_os = "linux")]
+    {
+        std::fs::read_to_string("/proc/net/if_inet6")
+            .map(|t| flagged_in_if_inet6(&t))
+            .unwrap_or_default()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        Vec::new()
+    }
+}
+
+/// Les adresses marquées temporaires (0x01) ou dépréciées (0x20) dans le
+/// texte de `/proc/net/if_inet6` : l'adresse en 32 chiffres hexadécimaux,
+/// l'index, la longueur du préfixe, la portée, les marques, l'interface.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn flagged_in_if_inet6(text: &str) -> Vec<Ipv6Addr> {
+    text.lines()
+        .filter_map(|line| {
+            let cols: Vec<&str> = line.split_whitespace().collect();
+            let (hex, flags) = (cols.first()?, cols.get(4)?);
+            let flags = u32::from_str_radix(flags, 16).ok()?;
+            if flags & (0x01 | 0x20) == 0 || hex.len() != 32 {
+                return None;
+            }
+            let mut o = [0_u8; 16];
+            for (i, b) in o.iter_mut().enumerate() {
+                *b = u8::from_str_radix(hex.get(i * 2..i * 2 + 2)?, 16).ok()?;
+            }
+            Some(Ipv6Addr::from(o))
+        })
+        .collect()
 }
 
 /// L'adresse IPv4 de cette machine du côté du routeur : celle par
@@ -192,6 +245,26 @@ pub fn addresses(text: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Les marques de `/proc/net/if_inet6` se lisent : une adresse
+    /// temporaire ou dépréciée est écartée, une stable reste.
+    #[test]
+    fn temporary_addresses_are_read_from_the_kernel_table() {
+        let text = "2a01cb0000010002021122fffe334455 02 40 00 00 eth0\n\
+                    2a01cb000001000212345678abcdef01 02 40 00 01 eth0\n\
+                    2a01cb000001000287654321abcdef02 02 40 00 20 eth0\n\
+                    fe80000000000000021122fffe334455 02 40 20 80 eth0\n";
+        let flagged = flagged_in_if_inet6(text);
+        assert_eq!(flagged.len(), 2);
+        assert!(flagged.contains(&"2a01:cb00:1:2:1234:5678:abcd:ef01".parse().unwrap()));
+        assert!(flagged.contains(&"2a01:cb00:1:2:8765:4321:abcd:ef02".parse().unwrap()));
+        assert!(is_eui64(
+            &"2a01:cb00:1:2:211:22ff:fe33:4455".parse().unwrap()
+        ));
+        assert!(!is_eui64(
+            &"2a01:cb00:1:2:1234:5678:abcd:ef01".parse().unwrap()
+        ));
+    }
 
     #[test]
     fn only_addresses_the_internet_can_reach_are_published() {

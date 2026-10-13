@@ -11552,15 +11552,22 @@ impl Session {
         if let (None, Some(port), None) = (&self.carte.hosting, want, &self.carte.host_failed) {
             let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
             match crate::repertoire::serve(port, std::sync::Arc::clone(&stop)) {
-                Ok(()) => {
+                Ok(on_v6) => {
                     HOSTED_PORT.store(port, std::sync::atomic::Ordering::SeqCst);
                     HOSTED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                     self.carte.hosting = Some((port, stop));
                     let (tx, rx) = std::sync::mpsc::channel();
-                    self.carte.host_v6_at = Some(Instant::now());
+                    // Sans prise IPv6, aucune adresse IPv6 à donner, ni à
+                    // relire.
+                    self.carte.host_v6_at = on_v6.then(Instant::now);
                     std::thread::spawn(move || {
                         let v4 = crate::reach::open_mapping(port).map(|a| a.to_string());
-                        let _ = tx.send((v4, Self::host_v6_of(port)));
+                        let v6 = if on_v6 {
+                            Self::host_v6_of(port)
+                        } else {
+                            Vec::new()
+                        };
+                        let _ = tx.send((v4, v6));
                     });
                     self.carte.host_reach = Some(rx);
                 }
