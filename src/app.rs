@@ -5621,6 +5621,12 @@ struct Session {
     /// The last search across every reference table, and its question.
     table_hits: Vec<(usize, usize, Vec<String>)>,
     table_hits_key: Option<(String, u64)>,
+    /// Le fil du dossier, compté à chaque relecture, et ce qu'on en tire
+    /// pour l'écran — le dernier de chaque nature (indices), ce qui vient,
+    /// les douze mois — lus contre (`fil_rev`, aujourd'hui), jamais à
+    /// chaque image.
+    fil_rev: u64,
+    fil_memo: Option<FilMemo>,
     /// Les tables que l'équipe a corrigées, lues contre `table_rev` : la
     /// liste les marque, et les relisait à chaque image.
     table_edited: Option<(u64, std::collections::HashSet<String>)>,
@@ -6568,6 +6574,8 @@ impl Session {
             table_rev: 0,
             table_hits: Vec::new(),
             table_hits_key: None,
+            fil_rev: 0,
+            fil_memo: None,
             table_edited: None,
             drug_form: None,
             drug_reading: true,
@@ -13615,6 +13623,7 @@ impl Session {
             });
         }
         self.patient_fil = crate::timeline::merge(out);
+        self.fil_rev = self.fil_rev.wrapping_add(1);
     }
 
     /// (Re)read the patient's biology. Called on open and after every
@@ -15481,6 +15490,11 @@ struct Online {
     /// texte entier.
     unfolded: Option<(u64, usize, String)>,
 }
+
+/// Ce que l'écran tire du fil d'un dossier : la clé (relecture, jour), le
+/// dernier de chaque nature (par indice), combien de lignes à venir, et
+/// les douze mois.
+type FilMemo = ((u64, String), Vec<usize>, usize, Vec<(String, usize)>);
 
 /// Un geste des postes qui ne se défait pas, armé par un premier clic.
 #[cfg(feature = "sync")]
@@ -24802,16 +24816,33 @@ impl App {
     /// quelque chose qu'on ne voit pas.
     fn patient_fil_pane(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) {
         let line = ui.text_style_height(&egui::TextStyle::Body);
+        // Une fois par relecture du fil et par jour, pas à chaque image :
+        // un dossier de plusieurs années porte des milliers de lignes.
+        let key = (session.fil_rev, session.today.clone());
+        if session.fil_memo.as_ref().map(|m| &m.0) != Some(&key) {
+            let fil = &session.patient_fil;
+            let latest: Vec<usize> = crate::timeline::latest(fil, &session.today)
+                .into_iter()
+                .filter_map(|e| fil.iter().position(|x| std::ptr::eq(x, e)))
+                .collect();
+            let ahead = crate::timeline::upcoming(fil, &session.today);
+            let months = crate::timeline::per_month(fil, &session.today, 12);
+            session.fil_memo = Some((key, latest, ahead, months));
+        }
         let fil = &session.patient_fil;
+        let Some((_, latest, ahead, months)) = &session.fil_memo else {
+            return;
+        };
         // Les hauteurs sont **mesurées** : la bande vaut deux lignes
         // plus son titre, le résumé autant de lignes qu'il porte de
         // natures, et le fil prend le reste.
-        let summary = crate::timeline::latest(fil, &session.today);
+        let summary: Vec<&crate::timeline::Event> =
+            latest.iter().filter_map(|&i| fil.get(i)).collect();
         // Ce qui n'a pas encore eu lieu est en tête — le fil se lit du
         // plus récent au plus ancien —, et **il se nomme** : une ligne
         // datée de la semaine prochaine en tête d'une liste sans titre
         // se lit comme quelque chose qui est arrivé.
-        let ahead = crate::timeline::upcoming(fil, &session.today);
+        let ahead = *ahead;
         let band_h = line * 2.6;
         let summary_row = Self::fil_summary_row(ui);
         // Des rangées entières : le résumé défile au-delà de quatre, et
@@ -24844,7 +24875,6 @@ impl App {
             );
             top += band_h + 6.0;
             room -= band_h + 6.0;
-            let months = crate::timeline::per_month(fil, &session.today, 12);
             let values: Vec<f64> = months.iter().map(|(_, n)| *n as f64).collect();
             let inner = motif::well(ui, band);
             let hovered = motif::chart::heat_strip(ui, inner, &values, motif::accent());
@@ -24901,54 +24931,66 @@ impl App {
         motif::panel(ui, body, Some(&trf("fil_count", fil.len())), |ui| {
             let inner = motif::well(ui, ui.available_rect_before_wrap());
             motif::inside(ui, inner, |ui| {
+                // **Une ligne du fil a la hauteur de son texte.**
+                // Un `horizontal` part de la hauteur d'un bouton, et le fil
+                // n'en porte aucun : à 1024 en texte 1,6 chaque ligne en
+                // valait deux, et le panneau n'en montrait que deux sur
+                // trente et une.
+                let text_h =
+                    ui.fonts(|f| f.row_height(&egui::FontId::proportional(motif::pt(ui, 11.5))));
+                // **Mesurée dans la fonte qui dessine.** La colonne se peint
+                // en chasse fixe, et une mesure proportionnelle la rend trop
+                // étroite : la date sortait « 13/09/20… ». C'est la faute
+                // exacte que `widest_in` existe pour éviter.
+                let day_w = Self::widest_in(
+                    ui,
+                    egui::FontId::monospace(motif::pt(ui, 11.0)),
+                    ["00/00/0000"].into_iter(),
+                );
+                // **Seules les rangées visibles se dessinent** (`show_rows`) :
+                // un dossier de plusieurs années dessinait ses milliers de
+                // lignes à chaque image. Les deux intertitres sont des
+                // rangées comme les autres, de la même hauteur.
+                let mut rows: Vec<Option<usize>> = Vec::with_capacity(fil.len() + 2);
+                for i in 0..fil.len() {
+                    if (i == 0 || i == ahead) && ahead > 0 {
+                        rows.push(None);
+                    }
+                    rows.push(Some(i));
+                }
+                // Et l'air d'une liste, pas celui d'un formulaire : l'écart
+                // entre deux lignes réduit, compté dans la hauteur promise.
+                let gap = ui.spacing().item_spacing.y * 0.4;
+                let row_h = text_h + gap;
                 egui::ScrollArea::vertical()
-                    .id_salt("fil_list")
+                    .id_salt("fil_rows")
                     .auto_shrink([false, false])
-                    .show(ui, |ui| {
+                    .show_rows(ui, row_h, rows.len(), |ui, range| {
                         ui.visuals_mut().faint_bg_color = motif::bg_dark();
-                        // **Une ligne du fil a la hauteur de son texte.**
-                        // Un `horizontal` part de la hauteur d'un bouton,
-                        // et le fil n'en porte aucun : à 1024 en texte 1,6
-                        // chaque ligne en valait deux, et le panneau n'en
-                        // montrait que deux sur trente et une.
-                        let text_h = ui.fonts(|f| {
-                            f.row_height(&egui::FontId::proportional(motif::pt(ui, 11.5)))
-                        });
                         ui.spacing_mut().interact_size.y = text_h;
-                        // Et l'air d'une liste, pas celui d'un formulaire.
-                        ui.spacing_mut().item_spacing.y *= 0.4;
-                        // **Mesurée dans la fonte qui dessine.** La
-                        // colonne se peint en chasse fixe, et une mesure
-                        // proportionnelle la rend trop étroite : la date
-                        // sortait « 13/09/20… », qui a perdu deux
-                        // chiffres de l'année et se lit cassée. C'est la
-                        // faute exacte que `widest_in` existe pour
-                        // éviter, et que le registre a déjà connue.
-                        let day_w = Self::widest_in(
-                            ui,
-                            egui::FontId::monospace(motif::pt(ui, 11.0)),
-                            ["00/00/0000"].into_iter(),
-                        );
-                        let mut last_day = String::new();
-                        for (i, e) in fil.iter().enumerate() {
-                            // Les deux intertitres : ce qui vient, et ce
-                            // qui est passé. Le second ne s'écrit que
-                            // s'il y a eu un premier — « Passé » seul en
-                            // tête d'un fil est un mot pour rien.
-                            if i == 0 && ahead > 0 {
-                                Self::fil_heading(ui, tr("fil_ahead"));
-                            }
-                            if i == ahead && ahead > 0 && i < fil.len() {
-                                Self::fil_heading(ui, tr("fil_behind"));
-                                last_day.clear();
-                            }
+                        ui.spacing_mut().item_spacing.y = gap;
+                        for r in range {
+                            let Some(slot) = rows.get(r).copied() else {
+                                continue;
+                            };
+                            let Some(i) = slot else {
+                                let heading = if r == 0 {
+                                    tr("fil_ahead")
+                                } else {
+                                    tr("fil_behind")
+                                };
+                                ui.allocate_ui(egui::vec2(ui.available_width(), text_h), |ui| {
+                                    Self::fil_heading(ui, heading);
+                                });
+                                continue;
+                            };
+                            let e = &fil[i];
+                            // La date **une fois par jour**, relue
+                            // de la ligne d'avant : la rangée se
+                            // dessine seule.
+                            let same =
+                                i > 0 && fil[i - 1].day == e.day && !(i == ahead && ahead > 0);
                             ui.horizontal(|ui| {
-                                // La date **une fois par jour** : dix
-                                // lignes du même jour répétant la même
-                                // date font dix fois le même mot, et
-                                // c'est le changement de jour qu'on
-                                // cherche en parcourant un fil.
-                                let same = e.day == last_day;
                                 Self::grid_cell(
                                     ui,
                                     day_w,
@@ -24961,7 +25003,6 @@ impl App {
                                     .monospace()
                                     .color(motif::text_dim()),
                                 );
-                                last_day.clone_from(&e.day);
                                 Self::fil_mark(ui, e.kind);
                                 let row = ui.label(
                                     egui::RichText::new(e.title.as_str())

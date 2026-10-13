@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Options left open when the session locks (automatically or not) are put
   aside and come back as they were at unlock, instead of losing what was
   typed without a word.
+- A file's timeline (« Fil ») draws only the rows on screen, and its
+  summary, upcoming count and twelve-month strip are read once per change
+  — a file of several years drew its thousands of lines every frame.
 
 ## [0.427.0] - 2026-10-13
 
