@@ -35252,8 +35252,14 @@ impl App {
             }
         }
         if let Some(kind) = bulletin_req {
-            if let Err(e) = crate::pdf::open_bulletin(kind, patient, &config.pharmacy) {
-                session.error = Some(e);
+            match crate::pdf::open_bulletin(kind, patient, &config.pharmacy) {
+                // Ce qui déborde de sa case sur le formulaire officiel : dit,
+                // à raccourcir ou à écrire à la main.
+                Ok(overflow) if !overflow.is_empty() => {
+                    session.error = Some(trf("bulletin_overflow", overflow.join(" ; ")));
+                }
+                Ok(_) => {}
+                Err(e) => session.error = Some(e),
             }
         }
         if let Some((id, result, expected)) = set_trod {

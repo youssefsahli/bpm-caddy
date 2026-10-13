@@ -4652,8 +4652,8 @@ pub fn open_bulletin(
     kind: InterviewKind,
     patient: &Patient,
     pharmacy: &PharmacyConfig,
-) -> Result<PathBuf, String> {
-    let bytes = crate::bulletin::fill(kind, patient, pharmacy)?;
+) -> Result<Vec<String>, String> {
+    let (bytes, overflow) = crate::bulletin::fill_checked(kind, patient, pharmacy)?;
     let out = fresh_pdf_path(&format!(
         "bulletin_{}_{}",
         patient.id,
@@ -4662,7 +4662,7 @@ pub fn open_bulletin(
     write_private(&out, &bytes).map_err(|e| crate::strings::trf("bulletin_write_failed", e))?;
     open::that_detached(&out).map_err(|e| crate::strings::trf("pdf_open_failed", e))?;
     crate::telemetry::tally(crate::telemetry::Signal::Printed);
-    Ok(out)
+    Ok(overflow)
 }
 
 /// The patient's carnet de vaccination on one sheet: the doses in the

@@ -167,6 +167,17 @@ pub fn fill(
     patient: &Patient,
     pharmacy: &PharmacyConfig,
 ) -> Result<Vec<u8>, String> {
+    fill_checked(kind, patient, pharmacy).map(|(bytes, _)| bytes)
+}
+
+/// [`fill`], with the values too long for their box even at the
+/// smallest size: they overflow the ruled line on paper, and the
+/// officine is told which, to shorten or write by hand.
+pub fn fill_checked(
+    kind: InterviewKind,
+    patient: &Patient,
+    pharmacy: &PharmacyConfig,
+) -> Result<(Vec<u8>, Vec<String>), String> {
     let form = form_for(kind).ok_or_else(|| crate::strings::trf("bulletin_none", kind.label()))?;
     let mut doc =
         Document::load_mem(form.pdf).map_err(|e| crate::strings::trf("bulletin_unreadable", e))?;
@@ -189,6 +200,7 @@ pub fn fill(
     ];
 
     let helv = helvetica_ref(&doc);
+    let mut overflow = Vec::new();
     for (name, value) in values {
         // An empty name is a form with no such field; an empty value is
         // something the officine has not entered. Both leave the line
@@ -196,7 +208,9 @@ pub fn fill(
         if name.is_empty() || value.trim().is_empty() {
             continue;
         }
-        set_text_field(&mut doc, name, value.trim(), helv)?;
+        if !set_text_field(&mut doc, name, value.trim(), helv)? {
+            overflow.push(value.trim().to_owned());
+        }
     }
     // Belt and braces: a viewer that ignores our appearance streams is
     // told to build its own.
@@ -205,7 +219,7 @@ pub fn fill(
     let mut out = Vec::new();
     doc.save_to(&mut out)
         .map_err(|e| crate::strings::trf("bulletin_write_failed", e))?;
-    Ok(out)
+    Ok((out, overflow))
 }
 
 /// The object id of the AcroForm's `/Helv` font.
@@ -343,13 +357,14 @@ fn helvetica_em(text: &str) -> f32 {
 
 /// Write `value` into the text field named `name`: the value itself,
 /// a `/DA` that draws it through Helvetica, and an appearance stream so
-/// every viewer — and every printer — shows the same thing.
+/// every viewer — and every printer — shows the same thing. `false` when
+/// even the smallest size does not fit the box.
 fn set_text_field(
     doc: &mut Document,
     name: &str,
     value: &str,
     helv: Option<(u32, u16)>,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     let Some(id) = find_field(doc, name) else {
         return Err(format!("champ « {name} » absent du bulletin"));
     };
@@ -359,8 +374,9 @@ fn set_text_field(
     let mut size = (h * 0.62).clamp(6.0, 10.0);
     let needed = helvetica_em(value);
     if needed > 0.0 {
-        size = size.min(((w - 4.0).max(1.0)) / needed).max(5.0);
+        size = size.min(((w - 4.0).max(1.0)) / needed).max(MIN_SIZE);
     }
+    let fits = needed * size <= (w - 4.0).max(1.0) + 0.01;
     let baseline = ((h - size) / 2.0 + size * 0.22).max(1.0);
 
     let mut content = Vec::new();
@@ -403,8 +419,11 @@ fn set_text_field(
     let mut ap = Dictionary::new();
     ap.set("N", Object::Reference(appearance));
     field.set("AP", Object::Dictionary(ap));
-    Ok(())
+    Ok(fits)
 }
+
+/// The smallest size a value is shrunk to; below it, it overflows.
+const MIN_SIZE: f32 = 5.0;
 
 /// The object id of the text field called `name`.
 fn find_field(doc: &Document, name: &str) -> Option<(u32, u16)> {
@@ -650,6 +669,25 @@ mod tests {
                 let _ = std::fs::write(std::path::Path::new(&dir).join(name), &bytes);
             }
         }
+    }
+
+    /// Ce qui ne tient pas dans sa case, même au plus petit, est dit —
+    /// le reste non.
+    #[test]
+    fn a_value_too_long_for_its_box_is_named() {
+        let mut patient = Patient {
+            first_name: "Jeanne".to_owned(),
+            last_name: "Martin".to_owned(),
+            birth_date: "1950-04-03".to_owned(),
+            ..Patient::default()
+        };
+        let pharmacy = PharmacyConfig::default();
+        let (_, short) = fill_checked(InterviewKind::Bpm, &patient, &pharmacy).unwrap();
+        assert!(short.is_empty(), "{short:?}");
+        patient.last_name = "Martin".repeat(60);
+        let (_, long) = fill_checked(InterviewKind::Bpm, &patient, &pharmacy).unwrap();
+        assert_eq!(long.len(), 1, "{long:?}");
+        assert!(long[0].contains("MartinMartin"));
     }
 
     #[test]

@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Exchange folder: a `.bpmposte` file is read one record at a time, so a
   file over one gigabyte — the founding post with its scans — syncs
   instead of being skipped without a word, and memory stays bounded.
+- Bulletins d'adhésion: a value too long for its box on the official
+  form, even at the smallest size, is named when the bulletin opens — to
+  shorten in the file or write by hand — instead of overflowing silently.
 
 ## [0.425.0] - 2026-10-13
 
