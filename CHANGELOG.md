@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- « Voir ce que l'officine publie… » on the map: the catalogue the
+  officine's card carries, exactly as it leaves, shown in « En ligne »
+  before appearing.
+
 ## [0.421.0] - 2026-10-13
 
 ### Changed

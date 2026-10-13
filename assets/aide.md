@@ -1298,7 +1298,9 @@ que l'application est ouverte. Partent son nom, sa commune, son FINESS
 s'il est écrit, et ce qu'elle a écrit elle-même des fiches,
 préparations, protocoles, lignes de TROD, vaccins, dispositifs et
 cascades — **jamais un patient, une liste de contrôle ni une phrase
-imprimée**. Décocher la retire du répertoire.
+imprimée**. « Voir ce que l'officine publie… » montre ce catalogue
+exactement tel qu'il part, avant même de paraître. Décocher la retire du
+répertoire.
 
 Les contours des départements et les communes viennent de l'IGN, de
 l'INSEE et de geo.api.gouv.fr, le registre des officines de FINESS

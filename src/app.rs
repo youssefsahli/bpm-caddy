@@ -11450,6 +11450,7 @@ impl Session {
             device: String::new(),
             offers,
             everyone: Some((read, total, failed)),
+            own: false,
         };
         match &mut self.online {
             // Ce que l'opérateur a tapé ou coché pendant la lecture reste.
@@ -11470,6 +11471,40 @@ impl Session {
             }
             None => {}
         }
+    }
+
+    /// **What this officine publishes**, exactly as its card's catalogue
+    /// leaves — composed by the same function, read back from its bytes —
+    /// shown in « En ligne », to look at before appearing.
+    #[cfg(feature = "sync")]
+    fn carte_preview_own(&mut self, name: &str) {
+        self.reload_card_edits();
+        let (bytes, _) = crate::repertoire::catalogue_of(&self.card_edits);
+        let articles: Vec<crate::repertoire::Article> =
+            serde_json::from_slice(&bytes).unwrap_or_default();
+        let offers: Vec<crate::enligne::Offer> = articles
+            .iter()
+            .filter_map(|a| crate::repertoire::offer_of(a, name))
+            .collect();
+        let Some(kind) = crate::versions::Kind::ALL
+            .into_iter()
+            .find(|k| offers.iter().any(|o| o.kind == *k))
+        else {
+            self.carte.note = Some((false, tr("carte_own_nothing").to_owned()));
+            return;
+        };
+        self.online = Some(Online {
+            kind,
+            network: true,
+            remote: Some(Remote {
+                officine: name.to_owned(),
+                device: self.carte.me.clone(),
+                offers,
+                everyone: None,
+                own: true,
+            }),
+            ..Online::default()
+        });
     }
 
     /// Ask the directory for one officine's catalogue; it opens in « En
@@ -11989,6 +12024,7 @@ impl Session {
                         device: fiche.device.clone(),
                         offers,
                         everyone: None,
+                        own: false,
                     }),
                     ..Online::default()
                 });
@@ -15368,6 +15404,9 @@ struct Remote {
     /// Tout le répertoire à la fois : combien d'officines ont été lues,
     /// sur combien qui partagent, et combien n'ont pas répondu.
     everyone: Option<(usize, usize, usize)>,
+    /// Ce que cette officine-ci publie : son propre catalogue, tel qu'il
+    /// part.
+    own: bool,
 }
 
 /// Ce que le fil du répertoire rapporte.
@@ -64438,6 +64477,7 @@ impl App {
         let mut pick: Option<String> = None;
         let mut save = false;
         let mut sweep = false;
+        let mut preview = false;
         let me = session.carte.me.clone();
         let busy = session.carte.job.is_some();
         motif::panel(ui, rect, None, |ui| {
@@ -64684,6 +64724,13 @@ impl App {
                     if motif::button(ui, tr("carte_save")).clicked() {
                         save = true;
                     }
+                    // Ce qui part, exactement, avant de paraître.
+                    if motif::button(ui, tr("carte_own"))
+                        .on_hover_text(tr("carte_own_tooltip"))
+                        .clicked()
+                    {
+                        preview = true;
+                    }
                     if let Some((at, said)) = &session.carte.announced {
                         match said {
                             Ok(()) => dim(&trf("carte_announced", at), ui),
@@ -64766,6 +64813,9 @@ impl App {
             if let Some(note) = Self::sweep_note(session.carte_sweep(None, "", true)) {
                 session.carte.note = Some(note);
             }
+        }
+        if preview {
+            session.carte_preview_own(&config.pharmacy.name);
         }
         if save {
             session.carte_save(operator);
@@ -64985,6 +65035,7 @@ impl App {
                                 }
                                 t
                             }
+                            Some(r) if r.own => tr("online_scope_own").to_owned(),
                             // Pas appairée : qui elle est n'est pas prouvé.
                             Some(r) => trf("online_scope_remote", Self::remote_key(&r.device)),
                             None => tr(if online.network || !online.rows.is_empty() {
