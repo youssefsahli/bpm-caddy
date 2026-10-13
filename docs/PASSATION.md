@@ -127,9 +127,8 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   receveur regarde plus loin dans les envois de l'auteur ;
 - Options montre la durée de conservation du poste, pas celle que la
   base tient pour l'officine ;
-- dossier d'échange : un fichier `.bpmposte` de plus d'un gigaoctet
-  (le poste fondateur, avec ses pièces jointes) est sauté sans un mot —
-  à dire, ou à découper à l'écriture ; une réécriture périmée ne
+- dossier d'échange : un fichier `.bpmposte` se lit enregistrement par
+  enregistrement, sans borne de taille (fait le 13/10) ; une réécriture périmée ne
   s'accepte plus qu'en la retapant (un geste « garder le texte livré »
   par phrase reste à faire) ;
 - rein : un résultat « <15 » se lit au-dessous de 15, et une borne qui

@@ -141,8 +141,12 @@ pub struct Posts {
     journal: Journal,
 }
 
-/// Le plus gros fichier d'échange qu'un poste lit : un gigaoctet.
-const MOST_FOLDER_BYTES: u64 = 1 << 30;
+/// Le plus gros enregistrement qu'un fichier d'échange porte : celui que
+/// le protocole admet (une trame), et un peu de marge. Le fichier se lit
+/// enregistrement par enregistrement, si bien que sa taille n'est plus
+/// bornée — le poste fondateur, avec ses pièces, dépasse le gigaoctet —
+/// et que la mémoire, elle, l'est.
+const MOST_RECORD_BYTES: usize = 256 * 1024;
 
 impl Posts {
     /// Lire l'identité de ce poste, la clé des postes s'il en a une, et
@@ -535,29 +539,32 @@ impl Posts {
             if path == target || path.extension().and_then(|e| e.to_str()) != Some("bpmposte") {
                 continue;
             }
-            // Lu entier, donc borné avant : n'importe qui peut écrire
-            // dans un partage, et un fichier de plusieurs gigaoctets y
-            // emportait la mémoire du poste.
-            if entry
-                .metadata()
-                .map_or(true, |m| m.len() > MOST_FOLDER_BYTES)
-            {
-                continue;
-            }
-            let Ok(bytes) = std::fs::read(&path) else {
+            // **Lu enregistrement par enregistrement**, jamais entier :
+            // n'importe qui peut écrire dans un partage, et un fichier de
+            // plusieurs gigaoctets emportait la mémoire du poste — d'où une
+            // borne d'un gigaoctet, qui sautait sans un mot le fichier du
+            // poste fondateur et de ses pièces. Une longueur au-delà d'un
+            // enregistrement possible arrête la lecture de ce fichier.
+            let Ok(file) = std::fs::File::open(&path) else {
                 continue;
             };
-            let mut at = 0;
-            while at + 4 <= bytes.len() {
-                let len =
-                    u32::from_be_bytes([bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]])
-                        as usize;
-                at += 4;
-                let Some(chunk) = bytes.get(at..at + len) else {
+            let mut reader = std::io::BufReader::new(file);
+            let mut chunk = Vec::new();
+            loop {
+                use std::io::Read;
+                let mut head = [0_u8; 4];
+                if reader.read_exact(&mut head).is_err() {
                     break;
-                };
-                at += len;
-                if let Ok(record) = Record::decode(chunk) {
+                }
+                let len = u32::from_be_bytes(head) as usize;
+                if len > MOST_RECORD_BYTES {
+                    break;
+                }
+                chunk.resize(len, 0);
+                if reader.read_exact(&mut chunk).is_err() {
+                    break;
+                }
+                if let Ok(record) = Record::decode(&chunk) {
                     // A record of a stream this post's key opens must open
                     // under it; one a companion's share does not open is
                     // kept for the graph, from a post of the group only.

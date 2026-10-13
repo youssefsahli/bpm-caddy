@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Exchange folder: a `.bpmposte` file is read one record at a time, so a
+  file over one gigabyte — the founding post with its scans — syncs
+  instead of being skipped without a word, and memory stays bounded.
+
 ## [0.425.0] - 2026-10-13
 
 ### Changed
