@@ -19,7 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   « Quitter BPM-Caddy » to really quit); and BPM-Caddy starts with the
   session, in the notification area when the password is remembered,
   through the launcher when the launcher installed it, so updates still
-  apply. Launching it again reopens the running copy. A post left on
+  apply. Launching it again reopens the running copy. Closed to the
+  notification area without a remembered password, it reopens locked. A post left on
   makes its daily backup every day. On Linux the icon uses the
   StatusNotifierItem protocol (KDE; GNOME needs the AppIndicator
   extension), on Windows the notification area; on macOS, or with no

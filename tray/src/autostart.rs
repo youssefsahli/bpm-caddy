@@ -56,7 +56,9 @@ pub fn disable() -> Result<(), String> {
 
 /// Une ligne `Exec=` (spécification Desktop Entry) : chaque argument
 /// entre guillemets s'il le faut, `"`, `` ` ``, `$` et `\` échappés, et
-/// `%` doublé — sans quoi `%f` serait lu comme un code de champ.
+/// `%` doublé — sans quoi `%f` serait lu comme un code de champ. Puis,
+/// la valeur étant une chaîne de fichier de clés, chaque `\` doublé : le
+/// bureau défait ce niveau-là d'abord (GLib refuse `\$` tel quel).
 pub fn desktop_exec(command: &Command) -> String {
     let quote = |s: &str| -> String {
         let plain = !s.is_empty()
@@ -83,6 +85,14 @@ pub fn desktop_exec(command: &Command) -> String {
         .map(|a| quote(&a))
         .collect::<Vec<_>>()
         .join(" ")
+        .replace('\\', "\\\\")
+}
+
+/// L'entrée posée a-t-elle été désactivée **par le bureau** (ses
+/// réglages de démarrage la marquent `Hidden=true`) ? Ce choix-là est
+/// respecté : l'application ne la réécrit pas.
+pub fn disabled_by_desktop() -> bool {
+    imp::disabled_by_desktop()
 }
 
 /// Le fichier `.desktop` entier.
@@ -166,12 +176,19 @@ mod imp {
             .map(|c| c.join("autostart").join("bpm-caddy.desktop"))
     }
 
+    pub fn disabled_by_desktop() -> bool {
+        path()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .is_some_and(|text| {
+                text.lines().any(|l| {
+                    let l = l.trim();
+                    l == "Hidden=true" || l == "X-GNOME-Autostart-enabled=false"
+                })
+            })
+    }
+
     pub fn read() -> Option<String> {
         let text = std::fs::read_to_string(path()?).ok()?;
-        // Désactivée à la main par le bureau : comptée comme absente.
-        if text.lines().any(|l| l.trim() == "Hidden=true") {
-            return None;
-        }
         text.lines()
             .find_map(|l| l.strip_prefix("Exec="))
             .map(str::to_owned)
@@ -205,6 +222,10 @@ mod imp {
                 .join("LaunchAgents")
                 .join("fr.bpm-caddy.plist")
         })
+    }
+
+    pub fn disabled_by_desktop() -> bool {
+        false
     }
 
     pub fn read() -> Option<String> {
@@ -246,6 +267,10 @@ mod imp {
 
     fn wide(s: &str) -> Vec<u16> {
         s.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+
+    pub fn disabled_by_desktop() -> bool {
+        false
     }
 
     pub fn read() -> Option<String> {
@@ -338,7 +363,7 @@ mod tests {
         );
         assert_eq!(
             desktop_exec(&cmd("/home/a b/bpm $x", &["50%"])),
-            r#""/home/a b/bpm \$x" "50%%""#
+            r#""/home/a b/bpm \\$x" "50%%""#
         );
         assert_eq!(desktop_exec(&cmd("/x", &[""])), r#"/x """#);
     }

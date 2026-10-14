@@ -49,12 +49,15 @@ pub struct Image {
 
 /// Ce qui est envoyé à l'application : l'événement, puis `wake` — pour
 /// qu'une fenêtre ouverte redessine et le lise.
+// Sans icône (macOS), rien ne l'envoie.
+#[cfg_attr(not(any(target_os = "linux", windows)), allow(dead_code))]
 #[derive(Clone)]
 struct Out {
     tx: Sender<Event>,
     wake: Arc<dyn Fn() + Send + Sync>,
 }
 
+#[cfg_attr(not(any(target_os = "linux", windows)), allow(dead_code))]
 impl Out {
     fn send(&self, event: Event) {
         let _ = self.tx.send(event);
@@ -82,6 +85,14 @@ impl Tray {
     pub fn set_status(&self, status: &str) {
         imp::set_status(&self.inner, status);
     }
+}
+
+/// **Répondre aux messages du système adressés à ce fil**, sous Windows :
+/// à appeler régulièrement par un fil qui a eu des fenêtres et n'en fait
+/// plus tourner la boucle (la question « puis-je fermer la session ? »
+/// attendrait sinon). Ailleurs, rien.
+pub fn pump_messages() {
+    imp::pump_messages();
 }
 
 /// Le texte de l'infobulle : le titre, puis l'état s'il y en a un.
@@ -184,6 +195,8 @@ mod imp {
         inner.0.update(move |t| t.status = status);
     }
 
+    pub fn pump_messages() {}
+
     impl Drop for Inner {
         fn drop(&mut self) {
             self.0.shutdown();
@@ -204,6 +217,22 @@ mod imp {
     pub struct Inner {
         status: Arc<Mutex<Option<String>>>,
         stop: Arc<AtomicBool>,
+        thread: Option<std::thread::JoinHandle<()>>,
+    }
+
+    pub fn pump_messages() {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            DispatchMessageW, PeekMessageW, TranslateMessage, MSG, PM_REMOVE,
+        };
+        // SAFETY: a zeroed MSG is a valid out-parameter, and the messages
+        // are this thread's own, dispatched on it.
+        unsafe {
+            let mut msg: MSG = std::mem::zeroed();
+            while PeekMessageW(&mut msg, std::ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
+        }
     }
 
     pub fn spawn(image: Image, labels: Labels, out: Out) -> Option<Inner> {
@@ -211,12 +240,16 @@ mod imp {
         let stop = Arc::new(AtomicBool::new(false));
         let (ready_tx, ready_rx) = std::sync::mpsc::channel();
         let (st, sp) = (Arc::clone(&status), Arc::clone(&stop));
-        std::thread::Builder::new()
+        let thread = std::thread::Builder::new()
             .name("bpm-tray".into())
             .spawn(move || run(image, labels, out, st, sp, ready_tx))
             .ok()?;
         match ready_rx.recv_timeout(Duration::from_secs(5)) {
-            Ok(true) => Some(Inner { status, stop }),
+            Ok(true) => Some(Inner {
+                status,
+                stop,
+                thread: Some(thread),
+            }),
             _ => None,
         }
     }
@@ -304,8 +337,14 @@ mod imp {
     }
 
     impl Drop for Inner {
+        /// Attendre que le fil ait retiré l'icône : un programme qui se
+        /// termine avant laisse une icône fantôme jusqu'au passage de la
+        /// souris.
         fn drop(&mut self) {
             self.stop.store(true, Ordering::Relaxed);
+            if let Some(t) = self.thread.take() {
+                let _ = t.join();
+            }
         }
     }
 }
@@ -321,6 +360,8 @@ mod imp {
     }
 
     pub fn set_status(_inner: &Inner, _status: &str) {}
+
+    pub fn pump_messages() {}
 }
 
 #[cfg(test)]

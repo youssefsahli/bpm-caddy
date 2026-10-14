@@ -9330,6 +9330,24 @@ impl Session {
         ));
     }
 
+    /// **Ce qu'aucun écran ne suivra plus** — l'écran voilé, la fenêtre
+    /// rangée : une invitation ou une synchronisation lancée depuis la
+    /// fenêtre des postes ou du réseau s'arrête (son fil l'entend quand
+    /// le canal tombe, et une question posée à l'écran reçoit « non »),
+    /// et la synchronisation automatique des postes, arrêtée pour lui
+    /// laisser la porte, reprend.
+    #[cfg(feature = "sync")]
+    fn park_jobs(&mut self) {
+        if self.posts_window.as_ref().is_some_and(|w| w.job.is_some()) {
+            self.posts_window = None;
+            self.stop_posts_auto();
+            self.posts_auto_tried = false;
+        }
+        if self.net_window.as_ref().is_some_and(|w| w.job.is_some()) {
+            self.net_window = None;
+        }
+    }
+
     /// Ce que la synchronisation automatique a dit depuis la dernière
     /// image. Ce qu'elle range dans la base, l'écran le voit par
     /// `sync_if_others_wrote`, comme ce qu'écrit un poste sur la même
@@ -15411,12 +15429,18 @@ enum GraphDone {
 struct GraphWorker {
     asks: std::sync::mpsc::Sender<(u64, std::sync::Arc<Vec<Drug>>, CascadeSet, GraphAsk)>,
     done: std::sync::mpsc::Receiver<GraphDone>,
+    /// L'écran à repeindre — celui de la fenêtre ouverte **maintenant** :
+    /// une fenêtre rouverte depuis la zone de notification a un contexte
+    /// neuf, et l'ancien ne se repeint plus.
+    screen: std::sync::Arc<std::sync::Mutex<Option<egui::Context>>>,
 }
 
 impl GraphWorker {
     /// `ctx` : l'écran à repeindre quand une réponse arrive ; aucun dans
     /// un test.
     fn spawn(ctx: Option<egui::Context>) -> Self {
+        let screen = std::sync::Arc::new(std::sync::Mutex::new(ctx));
+        let ctx = std::sync::Arc::clone(&screen);
         let (asks, inbox) =
             std::sync::mpsc::channel::<(u64, std::sync::Arc<Vec<Drug>>, CascadeSet, GraphAsk)>();
         let (tell, done) = std::sync::mpsc::channel();
@@ -15463,12 +15487,12 @@ impl GraphWorker {
                         return;
                     }
                 }
-                if let Some(ctx) = &ctx {
+                if let Some(ctx) = ctx.lock().ok().and_then(|c| c.clone()) {
                     ctx.request_repaint();
                 }
             }
         });
-        Self { asks, done }
+        Self { asks, done, screen }
     }
 }
 
@@ -26096,6 +26120,10 @@ impl App {
         }
         let mut act: Option<PchatAct> = None;
         let configured = session.pchat_conf.is_some();
+        let waits_reference = !configured
+            && session.db.setting(PCHAT_GATEWAY_KEY).is_none()
+            && !crate::patientchat::gateway_host(BUILT_IN_GATEWAY).is_empty()
+            && !session.db.seeds_here();
         let confirm_close = session.pchat_confirm_close;
         motif::panel(ui, rect, Some(tr("pchat_title")), |ui| {
             let Some(chat) = &session.pchat else {
@@ -26114,6 +26142,13 @@ impl App {
             if !configured {
                 hint(ui);
                 ui.add_space(4.0);
+                // La passerelle livrée, la boîte pas encore tirée : c'est
+                // au poste de référence de le faire — un second tirage
+                // ici en ferait deux.
+                if waits_reference {
+                    ui.add(egui::Label::new(tr("pchat_waits_reference")).wrap());
+                    return;
+                }
                 ui.add(egui::Label::new(tr("pchat_not_set")).wrap());
                 if motif::button(ui, tr("pchat_setup")).clicked() {
                     act = Some(PchatAct::Setup);
@@ -26169,6 +26204,9 @@ impl App {
                         ),
                         (PchatAct::Give, tr("pchat_new").to_owned()),
                         (PchatAct::Close, tr("pchat_close").to_owned()),
+                        // La passerelle de l'officine, à changer ou à
+                        // éteindre (réglée vide) — livrée ou non.
+                        (PchatAct::Setup, tr("pchat_setup").to_owned()),
                     ];
                     let w = chars_wide(ui, 18.0).min(ui.available_width());
                     if let Some(a) =
@@ -26531,7 +26569,11 @@ impl App {
         let seen_gateway = session.db.setting(PCHAT_GATEWAY_KEY);
         let seen_secret = session.db.setting(PCHAT_SECRET_KEY);
         session.pchat_setup = Some(PchatSetup {
-            text: seen_gateway.clone().unwrap_or_default(),
+            // Rien de réglé : la passerelle livrée, écrite telle quelle —
+            // « Enregistrer » sans rien toucher ne l'éteint pas.
+            text: seen_gateway
+                .clone()
+                .unwrap_or_else(|| crate::patientchat::gateway_host(BUILT_IN_GATEWAY)),
             seen_gateway,
             seen_secret,
             error: None,
@@ -80445,8 +80487,13 @@ impl App {
         // Les lectures de la base se font au fil de la carte, démarré à
         // la première image ; ce qu'il a répondu entre deux images est
         // relevé ici.
-        if session.graph_worker.is_none() {
-            session.graph_worker = Some(GraphWorker::spawn(Some(ui.ctx().clone())));
+        match &session.graph_worker {
+            None => session.graph_worker = Some(GraphWorker::spawn(Some(ui.ctx().clone()))),
+            Some(w) => {
+                if let Ok(mut screen) = w.screen.lock() {
+                    *screen = Some(ui.ctx().clone());
+                }
+            }
         }
         session.poll_graph();
         let work = motif::visible_rect(ui);
@@ -90554,6 +90601,24 @@ impl App {
         }
     }
 
+    /// **La fenêtre rangée dans la zone de notification.** Ce qui était en
+    /// cours dans une fenêtre des postes ou du réseau s'arrête (personne
+    /// ne la voit plus, et la synchronisation automatique reprend), et
+    /// l'écran se voile si le mot de passe n'est pas mémorisé : fermer
+    /// fermait la session, et la rouvrir demandait le mot de passe — un
+    /// clic sur l'icône ne doit pas l'épargner.
+    pub fn hidden_to_tray(&mut self) {
+        self.window_closed();
+        #[cfg(feature = "sync")]
+        if let State::Unlocked(session) = &mut self.state {
+            session.park_jobs();
+        }
+        if !self.remember_password && self.veil.is_none() {
+            self.close_team_doc();
+            self.veil = Some(Veil::default());
+        }
+    }
+
     /// Une fenêtre nouvelle s'ouvre sur cette application (rouverte depuis
     /// la zone de notification) : son contexte egui est neuf, le style s'y
     /// réapplique et la barre du comptoir y reprend sa forme.
@@ -90595,6 +90660,8 @@ impl App {
         session.flush_date_edits();
         session.flush_telemetry();
         Self::keep_online_seen(&mut self.layout, session);
+        #[cfg(feature = "sync")]
+        session.park_jobs();
         self.close_team_doc();
         if self.config.bureau.en_service {
             self.veil = Some(Veil::default());
@@ -90642,6 +90709,9 @@ impl App {
     /// voilé, et toutes les secondes quand la fenêtre est fermée — `ctx`
     /// est alors un contexte sans fenêtre, qui ne dessine rien.
     pub fn background_tick(&mut self, ctx: &egui::Context) {
+        // Une passe de maintenance lancée avant : sa fin se relève ici
+        // aussi, sans quoi la relecture ci-dessous attendrait pour rien.
+        self.poll_maintenance(ctx);
         if let (State::Unlocked(session), None) = (&mut self.state, &self.maint_job) {
             session.sync_if_others_wrote();
         }
@@ -90694,10 +90764,12 @@ impl App {
             return;
         };
         let expected = session.password.clone();
+        let db_path = self.config.db_path();
         let Some(veil) = &mut self.veil else {
             return;
         };
         let mut open = false;
+        let mut reopen: Option<String> = None;
         egui::CentralPanel::default().show(ctx, |ui| {
             let top = ui.available_height() / 3.0;
             ui.add_space(top);
@@ -90726,6 +90798,10 @@ impl App {
                 {
                     if same_secret(&veil.password, &expected) {
                         open = true;
+                    } else if Db::open(&db_path, &veil.password).is_ok() {
+                        // Changé sur un autre poste : la base s'ouvre
+                        // avec le nouveau, plus la session d'avant.
+                        reopen = Some(std::mem::take(&mut veil.password));
                     } else {
                         veil.password.clear();
                         veil.error = Some(tr("veil_wrong").to_owned());
@@ -90743,6 +90819,16 @@ impl App {
         if open {
             self.veil = None;
             self.last_activity = Instant::now();
+        }
+        // Le mot de passe a changé ailleurs : la session d'avant ne lit
+        // plus la base. L'écran de verrouillage d'avant, le nouveau mot
+        // de passe déjà tapé — Entrée l'ouvre.
+        if let Some(password) = reopen {
+            self.veil = None;
+            self.state = State::Locked {
+                password,
+                error: Some(tr("veil_rekeyed").to_owned()),
+            };
         }
     }
 }

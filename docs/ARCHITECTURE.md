@@ -2948,28 +2948,50 @@ the user asked for opt-out) keeps it running:
   quit; `App::window_closed` keeps the layout and the day's counts.
 - **What runs with no window** is `App::background_tick`, every second
   from `wait_in_tray` with a window-less `egui::Context` (requests for a
-  repaint go nowhere): the clock and day rollover, the reread of other
+  repaint go nowhere): a finished maintenance pass, the clock and day rollover, the reread of other
   posts' writes, the posts', network's, map's and patient-messaging
   polls, the daily backup on a new day (`backup_if_new_day` — a post
   left on for weeks no longer backs up only at launch), and the
-  auto-lock.
+  auto-lock. On Windows the same loop pumps the thread's messages
+  (`bpm_tray::pump_messages`): winit keeps a hidden top-level window on
+  the main thread, and an unanswered `WM_QUERYENDSESSION` would hold up
+  sign-out and shutdown. With no handler running, winit's window hands
+  unknown messages to `DefWindowProc` and buffers its own events.
+- **Closing to the tray veils** when the password is not remembered
+  (`App::hidden_to_tray`): closing used to end the session, and a click
+  on the icon must not skip the password the next launch would have
+  asked. Veiling or hiding also **parks** a running posts or network
+  dialog job (`Session::park_jobs`): nothing draws its window any more,
+  so its finish — which restarts the posts' automatic sync — would never
+  be seen, and a question it asked would block its thread on the door.
+- **Wayland, minimized**: winit throttles redraws on frame callbacks,
+  which a minimized surface does not get, and it cannot unminimize or
+  focus a window there. A minimized (not closed) window therefore does
+  not answer the icon or a second launch until it is restored from the
+  taskbar. Closed to the tray, it does.
 - **Locking veils instead of closing the base** (`App::veil`): the
   session lives on under a password screen that draws nothing of it and
-  runs the same tick. `[bureau] en_service = false` restores the old
+  runs the same tick. A password changed on another post is tried on the
+  base (`Db::open`): it opens the old lock screen with the password
+  typed, since the veiled session can no longer read the rekeyed file. `[bureau] en_service = false` restores the old
   lock (the session dropped) and closing quits. Moving the base still
   locks for real.
 - **One copy per session while in service**: `instance::serve` writes
   `port token` beside `config.toml` (0600) and answers on 127.0.0.1; a
   second launch that reaches it with the token shows the first copy's
-  window and exits. A copy without an icon writes no file, so without a
-  tray nothing changes.
+  window and exits — or, launched with `--arriere-plan` (a session
+  restore plus the autostart entry), only checks it is there. A copy
+  without an icon writes no file, so without a tray nothing changes.
 - **Autostart** passes `--arriere-plan`: the window is not opened when
   the base unlocked silently (keyring) and an icon is in place;
   otherwise it opens as usual. The entry names the launcher when the
   launcher started this copy (`BPM_CADDY_LAUNCHER`, which it now sets,
   and it forwards its arguments), so updates still happen on a post
   that never closes; a copy started without the launcher does not
-  overwrite an entry that names it. Debug builds never write the entry.
+  overwrite an entry that names it, nor one the desktop's startup
+  settings disabled (`Hidden=true`). Debug builds never write the entry.
+- The drug map's worker repaints the window open **now**
+  (`GraphWorker::screen`): it is the one egui handle the session keeps.
 - Under the sweep hooks (`BPM_CADDY_START_VIEW`, `BPM_CADDY_FUZZ`,
   `BPM_CADDY_DB`) there is no icon, no instance file and no autostart:
   a screenshot run does not touch the desktop of whoever runs it.
@@ -2988,8 +3010,11 @@ autre groupe », when a group is heard, keeps its two clicks.
 at build time — a repository variable `release.yml` passes, empty until
 someone runs a gateway. While the officine has set none, it is the
 gateway, and the reference post (`seeds_here`, one drawer like one
-seeder) draws the box secret by itself. A gateway set in the tab
-replaces it; set empty, messaging is off.
+seeder) draws the box secret by itself; the other posts say they wait
+for it instead of offering a setup that would draw a second one. The
+setup window opens on the built-in gateway (saving it unchanged sets it
+explicitly) and is reachable from the « Accès… » menu once configured.
+A gateway set there replaces it; set empty, messaging is off.
 
 ## Releases
 

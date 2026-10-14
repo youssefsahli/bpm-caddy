@@ -187,6 +187,9 @@ mod instance {
     use std::sync::Arc;
     use std::time::Duration;
 
+    /// Le mot qui suit le jeton quand on ne demande pas la fenêtre.
+    const QUIET: &str = "present";
+
     pub fn file() -> PathBuf {
         bpm_caddy::config::Config::path().with_file_name("instance")
     }
@@ -213,9 +216,10 @@ mod instance {
         Some((port, token))
     }
 
-    /// Demander à la copie qui tourne de se montrer. Vrai si elle a
-    /// répondu.
-    pub fn call(file: &Path) -> bool {
+    /// Demander à la copie qui tourne de se montrer — ou, `quiet`, seulement
+    /// si elle est là (un second lancement à l'ouverture de session ne la
+    /// montre pas). Vrai si elle a répondu.
+    pub fn call(file: &Path, quiet: bool) -> bool {
         let Some((port, token)) = read(file) else {
             return false;
         };
@@ -224,7 +228,12 @@ mod instance {
             return false;
         };
         let _ = s.set_read_timeout(Some(Duration::from_secs(3)));
-        if writeln!(s, "{token}").is_err() {
+        let line = if quiet {
+            format!("{token} {QUIET}")
+        } else {
+            token
+        };
+        if writeln!(s, "{line}").is_err() {
             return false;
         }
         let mut answer = String::new();
@@ -258,9 +267,12 @@ mod instance {
                         continue;
                     };
                     let _ = BufReader::new(reader).take(128).read_line(&mut line);
-                    if line.trim() == expected {
-                        let _ = tx.send(bpm_tray::Event::Open);
-                        wake();
+                    let mut words = line.split_whitespace();
+                    if words.next() == Some(expected.as_str()) {
+                        if words.next() != Some(QUIET) {
+                            let _ = tx.send(bpm_tray::Event::Open);
+                            wake();
+                        }
                         let _ = (&stream).write_all(b"ouvert\n");
                     }
                 }
@@ -312,20 +324,23 @@ mod instance {
             let file = dir.join("instance");
             let (tx, rx) = std::sync::mpsc::channel();
             let held = serve(file.clone(), tx, Arc::new(|| {})).expect("serve");
-            assert!(call(&file));
+            assert!(call(&file, false));
             assert_eq!(
                 rx.recv_timeout(Duration::from_secs(2)),
                 Ok(bpm_tray::Event::Open)
             );
+            // Discret : elle répond, et ne se montre pas.
+            assert!(call(&file, true));
+            assert!(rx.recv_timeout(Duration::from_millis(300)).is_err());
             // Le bon port, un autre jeton : rien.
             let (port, _) = read(&file).unwrap();
             let forged = dir.join("forged");
             std::fs::write(&forged, format!("{port} 0000\n")).unwrap();
-            assert!(!call(&forged));
+            assert!(!call(&forged, false));
             assert!(rx.recv_timeout(Duration::from_millis(300)).is_err());
             drop(held);
             assert!(!file.exists());
-            assert!(!call(&file));
+            assert!(!call(&file, false));
             let _ = std::fs::remove_dir_all(&dir);
         }
     }
@@ -443,6 +458,10 @@ fn apply_autostart(on: bool) -> Result<(), String> {
     if !on {
         return autostart::disable();
     }
+    // Décoché dans les réglages de démarrage du bureau : son choix tient.
+    if autostart::disabled_by_desktop() {
+        return Ok(());
+    }
     let launcher = std::env::var_os("BPM_CADDY_LAUNCHER").map(std::path::PathBuf::from);
     let program = match &launcher {
         Some(l) => l.clone(),
@@ -511,7 +530,7 @@ impl eframe::App for Window<'_> {
             *slot = None;
         }
         if *self.end == End::Tray {
-            self.app.window_closed();
+            self.app.hidden_to_tray();
         }
     }
 }
@@ -578,11 +597,23 @@ fn wait_in_tray(app: &mut app::App, desk: &mut Desk) -> End {
     // Un contexte sans fenêtre : ce qui demande une image n'en obtient
     // pas, et rien d'autre n'en dépend.
     let quiet = egui::Context::default();
+    let mut next_tick = std::time::Instant::now();
     loop {
-        match desk.events.recv_timeout(std::time::Duration::from_secs(1)) {
+        // **Les messages de ce fil, sous Windows** : la boucle d'eframe
+        // garde sur lui une fenêtre cachée, à qui le système demande
+        // « puis-je fermer la session ? ». Sans réponse, la déconnexion
+        // et l'arrêt du poste attendent BPM-Caddy.
+        bpm_tray::pump_messages();
+        let wait = next_tick.saturating_duration_since(std::time::Instant::now());
+        match desk
+            .events
+            .recv_timeout(wait.min(std::time::Duration::from_millis(100)))
+        {
             Ok(bpm_tray::Event::Open) | Err(RecvTimeoutError::Disconnected) => return End::Tray,
             Ok(bpm_tray::Event::Quit) => return End::Quit,
+            Err(RecvTimeoutError::Timeout) if std::time::Instant::now() < next_tick => {}
             Err(RecvTimeoutError::Timeout) => {
+                next_tick = std::time::Instant::now() + std::time::Duration::from_secs(1);
                 app.background_tick(&quiet);
                 desk.follow(app);
                 // Plus d'icône (son hôte est parti pour de bon) ou plus
@@ -608,7 +639,7 @@ fn main() -> eframe::Result {
     }
     let background = args.iter().any(|a| a == BACKGROUND);
     // Une copie déjà en service : elle se montre, celle-ci s'arrête.
-    if !hooked() && instance::call(&instance::file()) {
+    if !hooked() && instance::call(&instance::file(), background) {
         return Ok(());
     }
 
@@ -617,8 +648,18 @@ fn main() -> eframe::Result {
     desk.follow(&app);
     let mut show = !(background && desk.can_hide(&app));
     loop {
-        if show && run_window(&mut app, &mut desk)? == End::Quit {
-            break;
+        if show {
+            match run_window(&mut app, &mut desk) {
+                Ok(End::Quit) => break,
+                Ok(End::Tray) => {}
+                // La fenêtre ne s'ouvre pas (le pilote graphique) : quitter
+                // proprement plutôt que tourner sans pouvoir se montrer.
+                Err(e) => {
+                    desk.tray = None;
+                    app.shutdown();
+                    return Err(e);
+                }
+            }
         }
         show = true;
         if wait_in_tray(&mut app, &mut desk) == End::Quit {

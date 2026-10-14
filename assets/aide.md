@@ -1763,8 +1763,14 @@ de l'équipe le trouvent. Pour qu'il le reste sans qu'on y pense :
   côté de l'horloge) : l'icône de BPM-Caddy y dit l'état du poste et les
   messages de patients non lus. Un clic rouvre la fenêtre ; son menu
   « Quitter BPM-Caddy » arrête vraiment. Relancer BPM-Caddy rouvre aussi
-  la fenêtre déjà en service, sans seconde copie. Fenêtre fermée depuis
-  plus que le délai d'inactivité, elle se rouvre verrouillée.
+  la fenêtre déjà en service, sans seconde copie. Elle se rouvre
+  verrouillée si le mot de passe n'est pas mémorisé, ou si elle est
+  restée fermée plus que le délai d'inactivité. Une invitation ou une
+  synchronisation lancée depuis une fenêtre des postes ou du réseau
+  s'arrête quand l'écran se verrouille ou que la fenêtre se range.
+  Sous Linux avec Wayland, une fenêtre **réduite** (et non fermée) ne
+  répond ni à l'icône ni à un second lancement : la rouvrir par la barre
+  des tâches.
 - **À l'ouverture de la session**, BPM-Caddy se lance, par le lanceur
   quand c'est lui qui l'a installé (la mise à jour passe d'abord) :
   rangé dans la zone de notification si le mot de passe est mémorisé,
