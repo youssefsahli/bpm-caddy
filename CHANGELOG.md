@@ -8,7 +8,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The post stays in service.** A new « Le poste en service » block in
+  Options › Base, on by default for each post (untick to opt out):
+  locking now veils the screen without closing the base, so patient
+  messaging, the posts' sync and the network keep running; closing the
+  window puts BPM-Caddy in the notification area (an icon with the
+  post's state and the unread patient messages; click to reopen,
+  « Quitter BPM-Caddy » to really quit); and BPM-Caddy starts with the
+  session, in the notification area when the password is remembered,
+  through the launcher when the launcher installed it, so updates still
+  apply. Launching it again reopens the running copy. A post left on
+  makes its daily backup every day. On Linux the icon uses the
+  StatusNotifierItem protocol (KDE; GNOME needs the AppIndicator
+  extension), on Windows the notification area; on macOS, or with no
+  tray, closing quits as before.
+
+- **A copy of the conversation** for the patient who asks for it (GDPR
+  article 15): « Imprimer la conversation », a new printable
+  (`conversation`), from the « Accès… » menu or beside « Donner
+  l'accès » once the access is closed.
+- **The gateway's connection log** (`--journal <dir>`, `--garde <days>`,
+  three months by default, six at most): one line per connection — time,
+  address, box, outcome — never a frame; one file a day, forgotten on
+  time.
+
 ### Changed
+
+- **The first invitation founds the group.** On a post outside any
+  group, « Inviter un poste… » and « Inviter un téléphone… » found the
+  group on this base and open the invitation: there is no separate
+  « Fonder » step. Likewise « Inviter une officine… » creates the
+  network on its first use.
+- **Patient messaging can ship ready.** A release can carry a gateway
+  (`BPM_CADDY_PASSERELLE`, a repository variable): until the officine
+  sets one, messaging uses it and the reference post draws the box
+  secret by itself, with nothing to set up. A gateway set in the tab
+  replaces it; set empty, messaging is off. Empty in this release.
 
 - **The patient page is no longer served by the gateway.** It is
   published on GitHub Pages from the public repository, at
@@ -31,17 +68,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a doctor for a serious adverse effect), the officine's opening hours,
   and the GDPR article 13 notice (controller, purpose, legal basis,
   recipients, retention, rights).
-
-### Added
-
-- **A copy of the conversation** for the patient who asks for it (GDPR
-  article 15): « Imprimer la conversation », a new printable
-  (`conversation`), from the « Accès… » menu or beside « Donner
-  l'accès » once the access is closed.
-- **The gateway's connection log** (`--journal <dir>`, `--garde <days>`,
-  three months by default, six at most): one line per connection — time,
-  address, box, outcome — never a frame; one file a day, forgotten on
-  time.
 
 ## [0.433.0] - 2026-10-14
 

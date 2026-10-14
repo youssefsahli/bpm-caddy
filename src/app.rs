@@ -360,6 +360,18 @@ const PCHAT_GATEWAY_KEY: &str = "patientchat_passerelle";
 /// fois, au premier réglage, par le poste qui règle.
 #[cfg(feature = "sync")]
 const PCHAT_SECRET_KEY: &str = "patientchat_secret";
+/// **La passerelle livrée** : écrite à la construction
+/// (`BPM_CADDY_PASSERELLE`, une variable du dépôt que lit
+/// `release.yml`), elle vaut tant que l'officine n'en a réglé aucune —
+/// la messagerie est alors prête sans réglage, et le poste de référence
+/// tire le secret de la boîte de lui-même. Une passerelle réglée la
+/// remplace ; réglée vide, la messagerie est éteinte. Vide à la
+/// construction : rien ne change, il faut la régler.
+#[cfg(feature = "sync")]
+const BUILT_IN_GATEWAY: &str = match option_env!("BPM_CADDY_PASSERELLE") {
+    Some(g) => g,
+    None => "",
+};
 
 /// **Les mentions de l'officine**, dans la base et non dans le fichier du
 /// poste : une ordonnance imprimée au comptoir et la même en
@@ -12962,9 +12974,31 @@ impl Session {
         self.pchat_conf_read = true;
         #[cfg(feature = "sync")]
         {
-            let gateway = self.db.setting(PCHAT_GATEWAY_KEY).unwrap_or_default();
-            let secret = self.db.setting(PCHAT_SECRET_KEY).unwrap_or_default();
-            let gateway = gateway.trim().to_owned();
+            let set = self.db.setting(PCHAT_GATEWAY_KEY);
+            let built_in = set.is_none();
+            let gateway = set
+                .unwrap_or_else(|| crate::patientchat::gateway_host(BUILT_IN_GATEWAY))
+                .trim()
+                .to_owned();
+            let mut secret = self.db.setting(PCHAT_SECRET_KEY).unwrap_or_default();
+            // La passerelle livrée, sans boîte encore : le poste de
+            // référence la tire, une fois — un seul poste tire, comme un
+            // seul sème, pour que deux postes n'en tirent pas deux.
+            if built_in
+                && !gateway.is_empty()
+                && !crate::patientchat::is_box_secret(&secret)
+                && self.db.seeds_here()
+            {
+                let mut drawn = [0u8; 32];
+                bpm_sync::Entropy::fill(&mut bpm_sync::OsEntropy, &mut drawn);
+                let hex: String = drawn.iter().map(|b| format!("{b:02x}")).collect();
+                let seen = (!secret.is_empty()).then_some(secret.as_str());
+                let (day, who) = (self.today.clone(), self.operator.clone());
+                let _ = self
+                    .db
+                    .set_setting(PCHAT_SECRET_KEY, &hex, seen, &day, &who);
+                secret = self.db.setting(PCHAT_SECRET_KEY).unwrap_or_default();
+            }
             self.pchat_conf =
                 (!gateway.is_empty() && secret.len() == 64).then_some((gateway, secret));
         }
@@ -18898,10 +18932,26 @@ fn theme_combo(ui: &mut egui::Ui, id_salt: &str, theme: &mut String) -> bool {
     motif::select(ui, id_salt, chars_wide(ui, 24.0), theme, &options).changed()
 }
 
+/// Ce qui se tape sur l'écran voilé.
+#[derive(Default)]
+struct Veil {
+    password: String,
+    error: Option<String>,
+}
+
 pub struct App {
     state: State,
     config: Config,
     last_activity: Instant,
+    /// **L'écran voilé** : verrouillé sans fermer la base, quand le
+    /// poste reste en service (`[bureau] en_service`). La session vit
+    /// dessous — la messagerie des patients, les postes et le réseau
+    /// continuent —, rien n'en est dessiné, et le mot de passe la rend.
+    veil: Option<Veil>,
+    /// Le jour de la dernière copie quotidienne lancée : un poste qui
+    /// reste ouvert la nuit (en service, dans la zone de notification)
+    /// en fait une chaque jour, et non une seule à son lancement.
+    backup_day: String,
     remember_password: bool,
     show_docs: bool,
     /// The left navigator dock: the list the active view is browsing
@@ -21516,6 +21566,8 @@ impl App {
             operator: config.ui.operator.clone(),
             config,
             last_activity: Instant::now(),
+            veil: None,
+            backup_day: String::new(),
             remember_password,
             show_docs,
             show_nav,
@@ -76723,8 +76775,10 @@ impl App {
         let busy = w.job.is_some();
         if !busy && w.invite_now {
             w.invite_now = false;
-            if w.summary.as_ref().is_some_and(|s| s.in_group) {
-                start = Some(Job::Invite {
+            // Hors groupe, l'invitation le fonde d'abord.
+            if w.summary.is_some() {
+                start = Some(Job::Seed {
+                    name: config.pharmacy.name.clone(),
                     port: config.postes.port,
                     for_device: w.invite_target.take(),
                     companion: false,
@@ -76901,14 +76955,24 @@ impl App {
                                 guide(ui, trf("posts_guide_group", group_online.join(", ")));
                             } else {
                                 guide(ui, tr("posts_guide_first").to_owned());
+                                // **L'invitation sème le groupe** : plus
+                                // de « fonder » à trouver avant d'inviter.
                                 ui.horizontal_wrapped(|ui| {
-                                    if motif::button_enabled(ui, tr("posts_found"), !busy)
-                                        .on_hover_text(tr("posts_found_tooltip"))
-                                        .clicked()
-                                    {
-                                        start = Some(Job::Found {
-                                            name: config.pharmacy.name.clone(),
-                                        });
+                                    for (label, tip, companion) in [
+                                        ("posts_invite", "posts_seed_tooltip", false),
+                                        ("posts_invite_phone", "posts_seed_phone_tooltip", true),
+                                    ] {
+                                        if motif::button_enabled(ui, tr(label), !busy)
+                                            .on_hover_text(tr(tip))
+                                            .clicked()
+                                        {
+                                            start = Some(Job::Seed {
+                                                name: config.pharmacy.name.clone(),
+                                                port: config.postes.port,
+                                                for_device: None,
+                                                companion,
+                                            });
+                                        }
                                     }
                                 });
                                 ui.add(
@@ -77338,6 +77402,9 @@ impl App {
                 Job::Invite {
                     companion: true,
                     ..
+                } | Job::Seed {
+                    companion: true,
+                    ..
                 }
             );
             if let Some(w) = &mut session.posts_window {
@@ -77590,9 +77657,11 @@ impl App {
                                 ui.add_space(4.0);
                             }
                             ui.add(egui::Label::new(tr("net_guide_far")).wrap());
+                            // **L'invitation sème le réseau** : la clé se
+                            // crée au premier « Inviter », sans geste à part.
                             ui.horizontal_wrapped(|ui| {
-                                if motif::button_enabled(ui, tr("net_create"), !busy)
-                                    .on_hover_text(tr("net_create_tooltip"))
+                                if motif::button_enabled(ui, tr("net_invite"), !busy)
+                                    .on_hover_text(tr("net_seed_tooltip"))
                                     .clicked()
                                 {
                                     create = true;
@@ -78015,10 +78084,18 @@ impl App {
             w.reread(&session.db);
         }
         if create {
-            w.note = Some(match crate::network::Net::create(&session.db) {
-                Ok(()) => (false, tr("net_created").to_owned()),
-                Err(e) => (true, e),
-            });
+            match crate::network::Net::create(&session.db) {
+                Ok(()) => {
+                    w.note = None;
+                    start = Some(Job::Invite {
+                        port: config.reseau.port,
+                        network: String::new(),
+                        nearby: false,
+                        expect: None,
+                    });
+                }
+                Err(e) => w.note = Some((true, e)),
+            }
             w.reread(&session.db);
         }
         if let Some((device, (name, address), was)) = save_peer {
@@ -82498,20 +82575,10 @@ impl App {
         {
             self.show_docs = !self.show_docs;
         }
-        if let State::Unlocked(session) = &mut self.state {
-            if motif::icon_button(ui, pict(motif::Pict::Lock), tr("toolbar_lock")).clicked() {
-                session.flush_date_edits();
-                // Les comptes du jour avant de fermer : la session part
-                // avec eux, et seule la fermeture de l'application les
-                // rendait.
-                session.flush_telemetry();
-                Self::keep_online_seen(&mut self.layout, session);
-                self.close_team_doc();
-                self.state = State::Locked {
-                    password: String::new(),
-                    error: None,
-                };
-            }
+        if matches!(self.state, State::Unlocked(_))
+            && motif::icon_button(ui, pict(motif::Pict::Lock), tr("toolbar_lock")).clicked()
+        {
+            self.lock();
         }
         if matches!(self.state, State::Unlocked(_))
             && motif::icon_button(
@@ -86292,6 +86359,14 @@ impl eframe::App for App {
             motif::apply_scale(ctx, self.config.ui.text_scale, self.config.density());
             self.applied_look = Some(look);
         }
+        // **Voilé, rien de la session ne se dessine** : seulement ce qui
+        // la tient en service, et le champ du mot de passe.
+        if self.veil.is_some() && matches!(self.state, State::Unlocked(_)) {
+            self.background_tick(ctx);
+            self.veil_screen(ctx);
+            ctx.request_repaint_after(Duration::from_secs(2));
+            return;
+        }
         // **Les favoris suivent la personne au poste** : l'opérateur
         // choisi dans le volet. Relus seulement quand il change.
         if let State::Unlocked(s) = &mut self.state {
@@ -86458,18 +86533,10 @@ impl eframe::App for App {
         if ctx.input(|i| !i.events.is_empty() || i.pointer.is_moving()) {
             self.last_activity = Instant::now();
         }
-        if let State::Unlocked(session) = &mut self.state {
-            let timeout = self.config.database.auto_lock_timeout_minutes;
-            if timeout > 0 && self.last_activity.elapsed() > Duration::from_secs(timeout * 60) {
-                // Don't lose an RDV date typed but never tabbed out of.
-                session.flush_date_edits();
-                session.flush_telemetry();
-                Self::keep_online_seen(&mut self.layout, session);
-                self.close_team_doc();
-                self.state = State::Locked {
-                    password: String::new(),
-                    error: None,
-                };
+        self.backup_if_new_day();
+        if matches!(self.state, State::Unlocked(_)) {
+            if self.idle_too_long() {
+                self.lock();
             }
             ctx.request_repaint_after(Duration::from_secs(30));
         }
@@ -88531,6 +88598,30 @@ impl eframe::App for App {
                                 // Les postes de l'officine, ce qui en est
                                 // propre à ce poste-ci. La clé et la liste
                                 // des postes sont dans la base.
+                                // **Le poste en service** : propre à ce
+                                // poste-ci, comme ce qui suit.
+                                ui.add_space(10.0);
+                                motif::section(ui, tr("opts_bureau"));
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(tr("opts_bureau_hint"))
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::text_dim()),
+                                    )
+                                    .wrap(),
+                                );
+                                motif::checkbox(
+                                    ui,
+                                    &mut editor.cfg.bureau.en_service,
+                                    tr("opts_bureau_service"),
+                                )
+                                .on_hover_text(tr("opts_bureau_service_tooltip"));
+                                motif::checkbox(
+                                    ui,
+                                    &mut editor.cfg.bureau.au_demarrage,
+                                    tr("opts_bureau_autostart"),
+                                )
+                                .on_hover_text(tr("opts_bureau_autostart_tooltip"));
                                 #[cfg(feature = "sync")]
                                 {
                                     ui.add_space(10.0);
@@ -90363,12 +90454,15 @@ impl eframe::App for App {
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
-        // Reopen where the workspace was left: the window's size and the
-        // widths the docks were dragged to.
-        if let State::Unlocked(session) = &mut self.state {
-            Self::keep_online_seen(&mut self.layout, session);
-        }
-        self.layout.save();
+        self.shutdown();
+    }
+}
+
+impl App {
+    /// **Quitter**, et seulement quitter : la fenêtre qui se range dans
+    /// la zone de notification passe par [`App::window_closed`].
+    pub fn shutdown(&mut self) {
+        self.window_closed();
         // No cursor to protect on the way out: allow the merge.
         self.close_team_doc();
         // Ce que ce poste a compté depuis le dernier versement. Sans
@@ -90439,6 +90533,216 @@ impl eframe::App for App {
                     }
                 }
             }
+        }
+    }
+
+    /// La fenêtre se ferme — pour de bon ou vers la zone de notification :
+    /// la forme du plan de travail est retenue, les comptes du jour
+    /// rendus. La session, elle, reste.
+    pub fn window_closed(&mut self) {
+        // Reopen where the workspace was left: the window's size and the
+        // widths the docks were dragged to.
+        if let State::Unlocked(session) = &mut self.state {
+            Self::keep_online_seen(&mut self.layout, session);
+            session.flush_date_edits();
+            session.flush_telemetry();
+        }
+        self.layout.save();
+        self.layout_saved = self.layout.clone();
+        if self.doc_dirty {
+            self.save_doc();
+        }
+    }
+
+    /// Une fenêtre nouvelle s'ouvre sur cette application (rouverte depuis
+    /// la zone de notification) : son contexte egui est neuf, le style s'y
+    /// réapplique et la barre du comptoir y reprend sa forme.
+    pub fn window_opened(&mut self) {
+        self.applied_look = None;
+        self.companion_was = None;
+        self.companion_sized = false;
+    }
+
+    /// Le poste reste-t-il en service fenêtre fermée ? Une base ouverte,
+    /// et le poste qui le veut.
+    pub fn in_service(&self) -> bool {
+        self.config.bureau.en_service && matches!(self.state, State::Unlocked(_))
+    }
+
+    /// Ce poste veut-il rester en service (`[bureau] en_service`) ?
+    pub fn keeps_service(&self) -> bool {
+        self.config.bureau.en_service
+    }
+
+    /// Voilé (verrouillé, base ouverte) ?
+    pub fn veiled(&self) -> bool {
+        self.veil.is_some()
+    }
+
+    /// Lancer BPM-Caddy à l'ouverture de session — ce que veut ce poste.
+    pub fn wants_autostart(&self) -> bool {
+        self.config.bureau.au_demarrage
+    }
+
+    /// **Verrouiller** : voiler si le poste reste en service, sinon fermer
+    /// la base comme avant.
+    fn lock(&mut self) {
+        let State::Unlocked(session) = &mut self.state else {
+            return;
+        };
+        // Don't lose an RDV date typed but never tabbed out of. Les
+        // comptes du jour aussi : la session peut partir avec eux.
+        session.flush_date_edits();
+        session.flush_telemetry();
+        Self::keep_online_seen(&mut self.layout, session);
+        self.close_team_doc();
+        if self.config.bureau.en_service {
+            self.veil = Some(Veil::default());
+        } else {
+            self.state = State::Locked {
+                password: String::new(),
+                error: None,
+            };
+        }
+    }
+
+    /// Le délai du verrouillage automatique est-il passé ?
+    fn idle_too_long(&self) -> bool {
+        let timeout = self.config.database.auto_lock_timeout_minutes;
+        timeout > 0 && self.last_activity.elapsed() > Duration::from_secs(timeout * 60)
+    }
+
+    /// La copie quotidienne, **au jour nouveau** : à l'ouverture de la base
+    /// elle part déjà (`spawn_daily_backup`), et ce premier jour est noté
+    /// ici sans relancer.
+    fn backup_if_new_day(&mut self) {
+        let State::Unlocked(session) = &self.state else {
+            self.backup_day.clear();
+            return;
+        };
+        if session.today.is_empty() || session.today == self.backup_day {
+            return;
+        }
+        let first = self.backup_day.is_empty();
+        self.backup_day.clone_from(&session.today);
+        if !first {
+            spawn_daily_backup(
+                self.config.db_path(),
+                session.password.clone(),
+                self.config.database.backups_keep,
+                self.config.scans.backups_keep,
+            );
+        }
+    }
+
+    /// **Ce qui tient le poste en service sans écran** : l'heure et le jour,
+    /// la relecture de ce que les autres postes ont écrit, les postes, le
+    /// réseau, la messagerie des patients, la copie du jour, et le
+    /// verrouillage au délai. Appelé à chaque image quand l'écran est
+    /// voilé, et toutes les secondes quand la fenêtre est fermée — `ctx`
+    /// est alors un contexte sans fenêtre, qui ne dessine rien.
+    pub fn background_tick(&mut self, ctx: &egui::Context) {
+        if let (State::Unlocked(session), None) = (&mut self.state, &self.maint_job) {
+            session.sync_if_others_wrote();
+        }
+        #[cfg(feature = "sync")]
+        if let State::Unlocked(session) = &mut self.state {
+            session.poll_posts(ctx, &self.config);
+            session.poll_pchat(&self.config);
+            session.poll_net_auto(ctx, &self.config);
+            session.poll_carte(ctx, &self.config);
+        }
+        #[cfg(not(feature = "sync"))]
+        let _ = ctx;
+        self.backup_if_new_day();
+        if self.veil.is_none() && self.idle_too_long() {
+            self.lock();
+        }
+    }
+
+    /// Ce que dit l'icône de la zone de notification : le poste, puis ce
+    /// qui attend — les messages des patients non lus, la passerelle.
+    pub fn tray_status(&self) -> String {
+        let State::Unlocked(session) = &self.state else {
+            return tr("tray_locked_closed").to_owned();
+        };
+        // Sans `sync`, rien ne s'ajoute à la première ligne.
+        #[cfg_attr(not(feature = "sync"), allow(unused_mut))]
+        let mut lines = vec![if self.veil.is_some() {
+            tr("tray_veiled").to_owned()
+        } else {
+            tr("tray_in_service").to_owned()
+        }];
+        #[cfg(feature = "sync")]
+        {
+            if session.pchat_wait.is_some() {
+                lines.push(tr("tray_pchat_waiting").to_owned());
+            }
+            let unread: usize = session.pchat_unread.iter().map(|(_, n)| n).sum();
+            if unread > 0 {
+                lines.push(trn("tray_pchat_unread", &[&unread]));
+            }
+        }
+        #[cfg(not(feature = "sync"))]
+        let _ = session;
+        lines.join("\n")
+    }
+
+    /// L'écran voilé : le nom du poste, ce qui continue, le mot de passe.
+    fn veil_screen(&mut self, ctx: &egui::Context) {
+        let State::Unlocked(session) = &self.state else {
+            return;
+        };
+        let expected = session.password.clone();
+        let Some(veil) = &mut self.veil else {
+            return;
+        };
+        let mut open = false;
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let top = ui.available_height() / 3.0;
+            ui.add_space(top);
+            ui.vertical_centered(|ui| {
+                ui.heading("BPM-Caddy");
+                ui.label(
+                    egui::RichText::new(tr("veil_note"))
+                        .size(motif::pt(ui, 11.5))
+                        .color(motif::text_dim()),
+                );
+                ui.add_space(motif::button_height(ui) / 2.0);
+                let field = motif::field(
+                    ui,
+                    chars_wide(ui, 28.0),
+                    egui::TextEdit::singleline(&mut veil.password)
+                        .password(true)
+                        .hint_text(motif::hint(tr("lock_password_hint"))),
+                );
+                if !ctx.wants_keyboard_input() {
+                    field.request_focus();
+                }
+                let submitted = ui.input(|i| i.key_pressed(egui::Key::Enter));
+                ui.add_space(motif::button_height(ui) / 4.0);
+                if (motif::button(ui, tr("lock_unlock")).clicked() || submitted)
+                    && !veil.password.is_empty()
+                {
+                    if same_secret(&veil.password, &expected) {
+                        open = true;
+                    } else {
+                        veil.password.clear();
+                        veil.error = Some(tr("veil_wrong").to_owned());
+                    }
+                }
+                if let Some(err) = &veil.error {
+                    ui.label(
+                        egui::RichText::new(err.as_str())
+                            .size(motif::pt(ui, 11.5))
+                            .color(motif::alert()),
+                    );
+                }
+            });
+        });
+        if open {
+            self.veil = None;
+            self.last_activity = Instant::now();
         }
     }
 }

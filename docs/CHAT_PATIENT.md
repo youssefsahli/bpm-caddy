@@ -167,6 +167,11 @@ les conditions d'utilisation qui vont avec.
 2. **Dans l'officine**, une fois : onglet « Messagerie » d'un dossier,
    « Régler la passerelle… », son nom de domaine. Le poste tire le secret
    de la boîte de l'officine ; le réglage vaut pour tous ses postes.
+   **Ou rien** : une passerelle tenue par l'éditeur s'écrit dans les
+   versions publiées (la variable `BPM_CADDY_PASSERELLE` du dépôt, que lit
+   `release.yml`) ; tant que l'officine n'en règle aucune, c'est elle, et
+   le poste de référence tire le secret de lui-même — la messagerie est
+   prête à l'installation. Réglée vide, elle est éteinte.
 3. **Pour chaque patient** : « Donner l'accès », puis le code montré ou
    imprimé.
 
@@ -180,7 +185,9 @@ main, requête scellée ouverte par le poste, réponse ouverte par la page.
 
 ## Limites connues
 
-* Un message n'arrive que si un poste est ouvert ; il n'y a pas de
+* Un message n'arrive que si un poste est **en service** — ouvert,
+  écran voilé ou fenêtre rangée dans la zone de notification, lancé à
+  l'ouverture de session (`[bureau]`, depuis la 0.434) ; il n'y a pas de
   notification sur le téléphone du patient (une notification passerait
   par un service tiers).
 * La page vit dans le navigateur du téléphone : effacer les données du

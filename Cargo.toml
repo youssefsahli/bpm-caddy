@@ -1,5 +1,5 @@
 [workspace]
-members = ["motif", "launcher", "sync", "mobile"]
+members = ["motif", "launcher", "sync", "mobile", "tray"]
 
 [package]
 name = "bpm-caddy"
@@ -61,6 +61,10 @@ rhai = { version = "1.25", default-features = false, features = ["std", "sync"] 
 # l'atelier, donc l'intégration continue le compile et le teste à
 # chaque fois : optionnel ne veut pas dire non surveillé.
 bpm-sync = { path = "sync", optional = true }
+# L'icône de la zone de notification et le lancement à l'ouverture de
+# session (`tray/`) : le poste reste en service fenêtre fermée. Sous
+# `desktop` — le compagnon Android n'en a que faire.
+bpm-tray = { path = "tray", optional = true }
 # **Joignable depuis Internet** (`[postes] internet`, éteint par défaut,
 # voir `src/reach.rs`) : demander au routeur d'ouvrir le port des postes
 # (UPnP IGD, sans tokio) et lire les adresses IPv6 de la machine. Sous
@@ -106,6 +110,7 @@ sync = [
 # builds without it, which is what the Android companion (`mobile/`)
 # links against. The two binaries require it.
 desktop = [
+    "dep:bpm-tray",
     "dep:eframe",
     "dep:motif",
     "dep:typst",

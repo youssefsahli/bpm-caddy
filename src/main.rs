@@ -1,6 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use bpm_caddy::{app, audit, config, date, db};
+use bpm_caddy::{app, audit, config, date, db, strings};
 use eframe::egui;
 
 /// The size to open at: the screenshot/e2e hook
@@ -157,18 +157,367 @@ fn run_audit(args: &[String]) -> i32 {
     0
 }
 
-fn main() -> eframe::Result {
-    // Lu et retiré de l'environnement avant tout fil et tout programme
-    // lancé : voir `app::env_password`.
-    let _ = app::env_password();
-    // Le relevé passe avant tout le reste : une fenêtre ne s'ouvre pas
-    // pour répondre à une question posée depuis un terminal.
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.first().map(String::as_str) == Some("audit") {
-        std::process::exit(run_audit(&args[1..]));
+/// Le drapeau du lancement à l'ouverture de session : la fenêtre ne
+/// s'ouvre pas, l'application attend dans la zone de notification — si
+/// la base s'est ouverte seule (mot de passe mémorisé) et qu'il y a une
+/// zone de notification. Sinon, la fenêtre, comme d'habitude.
+const BACKGROUND: &str = "--arriere-plan";
+
+/// Les crochets des passes automatiques (`smoke.sh`, `eyeball.sh`,
+/// `fuzz.sh`) : sous eux, ni icône, ni seconde copie détournée, ni
+/// lancement à l'ouverture de session écrit — une capture d'écran ne
+/// touche pas au bureau de celui qui la lance.
+fn hooked() -> bool {
+    ["BPM_CADDY_START_VIEW", "BPM_CADDY_FUZZ", "BPM_CADDY_DB"]
+        .iter()
+        .any(|k| std::env::var_os(k).is_some())
+}
+
+/// **Une seule copie par session**, quand elle est en service : une
+/// seconde copie lancée (un double clic sur le raccourci, le lancement à
+/// l'ouverture de session d'une copie déjà ouverte) demande à la
+/// première de se montrer et s'arrête. Par une porte sur `127.0.0.1`,
+/// dont le numéro et un jeton tiré au lancement sont écrits à côté de
+/// `config.toml` : sans le jeton, la porte ne fait rien.
+mod instance {
+    use std::io::{BufRead, BufReader, Read, Write};
+    use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
+    use std::path::{Path, PathBuf};
+    use std::sync::mpsc::Sender;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    pub fn file() -> PathBuf {
+        bpm_caddy::config::Config::path().with_file_name("instance")
     }
 
-    let options = eframe::NativeOptions {
+    /// 128 bits tirés des clés de hachage du système (`RandomState` les
+    /// tire du générateur de l'OS) : sans dépendance, et le binaire sans
+    /// réseau (`--features desktop`) l'a aussi.
+    fn token() -> String {
+        use std::hash::{BuildHasher, Hasher};
+        let half = || {
+            let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+            h.write_u64(u64::from(std::process::id()));
+            h.finish()
+        };
+        format!("{:016x}{:016x}", half(), half())
+    }
+
+    /// Le fichier : « port jeton ».
+    fn read(file: &Path) -> Option<(u16, String)> {
+        let text = std::fs::read_to_string(file).ok()?;
+        let mut it = text.split_whitespace();
+        let port = it.next()?.parse().ok()?;
+        let token = it.next()?.to_owned();
+        Some((port, token))
+    }
+
+    /// Demander à la copie qui tourne de se montrer. Vrai si elle a
+    /// répondu.
+    pub fn call(file: &Path) -> bool {
+        let Some((port, token)) = read(file) else {
+            return false;
+        };
+        let at = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
+        let Ok(mut s) = TcpStream::connect_timeout(&at, Duration::from_secs(1)) else {
+            return false;
+        };
+        let _ = s.set_read_timeout(Some(Duration::from_secs(3)));
+        if writeln!(s, "{token}").is_err() {
+            return false;
+        }
+        let mut answer = String::new();
+        let _ = BufReader::new(s).take(64).read_line(&mut answer);
+        answer.trim() == "ouvert"
+    }
+
+    /// La porte de cette copie, tant qu'elle vit.
+    pub struct Instance {
+        file: PathBuf,
+        token: String,
+    }
+
+    pub fn serve(
+        file: PathBuf,
+        tx: Sender<bpm_tray::Event>,
+        wake: Arc<dyn Fn() + Send + Sync>,
+    ) -> Option<Instance> {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).ok()?;
+        let port = listener.local_addr().ok()?.port();
+        let token = token();
+        write_private(&file, &format!("{port} {token}\n")).ok()?;
+        let expected = token.clone();
+        std::thread::Builder::new()
+            .name("bpm-instance".into())
+            .spawn(move || {
+                for stream in listener.incoming().flatten() {
+                    let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+                    let mut line = String::new();
+                    let Ok(reader) = stream.try_clone() else {
+                        continue;
+                    };
+                    let _ = BufReader::new(reader).take(128).read_line(&mut line);
+                    if line.trim() == expected {
+                        let _ = tx.send(bpm_tray::Event::Open);
+                        wake();
+                        let _ = (&stream).write_all(b"ouvert\n");
+                    }
+                }
+            })
+            .ok()?;
+        Some(Instance { file, token })
+    }
+
+    #[cfg(unix)]
+    fn write_private(file: &Path, text: &str) -> std::io::Result<()> {
+        use std::os::unix::fs::OpenOptionsExt;
+        if let Some(dir) = file.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(file)?;
+        f.write_all(text.as_bytes())
+    }
+
+    #[cfg(not(unix))]
+    fn write_private(file: &Path, text: &str) -> std::io::Result<()> {
+        if let Some(dir) = file.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        std::fs::write(file, text)
+    }
+
+    impl Drop for Instance {
+        /// Le fichier n'est retiré que s'il est encore le sien : une
+        /// autre copie a pu le réécrire depuis.
+        fn drop(&mut self) {
+            if read(&self.file).is_some_and(|(_, t)| t == self.token) {
+                let _ = std::fs::remove_file(&self.file);
+            }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn a_second_copy_reaches_the_first_with_its_token_only() {
+            let dir = std::env::temp_dir().join(format!("bpm-instance-{}", std::process::id()));
+            let file = dir.join("instance");
+            let (tx, rx) = std::sync::mpsc::channel();
+            let held = serve(file.clone(), tx, Arc::new(|| {})).expect("serve");
+            assert!(call(&file));
+            assert_eq!(
+                rx.recv_timeout(Duration::from_secs(2)),
+                Ok(bpm_tray::Event::Open)
+            );
+            // Le bon port, un autre jeton : rien.
+            let (port, _) = read(&file).unwrap();
+            let forged = dir.join("forged");
+            std::fs::write(&forged, format!("{port} 0000\n")).unwrap();
+            assert!(!call(&forged));
+            assert!(rx.recv_timeout(Duration::from_millis(300)).is_err());
+            drop(held);
+            assert!(!file.exists());
+            assert!(!call(&file));
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
+}
+
+/// Ce qui mène l'application de l'extérieur de sa fenêtre : l'icône de
+/// la zone de notification, une seconde copie lancée, le lancement à
+/// l'ouverture de session.
+struct Desk {
+    events: std::sync::mpsc::Receiver<bpm_tray::Event>,
+    tx: std::sync::mpsc::Sender<bpm_tray::Event>,
+    /// Le contexte de la fenêtre ouverte, pour la réveiller.
+    ctx: std::sync::Arc<std::sync::Mutex<Option<egui::Context>>>,
+    tray: Option<(bpm_tray::Tray, Option<instance::Instance>)>,
+    /// La dernière fois qu'une icône n'a pas pu se poser.
+    tray_failed: Option<std::time::Instant>,
+    status: String,
+    autostart: Option<bool>,
+    hooked: bool,
+}
+
+impl Desk {
+    fn new() -> Self {
+        let (tx, events) = std::sync::mpsc::channel();
+        Desk {
+            events,
+            tx,
+            ctx: Default::default(),
+            tray: None,
+            tray_failed: None,
+            status: String::new(),
+            autostart: None,
+            hooked: hooked(),
+        }
+    }
+
+    fn wake(&self) -> std::sync::Arc<dyn Fn() + Send + Sync> {
+        let slot = std::sync::Arc::clone(&self.ctx);
+        std::sync::Arc::new(move || {
+            if let Some(ctx) = slot.lock().ok().and_then(|g| g.clone()) {
+                ctx.request_repaint();
+            }
+        })
+    }
+
+    /// Une icône posée et une application en service : fermer la fenêtre
+    /// la range, au lieu de quitter.
+    fn can_hide(&self, app: &app::App) -> bool {
+        self.tray.is_some() && app.in_service()
+    }
+
+    /// Suivre ce que veut le poste : l'icône, son infobulle, le lancement
+    /// à l'ouverture de session. Appelé à chaque image et à chaque
+    /// seconde fenêtre fermée ; ne touche au système que sur un changement.
+    fn follow(&mut self, app: &app::App) {
+        if self.hooked {
+            return;
+        }
+        let wanted = app.keeps_service();
+        if !wanted {
+            self.tray = None;
+        } else if self.tray.is_none()
+            && self
+                .tray_failed
+                .is_none_or(|t| t.elapsed() > std::time::Duration::from_secs(60))
+        {
+            let icon = motif::icon();
+            let labels = bpm_tray::Labels {
+                title: "BPM-Caddy".to_owned(),
+                open: strings::tr("tray_open").to_owned(),
+                quit: strings::tr("tray_quit").to_owned(),
+            };
+            let image = bpm_tray::Image {
+                width: icon.width,
+                height: icon.height,
+                rgba: icon.rgba,
+            };
+            match bpm_tray::Tray::spawn(image, labels, self.tx.clone(), self.wake()) {
+                Some(tray) => {
+                    let door = instance::serve(instance::file(), self.tx.clone(), self.wake());
+                    self.tray = Some((tray, door));
+                    self.status.clear();
+                    self.tray_failed = None;
+                }
+                None => self.tray_failed = Some(std::time::Instant::now()),
+            }
+        }
+        if let Some((tray, _)) = &self.tray {
+            let status = app.tray_status();
+            if status != self.status {
+                tray.set_status(&status);
+                self.status = status;
+            }
+        }
+        let auto = app.wants_autostart();
+        if self.autostart != Some(auto) {
+            self.autostart = Some(auto);
+            // Une copie de développement ne s'inscrit pas au démarrage.
+            if !cfg!(debug_assertions) {
+                if let Err(e) = apply_autostart(auto) {
+                    eprintln!("lancement à l'ouverture de session : {e}");
+                }
+            }
+        }
+    }
+}
+
+/// Poser ou retirer le lancement à l'ouverture de session. **Le lanceur
+/// d'abord** quand c'est lui qui a lancé cette copie (il le dit par
+/// `BPM_CADDY_LAUNCHER`) : il met à jour avant d'ouvrir, ce que le poste
+/// resté allumé des semaines ne ferait jamais autrement. Une entrée qui
+/// nomme le lanceur n'est pas remplacée par une copie lancée sans lui.
+fn apply_autostart(on: bool) -> Result<(), String> {
+    use bpm_tray::autostart;
+    if !on {
+        return autostart::disable();
+    }
+    let launcher = std::env::var_os("BPM_CADDY_LAUNCHER").map(std::path::PathBuf::from);
+    let program = match &launcher {
+        Some(l) => l.clone(),
+        None => std::env::current_exe().map_err(|e| e.to_string())?,
+    };
+    let command = autostart::Command {
+        program,
+        args: vec![BACKGROUND.to_owned()],
+    };
+    match autostart::current() {
+        Some(now) if now == autostart::render(&command) => Ok(()),
+        Some(now) if launcher.is_none() && now.contains("launcher") => Ok(()),
+        _ => autostart::enable(&command),
+    }
+}
+
+/// Comment s'est fermée la fenêtre.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum End {
+    Quit,
+    Tray,
+}
+
+/// La fenêtre, prêtée à eframe le temps qu'elle est ouverte : l'
+/// application lui survit, dans la zone de notification.
+struct Window<'a> {
+    app: &'a mut app::App,
+    desk: &'a mut Desk,
+    end: &'a mut End,
+    quitting: bool,
+}
+
+impl eframe::App for Window<'_> {
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        self.app.raw_input_hook(ctx, raw_input);
+    }
+
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        while let Ok(event) = self.desk.events.try_recv() {
+            match event {
+                bpm_tray::Event::Open => {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+                }
+                bpm_tray::Event::Quit => {
+                    self.quitting = true;
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+            }
+        }
+        // Décidé au moment de la demande : l'icône peut avoir disparu
+        // depuis l'ouverture, et « Quitter » au menu de l'icône quitte.
+        if ctx.input(|i| i.viewport().close_requested()) {
+            *self.end = if !self.quitting && self.desk.can_hide(self.app) {
+                End::Tray
+            } else {
+                End::Quit
+            };
+        }
+        self.app.update(ctx, frame);
+        self.desk.follow(self.app);
+    }
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        if let Ok(mut slot) = self.desk.ctx.lock() {
+            *slot = None;
+        }
+        if *self.end == End::Tray {
+            self.app.window_closed();
+        }
+    }
+}
+
+fn native_options() -> eframe::NativeOptions {
+    eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size(window_size())
             .with_min_inner_size([960.0, 640.0])
@@ -185,11 +534,19 @@ fn main() -> eframe::Result {
             .with_maximized(std::env::var("BPM_CADDY_MAXIMIZED").is_ok())
             .with_icon(motif::icon())
             .with_title("BPM-Caddy"),
+        // La fenêtre se ferme et rend la main : l'application peut lui
+        // survivre (c'est le défaut d'eframe, écrit pour qu'on le lise).
+        run_and_return: true,
         ..Default::default()
-    };
+    }
+}
+
+/// Ouvrir la fenêtre sur `app`, jusqu'à ce qu'elle se ferme.
+fn run_window(app: &mut app::App, desk: &mut Desk) -> Result<End, eframe::Error> {
+    let mut end = End::Quit;
     eframe::run_native(
         "BPM-Caddy",
-        options,
+        native_options(),
         Box::new(|cc| {
             motif::apply(&cc.egui_ctx);
             // A font chosen in the options replaces the embedded family
@@ -199,7 +556,76 @@ fn main() -> eframe::Result {
                     eprintln!("police {} ignorée : {e}", path.display());
                 }
             }
-            Ok(Box::new(app::App::new()))
+            if let Ok(mut slot) = desk.ctx.lock() {
+                *slot = Some(cc.egui_ctx.clone());
+            }
+            app.window_opened();
+            Ok(Box::new(Window {
+                app,
+                desk,
+                end: &mut end,
+                quitting: false,
+            }))
         }),
-    )
+    )?;
+    Ok(end)
+}
+
+/// La fenêtre fermée, l'application en service : la tenir, toutes les
+/// secondes, jusqu'à ce qu'on la rouvre ou la quitte.
+fn wait_in_tray(app: &mut app::App, desk: &mut Desk) -> End {
+    use std::sync::mpsc::RecvTimeoutError;
+    // Un contexte sans fenêtre : ce qui demande une image n'en obtient
+    // pas, et rien d'autre n'en dépend.
+    let quiet = egui::Context::default();
+    loop {
+        match desk.events.recv_timeout(std::time::Duration::from_secs(1)) {
+            Ok(bpm_tray::Event::Open) | Err(RecvTimeoutError::Disconnected) => return End::Tray,
+            Ok(bpm_tray::Event::Quit) => return End::Quit,
+            Err(RecvTimeoutError::Timeout) => {
+                app.background_tick(&quiet);
+                desk.follow(app);
+                // Plus d'icône (son hôte est parti pour de bon) ou plus
+                // rien en service : la fenêtre revient plutôt que de
+                // laisser tourner un programme qu'on ne peut plus atteindre.
+                if !desk.can_hide(app) {
+                    return End::Tray;
+                }
+            }
+        }
+    }
+}
+
+fn main() -> eframe::Result {
+    // Lu et retiré de l'environnement avant tout fil et tout programme
+    // lancé : voir `app::env_password`.
+    let _ = app::env_password();
+    // Le relevé passe avant tout le reste : une fenêtre ne s'ouvre pas
+    // pour répondre à une question posée depuis un terminal.
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("audit") {
+        std::process::exit(run_audit(&args[1..]));
+    }
+    let background = args.iter().any(|a| a == BACKGROUND);
+    // Une copie déjà en service : elle se montre, celle-ci s'arrête.
+    if !hooked() && instance::call(&instance::file()) {
+        return Ok(());
+    }
+
+    let mut app = app::App::new();
+    let mut desk = Desk::new();
+    desk.follow(&app);
+    let mut show = !(background && desk.can_hide(&app));
+    loop {
+        if show && run_window(&mut app, &mut desk)? == End::Quit {
+            break;
+        }
+        show = true;
+        if wait_in_tray(&mut app, &mut desk) == End::Quit {
+            break;
+        }
+    }
+    desk.tray = None;
+    app.shutdown();
+    Ok(())
 }

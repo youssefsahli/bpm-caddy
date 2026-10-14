@@ -412,6 +412,8 @@ mod tests {
             // Les erreurs des couches du dessous, dites en clair
             // (`plain_error`) : ce fichier-ci nomme leurs phrases.
             include_str!("strings.rs"),
+            // Le binaire : les mots de l'icône de la zone de notification.
+            include_str!("main.rs"),
             // Le compagnon Android : son pont Rust et ses écrans Kotlin
             // lisent leurs libellés ici (`mobile_…`).
             include_str!("../mobile/src/lib.rs"),

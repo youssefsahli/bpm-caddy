@@ -437,6 +437,7 @@ pub struct Config {
     pub telemetry: TelemetryConfig,
     pub reseau: ReseauConfig,
     pub postes: PostesConfig,
+    pub bureau: BureauConfig,
     pub audit: AuditConfig,
     pub prescribers: PrescribersConfig,
     /// **Le fichier n'a pas pu se lire** : l'erreur, et rien n'est
@@ -607,6 +608,36 @@ impl Default for PostesConfig {
             a_la_fermeture: true,
             internet: false,
             relais: false,
+        }
+    }
+}
+
+/// **Le poste en service**, ce qui appartient à ce poste-ci : rester
+/// joignable — les patients à la passerelle, les autres postes, les
+/// téléphones de l'équipe — quand l'écran est verrouillé ou la fenêtre
+/// fermée, et se lancer à l'ouverture de la session.
+///
+/// Allumé par défaut, et c'est une direction choisie : un poste qui
+/// s'éteint avec sa fenêtre est un poste qui ne répond pas le soir, et la
+/// messagerie des patients n'arrive que sur un poste ouvert. Chacun se
+/// décoche ici, pour ce poste seul.
+#[derive(Deserialize, Serialize, Clone, PartialEq, Debug)]
+#[serde(default)]
+pub struct BureauConfig {
+    /// Garder le poste en service : le verrouillage cache l'écran sans
+    /// fermer la base, et fermer la fenêtre la range dans la zone de
+    /// notification (là où il y en a une ; sinon elle quitte, comme
+    /// avant). Éteint : verrouiller ferme la base, fermer quitte.
+    pub en_service: bool,
+    /// Lancer BPM-Caddy à l'ouverture de la session, fenêtre rangée.
+    pub au_demarrage: bool,
+}
+
+impl Default for BureauConfig {
+    fn default() -> Self {
+        Self {
+            en_service: true,
+            au_demarrage: true,
         }
     }
 }

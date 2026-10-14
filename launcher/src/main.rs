@@ -426,7 +426,16 @@ impl Launcher {
     }
 
     fn launch_app(&mut self, ctx: &egui::Context) {
-        match Command::new(bin_path()).spawn() {
+        // Ses arguments passent à l'application (`--arriere-plan`, du
+        // lancement à l'ouverture de session), et elle apprend qui l'a
+        // lancée : c'est le lanceur qu'elle inscrit au démarrage, pour que
+        // la mise à jour passe avant elle.
+        let mut command = Command::new(bin_path());
+        command.args(std::env::args_os().skip(1));
+        if let Ok(me) = std::env::current_exe() {
+            command.env("BPM_CADDY_LAUNCHER", me);
+        }
+        match command.spawn() {
             Ok(_) => {
                 self.launched = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);

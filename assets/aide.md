@@ -283,8 +283,10 @@ endroit ; il lit la réponse à sa visite suivante de la page.
 La conversation est **chiffrée de bout en bout** entre son téléphone et
 les postes de l'officine, sous une clé à lui que porte le code : la
 passerelle qui les met en relation ne la voit pas et ne garde rien. Un
-message ne passe que **pendant qu'un poste de l'officine est ouvert** ;
-sinon il attend sur le téléphone du patient, qui le renvoie seul. Ce
+message ne passe que **pendant qu'un poste de l'officine est en
+service** — ouvert, verrouillé ou rangé dans la zone de notification
+(voir « Le poste en service ») ; sinon il attend sur le téléphone du
+patient, qui le renvoie seul. Ce
 n'est pas un service d'urgence : sa page le dit en tête, avec les heures
 d'ouverture de l'officine et l'information due au patient sur ses
 données. Pas de pièce jointe : du texte seulement.
@@ -303,9 +305,11 @@ perdu ou changé) ; « Fermer l'accès » coupe la messagerie de ce
 patient, dont la page le lui dit. La conversation reste au dossier, et
 part avec lui.
 
-**À régler une fois pour l'officine** : l'adresse de la passerelle
-(« Régler la passerelle… », dans l'onglet), un serveur tenu par
-l'éditeur ou par une officine.
+**La passerelle** : livrée réglée quand l'éditeur en tient une — la
+messagerie est alors prête, sans réglage. Sinon, à régler une fois pour
+l'officine : son adresse (« Régler la passerelle… », dans l'onglet), un
+serveur tenu par une officine. Une passerelle réglée remplace celle qui
+est livrée ; réglée vide, la messagerie est éteinte.
 
 # Croisement
 
@@ -1451,8 +1455,8 @@ patient**, un dossier, le
 registre ou la caisse —, chiffrés et signés, sous une clé propre au
 réseau.
 
-Une officine **crée** le réseau, puis **invite** les autres : « Inviter
-une officine… » ouvre une invitation de 5 minutes et affiche un **code
+Une officine **invite** les autres — sa première invitation crée le
+réseau : « Inviter une officine… » ouvre une invitation de 5 minutes et affiche un **code
 d'invitation** (`K7QM-2XPA-9D3F-7H1Q@192.168.1.20:7742`), à transmettre
 par téléphone ou en personne. L'autre officine le colle dans
 « Rejoindre » ; rien d'autre à saisir ni à comparer. Code à usage
@@ -1565,11 +1569,14 @@ données.
 **Relier deux postes, pas à pas.** Un poste hors groupe indique dans
 Connexions les postes détectés et la marche à suivre :
 
-- Premier poste de l'officine : « Fonder le groupe sur cette base ». Sa
-  base est conservée, avec sa numérotation des dossiers.
-- Sur un poste du groupe : « Postes de l'officine… » puis « Inviter un
-  poste… » (ou, sur la carte, clic sur le poste non relié puis « Inviter
-  ce poste »). Un code de seize caractères s'affiche, valable 5 min.
+- Sur le premier poste de l'officine, ou un poste du groupe :
+  « Postes de l'officine… » puis « Inviter un poste… » (ou, sur la
+  carte, clic sur le poste non relié puis « Inviter ce poste »). Un code
+  de seize caractères s'affiche, valable 5 min. **La première
+  invitation fonde le groupe** sur la base de ce poste, qui est
+  conservée avec sa numérotation des dossiers : rien d'autre à faire
+  avant. « Inviter un téléphone… » fait de même pour le téléphone d'un
+  membre de l'équipe.
 - Sur le poste à relier : l'invitation apparaît d'elle-même dans
   Connexions. Y saisir le code — tirets et majuscules facultatifs —,
   puis « Rejoindre… ».
@@ -1742,6 +1749,37 @@ synchronisation), éléments à arbitrer (entre postes, et versions de
 fiches reçues d'autres officines), et activité depuis le lancement.
 « Tout synchroniser » contacte immédiatement les postes joignables et
 les officines du réseau.
+
+# Le poste en service
+
+Un poste **reste en service** tant que l'application tourne : les
+patients qui écrivent à l'officine, les autres postes et les téléphones
+de l'équipe le trouvent. Pour qu'il le reste sans qu'on y pense :
+
+- **Verrouiller** (bouton de la barre, ou le délai d'inactivité) cache
+  l'écran sans fermer la base : la messagerie, les postes et le réseau
+  continuent. Le mot de passe rouvre l'écran tel qu'il était.
+- **Fermer la fenêtre** la range dans la **zone de notification** (à
+  côté de l'horloge) : l'icône de BPM-Caddy y dit l'état du poste et les
+  messages de patients non lus. Un clic rouvre la fenêtre ; son menu
+  « Quitter BPM-Caddy » arrête vraiment. Relancer BPM-Caddy rouvre aussi
+  la fenêtre déjà en service, sans seconde copie. Fenêtre fermée depuis
+  plus que le délai d'inactivité, elle se rouvre verrouillée.
+- **À l'ouverture de la session**, BPM-Caddy se lance, par le lanceur
+  quand c'est lui qui l'a installé (la mise à jour passe d'abord) :
+  rangé dans la zone de notification si le mot de passe est mémorisé,
+  sur l'écran de verrouillage sinon. Une copie par session sur le poste.
+  La copie quotidienne de la base se fait aussi chaque jour sur un poste
+  qui reste allumé.
+
+Les deux se décochent pour ce poste seul, dans Options › Base, « Le poste
+en service ». Décoché, verrouiller ferme la base et fermer quitte, comme
+avant. Sans zone de notification (macOS, un bureau Linux qui n'en a pas),
+fermer quitte toujours.
+
+**Ce que cela change** : la base reste ouverte tant que le poste est en
+service, et sa clé en mémoire — c'est ce qui lui permet de répondre.
+Écran verrouillé, rien n'en est affiché. Quitter (ou décocher) la ferme.
 
 # Caisse
 

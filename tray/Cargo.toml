@@ -1,0 +1,19 @@
+[package]
+name = "bpm-tray"
+version = "0.433.0"
+edition = "2021"
+description = "BPM-Caddy sur le bureau : l'icône de la zone de notification et le lancement à l'ouverture de session."
+license-file = "../LICENSE"
+publish = false
+
+# Sous Linux, le protocole StatusNotifierItem par D-Bus (KDE, et GNOME
+# avec l'extension AppIndicator) : `ksni` sur `zbus` et `async-io`, déjà
+# dans l'arbre par `rfd` — ni GTK, ni tokio. Sous Windows, la zone de
+# notification par `tray-icon` (Win32 seul). Ailleurs, pas d'icône : la
+# fenêtre se ferme comme avant.
+[target.'cfg(target_os = "linux")'.dependencies]
+ksni = { version = "0.3", default-features = false, features = ["async-io", "blocking"] }
+
+[target.'cfg(windows)'.dependencies]
+tray-icon = { version = "0.19", default-features = false }
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Registry", "Win32_UI_WindowsAndMessaging"] }

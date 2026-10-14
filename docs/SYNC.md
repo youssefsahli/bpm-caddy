@@ -519,7 +519,8 @@ voyage — est le seul à semer le contenu livré.
 
 Options › Base › « Postes de l'officine… » : l'empreinte du poste, le
 groupe, les postes (nom, référence, retrait), ce qui attend d'être
-arbitré, et les gestes — fonder, rejoindre (qui **remplace** ce que le
+arbitré, et les gestes — inviter (la première invitation **fonde** le
+groupe, `Job::Seed`, depuis la 0.434), rejoindre (qui **remplace** ce que le
 poste contenait), inviter, synchroniser, quitter. La réserve est écrite
 avant le contenu.
 
@@ -1065,6 +1066,36 @@ et un numéro plus petit n'est pas un message plus ancien.
 supprimés avec lui. Un message renvoyé par la page après une coupure
 n'est rangé qu'une fois sur un poste (`uid`) ; reçu par deux postes
 avant qu'ils se soient vus, il est montré une fois.
+
+### 7.12 Le poste en service (0.434)
+
+Tout ce qui précède n'a lieu que **pendant que l'application tourne** :
+la porte des postes, l'annonce, les conversations automatiques, le
+réseau toutes les quinze minutes, l'attente à la passerelle des
+patients. Jusqu'ici, le verrouillage (quinze minutes d'inactivité par
+défaut) fermait la base et arrêtait tout, et fermer la fenêtre quittait :
+un poste laissé le soir ne répondait plus ni aux patients ni aux autres
+postes.
+
+`[bureau] en_service` (par poste, **allumé par défaut** — décision de
+l'officine : désactivable, non à activer) : le verrouillage voile
+l'écran sans fermer la base, fermer la fenêtre la range dans la zone de
+notification, et `[bureau] au_demarrage` lance l'application à
+l'ouverture de session (`--arriere-plan`). Le détail est dans
+`ARCHITECTURE.md`, « Le poste en service ». Ce que cela change ici :
+
+- **La clé reste en mémoire** tant que le poste est en service, écran
+  voilé compris : c'est ce qui lui permet de répondre. Le périmètre du
+  § 2 ne bouge pas (un poste ouvert l'avait déjà) ; le temps, si.
+  Décocher rend le verrouillage d'avant.
+- **Aucune porte de plus.** Les postes, le réseau et la passerelle
+  gardent leurs réglages ; le poste les tient simplement plus longtemps.
+  `[postes] internet` et les relais restent éteints par défaut : ouvrir
+  une porte sur Internet reste une décision de l'officine.
+- **Le groupe se sème à la première invitation** (`Job::Seed`) et le
+  réseau à la première « Inviter une officine… » : aucune clé n'est
+  créée sans invitation, donc aucun poste seul ne se met à journaliser
+  pour rien (le journal ne se compacte pas, § 8).
 
 ## 8. Travaux restants
 

@@ -701,6 +701,17 @@ pub enum Job {
         /// [`COMPANION`], jamais la clé entière.
         companion: bool,
     },
+    /// **Inviter, en fondant le groupe s'il n'existe pas encore** : le
+    /// premier poste n'a plus de geste « fonder » à trouver — sa
+    /// première invitation sème le groupe sur sa base, sous le nom
+    /// `name`, puis ouvre la porte comme [`Job::Invite`]. Un poste déjà
+    /// en groupe invite simplement.
+    Seed {
+        name: String,
+        port: u16,
+        for_device: Option<String>,
+        companion: bool,
+    },
     /// Rejoindre le groupe en composant l'adresse du poste qui invite.
     /// **Ce que ce poste contenait est remplacé.**
     /// Avec le ticket du code d'invitation quand on l'a : rien à
@@ -795,6 +806,23 @@ pub fn run(
         Job::Found { name } => {
             let n = posts.found(&db, name, today)?;
             Ok(trn("posts_done_founded", &[&n]))
+        }
+        Job::Seed {
+            name,
+            port,
+            for_device,
+            companion,
+        } => {
+            if !posts.in_group() {
+                posts.found(&db, name, today)?;
+            }
+            drop(db);
+            let invite = Job::Invite {
+                port: *port,
+                for_device: for_device.clone(),
+                companion: *companion,
+            };
+            run(&invite, path, password, today, tx, answers)
         }
         Job::Invite {
             port,

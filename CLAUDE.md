@@ -61,6 +61,11 @@ line in that test.
 - `launcher/` — `bpm-caddy-launcher`, auto-updates from GitHub Releases;
   does not depend on the app crate.
 - `motif/` — X/Motif theme for egui (palette, bevels, widgets, charts).
+- `tray/` — `bpm-tray`, the notification-area icon and the login
+  autostart entry; with `src/main.rs`, what keeps a post in service with
+  its window closed (`[bureau]`, ARCHITECTURE.md « Le poste en
+  service »). Its Windows half: `cargo clippy -p bpm-tray --target
+  x86_64-pc-windows-gnu`.
 - `mobile/` + `android/` — the Android companion (a post holding a
   *share* of the key: cards, agenda, planning, team chat, never a
   patient). `mobile/` is the UniFFI bridge over the library built
@@ -215,5 +220,6 @@ Headless under Xvfb with `unset WAYLAND_DISPLAY`, a throwaway
 
 Push a `v*` tag → `.github/workflows/release.yml` builds app + launcher
 for Linux/Windows/macOS. Asset names must match `APP_ASSET` in
-`launcher/src/main.rs`. Bump all three crate versions and move the
-`Unreleased` changelog section before tagging.
+`launcher/src/main.rs`. Bump every crate version (root, `launcher/`,
+`motif/`, `mobile/`, `tray/`) and move the `Unreleased` changelog
+section before tagging.

@@ -54,6 +54,11 @@ jobs:
       # Pas de cache ici : la tâche publie, et un cache empoisonné
       # passerait dans le binaire de chaque officine.
       - name: Build
+        # La passerelle de la messagerie des patients livrée avec
+        # l'application (`BUILT_IN_GATEWAY`) : une variable du dépôt,
+        # vide tant que personne n'en tient une — il faut alors la régler.
+        env:
+          BPM_CADDY_PASSERELLE: ${{ vars.BPM_CADDY_PASSERELLE }}
         run: cargo build --release --workspace --target ${{ matrix.target }}
       - name: Rename artifacts
         shell: bash
