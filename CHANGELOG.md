@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.433.0] - 2026-10-14
+
 ### Added
 
 - **Patient messaging** (« Messagerie » tab of the patient file): the
