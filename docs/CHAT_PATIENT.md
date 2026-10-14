@@ -22,7 +22,7 @@ conversation. D'où un code par patient, qu'on peut fermer et remplacer.
 ## Ce qui a été construit
 
 **Côté patient : une page, pas une application.** Le code QR ouvre
-`https://youssefsahli.github.io/bpm-caddy/<empreinte>/#b=<boîte>&k=<clé>&p=<passerelle>`.
+`https://bpmcaddy.github.io/<empreinte>/#b=<boîte>&k=<clé>&p=<passerelle>`.
 Le fragment (après `#`) n'est envoyé à personne par le navigateur : la
 clé ne quitte pas le téléphone, et GitHub ne sait pas quelle passerelle
 la page appelle.
@@ -38,8 +38,13 @@ vérifie que le navigateur chiffre comme le poste (des valeurs connues,
 que `patientchat::tests` tient des deux côtés).
 
 **La page est publiée à part de la passerelle**, sur GitHub Pages, depuis
-le dépôt public (`.github/workflows/page.yml`) : chaque version dans un
-dossier nommé par son empreinte, qui ne change plus une fois publié.
+le dépôt public (`.github/workflows/page.yml`), sous l'adresse d'une
+organisation qui ne sert rien d'autre (`bpmCaddy`, dépôt
+`bpmcaddy.github.io`, où le workflow pousse par une clé de déploiement
+limitée à ce dépôt) : la page garde la clé et la conversation dans le
+navigateur, que tout site de la même origine pourrait lire. Aucun autre
+site ne doit jamais être publié dans cette organisation. Chaque version y a son
+dossier, nommé par son empreinte, qui ne change plus une fois publié.
 Qui tient la passerelle ne touche donc pas au code qui chiffre — c'était
 la seule façon pour lui de lire un message. Chaque poste compare toutes
 les six heures la page publiée à celle qu'il livre, octet pour octet
@@ -199,12 +204,6 @@ main, requête scellée ouverte par le poste, réponse ouverte par la page.
   tous ; GitHub pourrait en servir une autre à un seul téléphone, que
   les postes ne verraient pas. La page vient du dépôt public : ce qu'elle
   fait se lit, et chaque version en reste dans l'historique.
-* **La page partage son origine** (`youssefsahli.github.io`) avec les
-  autres sites GitHub Pages de ce compte : leur code pourrait lire ce
-  que la page garde sur le téléphone (clé et conversation). Tant que la
-  page est publiée là, aucun autre site de ce compte ne doit servir de
-  code qu'on ne maîtrise pas ; le remède est un compte ou une
-  organisation GitHub dédiés à la page (`PAGE_SITE`).
 * Les fichiers d'un jour du journal ne sont effacés qu'au premier
   appel d'un jour nouveau, ou au lancement : une passerelle que personne
   n'appelle les garde jusque-là.

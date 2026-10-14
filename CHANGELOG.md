@@ -11,8 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **The patient page is no longer served by the gateway.** It is
-  published on GitHub Pages from the public repository, each version in
-  a folder named by its hash, and the QR link names the gateway in its
+  published on GitHub Pages from the public repository, at
+  https://bpmcaddy.github.io/ (an organisation that serves nothing else,
+  so no other site shares the origin where the phone keeps the key),
+  each version in a folder named by its hash, and the QR link names the gateway in its
   fragment. Whoever runs a gateway can no longer serve a page that reads
   messages before encrypting them; it only relays sealed frames, and
   accepts WebSockets only from the published page's origin. Each post

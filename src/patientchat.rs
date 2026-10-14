@@ -218,7 +218,7 @@ pub fn is_box_secret(text: &str) -> bool {
 /// des trames scellées. Chaque version de la page a son dossier, nommé
 /// par son empreinte (`page_hash`), qui ne change plus une fois publié —
 /// un code imprimé l'an passé ouvre la page de l'an passé.
-pub const PAGE_SITE: &str = "https://youssefsahli.github.io/bpm-caddy/";
+pub const PAGE_SITE: &str = "https://bpmcaddy.github.io/";
 
 /// La page, telle que ce logiciel la livre : ce qu'un poste compare à
 /// ce que `PAGE_SITE` sert (`patientpost::check_page`).

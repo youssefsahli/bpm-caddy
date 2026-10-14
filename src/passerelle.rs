@@ -1295,14 +1295,14 @@ mod tests {
             let (head, _) = get(web, path, "");
             assert!(head.starts_with("HTTP/1.1 404"), "{path}: {head}");
         }
-        let (head, _) = open_ws(web, &"0".repeat(32), "https://youssefsahli.github.io");
+        let (head, _) = open_ws(web, &"0".repeat(32), "https://bpmcaddy.github.io");
         assert!(head.starts_with("HTTP/1.1 101"), "{head}");
         let (head, _) = open_ws(web, &"0".repeat(32), "https://ailleurs.example");
         assert!(head.starts_with("HTTP/1.1 403"), "{head}");
         let (head, _) = open_ws(
             web,
             &"0".repeat(32),
-            "https://youssefsahli.github.io.ailleurs.example",
+            "https://bpmcaddy.github.io.ailleurs.example",
         );
         assert!(head.starts_with("HTTP/1.1 403"), "{head}");
         let (head, _) = get(web, "/ws/court", "");

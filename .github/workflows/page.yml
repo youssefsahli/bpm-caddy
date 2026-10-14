@@ -2,6 +2,12 @@
 # de la passerelle (src/patientchat.rs, `PAGE_SITE`) : qui tient une
 # passerelle ne touche pas au code qui chiffre.
 #
+# Publiée sur https://bpmcaddy.github.io/, le dépôt bpmCaddy/bpmcaddy.github.io
+# d'une organisation qui ne sert rien d'autre : la page garde la clé et la
+# conversation du patient dans le navigateur, et tout site de la même
+# origine pourrait les lire. Ce workflow y pousse le site par une clé de
+# déploiement (secret PAGE_DEPLOY_KEY), qui n'écrit que dans ce dépôt.
+#
 # Chaque version de la page a son dossier, nommé par son empreinte — celle
 # que `patientchat::page_hash` calcule, et un test tient la recette ici.
 # Le site est refait en entier depuis chaque étiquette et `main` : un
@@ -19,8 +25,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: page
@@ -61,16 +65,20 @@ jobs:
           </html>
           HTML
           ls site
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Publier sur bpmcaddy.github.io
+        env:
+          KEY: ${{ secrets.PAGE_DEPLOY_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/page
+          chmod 600 ~/.ssh/page
+          # GitHub's published host key, not a first-use scan.
+          echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' >> ~/.ssh/known_hosts
+          cd site
+          git init -q -b main
+          git add -A
+          git -c user.name=bpm-caddy -c user.email=bpm-caddy@users.noreply.github.com \
+            commit -q -m "Page de la messagerie, depuis youssefsahli/bpm-caddy@$GITHUB_SHA"
+          GIT_SSH_COMMAND='ssh -i ~/.ssh/page -o IdentitiesOnly=yes' \
+            git push -q -f git@github.com:bpmCaddy/bpmcaddy.github.io.git main
