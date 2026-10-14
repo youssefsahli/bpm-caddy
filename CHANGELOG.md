@@ -10,6 +10,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Patient messaging** (« Messagerie » tab of the patient file): the
+  officine gives a patient a QR code — shown at the counter or printed on
+  an A5 sheet — that opens a web page where the patient writes to the
+  officine from their phone, with nothing to install. Messages arrive in
+  the tab on every post, with an unread count on the tab; the officine
+  answers there and the patient reads the answer on their next visit.
+  End-to-end encrypted (AES-256-GCM, keys from HKDF over a per-patient
+  key the QR code carries in its fragment): the browser's WebCrypto is
+  checked against known answers before it sends anything. Messages pass
+  only while a post is open; otherwise they wait on the patient's phone,
+  and the page says so. One code per patient: « Nouveau code » closes the
+  previous one, « Fermer l'accès » stops it, and the page tells the
+  patient. Text only, no attachments; the page says it is not an
+  emergency service.
+- `bpm-passerelle`, the stateless gateway between a patient's page and
+  the officine's posts (a browser can only open a secure WebSocket, which
+  needs a domain and a certificate the posts do not have): it serves the
+  page, holds the posts waiting at an officine's box, and passes
+  encrypted frames without reading or keeping them. Runs behind a TLS
+  proxy; set once per officine (« Régler la passerelle… »).
 - « Textes imprimés » lists the rewrites that no longer aim at any
   phrase — a label changed or a phrase removed by a version — under
   « Réécritures sans phrase », with their text, and removes them in two

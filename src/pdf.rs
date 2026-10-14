@@ -1283,7 +1283,7 @@ const GUIDE_SECTIONS: &[(&str, &str)] = &[
     ),
     (
         "Le dossier patient",
-        "Le bandeau du haut porte l'identité, les traitements rattachés au référentiel médicaments (une puce par médicament, cliquable), et les éléments relevés automatiquement : les interactions entre ces traitements, et la revue d'ordonnance. En dessous, huit onglets : les entretiens, le fil du dossier, le carnet de vaccination, la biologie, les locations de matériel, la conciliation de sortie, les pièces numérisées et la feuille de l'infirmier(ère).",
+        "Le bandeau du haut porte l'identité, les traitements rattachés au référentiel médicaments (une puce par médicament, cliquable), et les éléments relevés automatiquement : les interactions entre ces traitements, et la revue d'ordonnance. En dessous, neuf onglets : les entretiens, le fil du dossier, le carnet de vaccination, la biologie, les locations de matériel, la conciliation de sortie, les pièces numérisées, la feuille de l'infirmier(ère) et la messagerie du patient.",
     ),
     (
         "Créer et suivre un entretien",
@@ -1612,6 +1612,117 @@ fn infirmier_values(data: &NurseData, pharmacy: &PharmacyConfig) -> Vec<(&'stati
             format!("#{}", typst_str(&pharmacy.phone)),
         ),
         ("{{MENTION}}", mention),
+    ]
+}
+
+/// Ce que la feuille d'accès à la messagerie porte : le dossier et le
+/// lien du code, qui tient la clé du patient.
+pub struct ChatAccessData<'a> {
+    pub patient: &'a Patient,
+    /// Déjà en français.
+    pub today: &'a str,
+    /// `patientchat::link` : la page, la boîte, la clé.
+    pub link: &'a str,
+}
+
+/// **L'accès à la messagerie**, à remettre au patient : le code QR qui
+/// ouvre sa conversation avec l'officine.
+pub fn open_messagerie(
+    data: &ChatAccessData,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        fill(
+            &template_source("messagerie", template_path)?,
+            &messagerie_values(data, pharmacy),
+        ),
+        &format!("messagerie_{}", data.patient.id),
+    )
+}
+
+const MARKERS_MESSAGERIE: &[&str] = &[
+    "{{PATIENT_NAME}}",
+    "{{DATE}}",
+    "{{QR}}",
+    "{{LINK}}",
+    "{{PHARMACY_NAME}}",
+    "{{PHARMACY_PHONE}}",
+];
+
+const DEFAULT_MESSAGERIE_TEMPLATE: &str = r##"
+#set page(paper: "a5", margin: 1.4cm)
+#set text(size: 11pt, lang: "fr", hyphenate: true)
+
+#align(center)[#text(16pt, weight: "bold")[Écrire à votre pharmacie]]
+#v(1mm)
+#align(center)[#text(11pt)[{{PHARMACY_NAME}} — {{PHARMACY_PHONE}}]]
+#v(4mm)
+
+Scannez ce code avec l'appareil photo de votre téléphone : il ouvre la
+messagerie de la pharmacie, à votre nom. Vos messages sont chiffrés de bout
+en bout entre votre téléphone et la pharmacie.
+
+#v(3mm)
+#align(center)[{{QR}}]
+#v(2mm)
+#align(center)[#text(7pt, fill: luma(90))[{{LINK}}]]
+#v(4mm)
+
+- *Ce n'est pas un service d'urgence.* La pharmacie lit vos messages quand
+  elle est ouverte. En cas d'urgence, appelez le 15 (ou le 112).
+- *Ce code est à vous.* Il donne accès à votre conversation : ne le
+  confiez pas. Perdu ? Demandez-en un nouveau, l'ancien sera fermé.
+
+#v(1fr)
+#text(9pt, fill: luma(90))[{{PATIENT_NAME}} — remis le {{DATE}}]
+"##;
+
+/// **Un code QR en Typst** : ses modules sombres en carrés, avec la
+/// marge de quatre modules que la norme demande, sur fond blanc. Vide si
+/// le texte ne tient pas dans un code.
+pub fn qr_markup(text: &str, side_mm: f32) -> String {
+    let Ok(qr) = qrcodegen::QrCode::encode_text(text, qrcodegen::QrCodeEcc::Medium) else {
+        return String::new();
+    };
+    let n = qr.size();
+    let cell = side_mm / (n + 8) as f32;
+    let mut dark = String::new();
+    for y in 0..n {
+        for x in 0..n {
+            if qr.get_module(x, y) {
+                dark.push_str(&format!("({},{}),", x + 4, y + 4));
+            }
+        }
+    }
+    // A hair wider than the step: two dark neighbours do not show the
+    // paper between them.
+    format!(
+        "#box(width: {side_mm:.2}mm, height: {side_mm:.2}mm, fill: white)[#for c in ({dark}) {{ place(dx: c.at(0) * {cell:.4}mm, dy: c.at(1) * {cell:.4}mm, rect(width: {w:.4}mm, height: {w:.4}mm, fill: black, stroke: none)) }}]",
+        w = cell + 0.02
+    )
+}
+
+fn messagerie_values(
+    data: &ChatAccessData,
+    pharmacy: &PharmacyConfig,
+) -> Vec<(&'static str, String)> {
+    vec![
+        (
+            "{{PATIENT_NAME}}",
+            format!("#{}", typst_str(&data.patient.full_name())),
+        ),
+        ("{{DATE}}", format!("#{}", typst_str(data.today))),
+        ("{{QR}}", qr_markup(data.link, 60.0)),
+        ("{{LINK}}", format!("#{}", typst_str(data.link))),
+        (
+            "{{PHARMACY_NAME}}",
+            format!("#{}", typst_str(&pharmacy.name)),
+        ),
+        (
+            "{{PHARMACY_PHONE}}",
+            format!("#{}", typst_str(&pharmacy.phone)),
+        ),
     ]
 }
 
@@ -5345,6 +5456,12 @@ pub const DOCS: &[Doc] = &[
         default: DEFAULT_INFIRMIER_TEMPLATE,
     },
     Doc {
+        key: "messagerie",
+        label: "tpl_target_messagerie",
+        markers: MARKERS_MESSAGERIE,
+        default: DEFAULT_MESSAGERIE_TEMPLATE,
+    },
+    Doc {
         key: "traitement",
         label: "tpl_target_traitement",
         markers: MARKERS_TRAITEMENT,
@@ -5821,6 +5938,14 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
         }
         // La feuille de l'infirmier(ère) montre ce qu'elle range : des
         // prises placées, une à la demande, une hebdomadaire.
+        "messagerie" => messagerie_values(
+            &ChatAccessData {
+                patient: &patient,
+                today: "24/08/2026",
+                link: "https://messagerie.example.fr/#b=00112233445566778899aabbccddeeff&k=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+            },
+            &pharmacy,
+        ),
         "infirmier" => {
             let line = |name: &str, poso: &str| {
                 (name.to_owned(), poso.to_owned(), crate::intake::read(poso))

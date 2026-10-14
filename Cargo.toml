@@ -68,6 +68,18 @@ bpm-sync = { path = "sync", optional = true }
 igd-next = { version = "0.17", optional = true }
 if-addrs = { version = "0.15", optional = true }
 socket2 = { version = "0.6", optional = true }
+# **La messagerie des patients** (`src/patientchat.rs`, `src/passerelle.rs`) :
+# la page du patient chiffre avec WebCrypto, qui ne connaît ni
+# XChaCha20 ni BLAKE3 — AES-256-GCM, HKDF et HMAC sur SHA-256 de ce
+# côté-ci, pour que les deux bouts parlent la même chose. SHA-1 et
+# base64 : la poignée de main WebSocket (RFC 6455) de la passerelle. Tous
+# déjà dans l'arbre par `snow` et `ureq`, sauf HKDF et HMAC.
+aes-gcm = { version = "0.10", optional = true }
+hkdf = { version = "0.12", optional = true }
+hmac = { version = "0.12", optional = true }
+sha2 = { version = "0.10", optional = true }
+sha1 = { version = "0.10", optional = true }
+base64 = { version = "0.22", optional = true }
 
 [features]
 # Le réseau d'officines (voir `src/network.rs`) est livré : il ne
@@ -76,7 +88,18 @@ socket2 = { version = "0.6", optional = true }
 # permanence. Un binaire construit avec `--no-default-features
 # --features desktop` n'en contient toujours rien.
 default = ["sync", "desktop"]
-sync = ["dep:bpm-sync", "dep:igd-next", "dep:if-addrs", "dep:socket2"]
+sync = [
+    "dep:bpm-sync",
+    "dep:igd-next",
+    "dep:if-addrs",
+    "dep:socket2",
+    "dep:aes-gcm",
+    "dep:hkdf",
+    "dep:hmac",
+    "dep:sha2",
+    "dep:sha1",
+    "dep:base64",
+]
 # The desktop application: the egui window, Typst printing, the system
 # keyring and file dialogs. Everything else in the library — the base,
 # the clinical tables, replication, the posts' and the network's sync —
@@ -104,6 +127,13 @@ required-features = ["desktop"]
 name = "bpm-audit"
 path = "src/bin/bpm-audit.rs"
 required-features = ["desktop"]
+
+# La passerelle des patients, sur un serveur derrière un proxy TLS : sans
+# fenêtre, sans base (`docs/CHAT_PATIENT.md`).
+[[bin]]
+name = "bpm-passerelle"
+path = "src/bin/bpm-passerelle.rs"
+required-features = ["sync"]
 
 
 [profile.release]

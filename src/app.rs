@@ -352,6 +352,15 @@ fn renal_dfg_text(v: f64) -> String {
 /// arrêtait la purge), reste ignorée.
 const AUDIT_KEEP_KEY: &str = "audit_keep_days_officine";
 
+/// **La messagerie des patients**, réglage de l'officine : le nom de la
+/// passerelle (`passerelle.rs`) où ses postes attendent les patients…
+#[cfg(feature = "sync")]
+const PCHAT_GATEWAY_KEY: &str = "patientchat_passerelle";
+/// …et le secret de sa boîte, que seuls ses postes tiennent. Tiré une
+/// fois, au premier réglage, par le poste qui règle.
+#[cfg(feature = "sync")]
+const PCHAT_SECRET_KEY: &str = "patientchat_secret";
+
 /// **Les mentions de l'officine**, dans la base et non dans le fichier du
 /// poste : une ordonnance imprimée au comptoir et la même en
 /// arrière-boutique portaient chacune les mentions de leur poste.
@@ -3581,6 +3590,9 @@ pub enum PatientTab {
     /// L'infirmier(ère) qui prend les traitements : la case, son nom, la
     /// feuille de prises qu'on lui remet avec les boîtes.
     Infirmier,
+    /// La messagerie du patient : le code qu'on lui remet, et ce qu'il a
+    /// écrit à l'officine depuis son téléphone (`patientchat.rs`).
+    Messagerie,
 }
 
 impl PatientTab {
@@ -3590,7 +3602,7 @@ impl PatientTab {
     /// soit **lisible d'ailleurs** : le mode d'emploi imprimé annonçait
     /// « six onglets » et les énumérait sans le fil, parce qu'il avait
     /// été écrit avant lui et que rien ne reliait la phrase à la liste.
-    pub const ALL: [PatientTab; 8] = [
+    pub const ALL: [PatientTab; 9] = [
         PatientTab::Acts,
         PatientTab::Fil,
         PatientTab::Vaccins,
@@ -3599,6 +3611,7 @@ impl PatientTab {
         PatientTab::Conciliation,
         PatientTab::Scans,
         PatientTab::Infirmier,
+        PatientTab::Messagerie,
     ];
 }
 
@@ -4522,6 +4535,46 @@ struct CampagneState {
     /// L'éditeur des campagnes, quand il est ouvert : il prend la place
     /// des trois panneaux.
     edit: Option<CampaignEdit>,
+}
+
+/// La messagerie d'un dossier, telle que la base la portait à la
+/// lecture.
+#[cfg(feature = "sync")]
+struct PatientChat {
+    patient_id: i64,
+    /// La clé ouverte, s'il en a une.
+    key: Option<db::ChatKey>,
+    messages: Vec<db::PatientMessage>,
+    /// Les messages du patient qui n'étaient pas lus quand l'écran les a
+    /// montrés : marqués « nouveau » le temps que le dossier reste ouvert.
+    fresh: std::collections::HashSet<i64>,
+    /// La lecture a échoué : l'écran le dit, plutôt que « aucun accès ».
+    failed: bool,
+    /// Les messages ont été marqués lus (une fois, même si l'écriture
+    /// échoue : pas une écriture par image).
+    marked: bool,
+}
+
+/// La fenêtre de réglage de la passerelle : ce qui est tapé, et ce que la
+/// base portait à l'ouverture.
+#[cfg(feature = "sync")]
+struct PchatSetup {
+    text: String,
+    seen_gateway: Option<String>,
+    seen_secret: Option<String>,
+    error: Option<String>,
+}
+
+/// Ce que le volet de la messagerie demande, fait une fois dessiné.
+#[cfg(feature = "sync")]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PchatAct {
+    Setup,
+    Give,
+    Show,
+    Print,
+    Close,
+    Send,
 }
 
 /// L'éditeur d'une campagne : ce qui est tapé, champ par champ, et ce que
@@ -5667,6 +5720,38 @@ struct Session {
     /// The officines' network window, when open.
     #[cfg(feature = "sync")]
     net_window: Option<NetWindow>,
+    /// **La messagerie du dossier ouvert** : sa clé et ses messages,
+    /// relus quand le dossier change ou qu'un autre poste — ou le fil qui
+    /// attend les patients — a écrit (`resync`).
+    #[cfg(feature = "sync")]
+    pchat: Option<PatientChat>,
+    /// Ce qui se tape pour le patient : le dossier, le texte. Un tampon
+    /// de saisie, jamais relu.
+    #[cfg(feature = "sync")]
+    pchat_draft: (i64, String),
+    /// Le code montré à l'écran : le dossier, le lien.
+    #[cfg(feature = "sync")]
+    pchat_qr: Option<(i64, String)>,
+    /// « Fermer l'accès » demande un second clic.
+    #[cfg(feature = "sync")]
+    pchat_confirm_close: bool,
+    /// Les dossiers qui ont des messages de patient non lus, et combien.
+    pchat_unread: Vec<(i64, usize)>,
+    /// Le réglage de l'officine — la passerelle et le secret de sa boîte
+    /// —, relu de la base au premier regard et à chaque relecture.
+    #[cfg(feature = "sync")]
+    pchat_conf: Option<(String, String)>,
+    pchat_conf_read: bool,
+    /// La fenêtre de réglage de la passerelle, quand elle est ouverte.
+    #[cfg(feature = "sync")]
+    pchat_setup: Option<PchatSetup>,
+    /// Le fil qui attend les patients à la passerelle, et ce avec quoi il
+    /// a été lancé : un réglage changé le relance.
+    #[cfg(feature = "sync")]
+    pchat_wait: Option<(crate::patientpost::Waiting, (String, String, String))>,
+    /// Ce que le fil a dit en dernier quand la passerelle ne répond pas.
+    #[cfg(feature = "sync")]
+    pchat_unreachable: Option<String>,
     /// The posts window, when open.
     #[cfg(feature = "sync")]
     posts_window: Option<PostsWindow>,
@@ -6692,6 +6777,24 @@ impl Session {
             online: None,
             #[cfg(feature = "sync")]
             net_window: None,
+            #[cfg(feature = "sync")]
+            pchat: None,
+            #[cfg(feature = "sync")]
+            pchat_draft: (0, String::new()),
+            #[cfg(feature = "sync")]
+            pchat_qr: None,
+            #[cfg(feature = "sync")]
+            pchat_confirm_close: false,
+            pchat_unread: Vec::new(),
+            #[cfg(feature = "sync")]
+            pchat_conf: None,
+            pchat_conf_read: false,
+            #[cfg(feature = "sync")]
+            pchat_setup: None,
+            #[cfg(feature = "sync")]
+            pchat_wait: None,
+            #[cfg(feature = "sync")]
+            pchat_unreachable: None,
             #[cfg(feature = "sync")]
             posts_window: None,
             #[cfg(feature = "sync")]
@@ -8512,6 +8615,13 @@ impl Session {
         if !self.care_dirty {
             self.care = None;
         }
+        // La messagerie : une réponse d'un collègue, un message arrivé par
+        // le fil qui attend, un accès donné ou fermé ailleurs.
+        #[cfg(feature = "sync")]
+        {
+            self.pchat = None;
+        }
+        self.refresh_pchat();
         // Deux lectures gardées d'une image à l'autre et qu'un autre
         // poste peut rendre fausses : la biologie d'un dossier (la carte)
         // et les lignes par indication d'une fiche (les calculs).
@@ -12814,6 +12924,113 @@ impl Session {
     /// The nurse setting of a file, read from the base when the file
     /// changes — the raw text kept, as what the next write is compared to.
     /// A base that does not answer is said, never read as « no nurse ».
+    /// Relire le réglage de la messagerie et les messages non lus.
+    fn refresh_pchat(&mut self) {
+        self.pchat_conf_read = true;
+        #[cfg(feature = "sync")]
+        {
+            let gateway = self.db.setting(PCHAT_GATEWAY_KEY).unwrap_or_default();
+            let secret = self.db.setting(PCHAT_SECRET_KEY).unwrap_or_default();
+            let gateway = gateway.trim().to_owned();
+            self.pchat_conf =
+                (!gateway.is_empty() && secret.len() == 64).then_some((gateway, secret));
+        }
+        if let Ok(list) = self.db.unread_patient_messages() {
+            self.pchat_unread = list;
+        }
+    }
+
+    /// La messagerie du dossier, lue une fois par dossier et par
+    /// relecture.
+    #[cfg(feature = "sync")]
+    fn load_pchat(&mut self, patient: i64) {
+        if !self.pchat_conf_read {
+            self.refresh_pchat();
+        }
+        if self.pchat.as_ref().is_some_and(|c| c.patient_id == patient) {
+            return;
+        }
+        if self.pchat_draft.0 != patient {
+            self.pchat_draft = (patient, String::new());
+        }
+        self.pchat_confirm_close = false;
+        let read = self
+            .db
+            .patient_chat_key(patient)
+            .and_then(|k| Ok((k, self.db.patient_messages(patient)?)));
+        let failed = read.is_err();
+        let (key, messages) = match read {
+            Ok(r) => r,
+            Err(e) => {
+                self.error = Some(e);
+                (None, Vec::new())
+            }
+        };
+        let fresh = messages
+            .iter()
+            .filter(|m| m.from_patient && m.read_on.is_empty())
+            .map(|m| m.id)
+            .collect();
+        // Kept across a reload of the same file: « nouveau » stays on
+        // what was new when it was first shown.
+        let fresh = match &self.pchat {
+            Some(old) if old.patient_id == patient => old.fresh.union(&fresh).copied().collect(),
+            _ => fresh,
+        };
+        self.pchat = Some(PatientChat {
+            patient_id: patient,
+            key,
+            messages,
+            fresh,
+            failed,
+            marked: false,
+        });
+    }
+
+    /// **Le fil qui attend les patients**, lancé, relancé ou arrêté selon
+    /// le réglage de l'officine, et ce qu'il dit.
+    #[cfg(feature = "sync")]
+    fn poll_pchat(&mut self, config: &Config) {
+        if !self.pchat_conf_read {
+            self.refresh_pchat();
+        }
+        let want = self
+            .pchat_conf
+            .clone()
+            .filter(|(_, s)| crate::patientchat::is_box_secret(s))
+            .map(|(g, s)| (g, s, config.pharmacy.name.trim().to_owned()));
+        let running = self.pchat_wait.as_ref().map(|(_, c)| c.clone());
+        if want != running {
+            self.pchat_wait = None;
+            self.pchat_unreachable = None;
+            if let (Some(c), Some(path)) = (want, self.db.path()) {
+                let w = crate::patientpost::spawn(
+                    path,
+                    self.password.clone(),
+                    &c.0,
+                    c.1.clone(),
+                    c.2.clone(),
+                );
+                self.pchat_wait = Some((w, c));
+            }
+        }
+        let mut arrived = false;
+        if let Some((w, _)) = &self.pchat_wait {
+            while let Ok(e) = w.events.try_recv() {
+                match e {
+                    crate::patientpost::Event::Received(_) => arrived = true,
+                    crate::patientpost::Event::Unreachable(t) => self.pchat_unreachable = Some(t),
+                    crate::patientpost::Event::Reached => self.pchat_unreachable = None,
+                }
+            }
+        }
+        // The base moved under this screen: read it at once rather than
+        // at the next two-second look.
+        if arrived {
+            self.sync_next = Instant::now();
+        }
+    }
+
     fn load_care(&mut self, patient: i64) {
         if self.care.as_ref().is_some_and(|(id, _, _)| *id == patient) {
             return;
@@ -19361,6 +19578,59 @@ impl App {
                             session.patient_tab = PatientTab::Infirmier;
                             session.view = MainView::Search;
                         }
+                        // La messagerie d'un dossier : une passerelle
+                        // réglée, un accès donné, un message du patient
+                        // et une réponse.
+                        Ok("messagerie") => {
+                            #[cfg(feature = "sync")]
+                            if let Some(p) = session.patients.first().cloned() {
+                                let day = session.today.clone();
+                                let _ = session.db.set_setting(
+                                    PCHAT_GATEWAY_KEY,
+                                    "messagerie.exemple.fr",
+                                    session.db.setting(PCHAT_GATEWAY_KEY).as_deref(),
+                                    &day,
+                                    "AB",
+                                );
+                                if session.db.setting(PCHAT_SECRET_KEY).is_none() {
+                                    let _ = session.db.set_setting(
+                                        PCHAT_SECRET_KEY,
+                                        &"5a".repeat(32),
+                                        None,
+                                        &day,
+                                        "AB",
+                                    );
+                                }
+                                let shown = session
+                                    .db
+                                    .patient_chat_key(p.id)
+                                    .ok()
+                                    .flatten()
+                                    .map(|k| k.id);
+                                let key = crate::patientchat::key_text(&[7; 32]);
+                                if let Ok(Some(kid)) =
+                                    session.db.open_patient_chat(p.id, &key, shown, &day, "AB")
+                                {
+                                    let _ = session.db.receive_patient_messages(
+                                        kid,
+                                        &[(
+                                            "demo1".to_owned(),
+                                            String::new(),
+                                            "Bonjour, ma commande de bas de contention est-elle arrivée ? Je peux passer demain matin.".to_owned(),
+                                        )],
+                                    );
+                                    let _ = session.db.write_patient_message(
+                                        kid,
+                                        "Bonjour, oui : elle vous attend au comptoir.",
+                                        "AB",
+                                    );
+                                }
+                                session.refresh_pchat();
+                                session.open_patient(p);
+                            }
+                            session.patient_tab = PatientTab::Messagerie;
+                            session.view = MainView::Search;
+                        }
                         Ok("fil") => {
                             // Le dossier qui porte le plus de
                             // **sources** — actes, vaccins, biologie,
@@ -24493,7 +24763,7 @@ impl App {
         // Ctrl+Tab walks the workspace's. Three of them had no keyboard
         // route at all. Alt, so the bare arrows keep driving the acts
         // table and the agenda; and not while a field has the keyboard.
-        const TABS: [PatientTab; 8] = PatientTab::ALL;
+        const TABS: [PatientTab; 9] = PatientTab::ALL;
         let mut active = TABS
             .iter()
             .position(|t| *t == session.patient_tab)
@@ -24510,6 +24780,18 @@ impl App {
                 session.patient_tab = TABS[active];
             }
         }
+        // Ce que le patient a écrit et que personne n'a lu se voit sur
+        // l'onglet, quel que soit celui qui est ouvert.
+        let unread = session
+            .pchat_unread
+            .iter()
+            .find(|(id, _)| *id == patient.id)
+            .map_or(0, |(_, n)| *n);
+        let chat_label = if unread > 0 {
+            trf("patient_tab_messagerie_unread", unread)
+        } else {
+            tr("patient_tab_messagerie").to_owned()
+        };
         motif::inside(ui, strip[0], |ui| {
             let tabs = [
                 motif::Tab::new(tr("patient_tab_acts")),
@@ -24520,6 +24802,7 @@ impl App {
                 motif::Tab::new(tr("patient_tab_conciliation")),
                 motif::Tab::new(tr("patient_tab_scans")),
                 motif::Tab::new(tr("patient_tab_infirmier")),
+                motif::Tab::new(&chat_label),
             ];
             if let Some(motif::TabAction::Select(i)) =
                 motif::tab_strip(ui, "patient_tabs", &tabs, active)
@@ -24532,6 +24815,8 @@ impl App {
         Self::ordonnance_box(ctx, session, patient, config, operator);
         Self::vacc_ord_window(ctx, session, patient, config, operator);
         Self::care_reminder(ctx, session, patient, config);
+        #[cfg(feature = "sync")]
+        Self::pchat_qr_window(ctx, session, patient, config);
         if session.ordonnance.is_none() {
             session.trod_edit = None;
         }
@@ -24545,6 +24830,10 @@ impl App {
         }
         if session.patient_tab == PatientTab::Infirmier {
             Self::patient_infirmier_pane(ui, session, patient, work, config);
+            return;
+        }
+        if session.patient_tab == PatientTab::Messagerie {
+            Self::patient_messagerie_pane(ui, session, patient, work, config, operator);
             return;
         }
         if session.patient_tab == PatientTab::Vaccins {
@@ -25647,6 +25936,560 @@ impl App {
         if print {
             Self::print_infirmier(session, patient, config);
         }
+    }
+
+    /// **La messagerie du patient** : l'accès qu'on lui donne (un code QR
+    /// qui porte sa clé, montré ou imprimé), ce qu'il a écrit depuis son
+    /// téléphone et ce que l'officine lui répond. Les messages arrivent par
+    /// le fil qui attend à la passerelle (`patientpost.rs`), sur tous les
+    /// postes ; on les marque lus en les montrant.
+    #[cfg(not(feature = "sync"))]
+    fn patient_messagerie_pane(
+        ui: &mut egui::Ui,
+        _session: &mut Session,
+        _patient: &Patient,
+        rect: egui::Rect,
+        _config: &Config,
+        _operator: &str,
+    ) {
+        motif::panel(ui, rect, Some(tr("pchat_title")), |ui| {
+            ui.label(egui::RichText::new(tr("pchat_no_sync")).color(motif::text_dim()));
+        });
+    }
+
+    #[cfg(feature = "sync")]
+    fn patient_messagerie_pane(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        patient: &Patient,
+        rect: egui::Rect,
+        config: &Config,
+        operator: &str,
+    ) {
+        session.load_pchat(patient.id);
+        // Montrés, donc lus — une fois par lecture.
+        if let Some(chat) = &mut session.pchat {
+            if !chat.marked
+                && chat
+                    .messages
+                    .iter()
+                    .any(|m| m.from_patient && m.read_on.is_empty())
+            {
+                chat.marked = true;
+                match session
+                    .db
+                    .mark_patient_messages_read(patient.id, &session.today)
+                {
+                    Ok(_) => {
+                        for m in &mut chat.messages {
+                            if m.from_patient && m.read_on.is_empty() {
+                                m.read_on = session.today.clone();
+                            }
+                        }
+                        session.pchat_unread.retain(|(id, _)| *id != patient.id);
+                    }
+                    Err(e) => session.error = Some(e),
+                }
+            }
+        }
+        let mut act: Option<PchatAct> = None;
+        let configured = session.pchat_conf.is_some();
+        let confirm_close = session.pchat_confirm_close;
+        motif::panel(ui, rect, Some(tr("pchat_title")), |ui| {
+            let Some(chat) = &session.pchat else {
+                return;
+            };
+            let hint = |ui: &mut egui::Ui| {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("pchat_hint"))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+            };
+            if !configured {
+                hint(ui);
+                ui.add_space(4.0);
+                ui.add(egui::Label::new(tr("pchat_not_set")).wrap());
+                if motif::button(ui, tr("pchat_setup")).clicked() {
+                    act = Some(PchatAct::Setup);
+                }
+                return;
+            }
+            if let Some(why) = &session.pchat_unreachable {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(trf("pchat_unreachable", why)).color(motif::warn()),
+                    )
+                    .wrap(),
+                );
+            }
+            if chat.failed {
+                ui.label(egui::RichText::new(tr("pchat_failed")).color(motif::warn()));
+                return;
+            }
+            ui.horizontal_wrapped(|ui| match &chat.key {
+                Some(k) => {
+                    ui.label(trn(
+                        "pchat_access",
+                        &[&db::format_french_date(&k.created_on), &k.created_by],
+                    ))
+                    .on_hover_text(tr("pchat_hint"));
+                    if motif::button(ui, tr("pchat_show")).clicked() {
+                        act = Some(PchatAct::Show);
+                    }
+                    // The rarer gestures behind one menu: four buttons
+                    // wrapped to three rows at 1.6 and left the writing
+                    // band no room.
+                    let options = [
+                        (PchatAct::Print, tr("pchat_print").to_owned()),
+                        (PchatAct::Give, tr("pchat_new").to_owned()),
+                        (PchatAct::Close, tr("pchat_close").to_owned()),
+                    ];
+                    let w = chars_wide(ui, 18.0).min(ui.available_width());
+                    if let Some(a) =
+                        motif::menu(ui, "pchat_access_menu", w, tr("pchat_more"), &options).inner
+                    {
+                        act = Some(a);
+                    }
+                    if confirm_close
+                        && motif::button(ui, tr("pchat_close_confirm"))
+                            .on_hover_text(tr("pchat_close_tooltip"))
+                            .clicked()
+                    {
+                        act = Some(PchatAct::Close);
+                    }
+                }
+                None => {
+                    ui.label(tr("pchat_no_access"));
+                    if motif::button(ui, tr("pchat_give"))
+                        .on_hover_text(tr("pchat_give_tooltip"))
+                        .clicked()
+                    {
+                        act = Some(PchatAct::Give);
+                    }
+                }
+            });
+            motif::separator(ui);
+            // **Carved, not stacked**: the writing band keeps its rows at
+            // the bottom, the conversation takes what is left and scrolls.
+            // Stacked, the field went out under the panel at 1024 x 700.
+            let row = Self::row_height(ui);
+            let gap = ui.spacing().item_spacing.y;
+            let left = ui.available_rect_before_wrap();
+            let compose_h = if chat.key.is_some() {
+                // Writing wins over reading when room is short: a cut
+                // field cannot be typed in, a short list still scrolls.
+                (row * 2.0 + gap).min((left.height() - row - gap).max(row))
+            } else {
+                0.0
+            };
+            let parts = motif::split_rows(left, &[0.0, compose_h], gap);
+            let dim_pt = motif::pt(ui, 10.5);
+            if parts[0].height() >= row {
+                motif::inside(ui, parts[0], |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("pchat_list")
+                        .auto_shrink([false, false])
+                        .stick_to_bottom(true)
+                        .show(ui, |ui| {
+                            // Nothing said yet: what the tab is for, in
+                            // the room the conversation will take.
+                            if chat.messages.is_empty() {
+                                ui.label(
+                                    egui::RichText::new(tr("pchat_empty")).color(motif::text_dim()),
+                                );
+                                hint(ui);
+                            }
+                            for m in &chat.messages {
+                                let who = if m.from_patient {
+                                    tr("pchat_from_patient").to_owned()
+                                } else {
+                                    trf("pchat_from_officine", &m.author)
+                                };
+                                let mut head =
+                                    format!("{who} — {}", crate::patientpost::shown_at(&m.at));
+                                if chat.fresh.contains(&m.id) {
+                                    head.push_str(" — ");
+                                    head.push_str(tr("pchat_fresh"));
+                                }
+                                let color = if m.from_patient {
+                                    motif::accent()
+                                } else {
+                                    motif::text_dim()
+                                };
+                                ui.label(egui::RichText::new(head).size(dim_pt).color(color));
+                                ui.add(egui::Label::new(m.body.as_str()).wrap());
+                                ui.add_space(gap);
+                            }
+                        });
+                });
+            }
+            if chat.key.is_some() && parts[1].height() >= row {
+                let draft = &mut session.pchat_draft.1;
+                motif::inside(ui, parts[1], |ui| {
+                    ui.horizontal_top(|ui| {
+                        let send_w = chars_wide(ui, 10.0);
+                        let field_w = (ui.available_width() - send_w).max(chars_wide(ui, 12.0));
+                        egui::ScrollArea::vertical()
+                            .id_salt("pchat_draft")
+                            .max_width(field_w)
+                            .max_height(parts[1].height())
+                            .show(ui, |ui| {
+                                motif::field(
+                                    ui,
+                                    field_w,
+                                    egui::TextEdit::multiline(draft)
+                                        .desired_rows(2)
+                                        .hint_text(motif::hint(tr("pchat_write_hint"))),
+                                );
+                            });
+                        ui.vertical(|ui| {
+                            let n = draft.trim().chars().count();
+                            let can = n > 0 && n <= crate::patientchat::TEXT_MAX;
+                            if motif::button_enabled(ui, tr("pchat_send"), can).clicked() {
+                                act = Some(PchatAct::Send);
+                            }
+                            if n > crate::patientchat::TEXT_MAX {
+                                ui.label(
+                                    egui::RichText::new(trf(
+                                        "pchat_too_long",
+                                        crate::patientchat::TEXT_MAX,
+                                    ))
+                                    .color(motif::warn()),
+                                );
+                            }
+                        });
+                    });
+                });
+            }
+        });
+        if act != Some(PchatAct::Close) {
+            session.pchat_confirm_close = false;
+        }
+        match act {
+            None => {}
+            Some(PchatAct::Setup) => Self::open_pchat_setup(session),
+            Some(PchatAct::Give) => Self::give_pchat(session, patient, operator),
+            Some(PchatAct::Show) => {
+                session.pchat_qr = Self::pchat_link(session).map(|l| (patient.id, l));
+            }
+            Some(PchatAct::Print) => Self::print_messagerie(session, patient, config),
+            Some(PchatAct::Close) => {
+                if !session.pchat_confirm_close {
+                    session.pchat_confirm_close = true;
+                    return;
+                }
+                session.pchat_confirm_close = false;
+                let Some(id) = session
+                    .pchat
+                    .as_ref()
+                    .and_then(|c| c.key.as_ref())
+                    .map(|k| k.id)
+                else {
+                    return;
+                };
+                match session.db.close_patient_chat(id, &session.today) {
+                    Ok(true) => {}
+                    Ok(false) => session.stale("pchat_stale"),
+                    Err(e) => session.error = Some(e),
+                }
+                session.pchat = None;
+                session.pchat_qr = None;
+            }
+            Some(PchatAct::Send) => {
+                let Some(id) = session
+                    .pchat
+                    .as_ref()
+                    .and_then(|c| c.key.as_ref())
+                    .map(|k| k.id)
+                else {
+                    return;
+                };
+                let text = session.pchat_draft.1.trim().to_owned();
+                match session.db.write_patient_message(id, &text, operator) {
+                    Ok(true) => session.pchat_draft.1.clear(),
+                    // Fermé ou remplacé ailleurs : le texte reste à l'écran.
+                    Ok(false) => session.stale("pchat_stale"),
+                    Err(e) => session.error = Some(e),
+                }
+                session.pchat = None;
+            }
+        }
+    }
+
+    /// Le lien du code du dossier ouvert : la passerelle, la boîte, la clé.
+    #[cfg(feature = "sync")]
+    fn pchat_link(session: &Session) -> Option<String> {
+        let (gateway, secret) = session.pchat_conf.as_ref()?;
+        let key = session.pchat.as_ref()?.key.as_ref()?;
+        let key = crate::patientchat::key_from_text(&key.key)?;
+        let secret: Vec<u8> = (0..secret.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(secret.get(i..i + 2)?, 16).ok())
+            .collect::<Option<_>>()?;
+        Some(crate::patientchat::link(
+            gateway,
+            &crate::patientchat::box_id(&secret),
+            &key,
+        ))
+    }
+
+    /// **Donner l'accès** (ou un nouveau code) : une clé tirée ici, la
+    /// précédente fermée, contre ce que l'écran montrait ; le code
+    /// s'affiche aussitôt.
+    #[cfg(feature = "sync")]
+    fn give_pchat(session: &mut Session, patient: &Patient, operator: &str) {
+        let shown = session
+            .pchat
+            .as_ref()
+            .and_then(|c| c.key.as_ref())
+            .map(|k| k.id);
+        let key = crate::patientchat::new_key(|b| {
+            bpm_sync::Entropy::fill(&mut bpm_sync::OsEntropy, b);
+        });
+        let text = crate::patientchat::key_text(&key);
+        match session
+            .db
+            .open_patient_chat(patient.id, &text, shown, &session.today, operator)
+        {
+            Ok(Some(_)) => {
+                session.pchat = None;
+                session.load_pchat(patient.id);
+                session.pchat_qr = Self::pchat_link(session).map(|l| (patient.id, l));
+            }
+            Ok(None) => {
+                session.pchat = None;
+                session.stale("pchat_stale");
+            }
+            Err(e) => session.error = Some(e),
+        }
+    }
+
+    /// La feuille à remettre : le code, et ce qu'il faut savoir.
+    #[cfg(feature = "sync")]
+    fn print_messagerie(session: &mut Session, patient: &Patient, config: &Config) {
+        let Some(link) = Self::pchat_link(session) else {
+            return;
+        };
+        let today = session
+            .db
+            .today_french()
+            .unwrap_or_else(|_| tr("itv_date_fallback").to_owned());
+        let data = crate::pdf::ChatAccessData {
+            patient,
+            today: &today,
+            link: &link,
+        };
+        match crate::pdf::open_messagerie(
+            &data,
+            &config.pharmacy,
+            &config.doc_template_path("messagerie"),
+        ) {
+            Ok(_) => session.error = None,
+            Err(e) => session.error = Some(e),
+        }
+    }
+
+    /// **Le code à l'écran**, pour que le patient le scanne au comptoir.
+    #[cfg(feature = "sync")]
+    fn pchat_qr_window(
+        ctx: &egui::Context,
+        session: &mut Session,
+        patient: &Patient,
+        config: &Config,
+    ) {
+        let Some((id, link)) = session.pchat_qr.clone() else {
+            return;
+        };
+        // Un autre dossier ouvert : le code ne le suit pas.
+        if id != patient.id {
+            session.pchat_qr = None;
+            return;
+        }
+        let mut close = false;
+        let mut print = false;
+        let screen = ctx.screen_rect();
+        egui::Window::new(tr("pchat_qr_title"))
+            .collapsible(false)
+            .resizable(false)
+            .fixed_size(dialog_size(screen.size(), egui::vec2(420.0, 520.0)))
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("pchat_qr_hint"))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+                ui.label(egui::RichText::new(patient.full_name()).strong());
+                let footer = motif::button_height(ui) + ui.spacing().item_spacing.y * 2.0;
+                let side = (ui.available_height() - footer)
+                    .min(ui.available_width())
+                    .max(motif::button_height(ui) * 3.0);
+                ui.vertical_centered(|ui| qr_code(ui, &link, side));
+                ui.horizontal(|ui| {
+                    if motif::button(ui, tr("pchat_print")).clicked() {
+                        print = true;
+                    }
+                    if motif::button(ui, tr("pchat_qr_close")).clicked() {
+                        close = true;
+                    }
+                });
+            });
+        if print {
+            Self::print_messagerie(session, patient, config);
+        }
+        if close || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            session.pchat_qr = None;
+        }
+    }
+
+    /// Ouvrir le réglage de la passerelle, avec ce que la base porte.
+    #[cfg(feature = "sync")]
+    fn open_pchat_setup(session: &mut Session) {
+        let seen_gateway = session.db.setting(PCHAT_GATEWAY_KEY);
+        let seen_secret = session.db.setting(PCHAT_SECRET_KEY);
+        session.pchat_setup = Some(PchatSetup {
+            text: seen_gateway.clone().unwrap_or_default(),
+            seen_gateway,
+            seen_secret,
+            error: None,
+        });
+    }
+
+    /// **Régler la passerelle** de l'officine : son nom, et le secret de
+    /// la boîte tiré au premier réglage. Un réglage de l'officine, écrit
+    /// contre ce que la fenêtre avait lu.
+    #[cfg(feature = "sync")]
+    fn pchat_setup_window(ctx: &egui::Context, session: &mut Session) {
+        let Some(mut setup) = session.pchat_setup.take() else {
+            return;
+        };
+        let mut save = false;
+        let mut close = false;
+        let screen = ctx.screen_rect();
+        egui::Window::new(tr("pchat_setup_title"))
+            .collapsible(false)
+            .resizable(false)
+            .fixed_size(dialog_size(screen.size(), egui::vec2(520.0, 300.0)))
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("pchat_setup_hint"))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+                ui.add_space(4.0);
+                ui.horizontal_wrapped(|ui| {
+                    Self::form_label(ui, tr("pchat_setup_field"));
+                    let w = chars_wide(ui, 34.0).min(ui.available_width());
+                    let f = motif::field(
+                        ui,
+                        w,
+                        egui::TextEdit::singleline(&mut setup.text)
+                            .hint_text(motif::hint(tr("pchat_setup_example"))),
+                    );
+                    save |= f.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                });
+                if let Some(secret) = setup
+                    .seen_secret
+                    .as_deref()
+                    .filter(|s| crate::patientchat::is_box_secret(s))
+                {
+                    let bytes: Vec<u8> = (0..secret.len())
+                        .step_by(2)
+                        .filter_map(|i| u8::from_str_radix(&secret[i..i + 2], 16).ok())
+                        .collect();
+                    ui.label(
+                        egui::RichText::new(trf(
+                            "pchat_setup_box",
+                            crate::patientchat::box_id(&bytes),
+                        ))
+                        .size(motif::pt(ui, 10.5))
+                        .color(motif::text_dim()),
+                    );
+                }
+                if let Some(e) = &setup.error {
+                    ui.add(egui::Label::new(egui::RichText::new(e).color(motif::warn())).wrap());
+                }
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    if motif::button(ui, tr("pchat_setup_save")).clicked() {
+                        save = true;
+                    }
+                    if motif::button(ui, tr("pchat_setup_cancel")).clicked() {
+                        close = true;
+                    }
+                });
+            });
+        if close || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            return;
+        }
+        if !save {
+            session.pchat_setup = Some(setup);
+            return;
+        }
+        let host = crate::patientchat::gateway_host(&setup.text);
+        if host.is_empty() && !setup.text.trim().is_empty() {
+            setup.error = Some(tr("pchat_setup_bad").to_owned());
+            session.pchat_setup = Some(setup);
+            return;
+        }
+        let (day, who) = (session.today.clone(), session.operator.clone());
+        match session.db.set_setting(
+            PCHAT_GATEWAY_KEY,
+            &host,
+            setup.seen_gateway.as_deref(),
+            &day,
+            &who,
+        ) {
+            Ok(true) => {}
+            Ok(false) => {
+                session.refresh_pchat();
+                Self::open_pchat_setup(session);
+                let said = session.stale_note("pchat_setup_stale");
+                if let Some(s) = &mut session.pchat_setup {
+                    s.error = Some(said);
+                }
+                return;
+            }
+            Err(e) => {
+                setup.error = Some(e);
+                session.pchat_setup = Some(setup);
+                return;
+            }
+        }
+        // The box's secret, drawn once: a post that drew one at the same
+        // moment wins, and this one reads it back.
+        if !host.is_empty()
+            && !setup
+                .seen_secret
+                .as_deref()
+                .is_some_and(crate::patientchat::is_box_secret)
+        {
+            let mut secret = [0u8; 32];
+            bpm_sync::Entropy::fill(&mut bpm_sync::OsEntropy, &mut secret);
+            let hex: String = secret.iter().map(|b| format!("{b:02x}")).collect();
+            if let Err(e) = session.db.set_setting(
+                PCHAT_SECRET_KEY,
+                &hex,
+                setup.seen_secret.as_deref(),
+                &day,
+                &who,
+            ) {
+                session.error = Some(e);
+            }
+        }
+        session.refresh_pchat();
+        session.pchat = None;
     }
 
     /// **L'ordonnance de vaccination** : les vaccins que le calendrier
@@ -85437,6 +86280,8 @@ impl eframe::App for App {
             #[cfg(feature = "sync")]
             {
                 session.poll_posts(ctx, &self.config);
+                session.poll_pchat(&self.config);
+                Self::pchat_setup_window(ctx, session);
                 session.poll_net_auto(ctx, &self.config);
                 session.poll_carte(ctx, &self.config);
                 Self::posts_window(ctx, session, &self.config);

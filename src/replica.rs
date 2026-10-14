@@ -129,6 +129,10 @@ pub const TABLES: &[Table] = &[
     t("message_chunks", Main, Equipe, true, true),
     t("vaccinations", Main, Dossiers, false, true),
     t("patient_travel", Main, Dossiers, false, false),
+    // La messagerie des patients : la clé remise à un patient et ce qu'il
+    // a échangé avec l'officine, sous la clé des dossiers.
+    t("patient_chat_keys", Main, Dossiers, false, true),
+    t("patient_messages", Main, Dossiers, false, true),
     // Les appels de la campagne nomment un dossier : ils voyagent avec
     // les dossiers. Les lots sont le stock de l'officine.
     t("campaign_calls", Main, Dossiers, false, true),

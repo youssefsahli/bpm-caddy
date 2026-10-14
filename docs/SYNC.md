@@ -1001,6 +1001,52 @@ s'appeler « Pharmacie du Port » ; l'écran montre l'empreinte, et
 l'appairage reste la seule preuve. L'officine qui héberge sait qui
 paraît, d'où, et qui lit quoi.
 
+### 7.11 La messagerie des patients
+
+Décidée avec l'officine le 14/10/2026 (`docs/CHAT_PATIENT.md`) : un
+patient écrit à l'officine depuis une page web, par un code QR qu'elle
+lui remet. **Ce n'est pas le journal** : rien de ce qui est dit ici ne
+passe par `bpm-sync`, et le patient n'entre dans aucun groupe. Trois
+pièces :
+
+* **la page** (`assets/patient/`), servie par la passerelle, qui chiffre
+  avec WebCrypto sous la clé du patient — 32 octets, dans le fragment du
+  code, jamais envoyés à un serveur ;
+* **la passerelle** (`src/passerelle.rs`, binaire `bpm-passerelle`),
+  derrière un proxy TLS : un navigateur n'ouvre qu'un `wss://`, qui
+  demande un domaine et un certificat qu'aucun poste n'a. Elle tient les
+  postes qui attendent à la **boîte** d'une officine (`BPMPATIENT1
+  attente <secret>` sur le port 7747, puis `ENTRE`), et passe les trames
+  d'une page qui ouvre `/ws/<boîte>` à l'un d'eux. Le numéro de boîte
+  est dans chaque code ; le secret, d'où il se tire, ne quitte pas les
+  postes (`settings`, flux `Officine`) : qui a photographié un code ne
+  peut pas attendre à la place de l'officine. Ses bornes : quatre
+  attentes par boîte, refusées au-delà ; une attente de cinq minutes,
+  renouvelée à quatre ; une conversation d'une minute ; trente
+  connexions par adresse et par minute (l'adresse que le proxy a vue) ;
+  une page d'une autre origine n'obtient pas de WebSocket ;
+* **le poste qui attend** (`src/patientpost.rs`) : chaque poste de
+  bureau ouvert, deux attentes à la fois, une conversation à la fois,
+  avec sa propre connexion à la base. Le compagnon n'attend jamais.
+
+**Le protocole** (`src/patientchat.rs`) : la page dit bonjour avec un
+nombre et un HMAC ; le poste essaie toutes les clés (toutes, quel que
+soit celle qui répond : le temps ne dit pas où est le patient dans la
+liste), répond `FERME` pour une clé fermée et `INCONNU` pour une
+inconnue — la page n'abandonne pas sur `INCONNU`, une clé donnée sur un
+autre poste peut ne pas être encore arrivée sur celui qui répond. Sinon
+il prouve qu'il tient la même clé, et chaque sens a sa clé AES-256-GCM
+tirée par HKDF des deux nombres : une conversation rejouée ne s'ouvre
+pas. Les réponses de l'officine s'échangent **par numéros déjà reçus**,
+pas par « depuis » : chaque poste tire ses numéros de son bloc (§ 7.2),
+et un numéro plus petit n'est pas un message plus ancien.
+
+**Ce qui voyage entre les postes** : `patient_chat_keys` et
+`patient_messages`, sous `Dossiers`, comme le dossier qu'ils suivent ;
+supprimés avec lui. Un message renvoyé par la page après une coupure
+n'est rangé qu'une fois sur un poste (`uid`) ; reçu par deux postes
+avant qu'ils se soient vus, il est montré une fois.
+
 ## 8. Travaux restants
 
 1. **Le journal ne se compacte pas.** Chaque poste garde tout ce qui a

@@ -282,12 +282,12 @@ are read verbatim by tests in `src/strings.rs`.
   `pdf::compile_and_open`, every act through `Db::add_interview_by`,
   every register line through `Db::add_stup_moves` — via a process
   tally the session reads the *difference* of; counting at the twenty-one
-  `pdf::open_*` call sites would be 47 chances to forget one.
+  `pdf::open_*` call sites would be 48 chances to forget one.
 The one that was missing — « combien de fois un autre poste avait
   écrit le premier », the most useful number the pane carries and the
   one no other screen says — was absent for two versions for a reason
   worth keeping: every compare-and-set answers `false` in its own place,
-  104 of them, and counting at all but one would be a counter quietly
+  108 of them, and counting at all but one would be a counter quietly
   short, which is worse than one that is not there. It arrived by making those answers
   go through **one** function, `Session::stale` / `stale_note`, the only
   path to a « rechargez » notice (`stale_note_with` when it names what changed); `no_stale_notice_is_written_by_hand`
@@ -2246,7 +2246,7 @@ add clicking and typing; it is not the price of entry.
   trame|cascades|cascades_decrire|cascades_boucle|
   stup_catalogue|saisie|ordonnancier|vigilance|destruction|scans|
   textes|carnets_edit|
-  patient_scans|patient_dose|fil|infirmier|explorer|explorer_organ|classes|classes_outside|export|
+  patient_scans|patient_dose|fil|infirmier|messagerie|explorer|explorer_organ|classes|classes_outside|export|
   finances|stats|companion|companion_poso|companion_conseils|companion_soins|companion_dossier|companion_vide|companion_doublon|companion_boite|script|carnets|caisse|caisses|peaux|aide`
   — land on a specific view (screenshots, e2e). `aide` is not a view at
   all: it opens the right-hand dock on its « Aide » tab, which is in no

@@ -270,6 +270,33 @@ dossier (« délivrance n° ») propose la feuille : « Imprimer la
 feuille… », « Ouvrir l'onglet » ou « Plus tard ». Rien ne s'imprime
 sans le geste.
 
+## Messagerie du patient
+
+Le patient écrit à l'officine depuis son téléphone, sans application à
+installer : l'onglet « Messagerie » du dossier lui donne un **code QR**
+à scanner au comptoir (« Montrer le code ») ou sur une feuille à lui
+remettre (« Imprimer le code »). Le code ouvre une page où il écrit ;
+ses messages arrivent dans l'onglet, sur tous les postes, et l'onglet
+porte le nombre de ceux qu'on n'a pas lus. On lui répond au même
+endroit ; il lit la réponse à sa visite suivante de la page.
+
+La conversation est **chiffrée de bout en bout** entre son téléphone et
+les postes de l'officine, sous une clé à lui que porte le code : la
+passerelle qui les met en relation ne la voit pas et ne garde rien. Un
+message ne passe que **pendant qu'un poste de l'officine est ouvert** ;
+sinon il attend sur le téléphone du patient, qui le renvoie seul. Ce
+n'est pas un service d'urgence, et sa page le lui dit. Pas de pièce
+jointe : du texte seulement.
+
+Un code par patient. « Nouveau code » ferme le précédent (téléphone
+perdu ou changé) ; « Fermer l'accès » coupe la messagerie de ce
+patient, dont la page le lui dit. La conversation reste au dossier, et
+part avec lui.
+
+**À régler une fois pour l'officine** : l'adresse de la passerelle
+(« Régler la passerelle… », dans l'onglet), un serveur tenu par
+l'éditeur ou par une officine.
+
 # Croisement
 
 L'écran « Croisement » applique les mêmes analyses à une liste libre,

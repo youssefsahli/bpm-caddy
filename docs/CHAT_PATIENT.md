@@ -1,66 +1,126 @@
-# Messagerie patient par QR code — options à trancher
+# Messagerie patient par QR code
 
 Demande : un QR code sur la fiche du patient, qu'il scanne pour écrire à
 l'officine depuis une application ou un site, côté patient.
 
-Rien n'est construit tant que le point ci-dessous n'est pas tranché :
-c'est la première fonction où une donnée de santé quitterait les postes
-de l'officine pour aller chez un patient, à travers Internet.
+**Décidé le 14/10/2026 : le chemin A** — pas de serveur qui garde, le
+poste allumé. Ce document dit ce qui a été construit, ce que cela
+demande, et ce qui reste ouvert.
 
 ## Ce qui change par rapport à aujourd'hui
 
-Aujourd'hui, tout ce qui touche un patient reste dans la base chiffrée
-de l'officine et sur ses postes (`replica::Flux::Dossiers`). Le compagnon
-Android ne reçoit **jamais** un patient (`docs/SYNC.md` § 7.8). Le relais
-(`src/relay.rs`) ne garde rien et ne voit que des octets chiffrés de bout
-en bout, entre postes et téléphones de l'**équipe**.
+Jusqu'ici, tout ce qui touche un patient restait dans la base chiffrée
+de l'officine et sur ses postes (`replica::Flux::Dossiers`). Le
+compagnon Android ne reçoit **jamais** un patient (`docs/SYNC.md`
+§ 7.8), et ne reçoit pas non plus cette messagerie.
 
-Une messagerie patient ajoute trois choses : un appareil qui n'est pas à
-l'officine (le téléphone du patient), une identité à prouver (ce patient,
-et pas un autre qui a photographié le QR code), et des messages qui
-attendent quand le poste est éteint.
+La messagerie ajoute un appareil qui n'est pas à l'officine (le
+téléphone du patient), et une identité à prouver : ce patient, et pas un
+autre. La clé du patient est cette preuve — qui tient le code tient la
+conversation. D'où un code par patient, qu'on peut fermer et remplacer.
 
-## Le point réglementaire
+## Ce qui a été construit
+
+**Côté patient : une page, pas une application.** Le code QR ouvre
+`https://<passerelle>/#b=<boîte>&k=<clé>`. Le fragment (après `#`) n'est
+envoyé à personne par le navigateur : la clé ne quitte pas le téléphone.
+La page (`assets/patient/`) est du HTML, du CSS et un script sans
+bibliothèque ; elle chiffre avec WebCrypto. Une fois la clé gardée sur
+le téléphone (`localStorage`), elle la retire de la barre d'adresse.
+Elle dit qu'elle n'est pas un service d'urgence (15, 112). Avant tout
+envoi, elle vérifie que le navigateur chiffre comme le poste (des
+valeurs connues, que `patientchat::tests` tient des deux côtés).
+
+**Le protocole** (`src/patientchat.rs`) : quatre trames. La page prouve
+qu'elle tient une clé (HMAC d'un nombre tiré au hasard) sans dire
+laquelle ; le poste les essaie toutes, et prouve à son tour qu'il tient
+la même. Chaque sens a sa clé (HKDF sur la clé du patient et les deux
+nombres), AES-256-GCM. Une conversation enregistrée ne se rejoue pas.
+La page envoie ce qui attendait sur le téléphone et les numéros des
+réponses qu'elle a déjà ; le poste range, et rend ce qu'elle n'a pas.
+
+**La passerelle** (`src/passerelle.rs`, binaire `bpm-passerelle`).
+Pourquoi il en faut une : un navigateur ne parle pas TCP. Depuis une
+page en HTTPS, il n'ouvre qu'un WebSocket chiffré (`wss://`), qui
+demande un nom de domaine et un certificat — ce qu'un poste d'officine
+n'a pas, et souvent il n'a même pas d'adresse joignable. Le relais des
+officines (§ 7.9 de `SYNC.md`) parle TCP brut, sans certificat : il ne
+peut pas servir une page. La passerelle se tient donc derrière un proxy
+qui porte le certificat ; elle sert la page, tient les postes qui
+attendent, et passe les trames de l'un à l'autre sans les lire. Elle ne
+garde rien : sans poste qui attend, la page l'apprend (fermeture 4004)
+et garde le message sur le téléphone.
+
+**Côté officine** (`src/patientpost.rs`, onglet « Messagerie » du
+dossier). Chaque poste de bureau ouvert attend à la passerelle (deux
+attentes à la fois) et répond avec la base. La clé et les messages
+voyagent entre les postes avec les dossiers (`patient_chat_keys`,
+`patient_messages`, flux `Dossiers`). Un code par dossier : en donner un
+nouveau ferme le précédent ; fermer l'accès coupe le patient, et sa page
+le lui dit.
+
+## Les trois questions, et ce qui a été répondu
+
+1. **Le chemin** : A.
+2. **Le patient n'écrit qu'après un geste de l'officine** : le code
+   qu'on lui remet (montré ou imprimé) est ce geste ; sans code, pas de
+   messagerie. L'officine peut le fermer.
+3. **Pièces jointes** : non pour l'instant — du texte seulement, deux
+   mille caractères par message. Une photo d'ordonnance est une donnée
+   de santé de plus ; la question reste ouverte, rien ne l'empêche
+   plus tard.
+
+## Le point réglementaire, toujours à faire confirmer
 
 Héberger des données de santé pour le compte d'un tiers demande un
 hébergeur certifié **HDS** (art. L. 1111-8 du code de la santé
-publique). La base de l'officine, sur ses postes, n'est pas concernée :
-c'est elle qui conserve ses propres données. Un serveur qui garderait les
-messages d'un patient en attendant que l'officine les lise le serait
-vraisemblablement, même chiffrés de bout en bout — à faire confirmer
-(CNIL, ou un juriste), pas à supposer.
+publique). Le chemin A a été choisi parce qu'il **n'héberge rien** : la
+passerelle ne fait que passer des octets chiffrés de bout en bout, sans
+la clé, et n'écrit rien sur un disque. La base de l'officine, sur ses
+postes, reste là où elle était. Que ce transit sans stockage échappe à
+l'obligation est la lecture la plus probable — **à faire confirmer**
+(CNIL, ou un juriste), pas à supposer. Ce que la passerelle sait :
+qu'une boîte échange, quand, combien, depuis quelle adresse IP.
 
-## Trois chemins
+## Mettre en service
 
-**A. Sans serveur qui garde : le relais, et le poste allumé.**
-Une page statique (code seulement, sans donnée) que le QR code ouvre ;
-elle parle au poste de l'officine à travers le relais existant, chiffré
-de bout en bout comme les postes entre eux. Le QR code porte une clé à
-usage unique propre au patient. Rien n'est gardé ailleurs que dans la
-base de l'officine. Limite : un message n'arrive que pendant que
-l'application est ouverte à l'officine ; sinon la page le dit (« l'officine
-répondra à sa réouverture ») et le garde sur le téléphone du patient.
-C'est le plus proche de ce qui existe, sans hébergeur nouveau.
+1. **Une passerelle**, une fois pour toutes les officines qui s'en
+   servent : un petit serveur, un nom de domaine, et un proxy qui porte
+   le certificat. Avec Caddy :
 
-**B. Un hébergeur HDS.** Une boîte aux lettres chez un hébergeur
-certifié, où les messages attendent, chiffrés. Messages reçus à toute
-heure ; mais un contrat, un coût, et une dépendance hors de l'officine.
+   ```text
+   messagerie.example.fr {
+       reverse_proxy 127.0.0.1:8746
+   }
+   ```
 
-**C. La messagerie de Mon espace santé (MSSanté).** Le canal officiel
-entre professionnels et patients : l'officine écrit au patient depuis une
-messagerie MSSanté, le patient répond depuis Mon espace santé. Pas
-d'hébergement à notre charge ; mais une intégration MSSanté (opérateur
-référencé, carte CPS ou e-CPS), et le QR code mènerait vers Mon espace
-santé plutôt que vers une page à nous.
+   puis `bpm-passerelle` (construit par
+   `cargo build --release --bin bpm-passerelle --no-default-features --features sync`),
+   qui sert la page sur `127.0.0.1:8746` et attend les postes sur le port
+   **7747**, à ouvrir vers Internet. Qui la tient pourrait servir une page
+   modifiée qui lirait les messages : c'est l'éditeur, ou une officine de
+   confiance, qui la tient.
+2. **Dans l'officine**, une fois : onglet « Messagerie » d'un dossier,
+   « Régler la passerelle… », son nom de domaine. Le poste tire le secret
+   de la boîte de l'officine ; le réglage vaut pour tous ses postes.
+3. **Pour chaque patient** : « Donner l'accès », puis le code montré ou
+   imprimé.
 
-## Ce qu'il faut décider
+Ce que les tests tiennent : le protocole et ses refus
+(`patientchat::tests`), la passerelle de bout en bout avec un client
+WebSocket (`passerelle::tests`), et de la passerelle à la base et retour
+(`patientpost::tests`). La page elle-même a été essayée dans Firefox
+contre une passerelle et un poste factices
+(`passerelle::browser::serve_for_a_browser`, `--ignored`) : poignée de
+main, requête scellée ouverte par le poste, réponse ouverte par la page.
 
-1. Le chemin : A, B ou C.
-2. Le patient n'écrit-il qu'après un geste de l'officine (le QR code
-   imprimé sur un document qu'on lui remet), ou à tout moment ?
-3. Les pièces jointes (photo d'une ordonnance, d'une boîte) : oui ou non
-   — une photo d'ordonnance est une donnée de santé de plus.
+## Limites connues
 
-Une fois tranché, le QR code se pose sur les documents imprimés (fiche de
-traitement, feuille de l'infirmier(ère), carnet) par le même chemin que
-les autres marqueurs de `pdf::DOCS`.
+* Un message n'arrive que si un poste est ouvert ; il n'y a pas de
+  notification sur le téléphone du patient (une notification passerait
+  par un service tiers).
+* La page vit dans le navigateur du téléphone : effacer les données du
+  site efface la conversation de ce téléphone (pas de la base), et il
+  faut un nouveau code.
+* Un poste d'une version antérieure ne voit pas les tables de la
+  messagerie : mettre à jour tous les postes.

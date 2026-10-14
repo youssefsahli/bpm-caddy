@@ -59,6 +59,12 @@ pub mod network;
 pub mod nutrition;
 pub mod ordonnance;
 pub mod ordonnancier;
+#[cfg(feature = "sync")]
+pub mod passerelle;
+#[cfg(feature = "sync")]
+pub mod patientchat;
+#[cfg(feature = "sync")]
+pub mod patientpost;
 #[cfg(feature = "desktop")]
 pub mod pdf;
 pub mod pk;

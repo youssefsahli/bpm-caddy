@@ -1,0 +1,97 @@
+:root {
+  --fond: #f6f5f1;
+  --texte: #1d1d1b;
+  --discret: #5f5e58;
+  --bord: #cfcdc4;
+  --moi: #dbe9e1;
+  --eux: #ffffff;
+  --accent: #2d6a4f;
+  --sur-accent: #ffffff;
+  --alerte: #8a3b12;
+  --alerte-fond: #fbeee3;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fond: #171816;
+    --texte: #ecebe6;
+    --discret: #a8a69e;
+    --bord: #3b3c37;
+    --moi: #22392e;
+    --eux: #24251f;
+    --accent: #74c69d;
+    --sur-accent: #10241a;
+    --alerte: #f4b183;
+    --alerte-fond: #33241a;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0 auto;
+  max-width: 40rem;
+  padding: 0 16px 24px;
+  background: var(--fond);
+  color: var(--texte);
+  font: 1rem/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+header { padding: 20px 0 8px; }
+h1 { margin: 0; font-size: 1.4rem; }
+.sur { margin: 0; color: var(--discret); font-size: .85rem; text-transform: uppercase; letter-spacing: .06em; }
+
+.urgence {
+  background: var(--alerte-fond);
+  color: var(--alerte);
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: .92rem;
+}
+
+#fil { display: flex; flex-direction: column; gap: 8px; margin: 16px 0; }
+
+.bulle {
+  max-width: 85%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--bord);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.bulle.moi { align-self: flex-end; background: var(--moi); }
+.bulle.eux { align-self: flex-start; background: var(--eux); }
+.bulle .quand { display: block; margin-top: 4px; font-size: .78rem; color: var(--discret); }
+
+textarea {
+  width: 100%;
+  padding: 10px;
+  font: inherit;
+  color: inherit;
+  background: var(--eux);
+  border: 1px solid var(--bord);
+  border-radius: 6px;
+  resize: vertical;
+}
+
+.ligne { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 8px; }
+
+button {
+  font: inherit;
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--sur-accent);
+  cursor: pointer;
+}
+button:disabled { opacity: .5; cursor: default; }
+button.lien { background: none; color: var(--discret); padding: 0; text-decoration: underline; }
+
+#etat { min-height: 1.4em; color: var(--discret); }
+.erreur { color: var(--alerte); }
+.discret { color: var(--discret); font-size: .88rem; }
+.vide { color: var(--discret); text-align: center; }
+.cache { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+footer { margin-top: 24px; border-top: 1px solid var(--bord); padding-top: 12px; }

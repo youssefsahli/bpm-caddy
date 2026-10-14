@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>Messagerie de la pharmacie</title>
+<link rel="stylesheet" href="style.css">
+<script src="app.js" defer></script>
+</head>
+<body>
+<header>
+  <p class="sur">Messagerie</p>
+  <h1 id="officine">Votre pharmacie</h1>
+</header>
+<p class="urgence">Ce n'est pas un service d'urgence : la pharmacie lit vos messages
+quand elle est ouverte. En cas d'urgence, appelez le <strong>15</strong> (ou le
+<strong>112</strong>).</p>
+<main id="fil" aria-live="polite"></main>
+<section id="ecrire" hidden>
+  <label for="texte" class="cache">Votre message</label>
+  <textarea id="texte" rows="3" maxlength="2000"
+    placeholder="Votre message à la pharmacie"></textarea>
+  <div class="ligne">
+    <span id="compte" class="discret"></span>
+    <button id="envoyer" type="button">Envoyer</button>
+  </div>
+</section>
+<p id="etat" role="status"></p>
+<footer>
+  <p class="discret">Vos messages sont chiffrés de bout en bout entre ce téléphone et
+  la pharmacie : personne d'autre ne peut les lire. Ils restent aussi sur ce
+  téléphone.</p>
+  <button id="effacer" type="button" class="lien" hidden>Effacer cette conversation de ce téléphone</button>
+</footer>
+<noscript><p class="erreur">Cette page a besoin de JavaScript pour chiffrer vos messages.</p></noscript>
+</body>
+</html>

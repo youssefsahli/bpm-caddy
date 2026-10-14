@@ -833,6 +833,33 @@ CREATE TABLE IF NOT EXISTS patient_travel (
     depart_on   TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (patient_id, country)
 );
+CREATE TABLE IF NOT EXISTS patient_chat_keys (
+    -- La messagerie des patients (`src/patientchat.rs`) : la clé remise
+    -- à un patient en code QR. Une seule ouverte par dossier : en donner
+    -- une nouvelle ferme la précédente.
+    id          INTEGER PRIMARY KEY,
+    patient_id  INTEGER NOT NULL REFERENCES patients(id),
+    key         TEXT NOT NULL,
+    created_on  TEXT NOT NULL DEFAULT '',
+    created_by  TEXT NOT NULL DEFAULT '',
+    closed_on   TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS patient_messages (
+    -- Ce qu'un patient a écrit (`from_patient` = 1, `uid` tiré par sa
+    -- page, `written_at` l'heure de son téléphone) et ce que l'officine
+    -- lui a répondu, sous la clé par laquelle il passe. `at` : l'heure où
+    -- le message est entré dans la base.
+    id           INTEGER PRIMARY KEY,
+    patient_id   INTEGER NOT NULL REFERENCES patients(id),
+    key_id       INTEGER NOT NULL DEFAULT 0,
+    uid          TEXT NOT NULL DEFAULT '',
+    from_patient INTEGER NOT NULL DEFAULT 0,
+    body         TEXT NOT NULL,
+    written_at   TEXT NOT NULL DEFAULT '',
+    at           TEXT NOT NULL DEFAULT '',
+    author       TEXT NOT NULL DEFAULT '',
+    read_on      TEXT NOT NULL DEFAULT ''
+);
 -- Les produits que l'officine suit au registre des stupéfiants.
 -- Ce sont eux qui portent le seuil et l'unité ; le registre lui-même
 -- est `stup_moves`.
@@ -1687,6 +1714,26 @@ const MIGRATIONS: &[&str] = &[
         features    TEXT NOT NULL DEFAULT '',
         caution     TEXT NOT NULL DEFAULT '',
         source      TEXT NOT NULL DEFAULT ''
+    )",
+    "CREATE TABLE IF NOT EXISTS patient_chat_keys (
+        id          INTEGER PRIMARY KEY,
+        patient_id  INTEGER NOT NULL REFERENCES patients(id),
+        key         TEXT NOT NULL,
+        created_on  TEXT NOT NULL DEFAULT '',
+        created_by  TEXT NOT NULL DEFAULT '',
+        closed_on   TEXT NOT NULL DEFAULT ''
+    )",
+    "CREATE TABLE IF NOT EXISTS patient_messages (
+        id           INTEGER PRIMARY KEY,
+        patient_id   INTEGER NOT NULL REFERENCES patients(id),
+        key_id       INTEGER NOT NULL DEFAULT 0,
+        uid          TEXT NOT NULL DEFAULT '',
+        from_patient INTEGER NOT NULL DEFAULT 0,
+        body         TEXT NOT NULL,
+        written_at   TEXT NOT NULL DEFAULT '',
+        at           TEXT NOT NULL DEFAULT '',
+        author       TEXT NOT NULL DEFAULT '',
+        read_on      TEXT NOT NULL DEFAULT ''
     )",
 ];
 
@@ -44949,6 +44996,8 @@ impl Db {
             "DELETE FROM counsel_records WHERE patient_id = ?1",
             "DELETE FROM locations WHERE patient_id = ?1",
             "DELETE FROM patient_travel WHERE patient_id = ?1",
+            "DELETE FROM patient_messages WHERE patient_id = ?1",
+            "DELETE FROM patient_chat_keys WHERE patient_id = ?1",
             "DELETE FROM scans WHERE subject_kind = 'PATIENT' AND subject_id = ?1",
             "DELETE FROM notes WHERE subject_kind = 'PATIENT' AND subject_id = ?1",
         ] {
@@ -45528,6 +45577,8 @@ impl Db {
             "DELETE FROM vial_openings",
             "DELETE FROM campaigns",
             "DELETE FROM patient_travel",
+            "DELETE FROM patient_messages",
+            "DELETE FROM patient_chat_keys",
             "DELETE FROM scans WHERE subject_kind IN ('PATIENT', 'DRUG')",
         ] {
             tx.execute(sql, []).map_err(|e| e.to_string())?;
@@ -56781,6 +56832,314 @@ fn split_list(text: &str) -> Vec<String> {
         .map(|p| p.trim().to_owned())
         .filter(|p| !p.is_empty())
         .collect()
+}
+
+/// Une clé de la messagerie des patients (`patient_chat_keys`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ChatKey {
+    pub id: i64,
+    pub patient_id: i64,
+    /// `patientchat::key_text`.
+    pub key: String,
+    pub created_on: String,
+    pub created_by: String,
+    /// Vide : ouverte.
+    pub closed_on: String,
+}
+
+/// Un message de la messagerie des patients (`patient_messages`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PatientMessage {
+    pub id: i64,
+    pub patient_id: i64,
+    pub key_id: i64,
+    pub uid: String,
+    pub from_patient: bool,
+    pub body: String,
+    /// L'heure du téléphone du patient, telle qu'il l'a envoyée.
+    pub written_at: String,
+    /// `AAAA-MM-JJ HH:MM` : quand le message est entré dans la base.
+    pub at: String,
+    pub author: String,
+    /// Le jour où l'officine l'a lu ; vide : pas encore.
+    pub read_on: String,
+}
+
+const CHAT_KEY_COLUMNS: &str = "id, patient_id, key, created_on, created_by, closed_on";
+const PATIENT_MESSAGE_COLUMNS: &str =
+    "id, patient_id, key_id, uid, from_patient, body, written_at, at, author, read_on";
+
+fn chat_key_row(r: &rusqlite::Row) -> rusqlite::Result<ChatKey> {
+    Ok(ChatKey {
+        id: r.get(0)?,
+        patient_id: r.get(1)?,
+        key: r.get(2)?,
+        created_on: r.get(3)?,
+        created_by: r.get(4)?,
+        closed_on: r.get(5)?,
+    })
+}
+
+fn patient_message_row(r: &rusqlite::Row) -> rusqlite::Result<PatientMessage> {
+    Ok(PatientMessage {
+        id: r.get(0)?,
+        patient_id: r.get(1)?,
+        key_id: r.get(2)?,
+        uid: r.get(3)?,
+        from_patient: r.get::<_, i64>(4)? != 0,
+        body: r.get(5)?,
+        written_at: r.get(6)?,
+        at: r.get(7)?,
+        author: r.get(8)?,
+        read_on: r.get(9)?,
+    })
+}
+
+/// L'heure où un message entre dans la base.
+const NOW_MINUTE: &str = "strftime('%Y-%m-%d %H:%M', 'now', 'localtime')";
+
+impl Db {
+    /// La clé ouverte d'un dossier, s'il en a une.
+    pub fn patient_chat_key(&self, patient_id: i64) -> Result<Option<ChatKey>, String> {
+        use rusqlite::OptionalExtension;
+        self.conn
+            .query_row(
+                &format!(
+                    "SELECT {CHAT_KEY_COLUMNS} FROM patient_chat_keys
+                     WHERE patient_id = ?1 AND closed_on = '' ORDER BY id DESC LIMIT 1"
+                ),
+                [patient_id],
+                chat_key_row,
+            )
+            .optional()
+            .map_err(|e| e.to_string())
+    }
+
+    /// Toutes les clés des dossiers qui existent, ouvertes et fermées : ce
+    /// qu'un poste essaie quand une page dit bonjour.
+    pub fn patient_chat_keys(&self) -> Result<Vec<ChatKey>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(&format!(
+                "SELECT {CHAT_KEY_COLUMNS} FROM patient_chat_keys
+                 WHERE patient_id IN (SELECT id FROM patients) ORDER BY id"
+            ))
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], chat_key_row)
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// **Donner l'accès** à un dossier : une nouvelle clé, et la précédente
+    /// fermée. Contre ce que l'écran montrait (`shown`, la clé ouverte
+    /// qu'il affichait) : un collègue qui a donné ou fermé l'accès entre-
+    /// temps n'est pas défait — `Ok(None)`, relire.
+    pub fn open_patient_chat(
+        &self,
+        patient_id: i64,
+        key: &str,
+        shown: Option<i64>,
+        day: &str,
+        who: &str,
+    ) -> Result<Option<i64>, String> {
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
+        let open: Vec<i64> = {
+            let mut stmt = tx
+                .prepare(
+                    "SELECT id FROM patient_chat_keys
+                     WHERE patient_id = ?1 AND closed_on = '' ORDER BY id DESC",
+                )
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([patient_id], |r| r.get::<_, i64>(0))
+                .map_err(|e| e.to_string())?;
+            rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+        };
+        if open.first().copied() != shown {
+            return Ok(None);
+        }
+        tx.execute(
+            "UPDATE patient_chat_keys SET closed_on = ?2 WHERE patient_id = ?1 AND closed_on = ''",
+            (patient_id, day),
+        )
+        .map_err(|e| e.to_string())?;
+        tx.execute(
+            &format!(
+                "INSERT INTO patient_chat_keys (id, patient_id, key, created_on, created_by)
+                 VALUES ({next}, ?1, ?2, ?3, ?4)",
+                next = next_id("patient_chat_keys")
+            ),
+            (patient_id, key, day, who),
+        )
+        .map_err(|e| e.to_string())?;
+        let id = tx.last_insert_rowid();
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(Some(id))
+    }
+
+    /// **Fermer l'accès** : la page du patient l'apprend à sa prochaine
+    /// visite. `false` : déjà fermé ailleurs — relire.
+    pub fn close_patient_chat(&self, key_id: i64, day: &str) -> Result<bool, String> {
+        self.conn
+            .execute(
+                "UPDATE patient_chat_keys SET closed_on = ?2 WHERE id = ?1 AND closed_on = ''",
+                (key_id, day),
+            )
+            .map(|n| n == 1)
+            .map_err(|e| e.to_string())
+    }
+
+    /// **Ranger ce qu'un patient envoie** par sa clé ouverte : chaque
+    /// message une fois (`uid`, tiré par sa page — un message renvoyé après
+    /// une coupure est déjà là). Rend les `uid` rangés ou déjà là ; rien
+    /// pour une clé fermée ou d'un dossier supprimé.
+    pub fn receive_patient_messages(
+        &self,
+        key_id: i64,
+        messages: &[(String, String, String)],
+    ) -> Result<Vec<String>, String> {
+        use rusqlite::OptionalExtension;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
+        let Some(patient_id) = tx
+            .query_row(
+                "SELECT patient_id FROM patient_chat_keys
+                 WHERE id = ?1 AND closed_on = '' AND patient_id IN (SELECT id FROM patients)",
+                [key_id],
+                |r| r.get::<_, i64>(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?
+        else {
+            return Ok(Vec::new());
+        };
+        let mut got = Vec::with_capacity(messages.len());
+        for (uid, written_at, body) in messages {
+            let there: i64 = tx
+                .query_row(
+                    "SELECT COUNT(*) FROM patient_messages
+                     WHERE key_id = ?1 AND uid = ?2 AND from_patient = 1",
+                    (key_id, uid),
+                    |r| r.get(0),
+                )
+                .map_err(|e| e.to_string())?;
+            if there == 0 {
+                tx.execute(
+                    &format!(
+                        "INSERT INTO patient_messages
+                         (id, patient_id, key_id, uid, from_patient, body, written_at, at)
+                         VALUES ({next}, ?1, ?2, ?3, 1, ?4, ?5, {NOW_MINUTE})",
+                        next = next_id("patient_messages")
+                    ),
+                    (patient_id, key_id, uid, body, written_at),
+                )
+                .map_err(|e| e.to_string())?;
+            }
+            got.push(uid.clone());
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(got)
+    }
+
+    /// Ce que l'officine a écrit sous une clé, hors `seen`, dans l'ordre
+    /// où elle l'a écrit.
+    pub fn patient_replies(
+        &self,
+        key_id: i64,
+        seen: &[i64],
+    ) -> Result<Vec<PatientMessage>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(&format!(
+                "SELECT {PATIENT_MESSAGE_COLUMNS} FROM patient_messages
+                 WHERE key_id = ?1 AND from_patient = 0 ORDER BY at, id"
+            ))
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([key_id], patient_message_row)
+            .map_err(|e| e.to_string())?;
+        let all: Vec<PatientMessage> = rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?;
+        Ok(all.into_iter().filter(|m| !seen.contains(&m.id)).collect())
+    }
+
+    /// La conversation d'un dossier, toutes clés confondues, dans l'ordre.
+    /// Un message du patient arrivé par deux postes avant qu'ils se soient
+    /// vus n'est montré qu'une fois.
+    pub fn patient_messages(&self, patient_id: i64) -> Result<Vec<PatientMessage>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(&format!(
+                "SELECT {PATIENT_MESSAGE_COLUMNS} FROM patient_messages
+                 WHERE patient_id = ?1 ORDER BY at, id"
+            ))
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([patient_id], patient_message_row)
+            .map_err(|e| e.to_string())?;
+        let all: Vec<PatientMessage> = rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?;
+        let mut seen = std::collections::HashSet::new();
+        Ok(all
+            .into_iter()
+            .filter(|m| !m.from_patient || seen.insert((m.key_id, m.uid.clone())))
+            .collect())
+    }
+
+    /// **Écrire au patient** par sa clé ouverte. `false` : la clé n'est plus
+    /// ouverte (fermée ou remplacée ailleurs) — relire.
+    pub fn write_patient_message(
+        &self,
+        key_id: i64,
+        body: &str,
+        who: &str,
+    ) -> Result<bool, String> {
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
+        let n = tx
+            .execute(
+                &format!(
+                    "INSERT INTO patient_messages
+                     (id, patient_id, key_id, from_patient, body, at, author)
+                     SELECT {next}, patient_id, id, 0, ?2, {NOW_MINUTE}, ?3
+                     FROM patient_chat_keys WHERE id = ?1 AND closed_on = ''",
+                    next = next_id("patient_messages")
+                ),
+                (key_id, body, who),
+            )
+            .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(n == 1)
+    }
+
+    /// Les messages d'un patient lus aujourd'hui, ceux qui ne l'étaient
+    /// pas.
+    pub fn mark_patient_messages_read(&self, patient_id: i64, day: &str) -> Result<usize, String> {
+        self.conn
+            .execute(
+                "UPDATE patient_messages SET read_on = ?2
+                 WHERE patient_id = ?1 AND from_patient = 1 AND read_on = ''",
+                (patient_id, day),
+            )
+            .map_err(|e| e.to_string())
+    }
+
+    /// Les dossiers qui ont des messages de patient pas encore lus, et
+    /// combien.
+    pub fn unread_patient_messages(&self) -> Result<Vec<(i64, usize)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT patient_id, COUNT(DISTINCT key_id || ':' || uid) FROM patient_messages
+                 WHERE from_patient = 1 AND read_on = ''
+                   AND patient_id IN (SELECT id FROM patients)
+                 GROUP BY patient_id ORDER BY MAX(at) DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)? as usize))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
 }
 
 /// L'identifiant qu'une création tire du bloc de ce poste, à écrire dans
