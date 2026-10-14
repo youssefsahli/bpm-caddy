@@ -1,4 +1,4 @@
-# Passation — 10/10/2026
+# Passation — 14/10/2026
 
 Écrit pour reprendre sans l'ordinateur qui a servi.
 
@@ -99,12 +99,34 @@ lot relu, corrigé) a passé son smoke dans les quatre formes (3793231),
 chemin A de `docs/CHAT_PATIENT.md`, passerelle sans mémoire
 `bpm-passerelle`, essayée dans Firefox ; réglages de l'officine dans la
 base ; réécritures sans phrase — deux relectures, corrigées) a passé son
-smoke dans les quatre formes (e542243), étiquetée le 14/10.
-**À faire par l'officine pour la messagerie** : faire tourner une
-passerelle (un serveur, un nom de domaine, un proxy TLS — mode d'emploi
-dans `docs/CHAT_PATIENT.md`), puis la régler une fois dans l'onglet
-« Messagerie » ; et faire confirmer par la CNIL ou un juriste que le
-transit chiffré sans stockage échappe à l'hébergement HDS.
+smoke dans les quatre formes (e542243), étiquetée le 14/10. La
+0.434.0 (le poste en service : verrouillage qui voile sans fermer la
+base, zone de notification, lancement à l'ouverture de session — crate
+`tray/` ; la première invitation fonde le groupe et le réseau ; la
+passerelle des patients livrable avec la version ; et, depuis la 0.433,
+la page des patients publiée sur https://bpmcaddy.github.io/ — une
+relecture, quatorze points corrigés) a passé son smoke dans les quatre
+formes (3522177), étiquetée le 14/10.
+**La messagerie des patients, où elle en est.** Un avocat a répondu
+(14/10, résumé dans `docs/CHAT_PATIENT.md`) : pas d'HDS pour la
+passerelle, l'exploitant est sous-traitant (contrat), dossier technique
+de sécurité plutôt qu'AIPD — un brouillon en ligne (artefact privé
+« dossier-securite-messagerie », à partager à l'avocat). Restent à
+demander les sources du délai de 24-48 h et des vingt ans. La page est
+publiée par `.github/workflows/page.yml` dans l'organisation GitHub
+`bpmCaddy` (dépôt `bpmcaddy.github.io`, qui ne doit rien servir
+d'autre), par une clé de déploiement limitée à ce dépôt (secret
+`PAGE_DEPLOY_KEY` de `bpm-caddy` ; les clés de déploiement ont été
+permises dans l'organisation). **À décider : qui tient la
+passerelle.** Une fois tenue, la variable `BPM_CADDY_PASSERELLE` du
+dépôt l'écrit dans les versions suivantes : la messagerie est prête
+sans réglage. Sinon, chaque officine la règle dans l'onglet.
+**À vérifier sur un vrai poste Windows** : l'icône de la zone de
+notification et le lancement à l'ouverture de session (compilés,
+jamais lancés hors Linux) ; sous macOS, pas d'icône, fermer quitte.
+Le fichier suivi `-/dfcb423a1c90b6346295.bpmnet` (depuis la 0.319.0)
+est un enregistrement de dossier d'échange égaré à la racine : à
+retirer.
 Les versions 0.398 à 0.420 n'ont jamais été étiquetées : le lanceur est
 resté sur la 0.397.0 jusqu'au 13/10 ; désormais chaque version dont le
 smoke passe s'étiquette aussitôt ; les étiquettes intermédiaires n'ont jamais été
