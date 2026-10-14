@@ -6,6 +6,7 @@
 const KAT = {
   client: 'e2ae25f709a44e263610be14252b440e71ddcfbcfdfbea76aecaf8be5688d788',
   server: 'c4441c7f787363f4e263bee9b3043830e6328e4f032671d2a3e27e199e330167',
+  closed: '4620447ef9ec84d374c61162b26bf1ee13dff689608b6eed5ee639fa21cf006c',
   sealed: '7569bf2885d9a3b1d898da2a820ca83b350bbdbf2c7d9f',
 };
 const enc = new TextEncoder();
@@ -91,6 +92,7 @@ async function selfTest() {
     const a = await authKey(k);
     if (hex(await hmac(a, enc.encode('client'), nc)) !== KAT.client) return false;
     if (hex(await hmac(a, enc.encode('server'), nc, ns)) !== KAT.server) return false;
+    if (hex(await hmac(a, enc.encode('ferme'), nc)) !== KAT.closed) return false;
     const s = await session(k, nc, ns);
     return hex(await s.up.seal(enc.encode('bonjour'))) === KAT.sealed;
   } catch (e) {
@@ -143,9 +145,15 @@ function converse(state, request) {
         const a = await authKey(key);
         ws.send(cat(MAGIC, nc, await hmac(a, enc.encode('client'), nc)));
         const back = await next();
-        const word = dec.decode(back);
-        if (word === 'FERME') return finish(resolve, { closed: true });
-        if (word === 'INCONNU') return finish(resolve, { unknown: true });
+        // « Closed » counts only signed by whoever holds this key: a bare
+        // word from the gateway would shut the patient out for good.
+        if (back.length === 37 && dec.decode(back.slice(0, 5)) === 'FERME') {
+          if (!sameBytes(await hmac(a, enc.encode('ferme'), nc), back.slice(5))) {
+            throw new Error('preuve');
+          }
+          return finish(resolve, { closed: true });
+        }
+        if (dec.decode(back) === 'INCONNU') return finish(resolve, { unknown: true });
         if (back.length !== 48) throw new Error('réponse');
         const ns = back.slice(0, 16);
         if (!sameBytes(await hmac(a, enc.encode('server'), nc, ns), back.slice(16))) {

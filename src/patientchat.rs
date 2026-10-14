@@ -40,7 +40,10 @@ use sha2::{Digest, Sha256};
 
 /// Les cinq octets qui ouvrent le bonjour d'une page.
 pub const MAGIC: &[u8; 5] = b"BPMP1";
-/// La réponse d'un poste à une clé que l'officine a fermée.
+/// La réponse d'un poste à une clé que l'officine a fermée — suivie de
+/// [`closed_tag`] : la page ne s'en tient pour fermée que signée par qui
+/// tient sa clé. Nue, une passerelle pouvait fermer un patient pour de
+/// bon.
 pub const CLOSED: &[u8] = b"FERME";
 /// La réponse d'un poste à une clé qu'il ne connaît pas.
 pub const UNKNOWN: &[u8] = b"INCONNU";
@@ -98,6 +101,14 @@ pub fn client_tag(key: &Key, nc: &[u8; NONCE]) -> [u8; TAG] {
 /// La preuve du poste : il tient la même.
 pub fn server_tag(key: &Key, nc: &[u8; NONCE], ns: &[u8; NONCE]) -> [u8; TAG] {
     mac(&auth_key(key), &[b"server", nc, ns])
+        .finalize()
+        .into_bytes()
+        .into()
+}
+
+/// La signature de « fermé » : le poste tient la clé fermée.
+pub fn closed_tag(key: &Key, nc: &[u8; NONCE]) -> [u8; TAG] {
+    mac(&auth_key(key), &[b"ferme", nc])
         .finalize()
         .into_bytes()
         .into()
@@ -381,7 +392,9 @@ pub fn answer(
         return Ok(Outcome::Unknown);
     };
     if !row.open {
-        link.send(CLOSED)?;
+        let mut word = CLOSED.to_vec();
+        word.extend_from_slice(&closed_tag(&row.key, &nc));
+        link.send(&word)?;
         return Ok(Outcome::Closed);
     }
     let mut ns = [0u8; NONCE];
@@ -438,6 +451,13 @@ pub(crate) fn talk_as_patient(
     hello.extend_from_slice(&client_tag(key, &nc));
     link.send(&hello)?;
     let back = link.recv()?;
+    if back.len() == CLOSED.len() + TAG && back.starts_with(CLOSED) {
+        return if verify(&auth_key(key), &[b"ferme", &nc], &back[CLOSED.len()..]) {
+            Ok(Err(CLOSED.to_vec()))
+        } else {
+            Err(bad())
+        };
+    }
     if back.len() != NONCE + TAG {
         return Ok(Err(back));
     }
@@ -675,16 +695,18 @@ mod tests {
         let (nc, ns) = ([0x22u8; 16], [0x33u8; 16]);
         assert_eq!(hex(&client_tag(&key, &nc)), KAT_CLIENT);
         assert_eq!(hex(&server_tag(&key, &nc, &ns)), KAT_SERVER);
+        assert_eq!(hex(&closed_tag(&key, &nc)), KAT_CLOSED);
         let (mut up, _) = session(&key, &nc, &ns);
         assert_eq!(hex(&up.seal(b"bonjour")), KAT_SEALED);
         let app = include_str!("../assets/patient/app.js");
-        for kat in [KAT_CLIENT, KAT_SERVER, KAT_SEALED] {
+        for kat in [KAT_CLIENT, KAT_SERVER, KAT_CLOSED, KAT_SEALED] {
             assert!(app.contains(kat), "app.js does not carry {kat}");
         }
     }
 
     const KAT_CLIENT: &str = "e2ae25f709a44e263610be14252b440e71ddcfbcfdfbea76aecaf8be5688d788";
     const KAT_SERVER: &str = "c4441c7f787363f4e263bee9b3043830e6328e4f032671d2a3e27e199e330167";
+    const KAT_CLOSED: &str = "4620447ef9ec84d374c61162b26bf1ee13dff689608b6eed5ee639fa21cf006c";
     const KAT_SEALED: &str = "7569bf2885d9a3b1d898da2a820ca83b350bbdbf2c7d9f";
 
     #[test]

@@ -94,7 +94,8 @@ qu'une boîte échange, quand, combien, depuis quelle adresse IP.
    }
    ```
 
-   puis `bpm-passerelle` (construit par
+   (avec nginx, garder l'en-tête `Host` : `proxy_set_header Host $host`,
+   et passer la mise à niveau WebSocket), puis `bpm-passerelle` (construit par
    `cargo build --release --bin bpm-passerelle --no-default-features --features sync`),
    qui sert la page sur `127.0.0.1:8746` et attend les postes sur le port
    **7747**, à ouvrir vers Internet. Qui la tient pourrait servir une page
@@ -124,3 +125,10 @@ main, requête scellée ouverte par le poste, réponse ouverte par la page.
   faut un nouveau code.
 * Un poste d'une version antérieure ne voit pas les tables de la
   messagerie : mettre à jour tous les postes.
+* Qui tient un code peut occuper un poste dix secondes par conversation,
+  trente fois par minute et par adresse : c'est un patient de
+  l'officine, dont on ferme l'accès. Une page sans code valable ne coûte
+  au poste qu'une réponse « inconnu ». Une passerelle partagée par
+  plusieurs officines se partage aussi ses bornes (seize attentes par
+  adresse, cinq cent douze connexions) : beaucoup d'adresses peuvent la
+  saturer.

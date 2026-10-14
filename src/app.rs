@@ -4537,6 +4537,10 @@ struct CampagneState {
     edit: Option<CampaignEdit>,
 }
 
+/// Les réécritures sans phrase, contre (`content_rev`, nombre de
+/// documents) : (adresse, texte).
+type OrphanMemo = ((u64, usize), Vec<(String, String)>);
+
 /// La messagerie d'un dossier, telle que la base la portait à la
 /// lecture.
 #[cfg(feature = "sync")]
@@ -6161,6 +6165,17 @@ struct Session {
     /// par image : une carte de carnet en résout une trentaine, et une
     /// requête par phrase serait une requête par phrase par image.
     content: crate::content::Overrides,
+    /// Bumped whenever `content` is replaced: what is read from it per
+    /// frame is memoised against this.
+    content_rev: u64,
+    /// The rewrites no phrase of this version aims at, against
+    /// `content_rev` and the number of documents.
+    textes_orphans: Option<OrphanMemo>,
+    /// La version la plus récente passée par cette base (`settings`, tous
+    /// postes) : plus récente que celle-ci, une réécriture que ce poste ne
+    /// sait pas viser peut viser une phrase de l'autre.
+    /// `None`: not read yet.
+    newest_version: Option<Option<String>>,
     /// Une réécriture en cours : le document dont on modifie les
     /// phrases, et par adresse ce qui est tapé avec ce que l'écran
     /// affichait en entrant.
@@ -6432,6 +6447,9 @@ impl Session {
         // Dans un groupe de postes, **un seul poste sème** — le poste de
         // référence — et ce qu'il sème voyage : deux postes qui sèmeraient
         // chacun créeraient chaque fiche deux fois, sous deux numéros.
+        // Every post says which version went by, the reference post or not:
+        // an older one learns a newer one is about (`newest_version`).
+        let _ = db.note_version();
         if db.seeds_here() {
             // First unlock of a fresh base: starter drug cards (names, DCI,
             // textbook antidotes). Non-fatal if it fails.
@@ -6920,6 +6938,9 @@ impl Session {
             export_box: None,
             batch: Batch::default(),
             content: crate::content::Overrides::default(),
+            content_rev: 0,
+            textes_orphans: None,
+            newest_version: None,
             text_edit: None,
             officine_seen: None,
             shared_seen: std::collections::HashMap::new(),
@@ -8615,6 +8636,8 @@ impl Session {
         if !self.care_dirty {
             self.care = None;
         }
+        // Un poste plus récent passé par la base.
+        self.newest_version = None;
         // La messagerie : une réponse d'un collègue, un message arrivé par
         // le fil qui attend, un accès donné ou fermé ailleurs.
         #[cfg(feature = "sync")]
@@ -8657,6 +8680,7 @@ impl Session {
         // au comptoir doit atteindre l'imprimante de l'autre poste.
         if let Ok(over) = self.db.content_overrides() {
             self.content = over;
+            self.content_rev += 1;
         }
         // L'annuaire des prescripteurs : importé sur un poste, il doit
         // arriver sur l'autre.
@@ -11218,6 +11242,7 @@ impl Session {
             Kind::Texte => {
                 if let Ok(over) = self.db.content_overrides() {
                     self.content = over;
+                    self.content_rev += 1;
                 }
             }
         }
@@ -12954,6 +12979,7 @@ impl Session {
             self.pchat_draft = (patient, String::new());
         }
         self.pchat_confirm_close = false;
+        let _ = self.db.close_older_patient_chats(patient, &self.today);
         let read = self
             .db
             .patient_chat_key(patient)
@@ -67973,6 +67999,7 @@ impl App {
                 crate::versions::Kind::Texte => {
                     if let Ok(over) = session.db.content_overrides() {
                         session.content = over;
+                        session.content_rev += 1;
                     }
                 }
                 crate::versions::Kind::Fiche => {}
@@ -68641,6 +68668,7 @@ impl App {
             }
         }
         session.content = session.db.content_overrides().unwrap_or_default();
+        session.content_rev += 1;
         session.reread_open_file();
         if refused > 0 {
             // Un autre poste est passé : ce qu'il a écrit est maintenant
@@ -68767,11 +68795,36 @@ impl App {
                         // tirée d'un libellé qui a changé. Elles ne
                         // s'impriment plus nulle part ; dites et retirables
                         // ici, plutôt qu'invisibles en base.
-                        let known: std::collections::HashSet<&str> = docs
-                            .iter()
-                            .flat_map(|d| d.phrases.iter().map(|(k, _, _)| k.as_str()))
-                            .collect();
-                        let orphans = session.content.orphans(&known);
+                        let memo = (session.content_rev, docs.len());
+                        if session.textes_orphans.as_ref().map(|(k, _)| *k) != Some(memo) {
+                            let known: std::collections::HashSet<&str> = docs
+                                .iter()
+                                .flat_map(|d| d.phrases.iter().map(|(k, _, _)| k.as_str()))
+                                .collect();
+                            let list = session
+                                .content
+                                .orphans(&known)
+                                .into_iter()
+                                .map(|(k, v)| (k.to_owned(), v.to_owned()))
+                                .collect();
+                            session.textes_orphans = Some((memo, list));
+                        }
+                        let orphans = session
+                            .textes_orphans
+                            .as_ref()
+                            .map(|(_, l)| l.clone())
+                            .unwrap_or_default();
+                        // **A newer post went by this base**: what this one
+                        // cannot aim at may be a phrase of that version.
+                        // Shown, never removed from here.
+                        if session.newest_version.is_none() {
+                            session.newest_version = Some(session.db.newest_version());
+                        }
+                        let newer = session
+                            .newest_version
+                            .clone()
+                            .flatten()
+                            .filter(|v| crate::release::is_newer(v, crate::release::current()));
                         if !orphans.is_empty() {
                             ui.add_space(6.0);
                             ui.label(
@@ -68780,7 +68833,18 @@ impl App {
                                     .strong(),
                             )
                             .on_hover_text(tr("textes_orphans_tooltip"));
-                            for (key, value) in orphans {
+                            if let Some(v) = &newer {
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(trf("textes_orphans_newer", v))
+                                            .size(motif::pt(ui, 10.5))
+                                            .color(motif::warn()),
+                                    )
+                                    .wrap(),
+                                );
+                            }
+                            for (key, value) in &orphans {
+                                let (key, value) = (key.as_str(), value.as_str());
                                 ui.label(
                                     egui::RichText::new(key)
                                         .size(motif::pt(ui, 10.0))
@@ -68798,7 +68862,7 @@ impl App {
                                 } else {
                                     tr("textes_orphan_remove")
                                 };
-                                if motif::button(ui, label).clicked() {
+                                if motif::button_enabled(ui, label, newer.is_none()).clicked() {
                                     if armed {
                                         drop_orphan = Some((key.to_owned(), value.to_owned()));
                                     } else {
@@ -68818,6 +68882,7 @@ impl App {
                 Err(e) => session.error = Some(e),
             }
             session.content = session.db.content_overrides().unwrap_or_default();
+            session.content_rev += 1;
         }
 
         let open = session
@@ -68942,6 +69007,7 @@ impl App {
             match session.db.reset_content(&prefix) {
                 Ok(n) => {
                     session.content = session.db.content_overrides().unwrap_or_default();
+                    session.content_rev += 1;
                     session.reread_open_file();
                     session.reread_open_file();
                     session.text_edit = None;
@@ -69309,6 +69375,7 @@ impl App {
                 Ok(n) => {
                     session.error = None;
                     session.content = session.db.content_overrides().unwrap_or_default();
+                    session.content_rev += 1;
                     session.reread_open_file();
                     session.reread_open_file();
                     session.text_edit = None;

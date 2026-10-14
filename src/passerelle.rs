@@ -78,8 +78,19 @@ const TALK_BYTES: usize = 4 * patientchat::FRAME_MAX;
 const HEAD_WAIT: Duration = Duration::from_secs(5);
 /// La plus longue requête HTTP lue.
 const HEAD_MAX: usize = 8 * 1024;
-/// Combien de connexions une adresse ouvre par minute.
-const CALLS_PER_MINUTE: usize = 30;
+/// Combien de connexions une adresse ouvre par minute sur le port des
+/// postes — un poste rappelle toutes les quatre minutes…
+const POST_CALLS_PER_MINUTE: usize = 30;
+/// …et sur celui des pages : une page en coûte quatre à son ouverture,
+/// puis deux par minute tant qu'elle est ouverte, et le Wi-Fi d'une
+/// officine ou un opérateur mobile met beaucoup de patients derrière une
+/// seule adresse. Compté à part : les pages n'enlèvent rien aux postes.
+const PAGE_CALLS_PER_MINUTE: usize = 240;
+/// Combien d'attentes une même adresse tient à la fois, toutes boîtes
+/// confondues : des secrets tirés au hasard ouvrent des boîtes, et sans
+/// borne quelques adresses rempliraient la passerelle de toutes les
+/// officines.
+const WAITS_PER_IP: usize = 16;
 
 const PAGE: &str = include_str!("../assets/patient/index.html");
 const APP: &str = include_str!("../assets/patient/app.js");
@@ -95,6 +106,21 @@ const CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self'; \
 struct Waiting {
     stream: TcpStream,
     since: Instant,
+    ip: IpAddr,
+}
+
+/// **Une attente encore tenue** : un poste qui a raccroché (son attente
+/// renouvelée, un réglage changé, l'application fermée) a fermé sa
+/// connexion, et le premier coup d'œil le voit — lu sans attendre, rien à
+/// lire n'est pas une fin. Sans cela, une page était mise en relation
+/// avec une attente morte, et les places de la boîte restaient prises.
+fn alive(stream: &TcpStream) -> bool {
+    if stream.set_nonblocking(true).is_err() {
+        return false;
+    }
+    let mut b = [0u8; 1];
+    let alive = matches!(stream.peek(&mut b), Err(e) if e.kind() == std::io::ErrorKind::WouldBlock);
+    stream.set_nonblocking(false).is_ok() && alive
 }
 
 type Boxes = Arc<Mutex<HashMap<String, Vec<Waiting>>>>;
@@ -109,12 +135,14 @@ pub fn serve(web: SocketAddr, posts: SocketAddr, stop: Arc<AtomicBool>) -> std::
     web.set_nonblocking(true)?;
     posts.set_nonblocking(true)?;
     let boxes: Boxes = Arc::default();
-    let calls: Calls = Arc::default();
+    let page_calls: Calls = Arc::default();
+    let post_calls: Calls = Arc::default();
     let open = Arc::new(AtomicUsize::new(0));
     for (listener, is_web) in [(web, true), (posts, false)] {
+        let calls = if is_web { &page_calls } else { &post_calls };
         let (boxes, calls, open, stop) = (
             Arc::clone(&boxes),
-            Arc::clone(&calls),
+            Arc::clone(calls),
             Arc::clone(&open),
             Arc::clone(&stop),
         );
@@ -145,7 +173,7 @@ pub fn serve(web: SocketAddr, posts: SocketAddr, stop: Arc<AtomicBool>) -> std::
                 std::thread::spawn(move || {
                     let _ = stream.set_nonblocking(false);
                     let _ = if is_web {
-                        take_page(stream, from, &boxes, &calls)
+                        take_page(stream, from, &boxes, &calls, &open)
                     } else {
                         take_post(stream, from.ip(), &boxes, &calls, &open)
                     };
@@ -157,18 +185,18 @@ pub fn serve(web: SocketAddr, posts: SocketAddr, stop: Arc<AtomicBool>) -> std::
     Ok(())
 }
 
-/// Lâcher les attentes échues, et les décompter.
+/// Lâcher les attentes échues ou raccrochées, et les décompter.
 fn prune(b: &mut HashMap<String, Vec<Waiting>>, open: &AtomicUsize) {
     b.retain(|_, v| {
         let before = v.len();
-        v.retain(|x| x.since.elapsed() < WAIT_BOUND);
+        v.retain(|x| x.since.elapsed() < WAIT_BOUND && alive(&x.stream));
         open.fetch_sub(before - v.len(), Ordering::SeqCst);
         !v.is_empty()
     });
 }
 
 /// Une adresse qui appelle trop souvent est lâchée.
-fn admit(calls: &Mutex<HashMap<IpAddr, Vec<Instant>>>, ip: IpAddr) -> bool {
+fn admit(calls: &Mutex<HashMap<IpAddr, Vec<Instant>>>, ip: IpAddr, most: usize) -> bool {
     let Ok(mut calls) = calls.lock() else {
         return false;
     };
@@ -182,7 +210,7 @@ fn admit(calls: &Mutex<HashMap<IpAddr, Vec<Instant>>>, ip: IpAddr) -> bool {
     }
     let seen = calls.entry(ip).or_default();
     seen.push(now);
-    seen.len() <= CALLS_PER_MINUTE
+    seen.len() <= most
 }
 
 /// La préface d'un poste : le secret de sa boîte (64 chiffres
@@ -209,7 +237,7 @@ fn take_post(
     calls: &Calls,
     open: &AtomicUsize,
 ) -> std::io::Result<()> {
-    if !admit(calls, ip) {
+    if !admit(calls, ip, POST_CALLS_PER_MINUTE) {
         return Ok(());
     }
     let line = read_line(&stream)?;
@@ -227,6 +255,9 @@ fn take_post(
     if !b.contains_key(&id) && b.len() >= MOST_BOXES {
         return Ok(());
     }
+    if b.values().flatten().filter(|w| w.ip == ip).count() >= WAITS_PER_IP {
+        return Ok(());
+    }
     let list = b.entry(id).or_default();
     if list.len() >= WAITING_PER_BOX {
         return Ok(());
@@ -237,6 +268,7 @@ fn take_post(
     list.push(Waiting {
         stream,
         since: Instant::now(),
+        ip,
     });
     Ok(())
 }
@@ -379,9 +411,10 @@ fn take_page(
     from: SocketAddr,
     boxes: &Boxes,
     calls: &Calls,
+    open: &AtomicUsize,
 ) -> std::io::Result<()> {
     let head = read_head(&stream)?;
-    if !admit(calls, client_ip(from.ip(), &head)) {
+    if !admit(calls, client_ip(from.ip(), &head), PAGE_CALLS_PER_MINUTE) {
         return respond(&stream, "429 Too Many Requests", "text/plain", b"");
     }
     if head.method != "GET" {
@@ -394,14 +427,20 @@ fn take_page(
         "/style.css" => page("text/css; charset=utf-8", STYLE),
         p => match p.strip_prefix("/ws/") {
             Some(id) if patientchat::is_box_id(id) => {
-                upgrade(stream, &head, &id.to_ascii_lowercase(), boxes)
+                upgrade(stream, &head, &id.to_ascii_lowercase(), boxes, open)
             }
             _ => respond(&stream, "404 Not Found", "text/plain", b""),
         },
     }
 }
 
-fn upgrade(mut stream: TcpStream, head: &Head, id: &str, boxes: &Boxes) -> std::io::Result<()> {
+fn upgrade(
+    mut stream: TcpStream,
+    head: &Head,
+    id: &str,
+    boxes: &Boxes,
+    open: &AtomicUsize,
+) -> std::io::Result<()> {
     let key = head.header("sec-websocket-key");
     if !head
         .header("upgrade")
@@ -425,18 +464,35 @@ fn upgrade(mut stream: TcpStream, head: &Head, id: &str, boxes: &Boxes) -> std::
         )
         .as_bytes(),
     )?;
-    // The post that has waited longest; one gone away is let go and the
-    // next tried.
+    // **The page speaks first, before a post is taken**: a page that
+    // opens and says nothing holds no post of the officine — it is let go
+    // here, after the time to say a request.
+    let hello = {
+        let mut from = Until {
+            stream: &stream,
+            until: Instant::now() + HEAD_WAIT,
+        };
+        match read_frame(&mut from, true, patientchat::FRAME_MAX) {
+            Ok(f) if f.op == OP_BINARY && f.fin => f.payload,
+            _ => return Ok(()),
+        }
+    };
+    // The post that came last is the likeliest alive; one gone away is
+    // let go and the next tried. Each taken out of the box is no longer
+    // held there: its count goes with it, whichever way.
     let post = loop {
-        let next = boxes.lock().ok().and_then(|mut b| {
-            b.get_mut(id)
-                .and_then(|v| (!v.is_empty()).then(|| v.remove(0)))
-        });
+        let next = boxes
+            .lock()
+            .ok()
+            .and_then(|mut b| b.get_mut(id).and_then(Vec::pop));
         let Some(mut w) = next else {
             break None;
         };
+        open.fetch_sub(1, Ordering::SeqCst);
         if w.since.elapsed() < WAIT_BOUND
+            && alive(&w.stream)
             && w.stream.write_all(format!("{ENTER}\n").as_bytes()).is_ok()
+            && w.stream.send(&hello).is_ok()
         {
             break Some(w.stream);
         }
@@ -882,8 +938,59 @@ mod tests {
         let id = "0".repeat(32);
         let (head, s) = open_ws(web, &id, &format!("http://{web}"));
         assert!(head.starts_with("HTTP/1.1 101"));
-        let err = Page(s).recv().unwrap_err().to_string();
+        let mut page = Page(s);
+        page.send(b"BPMP1 bonjour").unwrap();
+        let err = page.recv().unwrap_err().to_string();
         assert!(err.contains(&CLOSE_ABSENT.to_string()), "{err}");
+        stop.store(true, Ordering::SeqCst);
+    }
+
+    /// A page that opens and says nothing takes no post: it is let go,
+    /// and the post still waits for the next one.
+    #[test]
+    fn a_silent_page_holds_no_post() {
+        let (web, posts, stop) = gateway();
+        let secret = "5b".repeat(32);
+        let id = patientchat::box_id(&unhex(&secret).unwrap());
+        let waiter = {
+            let posts = posts.clone();
+            std::thread::spawn(move || wait(&posts, &secret, Duration::from_secs(5)))
+        };
+        std::thread::sleep(Duration::from_millis(300));
+        let (_, mut s) = open_ws(web, &id, &format!("http://{web}"));
+        s.set_read_timeout(Some(HEAD_WAIT + Duration::from_secs(3)))
+            .unwrap();
+        let mut b = [0u8; 1];
+        assert_eq!(s.read(&mut b).unwrap_or(0), 0, "let go");
+        assert!(!waiter.is_finished(), "the post was not taken");
+        stop.store(true, Ordering::SeqCst);
+    }
+
+    /// A post that hung up is seen gone: its place in the box is free
+    /// for the next wait, and no page is put in touch with it.
+    #[test]
+    fn a_wait_that_hung_up_frees_its_place() {
+        let (web, posts, stop) = gateway();
+        let secret = "5c".repeat(32);
+        let id = patientchat::box_id(&unhex(&secret).unwrap());
+        for _ in 0..WAITING_PER_BOX {
+            let mut s = TcpStream::connect(&posts).unwrap();
+            s.write_all(preface(&secret).as_bytes()).unwrap();
+        } // all dropped: hung up
+        std::thread::sleep(Duration::from_millis(300));
+        let waiter = {
+            let (posts, secret) = (posts.clone(), secret.clone());
+            std::thread::spawn(move || wait(&posts, &secret, Duration::from_secs(5)))
+        };
+        std::thread::sleep(Duration::from_millis(300));
+        let (_, s) = open_ws(web, &id, &format!("http://{web}"));
+        let mut page = Page(s);
+        page.send(b"BPMP1 bonjour").unwrap();
+        let mut post = waiter
+            .join()
+            .unwrap()
+            .expect("the live wait is the one taken");
+        assert_eq!(post.recv().unwrap(), b"BPMP1 bonjour");
         stop.store(true, Ordering::SeqCst);
     }
 
@@ -972,7 +1079,7 @@ mod browser {
             keys: vec![KeyRow {
                 id: 4,
                 key,
-                open: true,
+                open: std::env::var_os("BPM_TEST_CLOSED").is_none(),
             }],
             replies: vec![(
                 4,

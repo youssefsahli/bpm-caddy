@@ -56834,6 +56834,39 @@ fn split_list(text: &str) -> Vec<String> {
         .collect()
 }
 
+/// La version la plus récente passée par la base, tous postes confondus.
+const NEWEST_VERSION_KEY: &str = "version_la_plus_recente";
+
+impl Db {
+    /// Dire que cette version est passée, si elle est plus récente que ce
+    /// que la base retenait. Contre ce qui était lu : deux postes qui
+    /// montent en même temps ne s'écrasent pas, le second relira.
+    pub fn note_version(&self) -> Result<(), String> {
+        let current = crate::release::current();
+        let seen = self.setting_read(NEWEST_VERSION_KEY)?;
+        if seen
+            .as_deref()
+            .is_none_or(|v| crate::release::is_newer(current, v))
+        {
+            self.set_setting(NEWEST_VERSION_KEY, current, seen.as_deref(), "", "")?;
+        }
+        Ok(())
+    }
+
+    /// Un SQL brut, pour qu'un test d'un autre module pose un état que
+    /// l'application ne fabrique pas d'elle-même (deux postes qui ne se
+    /// sont pas encore vus).
+    #[cfg(test)]
+    pub(crate) fn execute_for_tests(&self, sql: &str) {
+        self.conn.execute_batch(sql).unwrap();
+    }
+
+    /// La version la plus récente passée par la base.
+    pub fn newest_version(&self) -> Option<String> {
+        self.setting(NEWEST_VERSION_KEY)
+    }
+}
+
 /// Une clé de la messagerie des patients (`patient_chat_keys`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ChatKey {
@@ -56976,6 +57009,34 @@ impl Db {
         let id = tx.last_insert_rowid();
         tx.commit().map_err(|e| e.to_string())?;
         Ok(Some(id))
+    }
+
+    /// **Une seule clé ouverte par dossier**, même après que deux postes
+    /// ont donné chacun un nouveau code avant de s'être vus : la plus
+    /// haute reste (la même sur tous les postes), les autres se ferment —
+    /// ouvertes, leur patient écrivait et ne lisait jamais de réponse.
+    /// N'écrit rien quand il n'y en a qu'une.
+    pub fn close_older_patient_chats(&self, patient_id: i64, day: &str) -> Result<usize, String> {
+        let open: i64 = self
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM patient_chat_keys WHERE patient_id = ?1 AND closed_on = ''",
+                [patient_id],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if open < 2 {
+            return Ok(0);
+        }
+        self.conn
+            .execute(
+                "UPDATE patient_chat_keys SET closed_on = ?2
+                 WHERE patient_id = ?1 AND closed_on = ''
+                   AND id < (SELECT MAX(id) FROM patient_chat_keys
+                             WHERE patient_id = ?1 AND closed_on = '')",
+                (patient_id, day),
+            )
+            .map_err(|e| e.to_string())
     }
 
     /// **Fermer l'accès** : la page du patient l'apprend à sa prochaine

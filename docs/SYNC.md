@@ -1021,10 +1021,17 @@ pièces :
   est dans chaque code ; le secret, d'où il se tire, ne quitte pas les
   postes (`settings`, flux `Officine`) : qui a photographié un code ne
   peut pas attendre à la place de l'officine. Ses bornes : quatre
-  attentes par boîte, refusées au-delà ; une attente de cinq minutes,
-  renouvelée à quatre ; une conversation d'une minute ; trente
-  connexions par adresse et par minute (l'adresse que le proxy a vue) ;
-  une page d'une autre origine n'obtient pas de WebSocket ;
+  attentes par boîte, refusées au-delà — une attente raccrochée est vue
+  au premier coup d'œil et rend sa place ; seize attentes par adresse,
+  toutes boîtes confondues ; une attente de cinq minutes, renouvelée à
+  quatre ; **la page parle d'abord** — son bonjour en cinq secondes, avant
+  qu'un poste soit pris : une page muette ne tient aucun poste ; une
+  conversation d'une minute, et dix secondes par trame côté poste ;
+  trente connexions par minute et par adresse sur le port des postes,
+  deux cent quarante sur celui des pages (l'adresse que le proxy a vue),
+  comptées à part ; une page d'une autre origine n'obtient pas de
+  WebSocket (le proxy doit garder l'en-tête `Host` : Caddy le fait,
+  nginx demande `proxy_set_header Host $host`) ;
 * **le poste qui attend** (`src/patientpost.rs`) : chaque poste de
   bureau ouvert, deux attentes à la fois, une conversation à la fois,
   avec sa propre connexion à la base. Le compagnon n'attend jamais.
@@ -1032,7 +1039,9 @@ pièces :
 **Le protocole** (`src/patientchat.rs`) : la page dit bonjour avec un
 nombre et un HMAC ; le poste essaie toutes les clés (toutes, quel que
 soit celle qui répond : le temps ne dit pas où est le patient dans la
-liste), répond `FERME` pour une clé fermée et `INCONNU` pour une
+liste), répond `FERME` pour une clé fermée — **signé** sous la clé :
+une passerelle ne peut pas fermer un patient de son propre chef — et
+`INCONNU` pour une
 inconnue — la page n'abandonne pas sur `INCONNU`, une clé donnée sur un
 autre poste peut ne pas être encore arrivée sur celui qui répond. Sinon
 il prouve qu'il tient la même clé, et chaque sens a sa clé AES-256-GCM

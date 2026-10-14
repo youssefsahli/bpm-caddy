@@ -20,6 +20,8 @@ use crate::patientchat::{self, FromPatient, KeyRow, Store, ToPatient};
 const WAITERS: usize = 2;
 /// Le temps de joindre la passerelle.
 const PATIENCE: Duration = Duration::from_secs(10);
+/// Le temps d'une trame de la page, une fois la conversation commencée.
+const WORD_WAIT: Duration = Duration::from_secs(10);
 /// Après un échec (passerelle éteinte, nom inconnu), avant de rappeler.
 const BACKOFF: Duration = Duration::from_secs(30);
 
@@ -96,11 +98,11 @@ fn fill(buf: &mut [u8]) {
 }
 
 /// Le fil qui attend : l'arrêter, c'est aussi lâcher les attentes en
-/// cours à la passerelle, pour qu'un poste relancé (réglage changé) ne
-/// trouve pas les places de sa boîte prises par lui-même.
+/// cours à la passerelle — fermées, elles y sont vues raccrochées
+/// (`passerelle::alive`) et rendent leurs places à la boîte.
 pub struct Waiting {
     stop: Arc<AtomicBool>,
-    held: Arc<Mutex<Vec<std::net::TcpStream>>>,
+    held: Arc<Mutex<Vec<(u64, std::net::TcpStream)>>>,
     pub events: mpsc::Receiver<Event>,
 }
 
@@ -108,7 +110,7 @@ impl Waiting {
     pub fn stop(&self) {
         self.stop.store(true, Ordering::SeqCst);
         if let Ok(mut h) = self.held.lock() {
-            for s in h.drain(..) {
+            for (_, s) in h.drain(..) {
                 let _ = s.shutdown(std::net::Shutdown::Both);
             }
         }
@@ -131,7 +133,7 @@ pub fn spawn(
     officine: String,
 ) -> Waiting {
     let stop = Arc::new(AtomicBool::new(false));
-    let held: Arc<Mutex<Vec<std::net::TcpStream>>> = Arc::default();
+    let held: Arc<Mutex<Vec<(u64, std::net::TcpStream)>>> = Arc::default();
     let (events_tx, events) = mpsc::channel();
     let (talk_tx, talk_rx) = mpsc::sync_channel::<std::net::TcpStream>(0);
     let address = crate::passerelle::posts_address(gateway);
@@ -188,6 +190,10 @@ pub fn spawn(
             let Ok(mut stream) = talk_rx.recv_timeout(Duration::from_millis(500)) else {
                 continue;
             };
+            // Each word of the page within a few seconds: a page that has
+            // the code and goes quiet does not hold this post a minute.
+            let _ = stream.set_read_timeout(Some(WORD_WAIT));
+            let _ = stream.set_write_timeout(Some(WORD_WAIT));
             if let Ok(patientchat::Outcome::Talked { received, .. }) =
                 patientchat::answer(&mut stream, &mut store, fill)
             {
@@ -200,26 +206,25 @@ pub fn spawn(
     Waiting { stop, held, events }
 }
 
-/// Une attente, tenue dans `held` le temps qu'elle dure.
+/// Une attente, tenue dans `held` le temps qu'elle dure — et **retirée
+/// à sa fin, quelle qu'elle soit**, par son numéro : gardée, la copie
+/// tenait la connexion ouverte après une attente échue (une toutes les
+/// quatre minutes), la passerelle la croyait vivante et le poste perdait
+/// un descripteur à chaque fois.
 fn wait_once(
     address: &str,
     secret: &str,
-    held: &Mutex<Vec<std::net::TcpStream>>,
+    held: &Mutex<Vec<(u64, std::net::TcpStream)>>,
 ) -> std::io::Result<std::net::TcpStream> {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let me = NEXT.fetch_add(1, Ordering::SeqCst);
     let stream = crate::passerelle::wait_with(address, secret, PATIENCE, |s| {
         if let (Ok(mut h), Ok(c)) = (held.lock(), s.try_clone()) {
-            h.push(c);
+            h.push((me, c));
         }
     });
-    // Out of the list once the wait is over, whichever way.
     if let Ok(mut h) = held.lock() {
-        h.retain(|s| {
-            s.peer_addr().is_ok()
-                && stream
-                    .as_ref()
-                    .map(|t| t.local_addr().ok() != s.local_addr().ok())
-                    .unwrap_or(true)
-        });
+        h.retain(|(id, _)| *id != me);
     }
     stream
 }
@@ -284,10 +289,11 @@ mod tests {
             });
             std::thread::sleep(Duration::from_millis(200));
             let mut page = crate::passerelle::tests_page(web, &patientchat::box_id(&[0xc3; 32]));
-            let mut post = waiter.join().unwrap();
+            // The page speaks first: the gateway takes a post only then.
             let page_side = std::thread::spawn(move || {
                 patientchat::talk_as_patient(&mut page, &key, [4; 16], &request).unwrap()
             });
+            let mut post = waiter.join().unwrap();
             let o = patientchat::answer(&mut post, store, fill).unwrap();
             (o, page_side.join().unwrap())
         };
@@ -357,6 +363,14 @@ mod tests {
         .unwrap()
         .unwrap();
         assert!(!db.write_patient_message(kid, "trop tard", "AB").unwrap());
+        // Two posts each gave a new code before seeing each other: one
+        // stays open, the highest.
+        db.execute_for_tests(&format!(
+            "INSERT INTO patient_chat_keys (id, patient_id, key) VALUES (9999, {pid}, 'x')"
+        ));
+        assert_eq!(db.close_older_patient_chats(pid, "2026-10-15").unwrap(), 1);
+        assert_eq!(db.patient_chat_key(pid).unwrap().unwrap().id, 9999);
+        assert_eq!(db.close_older_patient_chats(pid, "2026-10-15").unwrap(), 0);
         let (o, r) = talk(
             &mut store,
             patientchat::Request {
