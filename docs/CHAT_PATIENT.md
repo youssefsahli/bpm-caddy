@@ -131,4 +131,9 @@ main, requête scellée ouverte par le poste, réponse ouverte par la page.
   au poste qu'une réponse « inconnu ». Une passerelle partagée par
   plusieurs officines se partage aussi ses bornes (seize attentes par
   adresse, cinq cent douze connexions) : beaucoup d'adresses peuvent la
-  saturer.
+  saturer ; et plusieurs officines derrière une même adresse IPv4
+  (traduction d'opérateur) se partagent les seize attentes — huit postes
+  en tout.
+* Un poste qui disparaît sans fermer sa connexion (coupure de courant)
+  semble encore attendre jusqu'à cinq minutes : une page mise en relation
+  avec lui échoue au bout d'une minute et réessaie.

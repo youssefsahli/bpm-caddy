@@ -6171,11 +6171,10 @@ struct Session {
     /// The rewrites no phrase of this version aims at, against
     /// `content_rev` and the number of documents.
     textes_orphans: Option<OrphanMemo>,
-    /// La version la plus récente passée par cette base (`settings`, tous
-    /// postes) : plus récente que celle-ci, une réécriture que ce poste ne
-    /// sait pas viser peut viser une phrase de l'autre.
-    /// `None`: not read yet.
-    newest_version: Option<Option<String>>,
+    /// Les autres versions en service sur les postes de cette base
+    /// (`Db::other_versions_in_use`) : une réécriture que ce poste ne sait
+    /// pas viser peut viser une phrase de l'une d'elles. `None` : pas lu.
+    other_versions: Option<Vec<String>>,
     /// Une réécriture en cours : le document dont on modifie les
     /// phrases, et par adresse ce qui est tapé avec ce que l'écran
     /// affichait en entrant.
@@ -6448,7 +6447,7 @@ impl Session {
         // référence — et ce qu'il sème voyage : deux postes qui sèmeraient
         // chacun créeraient chaque fiche deux fois, sous deux numéros.
         // Every post says which version went by, the reference post or not:
-        // an older one learns a newer one is about (`newest_version`).
+        // the others learn which versions are in service (`other_versions`).
         let _ = db.note_version();
         if db.seeds_here() {
             // First unlock of a fresh base: starter drug cards (names, DCI,
@@ -6940,7 +6939,7 @@ impl Session {
             content: crate::content::Overrides::default(),
             content_rev: 0,
             textes_orphans: None,
-            newest_version: None,
+            other_versions: None,
             text_edit: None,
             officine_seen: None,
             shared_seen: std::collections::HashMap::new(),
@@ -8637,7 +8636,7 @@ impl Session {
             self.care = None;
         }
         // Un poste plus récent passé par la base.
-        self.newest_version = None;
+        self.other_versions = None;
         // La messagerie : une réponse d'un collègue, un message arrivé par
         // le fil qui attend, un accès donné ou fermé ailleurs.
         #[cfg(feature = "sync")]
@@ -68817,14 +68816,15 @@ impl App {
                         // **A newer post went by this base**: what this one
                         // cannot aim at may be a phrase of that version.
                         // Shown, never removed from here.
-                        if session.newest_version.is_none() {
-                            session.newest_version = Some(session.db.newest_version());
+                        if session.other_versions.is_none() {
+                            session.other_versions =
+                                Some(session.db.other_versions_in_use().unwrap_or_default());
                         }
-                        let newer = session
-                            .newest_version
-                            .clone()
-                            .flatten()
-                            .filter(|v| crate::release::is_newer(v, crate::release::current()));
+                        // **Another version in service**, older or newer:
+                        // what this post cannot aim at may be a phrase that
+                        // one still prints. Shown, never removed from here.
+                        let others = session.other_versions.clone().unwrap_or_default();
+                        let newer = (!others.is_empty()).then(|| others.join(", "));
                         if !orphans.is_empty() {
                             ui.add_space(6.0);
                             ui.label(

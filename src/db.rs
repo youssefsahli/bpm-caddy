@@ -56834,21 +56834,23 @@ fn split_list(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// La version la plus récente passée par la base, tous postes confondus.
-const NEWEST_VERSION_KEY: &str = "version_la_plus_recente";
+/// Le jour où chaque version est passée par la base pour la dernière
+/// fois, tous postes confondus : `version_vue:<version>`.
+const VERSION_SEEN_PREFIX: &str = "version_vue:";
+
+/// Combien de jours une autre version passée par la base compte encore
+/// comme « en service » — un poste éteint pour le week-end aussi.
+pub const VERSION_IN_USE_DAYS: i64 = 14;
 
 impl Db {
-    /// Dire que cette version est passée, si elle est plus récente que ce
-    /// que la base retenait. Contre ce qui était lu : deux postes qui
-    /// montent en même temps ne s'écrasent pas, le second relira.
+    /// **Dire que cette version est passée aujourd'hui** : une écriture
+    /// par version et par jour au plus, rien quand le jour est déjà dit.
     pub fn note_version(&self) -> Result<(), String> {
-        let current = crate::release::current();
-        let seen = self.setting_read(NEWEST_VERSION_KEY)?;
-        if seen
-            .as_deref()
-            .is_none_or(|v| crate::release::is_newer(current, v))
-        {
-            self.set_setting(NEWEST_VERSION_KEY, current, seen.as_deref(), "", "")?;
+        let (day, _) = self.now_local()?;
+        let key = format!("{VERSION_SEEN_PREFIX}{}", crate::release::current());
+        let seen = self.setting_read(&key)?;
+        if seen.as_deref() != Some(day.as_str()) {
+            self.set_setting(&key, &day, seen.as_deref(), &day, "")?;
         }
         Ok(())
     }
@@ -56861,10 +56863,56 @@ impl Db {
         self.conn.execute_batch(sql).unwrap();
     }
 
-    /// La version la plus récente passée par la base.
-    pub fn newest_version(&self) -> Option<String> {
-        self.setting(NEWEST_VERSION_KEY)
+    /// **Les autres versions en service** : passées par la base dans les
+    /// [`VERSION_IN_USE_DAYS`] derniers jours, plus anciennes ou plus
+    /// récentes que celle-ci. Une réécriture que ce poste ne sait pas
+    /// viser peut viser une phrase de l'une d'elles.
+    pub fn other_versions_in_use(&self) -> Result<Vec<String>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT substr(key, length(?1) + 1) FROM settings
+                 WHERE key LIKE ?1 || '%'
+                   AND value >= date('now', 'localtime', ?2)
+                 ORDER BY key",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(
+                (VERSION_SEEN_PREFIX, format!("-{VERSION_IN_USE_DAYS} days")),
+                |r| r.get::<_, String>(0),
+            )
+            .map_err(|e| e.to_string())?;
+        let all: Vec<String> = rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?;
+        Ok(all
+            .into_iter()
+            .filter(|v| v != crate::release::current())
+            .collect())
     }
+}
+
+#[cfg(test)]
+#[test]
+fn another_version_in_use_is_seen_both_ways() {
+    let dir =
+        std::env::temp_dir().join(format!("bpm-caddy-versions-in-use-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let db = Db::open(&dir.join("b.db"), "x").unwrap();
+    db.note_version().unwrap();
+    db.note_version().unwrap();
+    assert!(db.other_versions_in_use().unwrap().is_empty());
+    let (day, _) = db.now_local().unwrap();
+    db.execute_for_tests(&format!(
+        "INSERT INTO settings (key, value) VALUES ('version_vue:0.1.0', '{day}'),
+         ('version_vue:9.9.9', '{day}'), ('version_vue:0.2.0', '2000-01-01')"
+    ));
+    assert_eq!(
+        db.other_versions_in_use().unwrap(),
+        vec!["0.1.0".to_string(), "9.9.9".to_string()],
+        "older and newer alike; one not seen for weeks is gone"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// Une clé de la messagerie des patients (`patient_chat_keys`).

@@ -34,9 +34,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   phrase — a label changed or a phrase removed by a version — under
   « Réécritures sans phrase », with their text, and removes them in two
   clicks (against the text shown). They used to stay in the base,
-  invisible and printed nowhere. While a post of a newer version has
-  gone by the base, they are listed but not removable: they may aim at
-  that version's phrases.
+  invisible and printed nowhere. While a post of another version —
+  older or newer — has used the base in the last fourteen days, they are
+  listed but not removable: they may aim at phrases that version still
+  prints.
 
 ### Changed
 

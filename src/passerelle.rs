@@ -489,6 +489,8 @@ fn upgrade(
             break None;
         };
         open.fetch_sub(1, Ordering::SeqCst);
+        // A post that stops reading does not hold this thread either.
+        let _ = w.stream.set_write_timeout(Some(HEAD_WAIT));
         if w.since.elapsed() < WAIT_BOUND
             && alive(&w.stream)
             && w.stream.write_all(format!("{ENTER}\n").as_bytes()).is_ok()
