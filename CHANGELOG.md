@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   compares the published page, byte for byte, with the one it ships
   every six hours, and the « Messagerie » tab says so in red if they
   differ.
+  A code handed out under 0.433.0 still opens: the gateway sends it on to
+  the published page. The page keeps one conversation per officine on
+  the phone (one patient may write to two officines). Its files are
+  stored byte for byte in the repository (`.gitattributes`), so a
+  Windows build hashes the page GitHub serves.
 - **The patient page tells the patient** what a lawyer's review asked
   for: a permanent banner (read only during opening hours, 15 / 112,
   a doctor for a serious adverse effect), the officine's opening hours,

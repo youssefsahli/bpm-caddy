@@ -109,9 +109,10 @@ const CSP: &str = "default-src 'none'; frame-ancestors 'none'";
 pub const KEEP_MOST: u32 = 183;
 /// Quand on ne dit rien : trois mois.
 pub const KEEP_DEFAULT: u32 = 92;
-/// Au-delà, un jour ne s'écrit plus : une inondation ne remplit pas le
-/// disque (une ligne de journal fait une centaine d'octets).
-const JOURNAL_LINES_PER_DAY: usize = 1_000_000;
+/// Au-delà, un jour ne s'écrit plus — une ligne le dit : une inondation
+/// ne remplit pas le disque (une ligne fait une centaine d'octets, cent
+/// mégaoctets un million de connexions).
+const JOURNAL_BYTES_PER_DAY: u64 = 100 << 20;
 
 /// Comment la passerelle tient.
 #[derive(Clone, Debug)]
@@ -143,71 +144,109 @@ impl Options {
 /// **Le journal des connexions** : `AAAA-MM-JJ.log` par jour (UTC), une
 /// ligne par connexion — l'heure, page ou poste, l'adresse, la boîte, ce
 /// qui s'est passé. Jamais une trame, jamais un secret. Les jours plus
-/// vieux que `keep` sont effacés quand un jour commence.
+/// vieux que `keep` sont effacés à l'ouverture et quand un jour commence.
 pub struct Journal {
     dir: std::path::PathBuf,
     keep: u32,
-    today: Mutex<Option<(i64, std::fs::File, usize)>>,
+    /// `JOURNAL_BYTES_PER_DAY`, moins dans les tests.
+    cap: u64,
+    today: Mutex<Today>,
+}
+
+/// Le jour qu'on écrit.
+#[derive(Default)]
+struct Today {
+    day: Option<i64>,
+    /// `None` : le fichier ne s'ouvre pas — réessayé à `retry`, pas à
+    /// chaque connexion.
+    file: Option<std::fs::File>,
+    retry: u64,
+    /// Ce que le fichier du jour pèse, relu à l'ouverture : la borne tient
+    /// d'un lancement à l'autre.
+    bytes: u64,
+    full: bool,
 }
 
 impl Journal {
     pub fn open(dir: &std::path::Path, keep: u32) -> std::io::Result<Self> {
         std::fs::create_dir_all(dir)?;
-        Ok(Journal {
+        let j = Journal {
             dir: dir.to_owned(),
             keep: keep.clamp(1, KEEP_MOST),
-            today: Mutex::new(None),
-        })
+            cap: JOURNAL_BYTES_PER_DAY,
+            today: Mutex::new(Today::default()),
+        };
+        j.forget_before(day_of(now_secs()) - i64::from(j.keep) + 1);
+        Ok(j)
     }
 
     /// Écrire une ligne maintenant.
     pub fn note(&self, what: &str) {
-        let secs = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        self.note_at(secs, what);
+        self.note_at(now_secs(), what);
     }
 
     /// Écrire une ligne à l'heure `secs` (depuis 1970, UTC).
     pub fn note_at(&self, secs: u64, what: &str) {
-        let Ok(mut today) = self.today.lock() else {
+        let Ok(mut t) = self.today.lock() else {
             return;
         };
-        let day = i64::try_from(secs / 86_400).unwrap_or(0);
-        if today.as_ref().map(|t| t.0) != Some(day) {
-            *today = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(
-                    self.dir
-                        .join(format!("{}.log", crate::date::from_days(day))),
-                )
-                .ok()
-                .map(|f| (day, f, 0));
+        let day = day_of(secs);
+        if t.day != Some(day) {
+            *t = Today {
+                day: Some(day),
+                ..Today::default()
+            };
             self.forget_before(day - i64::from(self.keep) + 1);
         }
-        let Some((_, file, lines)) = today.as_mut() else {
-            return;
-        };
-        if *lines >= JOURNAL_LINES_PER_DAY {
+        if t.file.is_none() {
+            if secs < t.retry {
+                return;
+            }
+            let path = self
+                .dir
+                .join(format!("{}.log", crate::date::from_days(day)));
+            match std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&path)
+            {
+                Ok(f) => {
+                    t.bytes = f.metadata().map(|m| m.len()).unwrap_or(0);
+                    t.file = Some(f);
+                }
+                Err(e) => {
+                    if t.retry == 0 {
+                        eprintln!("journal : {} ne s'ouvre pas ({e})", path.display());
+                    }
+                    t.retry = secs + 60;
+                    return;
+                }
+            }
+        }
+        if t.full {
             return;
         }
-        *lines += 1;
         let s = secs % 86_400;
-        let line = if *lines == JOURNAL_LINES_PER_DAY {
-            "journal plein pour ce jour".to_owned()
-        } else {
-            what.replace(['\n', '\r'], " ")
-        };
-        let _ = writeln!(
-            file,
-            "{}T{:02}:{:02}:{:02}Z {line}",
+        let stamp = format!(
+            "{}T{:02}:{:02}:{:02}Z",
             crate::date::from_days(day),
             s / 3600,
             s / 60 % 60,
             s % 60
         );
+        let line = if t.bytes >= self.cap {
+            t.full = true;
+            format!("{stamp} journal plein pour ce jour\n")
+        } else {
+            format!("{stamp} {}\n", what.replace(['\n', '\r'], " "))
+        };
+        t.bytes += line.len() as u64;
+        if let Some(f) = t.file.as_mut() {
+            if f.write_all(line.as_bytes()).is_err() {
+                t.file = None;
+                t.retry = secs + 60;
+            }
+        }
     }
 
     /// Effacer les jours d'avant `first`.
@@ -229,6 +268,17 @@ impl Journal {
             }
         }
     }
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn day_of(secs: u64) -> i64 {
+    i64::try_from(secs / 86_400).unwrap_or(0)
 }
 
 /// Ce qu'on fait d'une ligne de journal : rien sans journal.
@@ -600,12 +650,29 @@ fn take_page(stream: TcpStream, from: SocketAddr, place: &Place) -> std::io::Res
         return respond(&stream, "405 Method Not Allowed", "text/plain", b"");
     }
     match head.path.as_str() {
-        "/" => respond(
-            &stream,
-            "200 OK",
-            "text/plain; charset=utf-8",
-            HERE.as_bytes(),
-        ),
+        // A code of 0.433.0 opened the page here: sent on to the
+        // published one, with this gateway's name — the browser keeps the
+        // fragment, key and all, across the redirection.
+        "/" => match patientchat::gateway_host(head.header("host")) {
+            host if !host.is_empty() => {
+                let to = format!("{}?p={host}", patientchat::page_url());
+                let mut s = &stream;
+                write!(
+                    s,
+                    "HTTP/1.1 302 Found\r\nLocation: {to}\r\nContent-Type: text/plain; charset=utf-8\r\n\
+                     Content-Length: {}\r\nCache-Control: no-cache\r\nReferrer-Policy: no-referrer\r\n\
+                     Content-Security-Policy: {CSP}\r\nConnection: close\r\n\r\n{HERE}",
+                    HERE.len()
+                )?;
+                s.flush()
+            }
+            _ => respond(
+                &stream,
+                "200 OK",
+                "text/plain; charset=utf-8",
+                HERE.as_bytes(),
+            ),
+        },
         p => match p.strip_prefix("/ws/") {
             Some(id) if patientchat::is_box_id(id) => {
                 let id = id.to_ascii_lowercase();
@@ -1208,8 +1275,17 @@ mod tests {
     #[test]
     fn no_page_here_and_what_is_refused() {
         let (web, _, stop) = gateway();
+        // A code of 0.433.0 lands here, and is sent on to the page.
         let (head, mut s) = get(web, "/", "");
-        assert!(head.starts_with("HTTP/1.1 200"), "{head}");
+        assert!(head.starts_with("HTTP/1.1 302"), "{head}");
+        assert!(
+            head.contains(&format!(
+                "Location: {}?p={}\r\n",
+                patientchat::page_url(),
+                web
+            )),
+            "{head}"
+        );
         assert!(head.contains("Content-Security-Policy: default-src 'none'"));
         assert!(head.contains("Referrer-Policy: no-referrer"));
         let mut body = String::new();
@@ -1270,6 +1346,18 @@ mod tests {
         j.note_at(day("2026-12-01"), "page");
         assert!(dir.join("notes.txt").exists(), "only its own files");
         assert_eq!(Journal::open(&dir, 10_000).unwrap().keep, KEEP_MOST);
+
+        // A day already full stays full after a restart: the size is read
+        // back, the bound said once.
+        let today = day("2026-12-02");
+        std::fs::write(dir.join("2026-12-02.log"), [b'x'; 64]).unwrap();
+        let mut j = Journal::open(&dir, KEEP_MOST).unwrap();
+        j.cap = 64;
+        j.note_at(today + 1, "page 1");
+        j.note_at(today + 2, "page 2");
+        let tail = std::fs::read(dir.join("2026-12-02.log")).unwrap();
+        let tail = String::from_utf8_lossy(&tail[64..]).into_owned();
+        assert_eq!(tail, "2026-12-02T00:00:01Z journal plein pour ce jour\n");
         let _ = std::fs::remove_dir_all(&dir);
 
         // A gateway with a journal writes who called and what came of it.

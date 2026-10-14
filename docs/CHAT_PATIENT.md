@@ -199,3 +199,12 @@ main, requête scellée ouverte par le poste, réponse ouverte par la page.
   tous ; GitHub pourrait en servir une autre à un seul téléphone, que
   les postes ne verraient pas. La page vient du dépôt public : ce qu'elle
   fait se lit, et chaque version en reste dans l'historique.
+* **La page partage son origine** (`youssefsahli.github.io`) avec les
+  autres sites GitHub Pages de ce compte : leur code pourrait lire ce
+  que la page garde sur le téléphone (clé et conversation). Tant que la
+  page est publiée là, aucun autre site de ce compte ne doit servir de
+  code qu'on ne maîtrise pas ; le remède est un compte ou une
+  organisation GitHub dédiés à la page (`PAGE_SITE`).
+* Les fichiers d'un jour du journal ne sont effacés qu'au premier
+  appel d'un jour nouveau, ou au lancement : une passerelle que personne
+  n'appelle les garde jusque-là.

@@ -1,0 +1,5 @@
+# The patient page is published under the hash of its exact bytes
+# (src/patientchat.rs, page_hash; .github/workflows/page.yml): a checkout
+# that turned LF into CRLF (Git for Windows) would hash another page and
+# hand out codes to a folder that does not exist.
+assets/patient/** -text

@@ -827,6 +827,18 @@ mod tests {
             "page.yml publishes only pages that call p="
         );
         assert!(PAGE_FILES[1].1.contains(PAGE_MARK));
+        // Hashed as GitHub serves them: the bytes of the repository, never
+        // a checkout's CRLF (`.gitattributes`).
+        for (name, body) in PAGE_FILES {
+            assert!(!body.contains('\r'), "{name} holds a carriage return");
+        }
+        let attributes = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(".gitattributes"),
+        )
+        .unwrap();
+        assert!(attributes
+            .lines()
+            .any(|l| l.trim() == "assets/patient/** -text"));
         assert!(PAGE_SITE.ends_with('/'));
         let h = page_hash();
         assert_eq!(h.len(), 16);

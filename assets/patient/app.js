@@ -178,9 +178,13 @@ function converse(state, request) {
 let state = null;
 let storable = true;
 
-function load() {
+// One conversation per officine (its box): every officine's page lives
+// on the same site, and one patient may write to two of them.
+const slot = (b) => `${STORE}:${b}`;
+
+function load(b) {
   try {
-    const raw = localStorage.getItem(STORE);
+    const raw = localStorage.getItem(slot(b));
     return raw ? JSON.parse(raw) : null;
   } catch (e) {
     storable = false;
@@ -188,11 +192,22 @@ function load() {
   }
 }
 
+// The officines this phone holds a conversation with.
+function boxesKept() {
+  try {
+    return Object.keys(localStorage)
+      .filter((k) => k.startsWith(`${STORE}:`))
+      .map((k) => k.slice(STORE.length + 1));
+  } catch (e) {
+    return [];
+  }
+}
+
 function save() {
   if (!state) return;
   try {
     const { key, ...kept } = state;
-    localStorage.setItem(STORE, JSON.stringify(kept));
+    localStorage.setItem(slot(state.b), JSON.stringify(kept));
   } catch (e) {
     storable = false;
   }
@@ -202,9 +217,12 @@ function fromLink() {
   const p = new URLSearchParams(location.hash.slice(1));
   const b = (p.get('b') || '').toLowerCase();
   const k = p.get('k') || '';
-  const g = (p.get('p') || '').toLowerCase();
-  if (!/^[0-9a-f]{32}$/.test(b) || !/^[A-Za-z0-9_-]{43}$/.test(k)) return null;
-  if (!/^[a-z0-9.-]+(:[0-9]{1,5})?$/.test(g)) return null;
+  // A code of 0.433.0 named no gateway: that gateway sends it here with
+  // its own name in the query.
+  const g = (p.get('p') || new URLSearchParams(location.search).get('p') || '').toLowerCase();
+  if (!/^[0-9a-f]{32}$/.test(b)) return null;
+  if (!/^[A-Za-z0-9_-]{43}$/.test(k)) return { b };
+  if (!/^(\[[0-9a-f:]+\]|[a-z0-9.-]+)(:[0-9]{1,5})?$/.test(g)) return null;
   return { b, k, p: g };
 }
 
@@ -319,9 +337,12 @@ async function start() {
     return;
   }
   const link = fromLink();
-  const kept = load();
-  if (link) {
-    state = kept && kept.b === link.b && kept.k === link.k
+  // Which officine: the link's, or the only one this phone knows.
+  const boxes = boxesKept();
+  const b = link ? link.b : (boxes.length === 1 ? boxes[0] : '');
+  const kept = b ? load(b) : null;
+  if (link && link.k) {
+    state = kept && kept.k === link.k
       ? kept
       : { b: link.b, k: link.k, messages: [], officine: '' };
     state.p = link.p;
@@ -335,7 +356,9 @@ async function start() {
   save();
   // The key out of the address bar once the phone keeps it: a screenshot
   // or a shared link does not carry it.
-  if (link && storable) history.replaceState(null, '', location.pathname);
+  // Only the box stays, which names the officine and not the patient: a
+  // reload finds the conversation, a screenshot does not carry the key.
+  if (link && storable) history.replaceState(null, '', `${location.pathname}#b=${state.b}`);
   $('ecrire').hidden = !!state.over;
   $('effacer').hidden = false;
   if (state.over) say('La pharmacie a fermé cet accès. Demandez-lui un nouveau code si besoin.', true);
@@ -343,7 +366,7 @@ async function start() {
   $('envoyer').addEventListener('click', send);
   $('effacer').addEventListener('click', () => {
     if (!confirm('Effacer cette conversation de ce téléphone ? Il faudra scanner de nouveau le code pour écrire à la pharmacie.')) return;
-    try { localStorage.removeItem(STORE); } catch (e) { /* nothing kept */ }
+    try { localStorage.removeItem(slot(state.b)); } catch (e) { /* nothing kept */ }
     location.replace(location.pathname);
   });
   document.addEventListener('visibilitychange', () => {
