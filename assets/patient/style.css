@@ -43,10 +43,14 @@ h1 { margin: 0; font-size: 1.4rem; }
 .sur { margin: 0; color: var(--discret); font-size: .85rem; text-transform: uppercase; letter-spacing: .06em; }
 
 .urgence {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0 -16px;
+  border-radius: 0 0 6px 6px;
   background: var(--alerte-fond);
   color: var(--alerte);
   padding: 10px 12px;
-  border-radius: 6px;
   font-size: .92rem;
 }
 
@@ -95,3 +99,6 @@ button.lien { background: none; color: var(--discret); padding: 0; text-decorati
 .vide { color: var(--discret); text-align: center; }
 .cache { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 footer { margin-top: 24px; border-top: 1px solid var(--bord); padding-top: 12px; }
+details { margin: 12px 0; }
+summary { cursor: pointer; }
+details p { margin: 8px 0; }

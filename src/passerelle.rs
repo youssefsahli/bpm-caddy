@@ -9,8 +9,12 @@
 //! donc sur un serveur, derrière un proxy qui porte le certificat
 //! (Caddy, nginx), et fait trois choses :
 //!
-//! * elle **sert la page** (`assets/patient/`), en clair derrière le proxy
-//!   — du code, aucune donnée ;
+//! * elle **ne sert pas la page** : publiée à part, sur GitHub Pages
+//!   (`patientchat::PAGE_SITE`), depuis le dépôt public — qui tient la
+//!   passerelle ne peut pas changer le code qui chiffre, et les postes
+//!   vérifient que la page publiée est celle qu'ils livrent
+//!   (`patientpost::check_page`). Elle n'accepte que les WebSocket de
+//!   cette origine (`Options::origins`) ;
 //! * elle tient **les postes qui attendent** : un poste de l'officine
 //!   l'appelle sur son port à lui et dit le secret de sa boîte ; il attend
 //!   là qu'une page le demande (`BPMPATIENT1 attente <secret>`, puis
@@ -21,10 +25,13 @@
 //!   et la trame de l'autre — sans les lire : elles sont chiffrées de
 //!   bout en bout sous la clé du patient, que la passerelle n'a pas.
 //!
-//! Rien n'est écrit sur son disque. Aucun poste n'attend : la page
-//! l'apprend (fermeture 4004) et garde le message sur le téléphone. Ce
-//! qu'elle sait : qu'une boîte échange, quand, combien, et depuis quelle
-//! adresse.
+//! Aucun message n'est écrit sur son disque. Aucun poste n'attend : la
+//! page l'apprend (fermeture 4004) et garde le message sur le téléphone.
+//! Ce qu'elle sait : qu'une boîte échange, quand, combien, et depuis
+//! quelle adresse — et c'est ce que son **journal** garde, si on le lui
+//! demande (`--journal`), pour la sécurité (RGPD, art. 32) : une ligne
+//! par connexion, jamais une trame, un fichier par jour, effacé au bout
+//! de `--garde` jours (au plus `KEEP_MOST`).
 //!
 //! Le numéro de boîte est dans chaque code remis aux patients ; le
 //! secret, que seuls les postes tiennent, est ce qui permet d'attendre.
@@ -92,16 +99,144 @@ const PAGE_CALLS_PER_MINUTE: usize = 240;
 /// officines.
 const WAITS_PER_IP: usize = 16;
 
-const PAGE: &str = include_str!("../assets/patient/index.html");
-const APP: &str = include_str!("../assets/patient/app.js");
-const STYLE: &str = include_str!("../assets/patient/style.css");
+/// Ce que la passerelle répond à qui l'ouvre dans un navigateur : rien à
+/// exécuter, rien à encadrer.
+const CSP: &str = "default-src 'none'; frame-ancestors 'none'";
 
-/// La politique de la page : son propre code, ses propres styles, un
-/// WebSocket vers elle-même, rien d'autre — ni script d'ailleurs, ni
-/// cadre, ni formulaire.
-const CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self'; \
-                   connect-src 'self'; img-src 'self' data:; base-uri 'none'; \
-                   form-action 'none'; frame-ancestors 'none'";
+/// Le plus long qu'un journal se garde, en jours : six mois — la
+/// fourchette de la CNIL pour des journaux de sécurité est de trois à
+/// six (`docs/CHAT_PATIENT.md`, et la page le dit au patient).
+pub const KEEP_MOST: u32 = 183;
+/// Quand on ne dit rien : trois mois.
+pub const KEEP_DEFAULT: u32 = 92;
+/// Au-delà, un jour ne s'écrit plus : une inondation ne remplit pas le
+/// disque (une ligne de journal fait une centaine d'octets).
+const JOURNAL_LINES_PER_DAY: usize = 1_000_000;
+
+/// Comment la passerelle tient.
+#[derive(Clone, Debug)]
+pub struct Options {
+    /// Les WebSocket des pages, derrière le proxy.
+    pub web: SocketAddr,
+    /// Les postes qui attendent.
+    pub posts: SocketAddr,
+    /// Les hôtes d'où une page peut appeler (l'en-tête `Origin`).
+    pub origins: Vec<String>,
+    /// Où écrire le journal des connexions ; `None`, rien.
+    pub journal: Option<std::path::PathBuf>,
+    /// Combien de jours il se garde (borné à `KEEP_MOST`).
+    pub keep_days: u32,
+}
+
+impl Options {
+    pub fn new(web: SocketAddr, posts: SocketAddr) -> Self {
+        Options {
+            web,
+            posts,
+            origins: vec![host_of(patientchat::PAGE_SITE)],
+            journal: None,
+            keep_days: KEEP_DEFAULT,
+        }
+    }
+}
+
+/// **Le journal des connexions** : `AAAA-MM-JJ.log` par jour (UTC), une
+/// ligne par connexion — l'heure, page ou poste, l'adresse, la boîte, ce
+/// qui s'est passé. Jamais une trame, jamais un secret. Les jours plus
+/// vieux que `keep` sont effacés quand un jour commence.
+pub struct Journal {
+    dir: std::path::PathBuf,
+    keep: u32,
+    today: Mutex<Option<(i64, std::fs::File, usize)>>,
+}
+
+impl Journal {
+    pub fn open(dir: &std::path::Path, keep: u32) -> std::io::Result<Self> {
+        std::fs::create_dir_all(dir)?;
+        Ok(Journal {
+            dir: dir.to_owned(),
+            keep: keep.clamp(1, KEEP_MOST),
+            today: Mutex::new(None),
+        })
+    }
+
+    /// Écrire une ligne maintenant.
+    pub fn note(&self, what: &str) {
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        self.note_at(secs, what);
+    }
+
+    /// Écrire une ligne à l'heure `secs` (depuis 1970, UTC).
+    pub fn note_at(&self, secs: u64, what: &str) {
+        let Ok(mut today) = self.today.lock() else {
+            return;
+        };
+        let day = i64::try_from(secs / 86_400).unwrap_or(0);
+        if today.as_ref().map(|t| t.0) != Some(day) {
+            *today = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(
+                    self.dir
+                        .join(format!("{}.log", crate::date::from_days(day))),
+                )
+                .ok()
+                .map(|f| (day, f, 0));
+            self.forget_before(day - i64::from(self.keep) + 1);
+        }
+        let Some((_, file, lines)) = today.as_mut() else {
+            return;
+        };
+        if *lines >= JOURNAL_LINES_PER_DAY {
+            return;
+        }
+        *lines += 1;
+        let s = secs % 86_400;
+        let line = if *lines == JOURNAL_LINES_PER_DAY {
+            "journal plein pour ce jour".to_owned()
+        } else {
+            what.replace(['\n', '\r'], " ")
+        };
+        let _ = writeln!(
+            file,
+            "{}T{:02}:{:02}:{:02}Z {line}",
+            crate::date::from_days(day),
+            s / 3600,
+            s / 60 % 60,
+            s % 60
+        );
+    }
+
+    /// Effacer les jours d'avant `first`.
+    fn forget_before(&self, first: i64) {
+        let Ok(entries) = std::fs::read_dir(&self.dir) else {
+            return;
+        };
+        for e in entries.flatten() {
+            let name = e.file_name();
+            let Some(day) = name
+                .to_str()
+                .and_then(|n| n.strip_suffix(".log"))
+                .and_then(crate::date::to_days)
+            else {
+                continue;
+            };
+            if day < first {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
+}
+
+/// Ce qu'on fait d'une ligne de journal : rien sans journal.
+fn note(journal: &Option<Arc<Journal>>, what: impl FnOnce() -> String) {
+    if let Some(j) = journal {
+        j.note(&what());
+    }
+}
 
 struct Waiting {
     stream: TcpStream,
@@ -127,11 +262,23 @@ type Boxes = Arc<Mutex<HashMap<String, Vec<Waiting>>>>;
 type Calls = Arc<Mutex<HashMap<IpAddr, Vec<Instant>>>>;
 
 /// **Tenir la passerelle ouverte** jusqu'à ce que `stop` passe à vrai :
-/// la page et les WebSocket sur `web`, les postes sur `posts`. Rend tout
-/// de suite ; elle vit sur ses propres fils.
-pub fn serve(web: SocketAddr, posts: SocketAddr, stop: Arc<AtomicBool>) -> std::io::Result<()> {
-    let web = TcpListener::bind(web)?;
-    let posts = TcpListener::bind(posts)?;
+/// les WebSocket des pages sur `options.web`, les postes sur
+/// `options.posts`. Rend tout de suite ; elle vit sur ses propres fils.
+pub fn serve(options: Options, stop: Arc<AtomicBool>) -> std::io::Result<()> {
+    let web = TcpListener::bind(options.web)?;
+    let posts = TcpListener::bind(options.posts)?;
+    let journal = match &options.journal {
+        Some(dir) => Some(Arc::new(Journal::open(dir, options.keep_days)?)),
+        None => None,
+    };
+    let origins: Arc<Vec<String>> = Arc::new(
+        options
+            .origins
+            .iter()
+            .map(|o| host_of(o))
+            .filter(|o| !o.is_empty())
+            .collect(),
+    );
     web.set_nonblocking(true)?;
     posts.set_nonblocking(true)?;
     let boxes: Boxes = Arc::default();
@@ -140,11 +287,13 @@ pub fn serve(web: SocketAddr, posts: SocketAddr, stop: Arc<AtomicBool>) -> std::
     let open = Arc::new(AtomicUsize::new(0));
     for (listener, is_web) in [(web, true), (posts, false)] {
         let calls = if is_web { &page_calls } else { &post_calls };
-        let (boxes, calls, open, stop) = (
+        let (boxes, calls, open, stop, journal, origins) = (
             Arc::clone(&boxes),
             Arc::clone(calls),
             Arc::clone(&open),
             Arc::clone(&stop),
+            journal.clone(),
+            Arc::clone(&origins),
         );
         std::thread::spawn(move || {
             while !stop.load(Ordering::SeqCst) {
@@ -164,18 +313,31 @@ pub fn serve(web: SocketAddr, posts: SocketAddr, stop: Arc<AtomicBool>) -> std::
                         prune(&mut b, &open);
                     }
                     if open.load(Ordering::SeqCst) >= MOST_CONNECTIONS {
+                        note(&journal, || format!("plein {}", from.ip()));
                         continue;
                     }
                 }
                 open.fetch_add(1, Ordering::SeqCst);
-                let (boxes, calls, open) =
-                    (Arc::clone(&boxes), Arc::clone(&calls), Arc::clone(&open));
+                let (boxes, calls, open, journal, origins) = (
+                    Arc::clone(&boxes),
+                    Arc::clone(&calls),
+                    Arc::clone(&open),
+                    journal.clone(),
+                    Arc::clone(&origins),
+                );
                 std::thread::spawn(move || {
                     let _ = stream.set_nonblocking(false);
                     let _ = if is_web {
-                        take_page(stream, from, &boxes, &calls, &open)
+                        let place = Place {
+                            boxes: &boxes,
+                            calls: &calls,
+                            open: &open,
+                            journal: &journal,
+                            origins: &origins,
+                        };
+                        take_page(stream, from, &place)
                     } else {
-                        take_post(stream, from.ip(), &boxes, &calls, &open)
+                        take_post(stream, from.ip(), &boxes, &calls, &open, &journal)
                     };
                     open.fetch_sub(1, Ordering::SeqCst);
                 });
@@ -236,32 +398,40 @@ fn take_post(
     boxes: &Boxes,
     calls: &Calls,
     open: &AtomicUsize,
+    journal: &Option<Arc<Journal>>,
 ) -> std::io::Result<()> {
     if !admit(calls, ip, POST_CALLS_PER_MINUTE) {
+        note(journal, || format!("poste {ip} - trop d'appels"));
         return Ok(());
     }
     let line = read_line(&stream)?;
     let Some(secret) = read_preface(&line) else {
+        note(journal, || format!("poste {ip} - illisible"));
         return Ok(());
     };
     let Some(bytes) = unhex(&secret) else {
         return Ok(());
     };
     let id = patientchat::box_id(&bytes);
+    let say = |why: &str| note(journal, || format!("poste {ip} {id} {why}"));
     let Ok(mut b) = boxes.lock() else {
         return Ok(());
     };
     prune(&mut b, open);
     if !b.contains_key(&id) && b.len() >= MOST_BOXES {
+        say("trop de boîtes");
         return Ok(());
     }
     if b.values().flatten().filter(|w| w.ip == ip).count() >= WAITS_PER_IP {
+        say("trop d'attentes pour l'adresse");
         return Ok(());
     }
-    let list = b.entry(id).or_default();
+    let list = b.entry(id.clone()).or_default();
     if list.len() >= WAITING_PER_BOX {
+        say("trop d'attentes pour la boîte");
         return Ok(());
     }
+    say("attend");
     // Held past this thread: counted again until it is put in touch or
     // let go.
     open.fetch_add(1, Ordering::SeqCst);
@@ -404,43 +574,66 @@ fn host_of(text: &str) -> String {
     t.split('/').next().unwrap_or("").to_ascii_lowercase()
 }
 
-/// Une page qui appelle : la page elle-même, ou un WebSocket vers une
-/// boîte.
-fn take_page(
-    stream: TcpStream,
-    from: SocketAddr,
-    boxes: &Boxes,
-    calls: &Calls,
-    open: &AtomicUsize,
-) -> std::io::Result<()> {
+/// Ce qu'une page qui appelle trouve à la passerelle.
+struct Place<'a> {
+    boxes: &'a Boxes,
+    calls: &'a Calls,
+    open: &'a AtomicUsize,
+    journal: &'a Option<Arc<Journal>>,
+    origins: &'a [String],
+}
+
+/// Ce que la passerelle dit à qui l'ouvre dans un navigateur.
+const HERE: &str = "Passerelle de la messagerie des patients de BPM-Caddy.\n\
+                    La page des patients n'est pas servie ici : elle est publiée \
+                    à part, et s'ouvre avec le code remis par la pharmacie.\n";
+
+/// Une page qui appelle : un WebSocket vers une boîte.
+fn take_page(stream: TcpStream, from: SocketAddr, place: &Place) -> std::io::Result<()> {
     let head = read_head(&stream)?;
-    if !admit(calls, client_ip(from.ip(), &head), PAGE_CALLS_PER_MINUTE) {
+    let ip = client_ip(from.ip(), &head);
+    if !admit(place.calls, ip, PAGE_CALLS_PER_MINUTE) {
+        note(place.journal, || format!("page {ip} - trop d'appels"));
         return respond(&stream, "429 Too Many Requests", "text/plain", b"");
     }
     if head.method != "GET" {
         return respond(&stream, "405 Method Not Allowed", "text/plain", b"");
     }
-    let page = |kind: &str, body: &str| respond(&stream, "200 OK", kind, body.as_bytes());
     match head.path.as_str() {
-        "/" | "/index.html" => page("text/html; charset=utf-8", PAGE),
-        "/app.js" => page("text/javascript; charset=utf-8", APP),
-        "/style.css" => page("text/css; charset=utf-8", STYLE),
+        "/" => respond(
+            &stream,
+            "200 OK",
+            "text/plain; charset=utf-8",
+            HERE.as_bytes(),
+        ),
         p => match p.strip_prefix("/ws/") {
             Some(id) if patientchat::is_box_id(id) => {
-                upgrade(stream, &head, &id.to_ascii_lowercase(), boxes, open)
+                let id = id.to_ascii_lowercase();
+                let outcome = upgrade(stream, &head, &id, place);
+                note(place.journal, || {
+                    format!(
+                        "page {ip} {id} {}",
+                        match &outcome {
+                            Ok(o) => o,
+                            Err(_) => "rompue",
+                        }
+                    )
+                });
+                outcome.map(|_| ())
             }
             _ => respond(&stream, "404 Not Found", "text/plain", b""),
         },
     }
 }
 
+/// Mettre une page en relation : ce qui s'est passé, pour le journal.
 fn upgrade(
     mut stream: TcpStream,
     head: &Head,
     id: &str,
-    boxes: &Boxes,
-    open: &AtomicUsize,
-) -> std::io::Result<()> {
+    place: &Place,
+) -> std::io::Result<&'static str> {
+    let (boxes, open) = (place.boxes, place.open);
     let key = head.header("sec-websocket-key");
     if !head
         .header("upgrade")
@@ -449,12 +642,15 @@ fn upgrade(
         || head.header("sec-websocket-version") != "13"
         || key.is_empty()
     {
-        return respond(&stream, "400 Bad Request", "text/plain", b"");
+        respond(&stream, "400 Bad Request", "text/plain", b"")?;
+        return Ok("refusée");
     }
-    // A page of another site does not reach the officine through here.
+    // A page of another site does not reach the officine through here:
+    // only the published page (a browser always says where it calls from).
     let origin = head.header("origin");
-    if !origin.is_empty() && host_of(origin) != host_of(head.header("host")) {
-        return respond(&stream, "403 Forbidden", "text/plain", b"");
+    if !origin.is_empty() && !place.origins.contains(&host_of(origin)) {
+        respond(&stream, "403 Forbidden", "text/plain", b"")?;
+        return Ok("autre origine");
     }
     stream.write_all(
         format!(
@@ -474,7 +670,7 @@ fn upgrade(
         };
         match read_frame(&mut from, true, patientchat::FRAME_MAX) {
             Ok(f) if f.op == OP_BINARY && f.fin => f.payload,
-            _ => return Ok(()),
+            _ => return Ok("muette"),
         }
     };
     // The post that came last is the likeliest alive; one gone away is
@@ -502,10 +698,11 @@ fn upgrade(
     let Some(post) = post else {
         let mut reason = CLOSE_ABSENT.to_be_bytes().to_vec();
         reason.extend_from_slice(b"absente");
-        return write_frame(&mut stream, OP_CLOSE, &reason);
+        write_frame(&mut stream, OP_CLOSE, &reason)?;
+        return Ok("aucun poste");
     };
     bridge(stream, post);
-    Ok(())
+    Ok("mise en relation")
 }
 
 const OP_CONTINUE: u8 = 0;
@@ -831,6 +1028,12 @@ mod tests {
     }
 
     fn gateway() -> (SocketAddr, String, Arc<AtomicBool>) {
+        gateway_with(None)
+    }
+
+    /// A gateway on free ports, which takes pages from the published
+    /// site and from itself (the tests' pages say so).
+    fn gateway_with(journal: Option<std::path::PathBuf>) -> (SocketAddr, String, Arc<AtomicBool>) {
         let free = || {
             TcpListener::bind("127.0.0.1:0")
                 .unwrap()
@@ -839,7 +1042,10 @@ mod tests {
         };
         let (web, posts) = (free(), free());
         let stop = Arc::new(AtomicBool::new(false));
-        serve(web, posts, Arc::clone(&stop)).unwrap();
+        let mut options = Options::new(web, posts);
+        options.origins.push(format!("http://{web}"));
+        options.journal = journal;
+        serve(options, Arc::clone(&stop)).unwrap();
         (web, posts.to_string(), stop)
     }
 
@@ -996,25 +1202,101 @@ mod tests {
         stop.store(true, Ordering::SeqCst);
     }
 
-    /// The page is served with its policy; another site's page does not
-    /// get a WebSocket; a wrong box or path gets nothing.
+    /// The gateway serves no page — only says what it is; the published
+    /// page's origin gets a WebSocket, another site's page does not; a
+    /// wrong box or path gets nothing.
     #[test]
-    fn the_page_its_policy_and_what_is_refused() {
+    fn no_page_here_and_what_is_refused() {
         let (web, _, stop) = gateway();
         let (head, mut s) = get(web, "/", "");
         assert!(head.starts_with("HTTP/1.1 200"), "{head}");
-        assert!(head.contains("script-src 'self'"));
+        assert!(head.contains("Content-Security-Policy: default-src 'none'"));
         assert!(head.contains("Referrer-Policy: no-referrer"));
         let mut body = String::new();
         let _ = s.read_to_string(&mut body);
-        assert!(body.contains("app.js"));
+        assert!(body.contains("publiée"), "{body}");
+        for path in ["/index.html", "/app.js", "/style.css"] {
+            let (head, _) = get(web, path, "");
+            assert!(head.starts_with("HTTP/1.1 404"), "{path}: {head}");
+        }
+        let (head, _) = open_ws(web, &"0".repeat(32), "https://youssefsahli.github.io");
+        assert!(head.starts_with("HTTP/1.1 101"), "{head}");
         let (head, _) = open_ws(web, &"0".repeat(32), "https://ailleurs.example");
+        assert!(head.starts_with("HTTP/1.1 403"), "{head}");
+        let (head, _) = open_ws(
+            web,
+            &"0".repeat(32),
+            "https://youssefsahli.github.io.ailleurs.example",
+        );
         assert!(head.starts_with("HTTP/1.1 403"), "{head}");
         let (head, _) = get(web, "/ws/court", "");
         assert!(head.starts_with("HTTP/1.1 404"), "{head}");
         let (head, _) = get(web, "/etc/passwd", "");
         assert!(head.starts_with("HTTP/1.1 404"), "{head}");
         stop.store(true, Ordering::SeqCst);
+    }
+
+    /// The journal: a file a day, a line a connection, never a frame;
+    /// days older than what is kept go when a day begins; a flood stops
+    /// at a line count; the keeping is held to six months.
+    #[test]
+    fn the_journal_keeps_connections_and_forgets_on_time() {
+        let dir = std::env::temp_dir().join(format!(
+            "bpm-passerelle-journal-days-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let j = Journal::open(&dir, 2).unwrap();
+        let day = |iso: &str| crate::date::to_days(iso).unwrap() as u64 * 86_400;
+        j.note_at(
+            day("2026-10-01") + 3_725,
+            "page 203.0.113.9 abc aucun poste",
+        );
+        j.note_at(
+            day("2026-10-02") + 60,
+            "poste 198.51.100.2 abc attend\ninjecté",
+        );
+        let first = std::fs::read_to_string(dir.join("2026-10-01.log")).unwrap();
+        assert_eq!(
+            first,
+            "2026-10-01T01:02:05Z page 203.0.113.9 abc aucun poste\n"
+        );
+        let second = std::fs::read_to_string(dir.join("2026-10-02.log")).unwrap();
+        assert_eq!(second.lines().count(), 1, "one line, whatever it holds");
+        j.note_at(day("2026-10-03"), "page");
+        assert!(!dir.join("2026-10-01.log").exists(), "two days kept");
+        assert!(dir.join("2026-10-02.log").exists());
+        std::fs::write(dir.join("notes.txt"), "à l'exploitant").unwrap();
+        j.note_at(day("2026-12-01"), "page");
+        assert!(dir.join("notes.txt").exists(), "only its own files");
+        assert_eq!(Journal::open(&dir, 10_000).unwrap().keep, KEEP_MOST);
+        let _ = std::fs::remove_dir_all(&dir);
+
+        // A gateway with a journal writes who called and what came of it.
+        let dir = std::env::temp_dir().join(format!(
+            "bpm-passerelle-journal-gateway-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (web, _, stop) = gateway_with(Some(dir.clone()));
+        let id = "1".repeat(32);
+        let (_, s) = open_ws(web, &id, &format!("http://{web}"));
+        let mut page = Page(s);
+        page.send(b"BPMP1 secret de la page").unwrap();
+        let _ = page.recv();
+        std::thread::sleep(Duration::from_millis(300));
+        let text: String = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .map(|e| std::fs::read_to_string(e.path()).unwrap())
+            .collect();
+        assert!(
+            text.contains(&format!("page 127.0.0.1 {id} aucun poste")),
+            "{text}"
+        );
+        assert!(!text.contains("secret de la page"), "never a frame");
+        stop.store(true, Ordering::SeqCst);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Behind the proxy, the patient's own address is the one counted.
@@ -1055,26 +1337,64 @@ mod browser {
             eprintln!("REPLIES {key} seen={seen:?}");
             self.0.replies(key, seen)
         }
-        fn officine(&mut self) -> String {
+        fn officine(&mut self) -> crate::patientchat::Officine {
             self.0.officine()
         }
+    }
+
+    /// The page as GitHub Pages serves it, on 18745: what a browser
+    /// opens, apart from the gateway on 18746.
+    fn serve_the_page() {
+        let l = TcpListener::bind("127.0.0.1:18745").unwrap();
+        std::thread::spawn(move || {
+            for s in l.incoming().flatten() {
+                // One thread each: a browser opens connections it does
+                // not use at once.
+                std::thread::spawn(move || {
+                    let Ok(head) = read_head(&s) else { return };
+                    let name = head.path.trim_start_matches('/');
+                    let name = if name.is_empty() { "index.html" } else { name };
+                    let kind = match name.rsplit('.').next() {
+                        Some("js") => "text/javascript; charset=utf-8",
+                        Some("css") => "text/css; charset=utf-8",
+                        _ => "text/html; charset=utf-8",
+                    };
+                    // As GitHub Pages: no policy header, the page's own
+                    // `<meta>` one holds.
+                    let (status, body) =
+                        match patientchat::PAGE_FILES.iter().find(|(n, _)| *n == name) {
+                            Some((_, body)) => ("200 OK", body.as_bytes()),
+                            None => ("404 Not Found", b"".as_slice()),
+                        };
+                    let mut s = s;
+                    let _ = write!(
+                        s,
+                        "HTTP/1.1 {status}\r\nContent-Type: {kind}\r\nContent-Length: {}\r\n\
+                         Connection: close\r\n\r\n",
+                        body.len()
+                    );
+                    let _ = s.write_all(body);
+                });
+            }
+        });
     }
 
     #[test]
     #[ignore]
     fn serve_for_a_browser() {
         let stop = Arc::new(AtomicBool::new(false));
-        serve(
+        let mut options = Options::new(
             "127.0.0.1:18746".parse().unwrap(),
             "127.0.0.1:17747".parse().unwrap(),
-            Arc::clone(&stop),
-        )
-        .unwrap();
+        );
+        options.origins.push("http://127.0.0.1:18745".into());
+        serve(options, Arc::clone(&stop)).unwrap();
+        serve_the_page();
         let secret = "5a".repeat(32);
         let id = patientchat::box_id(&unhex(&secret).unwrap());
         let key = [8u8; 32];
         eprintln!(
-            "URL http://127.0.0.1:18746/#b={id}&k={}",
+            "URL http://127.0.0.1:18745/#b={id}&k={}&p=127.0.0.1:18746",
             patientchat::key_text(&key)
         );
         let mut store = Logged(Memory {

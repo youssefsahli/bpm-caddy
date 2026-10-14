@@ -5,18 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src wss: ws://127.0.0.1:*; img-src 'self' data:; base-uri 'none'; form-action 'none'">
 <title>Messagerie de la pharmacie</title>
 <link rel="stylesheet" href="style.css">
 <script src="app.js" defer></script>
 </head>
 <body>
+<p class="urgence" role="note">Cette messagerie n'est lue qu'aux heures d'ouverture de la
+pharmacie. En cas d'urgence, appelez le <strong>15</strong> (ou le <strong>112</strong>).
+En cas d'effet indésirable grave, contactez immédiatement un médecin.</p>
 <header>
   <p class="sur">Messagerie</p>
   <h1 id="officine">Votre pharmacie</h1>
+  <p id="horaires" class="discret" hidden></p>
 </header>
-<p class="urgence">Ce n'est pas un service d'urgence : la pharmacie lit vos messages
-quand elle est ouverte. En cas d'urgence, appelez le <strong>15</strong> (ou le
-<strong>112</strong>).</p>
 <main id="fil" aria-live="polite"></main>
 <section id="ecrire" hidden>
   <label for="texte" class="cache">Votre message</label>
@@ -32,6 +34,24 @@ quand elle est ouverte. En cas d'urgence, appelez le <strong>15</strong> (ou le
   <p class="discret">Vos messages sont chiffrés de bout en bout entre ce téléphone et
   la pharmacie : personne d'autre ne peut les lire. Ils restent aussi sur ce
   téléphone.</p>
+  <details class="discret">
+    <summary>Vos données personnelles</summary>
+    <p><strong>Responsable du traitement :</strong> <span id="rt">votre pharmacie</span>.</p>
+    <p><strong>Pourquoi :</strong> échanger avec l'équipe de la pharmacie au sujet de vos
+    traitements et de votre prise en charge. Base légale : la prise en charge sanitaire
+    (RGPD, art. 9.2.h). Les échanges sont couverts par le secret professionnel.</p>
+    <p><strong>Qui les lit :</strong> l'équipe de la pharmacie seulement. Un serveur relais
+    les transmet chiffrés, sans pouvoir les lire ni les garder ; il note l'adresse IP et
+    l'heure des connexions, pour la sécurité, six mois au plus. Cette page est publiée par
+    GitHub Pages (GitHub, Inc.), qui voit l'adresse IP de qui l'ouvre, jamais les
+    messages.</p>
+    <p><strong>Combien de temps :</strong> à la pharmacie, dans votre dossier, aussi
+    longtemps que lui ; sur ce téléphone, jusqu'à ce que vous les effaciez.</p>
+    <p><strong>Vos droits :</strong> vous pouvez demander à la pharmacie une copie de la
+    conversation, la rectification ou la limitation de vos données. La pharmacie peut
+    conserver ce qui est nécessaire à votre prise en charge (RGPD, art. 17.3). Vous pouvez
+    adresser une réclamation à la CNIL (cnil.fr).</p>
+  </details>
   <button id="effacer" type="button" class="lien" hidden>Effacer cette conversation de ce téléphone</button>
 </footer>
 <noscript><p class="erreur">Cette page a besoin de JavaScript pour chiffrer vos messages.</p></noscript>

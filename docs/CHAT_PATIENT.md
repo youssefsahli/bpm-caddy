@@ -22,14 +22,28 @@ conversation. D'où un code par patient, qu'on peut fermer et remplacer.
 ## Ce qui a été construit
 
 **Côté patient : une page, pas une application.** Le code QR ouvre
-`https://<passerelle>/#b=<boîte>&k=<clé>`. Le fragment (après `#`) n'est
-envoyé à personne par le navigateur : la clé ne quitte pas le téléphone.
+`https://youssefsahli.github.io/bpm-caddy/<empreinte>/#b=<boîte>&k=<clé>&p=<passerelle>`.
+Le fragment (après `#`) n'est envoyé à personne par le navigateur : la
+clé ne quitte pas le téléphone, et GitHub ne sait pas quelle passerelle
+la page appelle.
 La page (`assets/patient/`) est du HTML, du CSS et un script sans
 bibliothèque ; elle chiffre avec WebCrypto. Une fois la clé gardée sur
 le téléphone (`localStorage`), elle la retire de la barre d'adresse.
-Elle dit qu'elle n'est pas un service d'urgence (15, 112). Avant tout
-envoi, elle vérifie que le navigateur chiffre comme le poste (des
-valeurs connues, que `patientchat::tests` tient des deux côtés).
+Un bandeau fixe, en tête, dit qu'elle n'est lue qu'aux heures
+d'ouverture (15 ou 112 en cas d'urgence, un médecin pour un effet
+indésirable grave) ; elle montre les heures d'ouverture de l'officine et
+l'information due au patient (RGPD, art. 13 : responsable, finalité,
+base légale, destinataires, durée, droits). Avant tout envoi, elle
+vérifie que le navigateur chiffre comme le poste (des valeurs connues,
+que `patientchat::tests` tient des deux côtés).
+
+**La page est publiée à part de la passerelle**, sur GitHub Pages, depuis
+le dépôt public (`.github/workflows/page.yml`) : chaque version dans un
+dossier nommé par son empreinte, qui ne change plus une fois publié.
+Qui tient la passerelle ne touche donc pas au code qui chiffre — c'était
+la seule façon pour lui de lire un message. Chaque poste compare toutes
+les six heures la page publiée à celle qu'il livre, octet pour octet
+(`patientpost::check_page`) : un écart s'affiche en rouge dans l'onglet.
 
 **Le protocole** (`src/patientchat.rs`) : quatre trames. La page prouve
 qu'elle tient une clé (HMAC d'un nombre tiré au hasard) sans dire
@@ -46,10 +60,15 @@ demande un nom de domaine et un certificat — ce qu'un poste d'officine
 n'a pas, et souvent il n'a même pas d'adresse joignable. Le relais des
 officines (§ 7.9 de `SYNC.md`) parle TCP brut, sans certificat : il ne
 peut pas servir une page. La passerelle se tient donc derrière un proxy
-qui porte le certificat ; elle sert la page, tient les postes qui
-attendent, et passe les trames de l'un à l'autre sans les lire. Elle ne
-garde rien : sans poste qui attend, la page l'apprend (fermeture 4004)
-et garde le message sur le téléphone.
+qui porte le certificat ; elle tient les postes qui attendent, et passe
+les trames de l'un à l'autre sans les lire. Elle ne sert pas la page,
+et n'accepte que les WebSocket de l'origine où elle est publiée. Elle ne
+garde aucun message : sans poste qui attend, la page l'apprend
+(fermeture 4004) et garde le message sur le téléphone. Elle tient, si on
+le lui demande, un **journal des connexions** (`--journal`) : l'heure,
+l'adresse IP, la boîte, l'issue — jamais une trame — un fichier par
+jour, effacé au bout de `--garde` jours (trois mois sans rien dire, six
+au plus).
 
 **Côté officine** (`src/patientpost.rs`, onglet « Messagerie » du
 dossier). Chaque poste de bureau ouvert attend à la passerelle (deux
@@ -70,17 +89,50 @@ le lui dit.
    de santé de plus ; la question reste ouverte, rien ne l'empêche
    plus tard.
 
-## Le point réglementaire, toujours à faire confirmer
+## Le point réglementaire : l'avis d'un avocat (14/10/2026)
 
-Héberger des données de santé pour le compte d'un tiers demande un
-hébergeur certifié **HDS** (art. L. 1111-8 du code de la santé
-publique). Le chemin A a été choisi parce qu'il **n'héberge rien** : la
-passerelle ne fait que passer des octets chiffrés de bout en bout, sans
-la clé, et n'écrit rien sur un disque. La base de l'officine, sur ses
-postes, reste là où elle était. Que ce transit sans stockage échappe à
-l'obligation est la lecture la plus probable — **à faire confirmer**
-(CNIL, ou un juriste), pas à supposer. Ce que la passerelle sait :
-qu'une boîte échange, quand, combien, depuis quelle adresse IP.
+Deux échanges écrits avec un avocat, sur l'architecture décrite ici. Ce
+qu'il en ressort, et ce que le logiciel en a fait :
+
+* **HDS (art. L. 1111-8 CSP) : non**, pour la passerelle. Un
+  acheminement en temps réel, sans écriture sur un support persistant et
+  sans la clé, est du transport, pas de l'hébergement. Le point de
+  friction était la page servie par la passerelle (son exploitant aurait
+  pu la changer) : elle est désormais publiée à part, et vérifiée par
+  les postes — « la réponse qu'attendrait la CNIL ».
+* **Qui est qui (RGPD).** L'officine est responsable du traitement.
+  L'exploitant de la passerelle est son **sous-traitant** (art. 28) : un
+  contrat est obligatoire (une acceptation électronique dans le
+  logiciel vaut, si on garde la preuve : le poste, l'heure, la version
+  du texte accepté). Si l'éditeur ne fait que fournir le logiciel, il
+  n'est pas sous-traitant ; une officine qui tient la passerelle pour
+  d'autres devient leur sous-traitant. GitHub, qui publie la page, ne
+  voit que des adresses IP : son contrat standard suffit.
+* **AIPD** : une officine seule n'est pas « à grande échelle »
+  (considérant 91), elle en est dispensée en principe. Un **dossier
+  technique de sécurité** reste à lui fournir (description, nécessité,
+  risques, mesures) — l'avocat propose d'en relire le plan.
+* **Journaux** : pas de contenu, mais les métadonnées de connexion trois
+  à six mois, pour la sécurité (art. 32) — d'où `--journal`.
+* **Secret professionnel** : compatible, tant que seuls le patient et le
+  pharmacien accèdent au clair. Mon espace santé est recommandé, pas
+  obligatoire.
+* **Base légale** : la prise en charge sanitaire (art. 9.2.h), sans
+  consentement écrit ; l'information de l'article 13 sur la page.
+* **Urgence** : une obligation de moyens ; le bandeau permanent de la
+  page. Un délai de réponse de 24 à 48 h ouvrées est cité comme
+  « recommandation ordinale » — **source à demander**.
+* **Conservation** : avec le dossier du patient, et supprimée avec lui
+  (c'est ce que fait la base). La durée de vingt ans citée — **source à
+  demander** : c'est celle du dossier médical des établissements de
+  santé (R. 1112-7 CSP), pas un texte propre à l'officine.
+* **Droits du patient** : accès — une copie de la conversation,
+  « Imprimer la conversation » ; effacement — l'officine peut refuser
+  ce qui est nécessaire à la prise en charge (art. 17.3).
+
+Reste à décider : **qui tient la passerelle** (l'éditeur, et il signe
+un contrat de sous-traitance avec chaque officine ; ou une officine) et
+les conditions d'utilisation qui vont avec.
 
 ## Mettre en service
 
@@ -94,13 +146,19 @@ qu'une boîte échange, quand, combien, depuis quelle adresse IP.
    }
    ```
 
-   (avec nginx, garder l'en-tête `Host` : `proxy_set_header Host $host`,
-   et passer la mise à niveau WebSocket), puis `bpm-passerelle` (construit par
-   `cargo build --release --bin bpm-passerelle --no-default-features --features sync`),
-   qui sert la page sur `127.0.0.1:8746` et attend les postes sur le port
-   **7747**, à ouvrir vers Internet. Qui la tient pourrait servir une page
-   modifiée qui lirait les messages : c'est l'éditeur, ou une officine de
-   confiance, qui la tient.
+   (avec nginx, passer la mise à niveau WebSocket et l'adresse du
+   patient, `X-Forwarded-For`), puis `bpm-passerelle` (construit par
+   `cargo build --release --bin bpm-passerelle --no-default-features --features sync`) :
+
+   ```text
+   bpm-passerelle --journal /var/log/bpm-passerelle --garde 92
+   ```
+
+   Elle prend les WebSocket des pages sur `127.0.0.1:8746` et attend les
+   postes sur le port **7747**, à ouvrir vers Internet. Elle ne sert pas
+   la page (publiée sur GitHub Pages) : son exploitant ne peut pas lire
+   les messages, mais il voit les adresses et les heures — il est le
+   sous-traitant des officines qui s'en servent.
 2. **Dans l'officine**, une fois : onglet « Messagerie » d'un dossier,
    « Régler la passerelle… », son nom de domaine. Le poste tire le secret
    de la boîte de l'officine ; le réglage vaut pour tous ses postes.
@@ -137,3 +195,7 @@ main, requête scellée ouverte par le poste, réponse ouverte par la page.
 * Un poste qui disparaît sans fermer sa connexion (coupure de courant)
   semble encore attendre jusqu'à cinq minutes : une page mise en relation
   avec lui échoue au bout d'une minute et réessaie.
+* La vérification de la page par les postes voit une page changée pour
+  tous ; GitHub pourrait en servir une autre à un seul téléphone, que
+  les postes ne verraient pas. La page vient du dépôt public : ce qu'elle
+  fait se lit, et chaque version en reste dans l'historique.

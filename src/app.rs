@@ -4577,6 +4577,7 @@ enum PchatAct {
     Give,
     Show,
     Print,
+    PrintConversation,
     Close,
     Send,
 }
@@ -5752,10 +5753,16 @@ struct Session {
     /// Le fil qui attend les patients à la passerelle, et ce avec quoi il
     /// a été lancé : un réglage changé le relance.
     #[cfg(feature = "sync")]
-    pchat_wait: Option<(crate::patientpost::Waiting, (String, String, String))>,
+    pchat_wait: Option<(
+        crate::patientpost::Waiting,
+        (String, String, crate::patientchat::Officine),
+    )>,
     /// Ce que le fil a dit en dernier quand la passerelle ne répond pas.
     #[cfg(feature = "sync")]
     pchat_unreachable: Option<String>,
+    /// La page publiée, comparée à la nôtre (`patientpost::check_page`).
+    #[cfg(feature = "sync")]
+    pchat_page: Option<crate::patientpost::PageCheck>,
     /// The posts window, when open.
     #[cfg(feature = "sync")]
     posts_window: Option<PostsWindow>,
@@ -6812,6 +6819,8 @@ impl Session {
             pchat_wait: None,
             #[cfg(feature = "sync")]
             pchat_unreachable: None,
+            #[cfg(feature = "sync")]
+            pchat_page: None,
             #[cfg(feature = "sync")]
             posts_window: None,
             #[cfg(feature = "sync")]
@@ -13023,11 +13032,26 @@ impl Session {
             .pchat_conf
             .clone()
             .filter(|(_, s)| crate::patientchat::is_box_secret(s))
-            .map(|(g, s)| (g, s, config.pharmacy.name.trim().to_owned()));
+            .map(|(g, s)| {
+                let p = &config.pharmacy;
+                let hours: Vec<(String, String, String)> = p
+                    .horaires
+                    .iter()
+                    .map(|h| (h.jour.clone(), h.de.clone(), h.a.clone()))
+                    .collect();
+                let who = crate::patientchat::Officine {
+                    nom: p.name.trim().to_owned(),
+                    adresse: p.address.trim().replace('\n', ", "),
+                    telephone: p.phone.trim().to_owned(),
+                    horaires: crate::patientpost::opening_hours(&hours),
+                };
+                (g, s, who)
+            });
         let running = self.pchat_wait.as_ref().map(|(_, c)| c.clone());
         if want != running {
             self.pchat_wait = None;
             self.pchat_unreachable = None;
+            self.pchat_page = None;
             if let (Some(c), Some(path)) = (want, self.db.path()) {
                 let w = crate::patientpost::spawn(
                     path,
@@ -13046,6 +13070,7 @@ impl Session {
                     crate::patientpost::Event::Received(_) => arrived = true,
                     crate::patientpost::Event::Unreachable(t) => self.pchat_unreachable = Some(t),
                     crate::patientpost::Event::Reached => self.pchat_unreachable = None,
+                    crate::patientpost::Event::Page(c) => self.pchat_page = Some(c),
                 }
             }
         }
@@ -26051,6 +26076,22 @@ impl App {
                     .wrap(),
                 );
             }
+            match &session.pchat_page {
+                Some(crate::patientpost::PageCheck::Different) => {
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(tr("pchat_page_altered"))
+                                .strong()
+                                .color(motif::alert()),
+                        )
+                        .wrap(),
+                    );
+                }
+                Some(crate::patientpost::PageCheck::Unread(why)) => {
+                    ui.add(egui::Label::new(trf("pchat_page_unread", why)).wrap());
+                }
+                _ => {}
+            }
             if chat.failed {
                 ui.label(egui::RichText::new(tr("pchat_failed")).color(motif::warn()));
                 return;
@@ -26070,6 +26111,10 @@ impl App {
                     // band no room.
                     let options = [
                         (PchatAct::Print, tr("pchat_print").to_owned()),
+                        (
+                            PchatAct::PrintConversation,
+                            tr("pchat_print_conversation").to_owned(),
+                        ),
                         (PchatAct::Give, tr("pchat_new").to_owned()),
                         (PchatAct::Close, tr("pchat_close").to_owned()),
                     ];
@@ -26094,6 +26139,15 @@ impl App {
                         .clicked()
                     {
                         act = Some(PchatAct::Give);
+                    }
+                    // An access closed leaves its conversation: the
+                    // patient may still ask for a copy.
+                    if !chat.messages.is_empty()
+                        && motif::button(ui, tr("pchat_print_conversation"))
+                            .on_hover_text(tr("pchat_print_conversation_tooltip"))
+                            .clicked()
+                    {
+                        act = Some(PchatAct::PrintConversation);
                     }
                 }
             });
@@ -26202,6 +26256,9 @@ impl App {
                 session.pchat_qr = Self::pchat_link(session).map(|l| (patient.id, l));
             }
             Some(PchatAct::Print) => Self::print_messagerie(session, patient, config),
+            Some(PchatAct::PrintConversation) => {
+                Self::print_conversation(session, patient, config);
+            }
             Some(PchatAct::Close) => {
                 if !session.pchat_confirm_close {
                     session.pchat_confirm_close = true;
@@ -26312,6 +26369,48 @@ impl App {
             &data,
             &config.pharmacy,
             &config.doc_template_path("messagerie"),
+        ) {
+            Ok(_) => session.error = None,
+            Err(e) => session.error = Some(e),
+        }
+    }
+
+    /// **La copie de la conversation**, que le patient peut demander (son
+    /// droit d'accès) : telle que l'écran la montre, dans son ordre.
+    #[cfg(feature = "sync")]
+    fn print_conversation(session: &mut Session, patient: &Patient, config: &Config) {
+        let Some(chat) = session
+            .pchat
+            .as_ref()
+            .filter(|c| c.patient_id == patient.id)
+        else {
+            return;
+        };
+        let messages: Vec<(String, String, String)> = chat
+            .messages
+            .iter()
+            .map(|m| {
+                let who = if m.from_patient {
+                    tr("pchat_from_patient").to_owned()
+                } else {
+                    trf("pchat_from_officine", &m.author)
+                };
+                (crate::patientpost::shown_at(&m.at), who, m.body.clone())
+            })
+            .collect();
+        let today = session
+            .db
+            .today_french()
+            .unwrap_or_else(|_| tr("itv_date_fallback").to_owned());
+        let data = crate::pdf::ConversationData {
+            patient,
+            today: &today,
+            messages: &messages,
+        };
+        match crate::pdf::open_conversation(
+            &data,
+            &config.pharmacy,
+            &config.doc_template_path("conversation"),
         ) {
             Ok(_) => session.error = None,
             Err(e) => session.error = Some(e),

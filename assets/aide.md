@@ -285,8 +285,18 @@ les postes de l'officine, sous une clé à lui que porte le code : la
 passerelle qui les met en relation ne la voit pas et ne garde rien. Un
 message ne passe que **pendant qu'un poste de l'officine est ouvert** ;
 sinon il attend sur le téléphone du patient, qui le renvoie seul. Ce
-n'est pas un service d'urgence, et sa page le lui dit. Pas de pièce
-jointe : du texte seulement.
+n'est pas un service d'urgence : sa page le dit en tête, avec les heures
+d'ouverture de l'officine et l'information due au patient sur ses
+données. Pas de pièce jointe : du texte seulement.
+
+Le patient peut demander **une copie de sa conversation** (son droit
+d'accès) : « Imprimer la conversation », dans le menu « Accès… », ou à
+côté de « Donner l'accès » quand son accès est fermé.
+
+La page est publiée par l'éditeur, à part de la passerelle ; chaque
+poste vérifie qu'elle est bien celle que livre le logiciel. Si elle ne
+l'est pas, l'onglet le dit en rouge : ne remettez plus de code et
+prévenez l'éditeur.
 
 Un code par patient. « Nouveau code » ferme le précédent (téléphone
 perdu ou changé) ; « Fermer l'accès » coupe la messagerie de ce

@@ -1726,6 +1726,95 @@ fn messagerie_values(
     ]
 }
 
+/// **La conversation d'un patient avec l'officine**, à lui remettre sur
+/// sa demande (RGPD, art. 15 : le droit d'accès) : chaque message, son
+/// heure et qui l'a écrit.
+pub struct ConversationData<'a> {
+    pub patient: &'a Patient,
+    /// Déjà en français.
+    pub today: &'a str,
+    /// (heure, qui, texte), dans l'ordre de la conversation.
+    pub messages: &'a [(String, String, String)],
+}
+
+pub fn open_conversation(
+    data: &ConversationData,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        fill(
+            &template_source("conversation", template_path)?,
+            &conversation_values(data, pharmacy),
+        ),
+        &format!("conversation_{}", data.patient.id),
+    )
+}
+
+const MARKERS_CONVERSATION: &[&str] = &[
+    "{{PATIENT_NAME}}",
+    "{{DATE}}",
+    "{{ROWS}}",
+    "{{PHARMACY_NAME}}",
+    "{{PHARMACY_ADDRESS}}",
+    "{{PHARMACY_PHONE}}",
+];
+
+const DEFAULT_CONVERSATION_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 1.8cm)
+#set text(size: 10.5pt, lang: "fr", hyphenate: true)
+
+#align(center)[#text(15pt, weight: "bold")[Messagerie : copie de la conversation]]
+#v(1mm)
+#align(center)[#text(10pt)[{{PATIENT_NAME}} — éditée le {{DATE}}]]
+#v(4mm)
+
+#table(columns: (auto, auto, 1fr), inset: 6pt, stroke: 0.5pt,
+  [*Date*], [*De*], [*Message*],
+{{ROWS}})
+
+#v(1fr)
+#text(9pt, fill: luma(90))[{{PHARMACY_NAME}} — {{PHARMACY_ADDRESS}} — {{PHARMACY_PHONE}}. Copie remise au patient à sa demande (RGPD, art. 15).]
+"##;
+
+fn conversation_values(
+    data: &ConversationData,
+    pharmacy: &PharmacyConfig,
+) -> Vec<(&'static str, String)> {
+    let rows: String = data
+        .messages
+        .iter()
+        .map(|(at, who, text)| {
+            format!(
+                "  [#{}], [#{}], [#{}],\n",
+                typst_str(at),
+                typst_str(who),
+                typst_str(text)
+            )
+        })
+        .collect();
+    vec![
+        (
+            "{{PATIENT_NAME}}",
+            format!("#{}", typst_str(&data.patient.full_name())),
+        ),
+        ("{{DATE}}", format!("#{}", typst_str(data.today))),
+        ("{{ROWS}}", rows),
+        (
+            "{{PHARMACY_NAME}}",
+            format!("#{}", typst_str(&pharmacy.name)),
+        ),
+        (
+            "{{PHARMACY_ADDRESS}}",
+            format!("#{}", typst_str(&pharmacy.address.replace('\n', ", "))),
+        ),
+        (
+            "{{PHARMACY_PHONE}}",
+            format!("#{}", typst_str(&pharmacy.phone)),
+        ),
+    ]
+}
+
 const MARKERS_PLAN: &[&str] = &[
     "{{PATIENT_NAME}}",
     "{{DATE}}",
@@ -5462,6 +5551,12 @@ pub const DOCS: &[Doc] = &[
         default: DEFAULT_MESSAGERIE_TEMPLATE,
     },
     Doc {
+        key: "conversation",
+        label: "tpl_target_conversation",
+        markers: MARKERS_CONVERSATION,
+        default: DEFAULT_CONVERSATION_TEMPLATE,
+    },
+    Doc {
         key: "traitement",
         label: "tpl_target_traitement",
         markers: MARKERS_TRAITEMENT,
@@ -5943,6 +6038,25 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
                 patient: &patient,
                 today: "24/08/2026",
                 link: "https://messagerie.example.fr/#b=00112233445566778899aabbccddeeff&k=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+            },
+            &pharmacy,
+        ),
+        "conversation" => conversation_values(
+            &ConversationData {
+                patient: &patient,
+                today: "24/08/2026",
+                messages: &[
+                    (
+                        "24/08/2026 09:12".into(),
+                        "Patient".into(),
+                        "Bonjour, ma commande de Kardégic est-elle arrivée ?".into(),
+                    ),
+                    (
+                        "24/08/2026 10:05".into(),
+                        "Officine (CL)".into(),
+                        "Bonjour, oui : elle vous attend au comptoir.".into(),
+                    ),
+                ],
             },
             &pharmacy,
         ),

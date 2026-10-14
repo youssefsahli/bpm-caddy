@@ -2,6 +2,7 @@
 // bout avec WebCrypto. Le protocole est celui de src/patientchat.rs ; les
 // valeurs de KAT y sont vérifiées par un test, et ici avant tout envoi.
 'use strict';
+// bpm-page: hors passerelle
 
 const KAT = {
   client: 'e2ae25f709a44e263610be14252b440e71ddcfbcfdfbea76aecaf8be5688d788',
@@ -110,8 +111,10 @@ function sameBytes(a, b) {
 // One conversation: hello, the post's proof, the request, the answer.
 function converse(state, request) {
   return new Promise((resolve, reject) => {
-    const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${scheme}//${location.host}/ws/${state.b}`);
+    // The page is published apart from the gateway: the link says which
+    // one (`p`). Plain ws only for a gateway on this machine (tests).
+    const scheme = /^127\.0\.0\.1:/.test(state.p) ? 'ws:' : 'wss:';
+    const ws = new WebSocket(`${scheme}//${state.p}/ws/${state.b}`);
     ws.binaryType = 'arraybuffer';
     const inbox = [];
     let waiter = null;
@@ -199,8 +202,10 @@ function fromLink() {
   const p = new URLSearchParams(location.hash.slice(1));
   const b = (p.get('b') || '').toLowerCase();
   const k = p.get('k') || '';
+  const g = (p.get('p') || '').toLowerCase();
   if (!/^[0-9a-f]{32}$/.test(b) || !/^[A-Za-z0-9_-]{43}$/.test(k)) return null;
-  return { b, k };
+  if (!/^[a-z0-9.-]+(:[0-9]{1,5})?$/.test(g)) return null;
+  return { b, k, p: g };
 }
 
 function newId() {
@@ -225,6 +230,11 @@ function draw() {
   const fil = $('fil');
   fil.replaceChildren();
   if (state.officine) $('officine').textContent = state.officine;
+  const who = state.who || {};
+  $('rt').textContent = [state.officine || 'votre pharmacie', who.adresse, who.telephone]
+    .filter(Boolean).join(', ');
+  $('horaires').textContent = who.horaires ? `Ouverte : ${who.horaires}` : '';
+  $('horaires').hidden = !who.horaires;
   if (!state.messages.length) {
     const p = document.createElement('p');
     p.className = 'vide';
@@ -280,6 +290,7 @@ async function sync(quiet) {
         }
       }
       if (a.officine) state.officine = a.officine;
+      state.who = { adresse: a.adresse || '', telephone: a.telephone || '', horaires: a.horaires || '' };
       say(pending.length ? 'Message reçu par la pharmacie.' : '');
     }
   } catch (e) {
@@ -313,7 +324,8 @@ async function start() {
     state = kept && kept.b === link.b && kept.k === link.k
       ? kept
       : { b: link.b, k: link.k, messages: [], officine: '' };
-  } else if (kept && kept.b && kept.k) {
+    state.p = link.p;
+  } else if (kept && kept.b && kept.k && kept.p) {
     state = kept;
   } else {
     say('Ouvrez cette page en scannant le code remis par votre pharmacie.', true);

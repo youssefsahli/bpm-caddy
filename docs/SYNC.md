@@ -1009,9 +1009,17 @@ lui remet. **Ce n'est pas le journal** : rien de ce qui est dit ici ne
 passe par `bpm-sync`, et le patient n'entre dans aucun groupe. Trois
 pièces :
 
-* **la page** (`assets/patient/`), servie par la passerelle, qui chiffre
-  avec WebCrypto sous la clé du patient — 32 octets, dans le fragment du
-  code, jamais envoyés à un serveur ;
+* **la page** (`assets/patient/`), qui chiffre avec WebCrypto sous la
+  clé du patient — 32 octets, dans le fragment du code, jamais envoyés à
+  un serveur. **Publiée à part de la passerelle**, sur GitHub Pages
+  (`.github/workflows/page.yml`, `patientchat::PAGE_SITE`), chaque
+  version dans un dossier nommé par son empreinte (`page_hash`) : qui
+  tient la passerelle ne peut pas servir une page qui lirait les
+  messages avant de les chiffrer. Le lien du code nomme la passerelle
+  (`p=` dans le fragment). Chaque poste compare toutes les six heures la
+  page publiée, octet pour octet, à celle qu'il livre
+  (`patientpost::check_page`) : un écart s'affiche en rouge dans
+  l'onglet ;
 * **la passerelle** (`src/passerelle.rs`, binaire `bpm-passerelle`),
   derrière un proxy TLS : un navigateur n'ouvre qu'un `wss://`, qui
   demande un domaine et un certificat qu'aucun poste n'a. Elle tient les
@@ -1029,9 +1037,11 @@ pièces :
   conversation d'une minute, et dix secondes par trame côté poste ;
   trente connexions par minute et par adresse sur le port des postes,
   deux cent quarante sur celui des pages (l'adresse que le proxy a vue),
-  comptées à part ; une page d'une autre origine n'obtient pas de
-  WebSocket (le proxy doit garder l'en-tête `Host` : Caddy le fait,
-  nginx demande `proxy_set_header Host $host`) ;
+  comptées à part ; seule une page de l'origine publiée obtient un
+  WebSocket (`--origine` en ajoute une). Elle ne sert plus de page, et
+  ne garde aucun message ; avec `--journal`, une ligne par connexion
+  (l'heure, l'adresse, la boîte, l'issue — jamais une trame), un fichier
+  par jour, effacé au bout de `--garde` jours, six mois au plus ;
 * **le poste qui attend** (`src/patientpost.rs`) : chaque poste de
   bureau ouvert, deux attentes à la fois, une conversation à la fois,
   avec sa propre connexion à la base. Le compagnon n'attend jamais.

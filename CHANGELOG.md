@@ -8,6 +8,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The patient page is no longer served by the gateway.** It is
+  published on GitHub Pages from the public repository, each version in
+  a folder named by its hash, and the QR link names the gateway in its
+  fragment. Whoever runs a gateway can no longer serve a page that reads
+  messages before encrypting them; it only relays sealed frames, and
+  accepts WebSockets only from the published page's origin. Each post
+  compares the published page, byte for byte, with the one it ships
+  every six hours, and the « Messagerie » tab says so in red if they
+  differ.
+- **The patient page tells the patient** what a lawyer's review asked
+  for: a permanent banner (read only during opening hours, 15 / 112,
+  a doctor for a serious adverse effect), the officine's opening hours,
+  and the GDPR article 13 notice (controller, purpose, legal basis,
+  recipients, retention, rights).
+
+### Added
+
+- **A copy of the conversation** for the patient who asks for it (GDPR
+  article 15): « Imprimer la conversation », a new printable
+  (`conversation`), from the « Accès… » menu or beside « Donner
+  l'accès » once the access is closed.
+- **The gateway's connection log** (`--journal <dir>`, `--garde <days>`,
+  three months by default, six at most): one line per connection — time,
+  address, box, outcome — never a frame; one file a day, forgotten on
+  time.
+
 ## [0.433.0] - 2026-10-14
 
 ### Added

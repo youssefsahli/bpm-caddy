@@ -3,6 +3,8 @@
 //!
 //! ```text
 //! bpm-passerelle [--web 127.0.0.1:8746] [--postes 0.0.0.0:7747]
+//!                [--journal /var/log/bpm-passerelle] [--garde 92]
+//!                [--origine hôte]…
 //! ```
 //!
 //! Avec Caddy, le proxy tient en deux lignes :
@@ -13,25 +15,39 @@
 //! }
 //! ```
 //!
-//! Elle ne garde rien, ne lit rien et n'écrit rien sur le disque. Le port
-//! des postes doit être ouvert vers Internet ; celui de la page, non.
+//! Elle ne garde aucun message et n'en lit aucun. Avec `--journal`, elle
+//! écrit une ligne par connexion (l'heure, l'adresse, la boîte, l'issue),
+//! un fichier par jour, effacé au bout de `--garde` jours (183 au plus).
+//! Elle ne sert pas la page des patients, publiée à part : seules les
+//! pages de cette origine l'appellent — `--origine` en ajoute une. Le
+//! port des postes doit être ouvert vers Internet ; celui des pages, non.
 
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
+use bpm_caddy::passerelle::{self, Options};
+
+const USAGE: &str = "usage : bpm-passerelle [--web 127.0.0.1:8746] [--postes 0.0.0.0:7747] \
+                     [--journal dossier] [--garde jours] [--origine hôte]…";
+
 fn main() {
-    let mut web = bpm_caddy::passerelle::DEFAULT_WEB.to_owned();
-    let mut posts = format!("0.0.0.0:{}", bpm_caddy::passerelle::DEFAULT_POSTS_PORT);
+    let mut web = passerelle::DEFAULT_WEB.to_owned();
+    let mut posts = format!("0.0.0.0:{}", passerelle::DEFAULT_POSTS_PORT);
+    let (mut journal, mut keep, mut origins) = (None, passerelle::KEEP_DEFAULT, Vec::new());
     let mut args = std::env::args().skip(1);
+    let usage = || -> ! {
+        eprintln!("{USAGE}");
+        std::process::exit(2);
+    };
     while let Some(a) = args.next() {
         match (a.as_str(), args.next()) {
             ("--web", Some(v)) => web = v,
             ("--postes", Some(v)) => posts = v,
-            _ => {
-                eprintln!("usage : bpm-passerelle [--web 127.0.0.1:8746] [--postes 0.0.0.0:7747]");
-                std::process::exit(2);
-            }
+            ("--journal", Some(v)) => journal = Some(std::path::PathBuf::from(v)),
+            ("--garde", Some(v)) => keep = v.parse().unwrap_or_else(|_| usage()),
+            ("--origine", Some(v)) => origins.push(v),
+            _ => usage(),
         }
     }
     let parse = |s: &str| -> SocketAddr {
@@ -40,12 +56,25 @@ fn main() {
             std::process::exit(2);
         })
     };
-    let (web, posts) = (parse(&web), parse(&posts));
-    if let Err(e) = bpm_caddy::passerelle::serve(web, posts, Arc::new(AtomicBool::new(false))) {
+    let mut options = Options::new(parse(&web), parse(&posts));
+    options.origins.extend(origins);
+    options.journal = journal;
+    options.keep_days = keep.min(passerelle::KEEP_MOST);
+    let said = format!(
+        "passerelle : les pages sur {}, les postes sur {} ; origines {} ; journal {}",
+        options.web,
+        options.posts,
+        options.origins.join(", "),
+        match &options.journal {
+            Some(d) => format!("dans {} ({} jours)", d.display(), options.keep_days),
+            None => "aucun".to_owned(),
+        }
+    );
+    if let Err(e) = passerelle::serve(options, Arc::new(AtomicBool::new(false))) {
         eprintln!("la passerelle ne s'ouvre pas : {e}");
         std::process::exit(1);
     }
-    eprintln!("passerelle : la page sur {web}, les postes sur {posts}");
+    eprintln!("{said}");
     loop {
         std::thread::park();
     }

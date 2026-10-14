@@ -48,10 +48,12 @@ line in that test.
   `relay` (the stateless relay between an unreachable post and a phone)
   and `repertoire` (the directory an officine hosts: who appears on the
   map, signed, and what each shares), `patientchat` (the patient
-  messaging protocol, WebCrypto-compatible), `passerelle` (the stateless
-  gateway that serves the patient page and bridges its WebSocket to a
-  waiting post; binary `bpm-passerelle`) and `patientpost` (a post
-  waiting there, answering from the base) — all under `sync`; `geo`
+  messaging protocol, WebCrypto-compatible; the patient page itself is
+  published on GitHub Pages by `.github/workflows/page.yml`, under its
+  hash), `passerelle` (the stateless gateway that bridges the page's
+  WebSocket to a waiting post and keeps an optional connection log;
+  binary `bpm-passerelle`) and `patientpost` (a post waiting there,
+  answering from the base, checking the published page) — all under `sync`; `geo`
   (département outlines and communes, for the map), `finess` (the
   officines of the public FINESS register, read against what a card
   declares),

@@ -212,12 +212,56 @@ pub fn is_box_secret(text: &str) -> bool {
     text.len() == 64 && text.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
-/// **Le lien du code QR** : la page de la passerelle, la boîte et la clé
-/// dans le fragment. `gateway` est un nom d'hôte (et un port), sans
-/// schéma : la page n'est servie qu'en HTTPS.
+/// **Où la page est publiée** : GitHub Pages, depuis le dépôt public
+/// (`.github/workflows/page.yml`), et non par la passerelle. Qui tient la
+/// passerelle ne touche pas au code qui chiffre : il ne voit passer que
+/// des trames scellées. Chaque version de la page a son dossier, nommé
+/// par son empreinte (`page_hash`), qui ne change plus une fois publié —
+/// un code imprimé l'an passé ouvre la page de l'an passé.
+pub const PAGE_SITE: &str = "https://youssefsahli.github.io/bpm-caddy/";
+
+/// La page, telle que ce logiciel la livre : ce qu'un poste compare à
+/// ce que `PAGE_SITE` sert (`patientpost::check_page`).
+pub const PAGE_FILES: [(&str, &str); 3] = [
+    ("index.html", include_str!("../assets/patient/index.html")),
+    ("app.js", include_str!("../assets/patient/app.js")),
+    ("style.css", include_str!("../assets/patient/style.css")),
+];
+
+/// **L'empreinte de la page** : SHA-256 de ses trois fichiers mis bout à
+/// bout dans l'ordre de `PAGE_FILES`, seize chiffres hexadécimaux — ce
+/// que calcule le workflow qui la publie
+/// (`cat index.html app.js style.css | sha256sum | cut -c1-16`).
+pub fn page_hash() -> String {
+    hash_of_page(PAGE_FILES.map(|(_, body)| body.as_bytes()))
+}
+
+/// L'empreinte de trois fichiers de page, dans l'ordre de `PAGE_FILES`.
+pub fn hash_of_page(files: [&[u8]; 3]) -> String {
+    let mut h = Sha256::new();
+    for f in files {
+        h.update(f);
+    }
+    hex(&h.finalize()[..8])
+}
+
+/// La ligne d'`app.js` qui dit une page publiée à part de la passerelle :
+/// le workflow ne publie que les versions qui la portent — les plus
+/// anciennes se servaient de la passerelle et ne la trouveraient pas.
+pub const PAGE_MARK: &str = "// bpm-page: hors passerelle";
+
+/// L'adresse de cette version de la page.
+pub fn page_url() -> String {
+    format!("{PAGE_SITE}{}/", page_hash())
+}
+
+/// **Le lien du code QR** : la page publiée, puis dans le fragment la
+/// boîte, la clé et la passerelle (`p`) — un fragment n'est envoyé à
+/// personne, pas même à GitHub. `gateway` est un nom d'hôte (et un
+/// port), sans schéma : la page ne l'appelle qu'en `wss://`.
 pub fn link(gateway: &str, box_id: &str, key: &Key) -> String {
     let host = gateway_host(gateway);
-    format!("https://{host}/#b={box_id}&k={}", key_text(key))
+    format!("{}#b={box_id}&k={}&p={host}", page_url(), key_text(key))
 }
 
 /// Le nom d'hôte d'une passerelle telle qu'on l'a tapée : sans schéma,
@@ -293,6 +337,25 @@ pub struct Response {
     /// Le nom de l'officine, pour la page.
     pub officine: String,
     pub max: usize,
+    /// Qui elle est, pour l'information que la page doit au patient
+    /// (RGPD, art. 13) : le responsable du traitement, c'est elle.
+    #[serde(default)]
+    pub adresse: String,
+    #[serde(default)]
+    pub telephone: String,
+    /// Ses heures d'ouverture, en clair : la messagerie n'est lue
+    /// qu'alors.
+    #[serde(default)]
+    pub horaires: String,
+}
+
+/// L'officine, telle que la page la présente au patient.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Officine {
+    pub nom: String,
+    pub adresse: String,
+    pub telephone: String,
+    pub horaires: String,
 }
 
 /// Une clé de patient de la base.
@@ -314,8 +377,8 @@ pub trait Store {
     /// Ce que l'officine a écrit sous cette clé, hors `seen`, dans l'ordre
     /// où elle l'a écrit.
     fn replies(&mut self, key: i64, seen: &[i64]) -> Result<Vec<ToPatient>, String>;
-    /// Le nom de l'officine.
-    fn officine(&mut self) -> String;
+    /// Qui est l'officine.
+    fn officine(&mut self) -> Officine;
 }
 
 /// Une connexion qui passe des trames.
@@ -422,11 +485,15 @@ pub fn answer(
     if messages.len() > IN_MAX {
         messages.drain(..messages.len() - IN_MAX);
     }
+    let who = store.officine();
     let response = Response {
         got,
         messages,
-        officine: store.officine(),
+        officine: who.nom,
         max: TEXT_MAX,
+        adresse: who.adresse,
+        telephone: who.telephone,
+        horaires: who.horaires,
     };
     let plain = serde_json::to_vec(&response).map_err(|_| bad())?;
     link.send(&outbound.seal(&plain))?;
@@ -506,8 +573,13 @@ pub(crate) mod memory {
                 .map(|(_, r)| r.clone())
                 .collect())
         }
-        fn officine(&mut self) -> String {
-            "Pharmacie du Port".into()
+        fn officine(&mut self) -> Officine {
+            Officine {
+                nom: "Pharmacie du Port".into(),
+                adresse: "1 quai des Pêcheurs, 29900 Concarneau".into(),
+                telephone: "02 98 00 00 00".into(),
+                horaires: "lundi 09:00-19:00".into(),
+            }
         }
     }
 }
@@ -597,6 +669,8 @@ mod tests {
         assert_eq!(r.messages.len(), 1, "only this patient's");
         assert_eq!(r.messages[0].text, "Votre commande est arrivée.");
         assert_eq!(r.officine, "Pharmacie du Port");
+        assert_eq!(r.telephone, "02 98 00 00 00");
+        assert_eq!(r.horaires, "lundi 09:00-19:00");
         assert_eq!(
             o,
             Outcome::Talked {
@@ -720,7 +794,11 @@ mod tests {
         assert_ne!(id, box_id(&[2; 32]));
         assert_eq!(
             link("https://Chat.Example.fr/", &id, &key),
-            format!("https://chat.example.fr/#b={id}&k={}", key_text(&key))
+            format!(
+                "{PAGE_SITE}{}/#b={id}&k={}&p=chat.example.fr",
+                page_hash(),
+                key_text(&key)
+            )
         );
         assert_eq!(
             gateway_host(" chat.example.fr:8443 "),
@@ -728,5 +806,34 @@ mod tests {
         );
         assert_eq!(gateway_host("chat example"), "");
         assert_eq!(gateway_host("<script>"), "");
+    }
+
+    /// The page is published by `.github/workflows/page.yml` under the
+    /// hash this module computes: the two recipes are one, or every code
+    /// handed out points at a folder that does not exist.
+    #[test]
+    fn the_page_is_published_where_the_link_points() {
+        let flow = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(".github/workflows/page.yml"),
+        )
+        .unwrap();
+        let names: Vec<&str> = PAGE_FILES.iter().map(|(n, _)| *n).collect();
+        assert!(
+            flow.contains(&format!("cat {} | sha256sum | cut -c1-16", names.join(" "))),
+            "page.yml hashes the page as page_hash does"
+        );
+        assert!(
+            flow.contains(PAGE_MARK),
+            "page.yml publishes only pages that call p="
+        );
+        assert!(PAGE_FILES[1].1.contains(PAGE_MARK));
+        assert!(PAGE_SITE.ends_with('/'));
+        let h = page_hash();
+        assert_eq!(h.len(), 16);
+        assert_eq!(
+            hash_of_page([b"a".as_slice(), b"b".as_slice(), b"c".as_slice()]),
+            "ba7816bf8f01cfea" // sha256("abc")
+        );
+        assert!(page_url().ends_with(&format!("{h}/")));
     }
 }
