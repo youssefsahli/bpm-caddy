@@ -95,7 +95,16 @@ la suivante). La 0.432.0 (publier sur la carte entrée par entrée,
 ruptures, listes et phrases sur la carte au choix de l'officine,
 ordonnance de vaccination, mentions de l'officine dans la base — chaque
 lot relu, corrigé) a passé son smoke dans les quatre formes (3793231),
-étiquetée le 14/10.
+étiquetée le 14/10. La 0.433.0 (messagerie des patients par code QR —
+chemin A de `docs/CHAT_PATIENT.md`, passerelle sans mémoire
+`bpm-passerelle`, essayée dans Firefox ; réglages de l'officine dans la
+base ; réécritures sans phrase — deux relectures, corrigées) a passé son
+smoke dans les quatre formes (e542243), étiquetée le 14/10.
+**À faire par l'officine pour la messagerie** : faire tourner une
+passerelle (un serveur, un nom de domaine, un proxy TLS — mode d'emploi
+dans `docs/CHAT_PATIENT.md`), puis la régler une fois dans l'onglet
+« Messagerie » ; et faire confirmer par la CNIL ou un juriste que le
+transit chiffré sans stockage échappe à l'hébergement HDS.
 Les versions 0.398 à 0.420 n'ont jamais été étiquetées : le lanceur est
 resté sur la 0.397.0 jusqu'au 13/10 ; désormais chaque version dont le
 smoke passe s'étiquette aussitôt ; les étiquettes intermédiaires n'ont jamais été
