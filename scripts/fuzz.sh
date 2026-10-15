@@ -37,6 +37,10 @@ cargo build || exit 1
 bin="$tmp/bpm-caddy"
 cp ./target/debug/bpm-caddy "$bin" || exit 1
 cp "$BPM_CADDY_DB" "$tmp/pristine.db"
+# Le hasard tape aussi des chemins relatifs (« - » comme dossier
+# d'échange a laissé un fichier dans le dépôt, 0.319.0) : l'application
+# tourne dans un dossier jetable.
+mkdir -p "$tmp/work"
 
 # **Rien ne sort de la boîte.** Le hasard clique aussi « Aperçu PDF »,
 # « Ouvrir le dossier » ou la page des versions : les lanceurs du bureau
@@ -76,8 +80,9 @@ for view in "${views[@]}"; do
         # Des écrans virtuels à partir de 200 : `smoke.sh` part de 99, et
         # deux `xvfb-run -a` lancés ensemble se disputent le même numéro
         # — l'un perd son écran, et la vue « tombe » dans winit.
-        view="$view" seed="$seed" xvfb-run -a -n 200 -s "-screen 0 ${size%x*}x${size#*x}x24" bash -c '
+        view="$view" seed="$seed" work="$tmp/work" xvfb-run -a -n 200 -s "-screen 0 ${size%x*}x${size#*x}x24" bash -c '
             unset WAYLAND_DISPLAY
+            cd "$work" || exit 1
             case "$view" in
                 verrou|search) ;;
                 drug_edit) export BPM_CADDY_START_VIEW=drug_card BPM_CADDY_DRUG_EDIT=1 ;;
