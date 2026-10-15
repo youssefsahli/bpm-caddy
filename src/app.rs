@@ -26838,6 +26838,32 @@ impl App {
             .unwrap_or_else(|| tr("pchat_terms_this_post").to_owned())
     }
 
+    /// « Rétablir » une feuille : retirer ce que l'écran montrait d'elle,
+    /// contre la base (`Db::reset_content_seen`). Une réécriture faite
+    /// ailleurs entre-temps reste, et se dit. Rend `true` quand la feuille
+    /// est revenue entière au texte livré.
+    fn reset_document(session: &mut Session, prefix: &str) -> bool {
+        let seen = session.content.under(prefix);
+        match session.db.reset_content_seen(prefix, &seen) {
+            Ok((n, whole)) => {
+                session.content = session.db.content_overrides().unwrap_or_default();
+                session.content_rev += 1;
+                session.reread_open_file();
+                session.text_edit = None;
+                session.error = Some(if whole {
+                    trf("carnets_edit_reset_done", n)
+                } else {
+                    session.stale_note("carnets_edit_reset_stale")
+                });
+                whole
+            }
+            Err(e) => {
+                session.error = Some(e);
+                false
+            }
+        }
+    }
+
     /// Ouvrir le réglage de la passerelle, avec ce que la base porte.
     #[cfg(feature = "sync")]
     fn open_pchat_setup(session: &mut Session) {
@@ -69542,17 +69568,8 @@ impl App {
             }
         }
         if let Some(prefix) = reset {
-            match session.db.reset_content(&prefix) {
-                Ok(n) => {
-                    session.content = session.db.content_overrides().unwrap_or_default();
-                    session.content_rev += 1;
-                    session.reread_open_file();
-                    session.reread_open_file();
-                    session.text_edit = None;
-                    session.textes_open = None;
-                    session.error = Some(trf("carnets_edit_reset_done", n));
-                }
-                Err(e) => session.error = Some(e),
+            if Self::reset_document(session, &prefix) {
+                session.textes_open = None;
             }
         }
         if close {
@@ -69909,18 +69926,7 @@ impl App {
             }
         }
         if let Some(prefix) = reset {
-            match session.db.reset_content(&prefix) {
-                Ok(n) => {
-                    session.error = None;
-                    session.content = session.db.content_overrides().unwrap_or_default();
-                    session.content_rev += 1;
-                    session.reread_open_file();
-                    session.reread_open_file();
-                    session.text_edit = None;
-                    session.error = Some(trf("carnets_edit_reset_done", n));
-                }
-                Err(e) => session.error = Some(e),
-            }
+            Self::reset_document(session, &prefix);
         }
 
         if open_textes {

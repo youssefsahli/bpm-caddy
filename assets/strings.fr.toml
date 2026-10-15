@@ -897,6 +897,7 @@ carnets_edit_save_tooltip = "Enregistrer les phrases modifiées ; les autres res
 carnets_edit_saved = "{} phrase(s) enregistrée(s)."
 carnets_edit_stale = "{} phrase(s) modifiée(s) depuis un autre poste — valeurs actualisées. Refaire les modifications."
 carnets_edit_reset = "Rétablir"
+carnets_edit_reset_stale = "Un autre poste a réécrit une phrase de cette feuille entre-temps : elle est gardée. Le reste est rétabli."
 carnets_edit_reset_tooltip = "Rétablir le texte livré de toutes les phrases de cette feuille"
 carnets_edit_reset_done = "{} phrase(s) rétablie(s)."
 carnets_rewritten = "{} phrase(s) réécrite(s)"

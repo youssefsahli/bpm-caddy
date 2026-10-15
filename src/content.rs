@@ -155,6 +155,21 @@ impl Overrides {
         out
     }
 
+    /// Les surcharges d'un document (sa clé, ou ce qui commence par elle
+    /// et un point) et ce qu'elles disent : ce que l'écran montre, contre
+    /// quoi « Rétablir » se compare.
+    pub fn under(&self, prefix: &str) -> Vec<(String, String)> {
+        let dotted = format!("{prefix}.");
+        let mut out: Vec<(String, String)> = self
+            .map
+            .iter()
+            .filter(|(k, _)| k.as_str() == prefix || k.starts_with(&dotted))
+            .map(|(k, e)| (k.clone(), e.value.clone()))
+            .collect();
+        out.sort_unstable();
+        out
+    }
+
     /// Le texte livré que la surcharge visait, pour l'afficher à côté
     /// du nouveau quand les deux ont divergé.
     pub fn aimed_at(&self, key: &str) -> Option<&str> {

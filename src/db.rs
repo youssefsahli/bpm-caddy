@@ -53755,6 +53755,42 @@ impl Db {
         Ok(n)
     }
 
+    /// **Rétablir ce que l'écran montrait, et seulement cela** : chaque
+    /// réécriture du document est retirée si elle dit encore ce que
+    /// `seen` dit d'elle. Une réécriture qu'un autre poste a faite ou
+    /// changée entre-temps reste — `false` en second : relire, et le dire.
+    /// Sans cela, « Rétablir » effaçait une phrase écrite à la seconde sur
+    /// le poste d'à côté, que personne ici n'avait vue.
+    pub fn reset_content_seen(
+        &self,
+        prefix: &str,
+        seen: &[(String, String)],
+    ) -> Result<(usize, bool), String> {
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
+        let rows: Vec<(String, String)> = {
+            let mut st = tx
+                .prepare("SELECT key, value FROM content_overrides WHERE key = ?1 OR key LIKE ?1 || '.%'")
+                .map_err(|e| e.to_string())?;
+            let it = st
+                .query_map([prefix], |r| Ok((r.get(0)?, r.get(1)?)))
+                .map_err(|e| e.to_string())?;
+            it.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+        };
+        let mut gone = 0;
+        let mut whole = true;
+        for (key, value) in rows {
+            if seen.iter().any(|(k, v)| *k == key && *v == value) {
+                gone += tx
+                    .execute("DELETE FROM content_overrides WHERE key = ?1", [&key])
+                    .map_err(|e| e.to_string())?;
+            } else {
+                whole = false;
+            }
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok((gone, whole))
+    }
+
     /// Drop every edit of one table, returning it to the shipped text.
     /// Returns how many cells were reset.
     pub fn reset_table(&self, table_key: &str) -> Result<usize, String> {
@@ -63601,6 +63637,59 @@ mod tests {
                 "le registre ne se réécrit pas : {verb}"
             );
         }
+    }
+
+    /// **« Rétablir » ne retire que ce que l'écran montrait** : une phrase
+    /// réécrite ailleurs entre-temps reste, et le résultat le dit.
+    #[test]
+    fn a_reset_keeps_a_rewrite_made_meanwhile() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-reset-seen-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("live.db"), "secret").unwrap();
+        db.set_content(
+            "doc.a",
+            "réécrit A",
+            "livré A",
+            "livré A",
+            "2026-10-15",
+            "AB",
+        )
+        .unwrap();
+        let shown = db.content_overrides().unwrap().under("doc");
+        assert_eq!(shown.len(), 1);
+        // Un autre poste, après que l'écran s'est ouvert.
+        db.set_content(
+            "doc.b",
+            "réécrit B",
+            "livré B",
+            "livré B",
+            "2026-10-15",
+            "CD",
+        )
+        .unwrap();
+        db.set_content(
+            "autre.c",
+            "réécrit C",
+            "livré C",
+            "livré C",
+            "2026-10-15",
+            "CD",
+        )
+        .unwrap();
+        let (gone, whole) = db.reset_content_seen("doc", &shown).unwrap();
+        assert_eq!((gone, whole), (1, false));
+        let left = db.content_overrides().unwrap();
+        assert_eq!(left.under("doc").len(), 1, "la réécriture d'à côté reste");
+        assert_eq!(
+            left.under("autre").len(),
+            1,
+            "un autre document n'est pas touché"
+        );
+        // Ce que l'écran montre maintenant se rétablit entier.
+        let shown = left.under("doc");
+        assert_eq!(db.reset_content_seen("doc", &shown).unwrap(), (1, true));
     }
 
     /// **Deux postes sous un même numéro** se voient : la ligne de
