@@ -8534,10 +8534,7 @@ impl Session {
             }
             Err(e) => (
                 None,
-                Some((
-                    true,
-                    trf("opts_officine_error", plain_error(&e.to_string())),
-                )),
+                Some((true, trf("opts_officine_error", plain_error(&e)))),
             ),
         }
     }
@@ -8559,10 +8556,7 @@ impl Session {
                 self.officine_stale = false;
                 (false, tr("opts_officine_forced").to_owned())
             }
-            Err(e) => (
-                true,
-                trf("opts_officine_error", plain_error(&e.to_string())),
-            ),
+            Err(e) => (true, trf("opts_officine_error", plain_error(&e))),
         }
     }
 
@@ -11708,7 +11702,7 @@ impl Session {
         let list = match list {
             Ok(list) => list,
             Err(e) => {
-                let note = trf("carte_unreachable", plain_error(&e.to_string()));
+                let note = trf("carte_unreachable", &e);
                 if let Some(online) = &mut self.online {
                     online.note = Some((true, note.clone()));
                 }
@@ -12479,8 +12473,7 @@ impl Session {
             }
             CarteAnswer::Sweep(sweep) => self.carte_swept(*sweep),
             CarteAnswer::List(_, Err(e)) => {
-                self.carte.note =
-                    Some((true, trf("carte_unreachable", plain_error(&e.to_string()))));
+                self.carte.note = Some((true, trf("carte_unreachable", &e)));
             }
             CarteAnswer::Catalogue(fiche, Ok(articles)) => {
                 let offers: Vec<crate::enligne::Offer> = articles
@@ -21980,7 +21973,7 @@ impl App {
                 // Écrit ailleurs entre la lecture et l'écriture : relire, fondre.
                 Ok(false) => continue,
                 Err(e) => {
-                    self.doc_error = Some(trf("docs_save_error", plain_error(&e.to_string())));
+                    self.doc_error = Some(trf("docs_save_error", e));
                     return;
                 }
             }
@@ -61036,10 +61029,7 @@ impl App {
                             let _ = open::that_detached(&file);
                             session.camp.notice = Some(trf("dash_exported", file.display()));
                         }
-                        Err(e) => {
-                            session.error =
-                                Some(trf("dash_export_error", plain_error(&e.to_string())))
-                        }
+                        Err(e) => session.error = Some(trf("dash_export_error", e)),
                     }
                 }
                 Err(e) => session.error = Some(e),
@@ -67580,7 +67570,7 @@ impl App {
                             session.carte.note = Some((false, tr("carte_host_copied").to_owned()));
                         }
                     } else if let Some((_, e)) = &session.carte.host_failed {
-                        dim(&trf("carte_host_failed", plain_error(&e.to_string())), ui);
+                        dim(&trf("carte_host_failed", e), ui);
                     } else {
                         dim(&trf("carte_host_off", config.reseau.port_repertoire), ui);
                     }
@@ -71090,7 +71080,7 @@ impl App {
                     // lanceur rende la main, c'est-à-dire parfois que le
                     // navigateur soit fermé.
                     if let Err(e) = open::that_detached(source.url(card)) {
-                        session.error = Some(trf("drug_lookup_error", plain_error(&e.to_string())));
+                        session.error = Some(trf("drug_lookup_error", e));
                     }
                 }
             }
@@ -71863,10 +71853,7 @@ impl App {
                             let _ = open::that_detached(&file);
                             session.export_notice = Some(trf("dash_exported", file.display()));
                         }
-                        Err(e) => {
-                            session.error =
-                                Some(trf("dash_export_error", plain_error(&e.to_string())))
-                        }
+                        Err(e) => session.error = Some(trf("dash_export_error", e)),
                     }
                 }
                 Err(e) => session.error = Some(e),
@@ -86904,10 +86891,7 @@ impl eframe::App for App {
                 Ok(crate::annuaire::Fetched::Failed(e)) => {
                     self.presc_fetch = None;
                     if let Some(editor) = &mut self.options {
-                        editor.message = Some((
-                            true,
-                            trf("opts_presc_fetch_failed", plain_error(&e.to_string())),
-                        ));
+                        editor.message = Some((true, trf("opts_presc_fetch_failed", e)));
                     }
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => {}
@@ -86943,8 +86927,7 @@ impl eframe::App for App {
                     self.update_check = None;
                 }
                 Ok(crate::release::Checked::Failed(e)) => {
-                    self.update_note =
-                        Some((true, trf("about_check_failed", plain_error(&e.to_string()))));
+                    self.update_note = Some((true, trf("about_check_failed", e)));
                     self.update_check = None;
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => {
@@ -88026,10 +88009,7 @@ impl eframe::App for App {
                                         .and_then(|()| std::fs::write(&path, text.as_bytes()));
                                     *message = Some(match result {
                                         Ok(()) => (false, trf("tpl_saved", path.display())),
-                                        Err(e) => (
-                                            true,
-                                            trf("tpl_save_error", plain_error(&e.to_string())),
-                                        ),
+                                        Err(e) => (true, trf("tpl_save_error", e)),
                                     });
                                 }
                                 Err(e) => *message = Some((true, e)),
@@ -90355,10 +90335,7 @@ impl eframe::App for App {
                                     editor.message = Some((false, tr("opts_saved").to_owned()));
                                 }
                                 Err(e) => {
-                                    editor.message = Some((
-                                        true,
-                                        trf("opts_save_error", plain_error(&e.to_string())),
-                                    ));
+                                    editor.message = Some((true, trf("opts_save_error", e)));
                                 }
                             }
                         }
@@ -90404,8 +90381,7 @@ impl eframe::App for App {
         }
         if open_releases {
             if let Err(e) = open::that_detached(crate::release::RELEASES_URL) {
-                self.update_note =
-                    Some((true, trf("drug_lookup_error", plain_error(&e.to_string()))));
+                self.update_note = Some((true, trf("drug_lookup_error", e)));
             }
         }
         // The four long passes over the base. « Synchroniser le contenu
@@ -90501,9 +90477,7 @@ impl eframe::App for App {
                     std::thread::spawn(move || {
                         let said = match job.run(&password) {
                             Ok(()) => (false, trf("opts_bundle_done", to.display())),
-                            Err(e) => {
-                                (true, trf("opts_bundle_failed", plain_error(&e.to_string())))
-                            }
+                            Err(e) => (true, trf("opts_bundle_failed", e)),
                         };
                         let _ = tx.send(said);
                     });
@@ -90646,9 +90620,7 @@ impl eframe::App for App {
                             .and_then(|db| db.copy_whole_to(&target, Some(&password)));
                         let said = match done {
                             Ok(()) => (false, trf("opts_db_copied", target.display())),
-                            Err(e) => {
-                                (true, trf("opts_db_copy_error", plain_error(&e.to_string())))
-                            }
+                            Err(e) => (true, trf("opts_db_copy_error", e)),
                         };
                         let _ = tx.send(said);
                     });
@@ -90751,10 +90723,7 @@ impl eframe::App for App {
                             editor.message = Some((false, trf("opts_db_copied", target.display())));
                         }
                     }
-                    Err(e) => {
-                        editor.message =
-                            Some((true, trf("opts_db_copy_error", plain_error(&e.to_string()))))
-                    }
+                    Err(e) => editor.message = Some((true, trf("opts_db_copy_error", e))),
                 }
             }
         }
