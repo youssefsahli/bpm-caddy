@@ -3062,8 +3062,16 @@ publisher, never in CI: `scripts/sign-release.sh vX.Y.Z` downloads the
 release's binaries, signs them, checks them against the repository's
 public key and uploads the `.minisig` files.
 
-**The launcher updates itself**, after the app and without holding it
-back (`update_self`): a newer `bpm-caddy-launcher-<platform>` is fetched
+**The launcher updates itself**, after the app has been launched and
+whatever happened to the app's update, the process lingering without a
+window until it is done (`WORKERS`, at most five minutes); the outcome
+goes to `lanceur.txt` beside the app. Its own path is taken once at
+start (`ME`): on Linux `current_exe` follows the renamed file, and the
+app was told the launcher was the `.old` one. `release.yml` refuses a
+tag whose crates do not carry its version — a launcher not bumped would
+replace itself at every start. The signing script compares each
+published file with the build's own artifact before signing it, and
+refuses a signature that is not prehashed (`update_self`): a newer `bpm-caddy-launcher-<platform>` is fetched
 whole, checked like the app (size, executable magic, signature when a
 key is set), then put in place by two renames — the running file aside
 as `.old` (allowed on Windows too, where overwriting is not), the new one

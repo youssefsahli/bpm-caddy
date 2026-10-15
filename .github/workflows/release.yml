@@ -51,6 +51,18 @@ jobs:
         with:
           toolchain: stable
           targets: ${{ matrix.target }}
+      # **Chaque crate porte la version de l'étiquette** : le lanceur se
+      # compare à sa propre version pour se remplacer, et une version
+      # oubliée lui faisait retélécharger le même lanceur à chaque
+      # démarrage, sur chaque poste.
+      - name: Every crate carries the tag's version
+        shell: bash
+        run: |
+          want="${GITHUB_REF_NAME#v}"; want="${want%%-*}"
+          for f in Cargo.toml launcher/Cargo.toml motif/Cargo.toml mobile/Cargo.toml tray/Cargo.toml; do
+            got=$(grep -m1 '^version = ' "$f" | cut -d'"' -f2)
+            [ "$got" = "$want" ] || { echo "$f : $got, l'étiquette dit $want" >&2; exit 1; }
+          done
       # Pas de cache ici : la tâche publie, et un cache empoisonné
       # passerait dans le binaire de chaque officine.
       - name: Build

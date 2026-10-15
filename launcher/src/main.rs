@@ -70,6 +70,22 @@ const APP_ASSET: &str = "bpm-caddy-windows-x86_64.exe";
 #[cfg(target_os = "macos")]
 const APP_ASSET: &str = "bpm-caddy-macos-arm64";
 
+/// **Le chemin du lanceur, pris au démarrage**, avant tout remplacement :
+/// sous Linux, `current_exe` suit le fichier renommé — après une mise à
+/// jour de lui-même, il nommait `….old`, que l'application inscrivait
+/// alors au lancement à l'ouverture de session, et que le lancement
+/// suivant effaçait.
+static ME: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+
+fn me() -> Option<PathBuf> {
+    ME.get_or_init(|| std::env::current_exe().ok()).clone()
+}
+
+/// Les fils qui travaillent encore, attendus à la sortie : la fenêtre se
+/// ferme au lancement de l'application, et un remplacement du lanceur
+/// coupé entre ses deux renommages ne laisserait rien à sa place.
+static WORKERS: Mutex<Vec<std::thread::JoinHandle<()>>> = Mutex::new(Vec::new());
+
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 const LAUNCHER_ASSET: &str = "bpm-caddy-launcher-linux-x86_64";
 #[cfg(target_os = "windows")]
@@ -219,7 +235,13 @@ fn decide(tag: &str, installed: &str, whole: bool) -> Decision {
 }
 
 fn worker(shared: Arc<Shared>, ctx: egui::Context) {
-    let outcome = check_and_update(&shared);
+    let latest = latest_release().map_err(|e| e.to_string());
+    let outcome = match &latest {
+        Ok((agent, release, tag)) => {
+            update_app(&shared, agent, release, tag).map_err(|e| e.to_string())
+        }
+        Err(e) => Err(e.clone()),
+    };
     let mut phase = shared.phase.lock().unwrap();
     *phase = match outcome {
         Ok(note) => Phase::ReadyToLaunch(note),
@@ -229,23 +251,25 @@ fn worker(shared: Arc<Shared>, ctx: egui::Context) {
         Err(e) if installed_whole() => {
             Phase::ReadyToLaunch(format!("Mise à jour impossible ({e}) — version installée"))
         }
-        Err(e) => Phase::Error(e.to_string()),
+        Err(e) => Phase::Error(e),
     };
     drop(phase);
     ctx.request_repaint();
-}
-
-fn check_and_update(shared: &Shared) -> Result<String, Box<dyn std::error::Error>> {
-    let (agent, release, tag) = latest_release()?;
-    let note = update_app(shared, &agent, &release, &tag)?;
-    // **Le lanceur aussi**, après l'application et sans la retenir : un
-    // lanceur qui ne se remplaçait jamais ne recevait ni ses corrections
-    // ni la clé qui vérifie les mises à jour. Un échec ici n'empêche rien
-    // — l'ancien lanceur reste, et l'application se lance.
-    Ok(match update_self(&agent, &release, &tag) {
-        Ok(true) => format!("{note} · lanceur mis à jour"),
-        _ => note,
-    })
+    // **Le lanceur ensuite**, l'application déjà lancée — il ne la retient
+    // pas — et quoi qu'il soit arrivé à sa mise à jour : un lanceur qui
+    // ne se remplaçait jamais ne recevait ni ses corrections ni la clé
+    // des mises à jour. Le résultat est écrit à côté de l'application
+    // (`lanceur.txt`) : la fenêtre est fermée.
+    if let Ok((agent, release, tag)) = &latest {
+        let said = match update_self(agent, release, tag) {
+            Ok(true) => Some(format!("Lanceur mis à jour vers {tag}")),
+            Ok(false) => None,
+            Err(e) => Some(format!("Lanceur non mis à jour vers {tag} : {e}")),
+        };
+        if let Some(said) = said {
+            let _ = std::fs::write(app_dir().join("lanceur.txt"), said);
+        }
+    }
 }
 
 /// La dernière publication, et l'agent qui l'a lue.
@@ -321,7 +345,7 @@ fn update_self(
     if cfg!(debug_assertions) || version_parts(tag) <= version_parts(env!("CARGO_PKG_VERSION")) {
         return Ok(false);
     }
-    let me = std::env::current_exe()?;
+    let me = me().ok_or("chemin du lanceur inconnu")?;
     let assets = release["assets"].as_array().ok_or("release sans assets")?;
     let asset = assets
         .iter()
@@ -387,9 +411,19 @@ fn install_over(me: &std::path::Path, bytes: &[u8]) -> Result<(), Box<dyn std::e
         return Err(e.into());
     }
     if let Err(e) = std::fs::rename(&new, me) {
-        let _ = std::fs::rename(&old, me);
+        // L'ancien revient — par un renommage, sinon par une copie : un
+        // lanceur absent de son chemin, c'est le raccourci et le
+        // lancement à l'ouverture de session qui ne mènent plus à rien.
+        let back = std::fs::rename(&old, me).or_else(|_| std::fs::copy(&old, me).map(|_| ()));
         let _ = std::fs::remove_file(&new);
-        return Err(e.into());
+        return Err(match back {
+            Ok(()) => e.into(),
+            Err(b) => format!(
+                "lanceur introuvable à sa place ({e}, puis {b}) : l'ancien est {}",
+                old.display()
+            )
+            .into(),
+        });
     }
     Ok(())
 }
@@ -397,7 +431,7 @@ fn install_over(me: &std::path::Path, bytes: &[u8]) -> Result<(), Box<dyn std::e
 /// Ce que le remplacement précédent a laissé de côté : l'ancien lanceur,
 /// qui ne tourne plus, et un téléchargement coupé.
 fn sweep_old_launcher() {
-    if let Ok(me) = std::env::current_exe() {
+    if let Some(me) = me() {
         sweep_beside(&me);
     }
 }
@@ -654,7 +688,10 @@ impl Launcher {
     fn spawn_worker(shared: &Arc<Shared>, ctx: &egui::Context) {
         let shared = Arc::clone(shared);
         let ctx = ctx.clone();
-        std::thread::spawn(move || worker(shared, ctx));
+        let handle = std::thread::spawn(move || worker(shared, ctx));
+        if let Ok(mut w) = WORKERS.lock() {
+            w.push(handle);
+        }
     }
 
     fn launch_app(&mut self, ctx: &egui::Context) {
@@ -664,7 +701,7 @@ impl Launcher {
         // la mise à jour passe avant elle.
         let mut command = Command::new(bin_path());
         command.args(std::env::args_os().skip(1));
-        if let Ok(me) = std::env::current_exe() {
+        if let Some(me) = me() {
             command.env("BPM_CADDY_LAUNCHER", me);
         }
         match command.spawn() {
@@ -763,6 +800,8 @@ impl eframe::App for Launcher {
 }
 
 fn main() -> eframe::Result {
+    // Le chemin d'abord, avant que quoi que ce soit ne le renomme.
+    let _ = me();
     sweep_old_launcher();
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -772,11 +811,24 @@ fn main() -> eframe::Result {
             .with_title("BPM-Caddy — Lanceur"),
         ..Default::default()
     };
-    eframe::run_native(
+    let shown = eframe::run_native(
         "BPM-Caddy Launcher",
         options,
         Box::new(|cc| Ok(Box::new(Launcher::new(&cc.egui_ctx)))),
-    )
+    );
+    // La fenêtre fermée, les fils finissent ce qu'ils ont commencé — au
+    // plus quelques minutes, sans fenêtre.
+    let until = std::time::Instant::now() + Duration::from_secs(300);
+    let workers = WORKERS
+        .lock()
+        .map(|mut w| std::mem::take(&mut *w))
+        .unwrap_or_default();
+    for w in workers {
+        while !w.is_finished() && std::time::Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+    shown
 }
 
 #[cfg(test)]
