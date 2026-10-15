@@ -1772,7 +1772,8 @@ de l'équipe le trouvent. Pour qu'il le reste sans qu'on y pense :
   continuent. Le mot de passe rouvre l'écran tel qu'il était.
 - **Fermer la fenêtre** la range dans la **zone de notification** (à
   côté de l'horloge) : l'icône de BPM-Caddy y dit l'état du poste et les
-  messages de patients non lus. Un clic rouvre la fenêtre ; son menu
+  messages de patients non lus — un carré rouge dans son coin tant
+  qu'un message de patient n'est pas lu. Un clic rouvre la fenêtre ; son menu
   « Quitter BPM-Caddy » arrête vraiment. Relancer BPM-Caddy rouvre aussi
   la fenêtre déjà en service, sans seconde copie. Elle se rouvre
   verrouillée si le mot de passe n'est pas mémorisé, ou si elle est
@@ -1788,6 +1789,14 @@ de l'équipe le trouvent. Pour qu'il le reste sans qu'on y pense :
   sur l'écran de verrouillage sinon. Une copie par session sur le poste.
   La copie quotidienne de la base se fait aussi chaque jour sur un poste
   qui reste allumé.
+
+**Sous Windows, l'installation** (« bpm-caddy-setup-windows-x86_64.exe »,
+sur la page des versions) pose le lanceur pour la personne connectée,
+sans droits d'administrateur, avec une entrée au menu Démarrer et une
+icône sur le bureau ; le lancement à l'ouverture de session le retrouve
+toujours au même endroit. La désinstaller (Paramètres › Applications)
+retire le lanceur, l'application et le lancement à l'ouverture de
+session — jamais la base, ses réglages ni ses copies.
 
 Les deux se décochent pour ce poste seul, dans Options › Base, « Le poste
 en service ». Décoché, verrouiller ferme la base et fermer quitte, comme

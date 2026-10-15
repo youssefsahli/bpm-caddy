@@ -295,7 +295,9 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   signer les binaires (minisign/ed25519), embarquer la clé publique
   dans le lanceur, refuser sans signature (les actions sont épinglées
   par empreinte et la publication se fait sans cache depuis le 13/10) ;
-- **carte, postes de versions mêlées** : un poste d'avant la 0.431
+- **carte, postes de versions mêlées** (indécelable : les versions en
+  service ne sont relevées que depuis la 0.433 ; s'éteint avec les mises
+  à jour du lanceur) : un poste d'avant la 0.431
   annonce encore tout ce que l'officine a écrit (il ignore les coches de
   `published_entries`), et en enregistrant « Cette officine sur la
   carte » il réécrit le réglage sans `ruptures` — l'option se décoche.
