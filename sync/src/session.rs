@@ -1100,8 +1100,14 @@ mod tests {
             let h = a.write(b"une ligne");
             a.journal.get(&h).unwrap().encode()
         };
-        let mut s = Session::new(&b.device, b.trousseau.as_ref(), Intent::Sync, true, &b.known)
-            .unwrap();
+        let mut s = Session::new(
+            &b.device,
+            b.trousseau.as_ref(),
+            Intent::Sync,
+            true,
+            &b.known,
+        )
+        .unwrap();
         s.phase = Phase::Exchange;
         // Within a round: taken.
         s.receive(Frame::Give(record.clone()), &mut b.journal, &mut b.meter)
