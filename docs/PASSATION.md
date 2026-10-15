@@ -291,9 +291,12 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   écriture aux publications (jeton fuité, action épinglée sur une
   étiquette mobile — `softprops/action-gh-release@v2`,
   `Swatinem/rust-cache@v2` — ou cache empoisonné) atteint chaque
-  officine. À faire, avec une clé hors ligne à créer par Youssef :
-  signer les binaires (minisign/ed25519), embarquer la clé publique
-  dans le lanceur, refuser sans signature (les actions sont épinglées
+  officine. Fait le 15/10, **éteint** : le lanceur
+  vérifie une signature minisign dès que `launcher/update-key.pub` porte
+  une clé (`scripts/sign-release.sh` signe hors ligne et dépose). Reste
+  à Youssef : créer la clé (`minisign -G`, en tête du script), committer
+  la clé publique, signer chaque version après sa publication ; les
+  lanceurs en service ne se mettent pas à jour eux-mêmes — réinstaller (les actions sont épinglées
   par empreinte et la publication se fait sans cache depuis le 13/10) ;
 - **carte, postes de versions mêlées** (indécelable : les versions en
   service ne sont relevées que depuis la 0.433 ; s'éteint avec les mises

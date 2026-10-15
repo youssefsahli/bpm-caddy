@@ -3050,3 +3050,17 @@ it). `.github/workflows/windows.yml` (by hand, or when one of these
 files changes) builds all of it on Windows, tests `tray/` against the
 real registry (`BPM_CADDY_REAL_AUTOSTART=1`), checks the resources are
 in the programs, and attaches the installer for a try on a real post.
+
+**Signed updates, ready and off.** `launcher/update-key.pub` holds the
+publisher's minisign public key; empty (today), nothing is checked.
+With a key, the launcher downloads `<APP_ASSET>.minisig` first (no
+signature: the installed version stays and runs), verifies the binary
+against it (prehashed Ed25519, `minisign-verify`), and requires the
+signed comment to read `<APP_ASSET> <tag>` — a signature of another
+version or binary installs nothing. Signing is done offline by the
+publisher, never in CI: `scripts/sign-release.sh vX.Y.Z` downloads the
+release's binaries, signs them, checks them against the repository's
+public key and uploads the `.minisig` files. A launcher checks only once
+it carries the key: launchers in service do not update themselves, so
+posts pick it up by reinstalling (the Windows installer) or downloading
+the launcher again.

@@ -16,3 +16,12 @@ motif = { path = "../motif" }
 ureq = { version = "2", features = ["json"] }
 serde_json = "1"
 dirs = "5"
+# La signature des mises à jour (minisign) : vérifiée avant d'installer,
+# dès que `update-key.pub` porte une clé.
+minisign-verify = "0.2"
+
+[dev-dependencies]
+# Des signatures minisign de test, faites comme la commande les fait.
+ed25519-dalek = "2"
+blake2 = "0.10"
+base64 = "0.22"

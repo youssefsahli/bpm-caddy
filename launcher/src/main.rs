@@ -19,6 +19,50 @@ use eframe::egui;
 
 const REPO: &str = "youssefsahli/bpm-caddy";
 
+/// **La clé publique des mises à jour** (minisign), dans le dépôt :
+/// `launcher/update-key.pub`. Vide, rien n'est vérifié — c'est l'état tant
+/// que l'éditeur n'a pas créé sa clé, hors ligne. Posée, chaque binaire
+/// installé doit venir avec sa signature (`<binaire>.minisig`, déposée
+/// par `scripts/sign-release.sh`), faite par cette clé, et dont le
+/// commentaire signé nomme ce binaire **et cette version** : une
+/// signature d'une autre version ne fait pas installer celle-ci.
+const UPDATE_KEY: &str = include_str!("../update-key.pub");
+
+/// La clé, lue dans son fichier (la ligne de base64 après le commentaire),
+/// ou `None` quand le fichier n'en porte pas.
+fn update_key() -> Option<&'static str> {
+    UPDATE_KEY
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty() && !l.starts_with("untrusted comment:"))
+}
+
+/// Ce binaire est-il celui que la clé a signé, pour ce nom et cette
+/// version ?
+fn verify_update(
+    key: &str,
+    bytes: &[u8],
+    signature: &str,
+    asset: &str,
+    tag: &str,
+) -> Result<(), String> {
+    let key = minisign_verify::PublicKey::from_base64(key)
+        .map_err(|e| format!("clé des mises à jour illisible : {e}"))?;
+    let sig = minisign_verify::Signature::decode(signature)
+        .map_err(|e| format!("signature illisible : {e}"))?;
+    key.verify(bytes, &sig, false).map_err(|_| {
+        "signature refusée : ce binaire n'est pas celui que l'éditeur a signé".to_owned()
+    })?;
+    let expected = format!("{asset} {tag}");
+    if sig.trusted_comment().trim() != expected {
+        return Err(format!(
+            "signature d'un autre binaire ou d'une autre version (« {} », attendu « {expected} »)",
+            sig.trusted_comment().trim()
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 const APP_ASSET: &str = "bpm-caddy-linux-x86_64";
 #[cfg(target_os = "windows")]
@@ -238,6 +282,29 @@ fn check_and_update(shared: &Shared) -> Result<String, Box<dyn std::error::Error
         .as_str()
         .ok_or("asset sans URL de téléchargement")?;
     let expected_size = asset["size"].as_u64().unwrap_or(0);
+    // La signature d'abord, quand une clé est posée : sans elle, rien ne
+    // se télécharge — la version installée reste et se lance.
+    let signature = match update_key() {
+        None => None,
+        Some(_) => {
+            let name = format!("{APP_ASSET}.minisig");
+            let sig_url = assets
+                .iter()
+                .find(|a| a["name"].as_str() == Some(name.as_str()))
+                .and_then(|a| a["browser_download_url"].as_str())
+                .ok_or_else(|| {
+                    format!("la version {tag} n'est pas encore signée : rien n'est installé")
+                })?;
+            let mut text = String::new();
+            agent
+                .get(sig_url)
+                .call()?
+                .into_reader()
+                .take(64 * 1024)
+                .read_to_string(&mut text)?;
+            Some(text)
+        }
+    };
 
     let resp = agent.get(url).call()?;
     let total: u64 = resp
@@ -321,6 +388,18 @@ fn check_and_update(shared: &Shared) -> Result<String, Box<dyn std::error::Error
     if let Err(e) = looks_executable(&tmp) {
         let _ = std::fs::remove_file(&tmp);
         return Err(e.into());
+    }
+    // **Signé par l'éditeur**, quand une clé est posée : un accès en
+    // écriture aux publications (un jeton fuité, une action compromise)
+    // ne suffit plus à faire exécuter quelque chose à chaque officine.
+    if let (Some(key), Some(sig)) = (update_key(), &signature) {
+        let checked = std::fs::read(&tmp)
+            .map_err(|e| e.to_string())
+            .and_then(|bytes| verify_update(key, &bytes, sig, APP_ASSET, &tag));
+        if let Err(e) = checked {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e.into());
+        }
     }
 
     #[cfg(unix)]
@@ -548,6 +627,84 @@ fn main() -> eframe::Result {
 
 #[cfg(test)]
 mod tests {
+    /// Une paire de clés et une signature **au format de minisign**
+    /// (pré-haché BLAKE2b-512, commentaire signé), faites ici comme la
+    /// commande les fait : ce que `verify_update` lit en vrai.
+    fn minisign(seed: u8, bytes: &[u8], comment: &str) -> (String, String) {
+        use base64::Engine as _;
+        use blake2::Digest as _;
+        use ed25519_dalek::Signer as _;
+        let b64 = base64::engine::general_purpose::STANDARD;
+        let sk = ed25519_dalek::SigningKey::from_bytes(&[seed; 32]);
+        let id = [seed; 8];
+        let mut pk = b"Ed".to_vec();
+        pk.extend_from_slice(&id);
+        pk.extend_from_slice(sk.verifying_key().as_bytes());
+        let hash = blake2::Blake2b512::digest(bytes);
+        let sig = sk.sign(&hash).to_bytes();
+        let mut line = b"ED".to_vec();
+        line.extend_from_slice(&id);
+        line.extend_from_slice(&sig);
+        let mut global = sig.to_vec();
+        global.extend_from_slice(comment.as_bytes());
+        let global = sk.sign(&global).to_bytes();
+        let text = format!(
+            "untrusted comment: signature\n{}\ntrusted comment: {comment}\n{}\n",
+            b64.encode(line),
+            b64.encode(global)
+        );
+        (b64.encode(pk), text)
+    }
+
+    /// **Une mise à jour signée s'installe ; une autre, non.** Le binaire
+    /// changé d'un octet, une autre clé, la signature d'une autre version
+    /// ou d'un autre binaire : refusés.
+    #[test]
+    fn an_update_installs_only_with_the_publishers_signature() {
+        let bin = b"\x7fELF un binaire".to_vec();
+        let (key, sig) = minisign(7, &bin, "bpm-caddy-linux-x86_64 v0.436.0");
+        assert_eq!(
+            super::verify_update(&key, &bin, &sig, "bpm-caddy-linux-x86_64", "v0.436.0"),
+            Ok(())
+        );
+        let mut changed = bin.clone();
+        changed[5] ^= 1;
+        assert!(
+            super::verify_update(&key, &changed, &sig, "bpm-caddy-linux-x86_64", "v0.436.0")
+                .is_err()
+        );
+        let (other_key, _) = minisign(8, &bin, "x");
+        assert!(
+            super::verify_update(&other_key, &bin, &sig, "bpm-caddy-linux-x86_64", "v0.436.0")
+                .is_err()
+        );
+        assert!(
+            super::verify_update(&key, &bin, &sig, "bpm-caddy-linux-x86_64", "v0.437.0").is_err()
+        );
+        assert!(
+            super::verify_update(&key, &bin, &sig, "bpm-caddy-windows-x86_64.exe", "v0.436.0")
+                .is_err()
+        );
+        // Le commentaire signé ne se réécrit pas.
+        let forged = sig.replace("v0.436.0", "v0.437.0");
+        assert!(
+            super::verify_update(&key, &bin, &forged, "bpm-caddy-linux-x86_64", "v0.437.0")
+                .is_err()
+        );
+    }
+
+    /// Le fichier de clé du dépôt se lit : vide, aucune vérification ;
+    /// posé, la ligne de clé, sans le commentaire.
+    #[test]
+    fn the_key_file_is_read_or_left_off() {
+        match super::update_key() {
+            None => assert!(super::UPDATE_KEY.trim().is_empty()),
+            Some(k) => {
+                assert!(minisign_verify::PublicKey::from_base64(k).is_ok(), "{k}");
+            }
+        }
+    }
+
     /// The launcher opens in the skin the application is set to, and it
     /// reads that out of the file by hand — so the reading is held here.
     ///
