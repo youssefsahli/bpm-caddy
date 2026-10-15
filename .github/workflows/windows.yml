@@ -23,6 +23,13 @@ on:
 permissions:
   contents: read
 
+# Une poussée nouvelle remplace la vérification de la précédente sur la
+# même branche : poussé à chaque lot, main empilait des dizaines de
+# vérifications dont seule la dernière dit quelque chose.
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 
