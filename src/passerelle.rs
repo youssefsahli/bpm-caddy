@@ -1107,13 +1107,22 @@ mod tests {
                 .local_addr()
                 .unwrap()
         };
-        let (web, posts) = (free(), free());
-        let stop = Arc::new(AtomicBool::new(false));
-        let mut options = Options::new(web, posts);
-        options.origins.push(format!("http://{web}"));
-        options.journal = journal;
-        serve(options, Arc::clone(&stop)).unwrap();
-        (web, posts.to_string(), stop)
+        // Un port libre se lâche avant d'être repris : un autre test peut
+        // le prendre entre les deux (la CI l'a vu). On recommence alors
+        // sur deux autres.
+        let mut tries = 0;
+        loop {
+            let (web, posts) = (free(), free());
+            let stop = Arc::new(AtomicBool::new(false));
+            let mut options = Options::new(web, posts);
+            options.origins.push(format!("http://{web}"));
+            options.journal = journal.clone();
+            match serve(options, Arc::clone(&stop)) {
+                Ok(()) => return (web, posts.to_string(), stop),
+                Err(e) if tries < 20 && e.kind() == std::io::ErrorKind::AddrInUse => tries += 1,
+                Err(e) => panic!("{e}"),
+            }
+        }
     }
 
     pub(super) fn get(web: SocketAddr, path: &str, extra: &str) -> (String, TcpStream) {
