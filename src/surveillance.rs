@@ -339,14 +339,15 @@ fn position(code: &str) -> usize {
 
 /// Le rythme, écrit comme on le dit.
 pub fn rhythm_text(months: u32) -> String {
+    use crate::strings::{tr, trf};
     match months {
-        0 | 1 => "tous les mois".to_owned(),
-        3 => "tous les trois mois".to_owned(),
-        6 => "tous les six mois".to_owned(),
-        12 => "une fois par an".to_owned(),
-        24 => "tous les deux ans".to_owned(),
-        n if n % 12 == 0 => format!("tous les {} ans", n / 12),
-        n => format!("tous les {n} mois"),
+        0 | 1 => tr("watch_every_month").to_owned(),
+        3 => tr("watch_every_quarter").to_owned(),
+        6 => tr("watch_every_half_year").to_owned(),
+        12 => tr("watch_every_year").to_owned(),
+        24 => tr("watch_every_two_years").to_owned(),
+        n if n % 12 == 0 => trf("watch_every_n_years", n / 12),
+        n => trf("watch_every_n_months", n),
     }
 }
 

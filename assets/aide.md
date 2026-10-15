@@ -410,7 +410,10 @@ plus bas des paliers franchis ; les seuils viennent des RCP ; la
 décision revient au prescripteur. Aucun verdict avant qu'un DFG soit
 saisi ou calculé ; une créatinine sous 35 µmol/L fait penser à des mg/L.
 Le panneau du dossier donne le DFG avec sa date, et un DFG daté après
-aujourd'hui ne compte pas.
+aujourd'hui ne compte pas. Quand le plan de surveillance le dit à
+refaire (le rythme le plus serré des traitements qui le demandent : un
+AOD, la metformine, le lithium…), le panneau le dit sous le chiffre :
+« à recontrôler avant de s'y fier ».
 
 **Décroissance et accumulation** : demi-vie, intervalle entre deux
 prises, et délai d'élimination. La demi-vie peut être reprise d'une

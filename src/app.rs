@@ -28430,6 +28430,44 @@ impl App {
                             motif::alert()
                         }),
                     );
+                    // **Un DFG ancien se dit ici, pas seulement par sa
+                    // date.** Les conduites ci-dessous se lisent sur ce
+                    // chiffre ; quand le plan de surveillance le dit à
+                    // refaire, la ligne le dit sous le chiffre, avec le
+                    // traitement qui le réclame et son rythme — le rythme
+                    // sourcé de `surveillance`, pas un délai inventé ici.
+                    if session.renal_dfg.is_some() {
+                        if let Some(d) = session.surveillance.iter().find(|d| {
+                            d.code == "DFG"
+                                && matches!(
+                                    d.level,
+                                    crate::surveillance::Level::Overdue
+                                        | crate::surveillance::Level::Soon
+                                )
+                        }) {
+                            let overdue = d.level == crate::surveillance::Level::Overdue;
+                            ui.label(
+                                egui::RichText::new(trn(
+                                    if overdue {
+                                        "renal_dfg_overdue"
+                                    } else {
+                                        "renal_dfg_soon"
+                                    },
+                                    &[
+                                        &d.months.unwrap_or_default(),
+                                        &d.drugs.join(", "),
+                                        &crate::surveillance::rhythm_text(d.every_months),
+                                    ],
+                                ))
+                                .size(motif::pt(ui, 11.0))
+                                .color(if overdue {
+                                    motif::alert()
+                                } else {
+                                    motif::text_dim()
+                                }),
+                            );
+                        }
+                    }
                     ui.add_space(4.0);
                     if session.renal.is_empty() {
                         ui.label(

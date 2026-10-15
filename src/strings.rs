@@ -409,6 +409,8 @@ mod tests {
             include_str!("ordonnance.rs"),
             // La campagne dit en clair une péremption mal tapée.
             include_str!("campagne.rs"),
+            // Le rythme d'une surveillance, écrit comme on le dit.
+            include_str!("surveillance.rs"),
             // Les erreurs des couches du dessous, dites en clair
             // (`plain_error`) : ce fichier-ci nomme leurs phrases.
             include_str!("strings.rs"),
