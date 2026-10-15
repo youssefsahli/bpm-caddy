@@ -287,7 +287,7 @@ The one that was missing — « combien de fois un autre poste avait
   écrit le premier », the most useful number the pane carries and the
   one no other screen says — was absent for two versions for a reason
   worth keeping: every compare-and-set answers `false` in its own place,
-  108 of them, and counting at all but one would be a counter quietly
+  109 of them, and counting at all but one would be a counter quietly
   short, which is worse than one that is not there. It arrived by making those answers
   go through **one** function, `Session::stale` / `stale_note`, the only
   path to a « rechargez » notice (`stale_note_with` when it names what changed); `no_stale_notice_is_written_by_hand`
@@ -3015,6 +3015,14 @@ for it instead of offering a setup that would draw a second one. The
 setup window opens on the built-in gateway (saving it unchanged sets it
 explicitly) and is reachable from the « Accès… » menu once configured.
 A gateway set there replaces it; set empty, messaging is off.
+Its terms (`assets/passerelle-conditions.md`, `GATEWAY_TERMS`) hold it
+back until accepted: `patientchat::terms_state` compares the gateway in
+use with the built-in host (one set by hand to the same name is the
+built-in one), and while `ToAccept` no box secret is drawn and nothing
+waits at the gateway. The proof (`patientchat::Acceptance`: version,
+day, time, post, name) is the officine setting `passerelle_conditions`,
+written compare-and-set. A changed text is `Changed`: asked again,
+service kept. Empty text, nothing asked.
 
 ## Releases
 

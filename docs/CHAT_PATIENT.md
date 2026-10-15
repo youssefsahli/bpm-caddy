@@ -172,6 +172,16 @@ les conditions d'utilisation qui vont avec.
    `release.yml`) ; tant que l'officine n'en règle aucune, c'est elle, et
    le poste de référence tire le secret de lui-même — la messagerie est
    prête à l'installation. Réglée vide, elle est éteinte.
+   **Ses conditions** : `assets/passerelle-conditions.md`, vide tant
+   que personne ne tient la passerelle livrée. Écrit (le contrat de
+   sous-traitance, relu par l'avocat), il est livré avec la version, et
+   la passerelle livrée ne sert l'officine qu'après son acceptation —
+   sur n'importe quel poste, au nom de l'officine : le poste, le jour,
+   l'heure, le nom et la version du texte (douze chiffres d'empreinte)
+   sont rangés dans les réglages de l'officine
+   (`passerelle_conditions`) et voyagent entre ses postes. Un texte
+   changé se redemande sans couper la messagerie
+   (`patientchat::terms_state`).
 3. **Pour chaque patient** : « Donner l'accès », puis le code montré ou
    imprimé.
 

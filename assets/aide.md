@@ -309,7 +309,13 @@ part avec lui.
 messagerie est alors prête, sans réglage. Sinon, à régler une fois pour
 l'officine : son adresse (« Régler la passerelle… », dans l'onglet), un
 serveur tenu par une officine. Une passerelle réglée remplace celle qui
-est livrée ; réglée vide, la messagerie est éteinte.
+est livrée ; réglée vide, la messagerie est éteinte. Une passerelle
+livrée avec des conditions (le contrat de sous-traitance des données)
+attend qu'on les accepte, une fois, au nom de l'officine : « Lire et
+accepter les conditions… », dans l'onglet. Le poste, le jour, l'heure,
+le nom et la version du texte sont gardés ; « Conditions de la
+passerelle… », au menu « Accès… », les relit. Des conditions qui
+changent se redemandent, sans couper la messagerie.
 
 # Croisement
 

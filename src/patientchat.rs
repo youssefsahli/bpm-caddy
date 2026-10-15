@@ -282,6 +282,73 @@ pub fn gateway_host(typed: &str) -> String {
     }
 }
 
+/// **Les conditions d'une passerelle tenue pour l'officine** par un
+/// prestataire : le contrat de sous-traitance (art. 28 RGPD), qu'une
+/// acceptation électronique conclut si on en garde la preuve — le poste,
+/// le jour et l'heure, la version du texte (`docs/CHAT_PATIENT.md`).
+///
+/// Elles ne valent que pour la passerelle livrée avec la version, et
+/// seulement quand un texte est livré avec elle : une passerelle que
+/// l'officine tient elle-même, ou qu'elle a choisie ailleurs, a son
+/// propre contrat, hors du logiciel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Terms {
+    /// Rien à accepter.
+    #[default]
+    None,
+    /// À accepter avant que la passerelle serve l'officine.
+    ToAccept,
+    /// Acceptées, dans la version livrée.
+    Accepted,
+    /// Acceptées dans une version d'avant : la messagerie continue, et
+    /// la nouvelle version se demande.
+    Changed,
+}
+
+/// La version d'un texte de conditions : ses douze premiers chiffres
+/// d'empreinte. Un mot changé change la version, et l'acceptation
+/// enregistrée dit laquelle on a lue.
+pub fn terms_version(text: &str) -> String {
+    blake3::hash(text.trim().as_bytes()).to_hex()[..12].to_owned()
+}
+
+/// Où en est l'officine. `gateway` et `built_in` sont des noms d'hôte
+/// ([`gateway_host`]) : une passerelle réglée à la main sur le même nom
+/// que la livrée est la livrée.
+pub fn terms_state(gateway: &str, built_in: &str, terms: &str, accepted: Option<&str>) -> Terms {
+    if terms.trim().is_empty() || built_in.is_empty() || gateway != built_in {
+        return Terms::None;
+    }
+    match accepted {
+        None => Terms::ToAccept,
+        Some(v) if v == terms_version(terms) => Terms::Accepted,
+        Some(_) => Terms::Changed,
+    }
+}
+
+/// La preuve d'une acceptation, telle qu'elle est rangée dans les
+/// réglages de l'officine (et voyage avec eux entre les postes).
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Acceptance {
+    pub version: String,
+    /// ISO.
+    pub jour: String,
+    /// HH:MM, heure locale du poste.
+    pub heure: String,
+    pub poste: String,
+    pub par: String,
+}
+
+impl Acceptance {
+    pub fn read(text: &str) -> Option<Self> {
+        serde_json::from_str(text).ok()
+    }
+
+    pub fn write(&self) -> String {
+        serde_json::to_string(self).unwrap_or_default()
+    }
+}
+
 /// Un message du patient, tel que la page l'envoie.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FromPatient {
@@ -847,5 +914,46 @@ mod tests {
             "ba7816bf8f01cfea" // sha256("abc")
         );
         assert!(page_url().ends_with(&format!("{h}/")));
+    }
+}
+
+#[cfg(test)]
+mod terms_tests {
+    use super::*;
+
+    /// **Les conditions ne visent que la passerelle livrée**, et seulement
+    /// quand un texte est livré : une passerelle à soi n'a rien à accepter
+    /// ici ; la livrée réglée à la main (même nom) reste la livrée.
+    #[test]
+    fn the_terms_bind_the_built_in_gateway_only() {
+        let text = "# Conditions\nLe prestataire...";
+        assert_eq!(terms_state("a.fr", "a.fr", "", None), Terms::None);
+        assert_eq!(terms_state("a.fr", "", text, None), Terms::None);
+        assert_eq!(terms_state("b.fr", "a.fr", text, None), Terms::None);
+        assert_eq!(terms_state("a.fr", "a.fr", text, None), Terms::ToAccept);
+        let v = terms_version(text);
+        assert_eq!(terms_state("a.fr", "a.fr", text, Some(&v)), Terms::Accepted);
+        // Un mot changé : une autre version, qui se redemande.
+        assert_eq!(
+            terms_state("a.fr", "a.fr", "# Conditions\nLe prestataire, v2", Some(&v)),
+            Terms::Changed
+        );
+        // Les blancs autour ne font pas une version.
+        assert_eq!(terms_version(text), terms_version(&format!("\n{text}\n\n")));
+    }
+
+    /// La preuve se relit telle qu'elle a été écrite ; un réglage
+    /// illisible n'est pas une acceptation.
+    #[test]
+    fn an_acceptance_reads_back_what_was_written() {
+        let a = Acceptance {
+            version: "0123456789ab".into(),
+            jour: "2026-10-15".into(),
+            heure: "14:02".into(),
+            poste: "Comptoir 1".into(),
+            par: "Claire Leroy".into(),
+        };
+        assert_eq!(Acceptance::read(&a.write()), Some(a));
+        assert_eq!(Acceptance::read("oui"), None);
     }
 }

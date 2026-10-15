@@ -372,6 +372,16 @@ const BUILT_IN_GATEWAY: &str = match option_env!("BPM_CADDY_PASSERELLE") {
     Some(g) => g,
     None => "",
 };
+/// **Les conditions de la passerelle livrée** (`patientchat::Terms`) :
+/// le contrat que l'officine accepte, une fois, avant que la passerelle
+/// la serve. Vide, rien ne se demande — c'est le cas tant que personne
+/// ne tient la passerelle livrée.
+#[cfg(feature = "sync")]
+const GATEWAY_TERMS: &str = include_str!("../assets/passerelle-conditions.md");
+/// La preuve de l'acceptation (`patientchat::Acceptance`), un réglage de
+/// l'officine.
+#[cfg(feature = "sync")]
+const PCHAT_TERMS_KEY: &str = "passerelle_conditions";
 
 /// **Les mentions de l'officine**, dans la base et non dans le fichier du
 /// poste : une ordonnance imprimée au comptoir et la même en
@@ -4581,11 +4591,22 @@ struct PchatSetup {
     error: Option<String>,
 }
 
+/// La fenêtre des conditions de la passerelle : la case cochée, le nom
+/// de qui accepte, et l'acceptation que la base portait à l'ouverture.
+#[cfg(feature = "sync")]
+struct PchatTerms {
+    agreed: bool,
+    by: String,
+    seen: Option<String>,
+    error: Option<String>,
+}
+
 /// Ce que le volet de la messagerie demande, fait une fois dessiné.
 #[cfg(feature = "sync")]
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PchatAct {
     Setup,
+    Terms,
     Give,
     Show,
     Print,
@@ -5762,6 +5783,11 @@ struct Session {
     /// La fenêtre de réglage de la passerelle, quand elle est ouverte.
     #[cfg(feature = "sync")]
     pchat_setup: Option<PchatSetup>,
+    /// Les conditions de la passerelle livrée, où en est l'officine.
+    #[cfg(feature = "sync")]
+    pchat_terms: crate::patientchat::Terms,
+    #[cfg(feature = "sync")]
+    pchat_terms_window: Option<PchatTerms>,
     /// Le fil qui attend les patients à la passerelle, et ce avec quoi il
     /// a été lancé : un réglage changé le relance.
     #[cfg(feature = "sync")]
@@ -6827,6 +6853,10 @@ impl Session {
             pchat_conf_read: false,
             #[cfg(feature = "sync")]
             pchat_setup: None,
+            #[cfg(feature = "sync")]
+            pchat_terms: crate::patientchat::Terms::None,
+            #[cfg(feature = "sync")]
+            pchat_terms_window: None,
             #[cfg(feature = "sync")]
             pchat_wait: None,
             #[cfg(feature = "sync")]
@@ -12999,10 +13029,25 @@ impl Session {
                 .trim()
                 .to_owned();
             let mut secret = self.db.setting(PCHAT_SECRET_KEY).unwrap_or_default();
+            // **Ses conditions d'abord** : la passerelle livrée ne sert
+            // l'officine qu'une fois son contrat accepté — ni boîte tirée,
+            // ni attente à la passerelle avant.
+            let accepted = self
+                .db
+                .setting(PCHAT_TERMS_KEY)
+                .and_then(|a| crate::patientchat::Acceptance::read(&a));
+            self.pchat_terms = crate::patientchat::terms_state(
+                &gateway,
+                &crate::patientchat::gateway_host(BUILT_IN_GATEWAY),
+                GATEWAY_TERMS,
+                accepted.as_ref().map(|a| a.version.as_str()),
+            );
+            let held = self.pchat_terms == crate::patientchat::Terms::ToAccept;
             // La passerelle livrée, sans boîte encore : le poste de
             // référence la tire, une fois — un seul poste tire, comme un
             // seul sème, pour que deux postes n'en tirent pas deux.
             if built_in
+                && !held
                 && !gateway.is_empty()
                 && !crate::patientchat::is_box_secret(&secret)
                 && self.db.seeds_here()
@@ -13018,7 +13063,7 @@ impl Session {
                 secret = self.db.setting(PCHAT_SECRET_KEY).unwrap_or_default();
             }
             self.pchat_conf =
-                (!gateway.is_empty() && secret.len() == 64).then_some((gateway, secret));
+                (!held && !gateway.is_empty() && secret.len() == 64).then_some((gateway, secret));
         }
         if let Ok(list) = self.db.unread_patient_messages() {
             self.pchat_unread = list;
@@ -26129,6 +26174,7 @@ impl App {
             && !crate::patientchat::gateway_host(BUILT_IN_GATEWAY).is_empty()
             && !session.db.seeds_here();
         let confirm_close = session.pchat_confirm_close;
+        let terms = session.pchat_terms;
         motif::panel(ui, rect, Some(tr("pchat_title")), |ui| {
             let Some(chat) = &session.pchat else {
                 return;
@@ -26146,6 +26192,15 @@ impl App {
             if !configured {
                 hint(ui);
                 ui.add_space(4.0);
+                // Le contrat de la passerelle livrée, avant tout : sur
+                // n'importe quel poste, au nom de l'officine.
+                if terms == crate::patientchat::Terms::ToAccept {
+                    ui.add(egui::Label::new(tr("pchat_terms_needed")).wrap());
+                    if motif::button(ui, tr("pchat_terms_read")).clicked() {
+                        act = Some(PchatAct::Terms);
+                    }
+                    return;
+                }
                 // La passerelle livrée, la boîte pas encore tirée : c'est
                 // au poste de référence de le faire — un second tirage
                 // ici en ferait deux.
@@ -26158,6 +26213,14 @@ impl App {
                     act = Some(PchatAct::Setup);
                 }
                 return;
+            }
+            if terms == crate::patientchat::Terms::Changed {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(egui::RichText::new(tr("pchat_terms_changed")).color(motif::warn()));
+                    if motif::button(ui, tr("pchat_terms_read")).clicked() {
+                        act = Some(PchatAct::Terms);
+                    }
+                });
             }
             if let Some(why) = &session.pchat_unreachable {
                 ui.add(
@@ -26212,6 +26275,12 @@ impl App {
                         // éteindre (réglée vide) — livrée ou non.
                         (PchatAct::Setup, tr("pchat_setup").to_owned()),
                     ];
+                    // Et ses conditions, quand elle en a : relire ce qui a
+                    // été accepté, par qui, quand.
+                    let mut options = options.to_vec();
+                    if terms != crate::patientchat::Terms::None {
+                        options.push((PchatAct::Terms, tr("pchat_terms_menu").to_owned()));
+                    }
                     let w = chars_wide(ui, 18.0).min(ui.available_width());
                     if let Some(a) =
                         motif::menu(ui, "pchat_access_menu", w, tr("pchat_more"), &options).inner
@@ -26345,6 +26414,14 @@ impl App {
         match act {
             None => {}
             Some(PchatAct::Setup) => Self::open_pchat_setup(session),
+            Some(PchatAct::Terms) => {
+                session.pchat_terms_window = Some(PchatTerms {
+                    agreed: false,
+                    by: operator.to_owned(),
+                    seen: session.db.setting(PCHAT_TERMS_KEY),
+                    error: None,
+                });
+            }
             Some(PchatAct::Give) => Self::give_pchat(session, patient, operator),
             Some(PchatAct::Show) => {
                 session.pchat_qr = Self::pchat_link(session).map(|l| (patient.id, l));
@@ -26565,6 +26642,170 @@ impl App {
         if close || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             session.pchat_qr = None;
         }
+    }
+
+    /// **Les conditions de la passerelle livrée** : le texte, ce qui a été
+    /// accepté (quand, sur quel poste, par qui, quelle version), et
+    /// l'acceptation au nom de l'officine — écrite contre ce que la
+    /// fenêtre avait lu.
+    #[cfg(feature = "sync")]
+    fn pchat_terms_window(ctx: &egui::Context, session: &mut Session) {
+        let Some(mut w) = session.pchat_terms_window.take() else {
+            return;
+        };
+        let mut accept = false;
+        let mut close = false;
+        let screen = ctx.screen_rect();
+        let size = dialog_size(screen.size(), egui::vec2(640.0, 520.0));
+        let done = w
+            .seen
+            .as_deref()
+            .and_then(crate::patientchat::Acceptance::read);
+        let asked = matches!(
+            session.pchat_terms,
+            crate::patientchat::Terms::ToAccept | crate::patientchat::Terms::Changed
+        );
+        egui::Window::new(tr("pchat_terms_title"))
+            .collapsible(false)
+            .resizable(false)
+            .fixed_size(size)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                // Le pied d'abord mesuré : le texte prend ce qui reste.
+                let row = Self::row_height(ui);
+                let foot = row * if asked { 4.0 } else { 2.0 };
+                let text_h = (ui.available_height() - foot).max(row * 3.0);
+                egui::ScrollArea::vertical()
+                    .id_salt("pchat_terms_text")
+                    .max_height(text_h)
+                    .show(ui, |ui| {
+                        // Un texte en markdown simple : les titres en
+                        // gras, sans leurs dièses ; le reste tel quel.
+                        for line in GATEWAY_TERMS.trim().lines() {
+                            let head = line.trim_start_matches('#');
+                            if head.len() < line.len() {
+                                ui.add(
+                                    egui::Label::new(egui::RichText::new(head.trim()).strong())
+                                        .wrap(),
+                                );
+                            } else {
+                                ui.add(egui::Label::new(line).wrap());
+                            }
+                        }
+                    });
+                motif::separator(ui);
+                if let Some(a) = &done {
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(trn(
+                                "pchat_terms_accepted",
+                                &[
+                                    &db::format_french_date(&a.jour),
+                                    &a.heure,
+                                    &a.poste,
+                                    &a.par,
+                                    &a.version,
+                                ],
+                            ))
+                            .size(motif::pt(ui, 10.5))
+                            .color(motif::text_dim()),
+                        )
+                        .wrap(),
+                    );
+                }
+                if asked {
+                    motif::checkbox(ui, &mut w.agreed, tr("pchat_terms_agree"));
+                    ui.horizontal_wrapped(|ui| {
+                        Self::form_label(ui, tr("pchat_terms_by"));
+                        let fw = chars_wide(ui, 24.0).min(ui.available_width());
+                        motif::field(ui, fw, egui::TextEdit::singleline(&mut w.by));
+                    });
+                }
+                if let Some(e) = &w.error {
+                    ui.add(egui::Label::new(egui::RichText::new(e).color(motif::warn())).wrap());
+                }
+                ui.horizontal(|ui| {
+                    if asked
+                        && motif::button_enabled(
+                            ui,
+                            tr("pchat_terms_accept"),
+                            w.agreed && !w.by.trim().is_empty(),
+                        )
+                        .clicked()
+                    {
+                        accept = true;
+                    }
+                    if motif::button(ui, tr("pchat_terms_close")).clicked() {
+                        close = true;
+                    }
+                });
+            });
+        if close || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            return;
+        }
+        if !accept {
+            session.pchat_terms_window = Some(w);
+            return;
+        }
+        let heure = session
+            .db
+            .now_stamp()
+            .ok()
+            .and_then(|s| s.split_once(' ').map(|(_, h)| h.to_owned()))
+            .unwrap_or_default();
+        let proof = crate::patientchat::Acceptance {
+            version: crate::patientchat::terms_version(GATEWAY_TERMS),
+            jour: session.today.clone(),
+            heure,
+            poste: Self::this_post_label(&session.db),
+            par: w.by.trim().to_owned(),
+        };
+        let (day, who) = (session.today.clone(), session.operator.clone());
+        match session.db.set_setting(
+            PCHAT_TERMS_KEY,
+            &proof.write(),
+            w.seen.as_deref(),
+            &day,
+            &who,
+        ) {
+            Ok(true) => {
+                session.refresh_pchat();
+                session.pchat = None;
+            }
+            Ok(false) => {
+                session.refresh_pchat();
+                w.seen = session.db.setting(PCHAT_TERMS_KEY);
+                w.error = Some(session.stale_note("pchat_terms_stale"));
+                session.pchat_terms_window = Some(w);
+            }
+            Err(e) => {
+                w.error = Some(e);
+                session.pchat_terms_window = Some(w);
+            }
+        }
+    }
+
+    /// Le nom de ce poste pour une preuve : celui du groupe de postes,
+    /// sinon celui de la machine.
+    #[cfg(feature = "sync")]
+    fn this_post_label(db: &Db) -> String {
+        db.sync_post()
+            .and_then(|n| {
+                db.sync_posts()
+                    .ok()?
+                    .into_iter()
+                    .find(|p| p.post == n)
+                    .map(|p| p.name)
+            })
+            .filter(|n| !n.trim().is_empty())
+            .or_else(|| std::env::var("COMPUTERNAME").ok())
+            .or_else(|| {
+                std::fs::read_to_string("/etc/hostname")
+                    .ok()
+                    .map(|h| h.trim().to_owned())
+            })
+            .filter(|n| !n.trim().is_empty())
+            .unwrap_or_else(|| tr("pchat_terms_this_post").to_owned())
     }
 
     /// Ouvrir le réglage de la passerelle, avec ce que la base porte.
@@ -86629,6 +86870,7 @@ impl eframe::App for App {
                 session.poll_posts(ctx, &self.config);
                 session.poll_pchat(&self.config);
                 Self::pchat_setup_window(ctx, session);
+                Self::pchat_terms_window(ctx, session);
                 session.poll_net_auto(ctx, &self.config);
                 session.poll_carte(ctx, &self.config);
                 Self::posts_window(ctx, session, &self.config);
