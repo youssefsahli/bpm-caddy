@@ -203,8 +203,8 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   une vingtaine de lignes « Entre X et Y » ont encore `below: Y` (Y
   exclu) — à relire contre chaque RCP (les trois anticoagulant et
   cotrimoxazole sont faits) ; metformine « Entre 45 et 60 » est 45–59
-  au RCP ; un DFG ancien se dit sous le chiffre quand le plan de surveillance le dit à refaire (15/10) — pas au-delà de sa date
-  affichée ; le plafond d'une note de posologie (Alfatil « Sans dépasser
+  au RCP ; un DFG ancien se dit sous le chiffre quand le
+  plan de surveillance le dit à refaire (fait le 15/10) ; le plafond d'une note de posologie (Alfatil « Sans dépasser
   1 g par jour » dans la colonne note) n'atteint pas « Dose par kilo » ;
 - paquet et copie : la copie manuelle, le paquet et les copies du jour
   des pièces et du registre passent par étapes (`stepwise_copy`, fait le
