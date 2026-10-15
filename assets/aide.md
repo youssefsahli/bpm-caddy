@@ -1796,7 +1796,10 @@ sans droits d'administrateur, avec une entrée au menu Démarrer et une
 icône sur le bureau ; le lancement à l'ouverture de session le retrouve
 toujours au même endroit. La désinstaller (Paramètres › Applications)
 retire le lanceur, l'application et le lancement à l'ouverture de
-session — jamais la base, ses réglages ni ses copies.
+session — jamais la base, ses réglages ni ses copies. Les programmes ne sont
+pas encore signés : au premier lancement, Windows peut afficher
+« Windows a protégé votre ordinateur » — « Informations
+complémentaires », puis « Exécuter quand même ».
 
 Les deux se décochent pour ce poste seul, dans Options › Base, « Le poste
 en service ». Décoché, verrouiller ferme la base et fermer quitte, comme

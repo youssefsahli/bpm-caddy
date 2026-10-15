@@ -157,7 +157,7 @@ The repository is a Cargo workspace:
 
 ## Installing
 
-**Windows:** download **`bpm-caddy-setup-windows-x86_64.exe`** from the [Releases](../../releases) page and run it — no administrator rights needed. It installs the launcher for the current user, with a Start menu entry and a desktop icon; uninstalling never touches the database.
+**Windows:** download **`bpm-caddy-setup-windows-x86_64.exe`** from the [Releases](../../releases) page and run it — no administrator rights needed. It installs the launcher for the current user, with a Start menu entry and a desktop icon; uninstalling never touches the database. The binaries are not signed yet: SmartScreen may say « Windows a protégé votre ordinateur » — click « Informations complémentaires », then « Exécuter quand même ».
 
 **Linux and macOS:** download **`bpm-caddy-launcher`** for your platform from the [Releases](../../releases) page and run it. It fetches the latest BPM-Caddy binary into your local data directory, keeps it up to date on every start, and launches it. If the network is unavailable, it starts the already-installed version.
 
