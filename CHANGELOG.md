@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Reconciliation: the same dose written in other units (« 1 000 mg »
+  and « 1 g », « 500mg » and « 0,5 g ») is no longer read as a dose
+  change.
+- Printed monographs, preparation and device sheets title their sections
+  with the screen's own words.
+- The posts window names it when two posts invited at the same moment
+  from two different posts share a number. It no longer offers « Prendre
+  la leur » on that question, which rewrote this post's identity, and
+  says which post should leave the group to be invited again.
+
 ## [0.435.0] - 2026-10-15
 
 ### Added

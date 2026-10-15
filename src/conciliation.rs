@@ -591,8 +591,8 @@ fn same_dose(before: &str, after: &str) -> bool {
             .filter(|w| !w.is_empty())
             .collect()
     };
-    let a = words(before);
-    let b = words(after);
+    let a = same_units(words(before));
+    let b = same_units(words(after));
     if a.is_empty() || b.is_empty() {
         return true;
     }
@@ -605,6 +605,85 @@ fn same_dose(before: &str, after: &str) -> bool {
         && long[..long.len() - short.len()]
             .iter()
             .all(|w| strength(w) || !takes(w))
+}
+
+/// **Une quantité s'écrit d'une seule façon** avant la comparaison :
+/// « 1 000 mg », « 1000mg » et « 1 g » deviennent `1000000µg`. Sans cela
+/// la même dose écrite autrement se lisait « dose changée » — un faux qui
+/// apprend à ne plus lire la colonne.
+///
+/// Les masses en microgrammes ; les unités et les millilitres gardent la
+/// leur. Un groupe de trois chiffres qui suit un nombre et précède une
+/// unité est le reste d'un millier écrit avec une espace.
+fn same_units(words: Vec<String>) -> Vec<String> {
+    let unit_of = |u: &str| -> Option<(f64, &'static str)> {
+        match u {
+            "g" | "gramme" | "grammes" => Some((1e6, "µg")),
+            "mg" | "milligramme" | "milligrammes" => Some((1e3, "µg")),
+            "µg" | "ug" | "mcg" | "microgramme" | "microgrammes" => Some((1.0, "µg")),
+            "ui" | "unite" | "unites" => Some((1.0, "ui")),
+            "ml" => Some((1.0, "ml")),
+            _ => None,
+        }
+    };
+    let number = |w: &str| -> Option<f64> {
+        (!w.is_empty() && w.chars().all(|c| c.is_ascii_digit() || c == '.'))
+            .then(|| w.parse().ok())
+            .flatten()
+    };
+    let write = |v: f64, unit: &str| -> String {
+        // Au millième : 0,3 × 10⁶ ne doit pas écrire 300000,00000000006.
+        let v = (v * 1e3).round() / 1e3;
+        if v.fract() == 0.0 && v.abs() < 1e15 {
+            format!("{}{unit}", v as i64)
+        } else {
+            format!("{v}{unit}")
+        }
+    };
+    let mut out = Vec::with_capacity(words.len());
+    let mut i = 0;
+    while i < words.len() {
+        let w = words[i].as_str();
+        // « 1 000 mg » : le millier écrit avec une espace.
+        let (digits, mut next) = match (number(w), words.get(i + 1)) {
+            (Some(_), Some(group))
+                if group.len() == 3
+                    && group.chars().all(|c| c.is_ascii_digit())
+                    && words.get(i + 2).is_some_and(|u| unit_of(u).is_some()) =>
+            {
+                (format!("{w}{group}"), i + 2)
+            }
+            _ => (w.to_owned(), i + 1),
+        };
+        let amount = match number(&digits) {
+            // Le nombre seul, l'unité au mot suivant.
+            Some(v) => words.get(next).and_then(|u| unit_of(u)).map(|(k, unit)| {
+                next += 1;
+                write(v * k, unit)
+            }),
+            // Collés : « 75mg ».
+            None => {
+                let lead: String = digits
+                    .chars()
+                    .take_while(|c| c.is_ascii_digit() || *c == '.')
+                    .collect();
+                number(&lead).and_then(|v| {
+                    unit_of(&digits[lead.len()..]).map(|(k, unit)| write(v * k, unit))
+                })
+            }
+        };
+        match amount {
+            Some(token) => {
+                out.push(token);
+                i = next;
+            }
+            None => {
+                out.push(words[i].clone());
+                i += 1;
+            }
+        }
+    }
+    out
 }
 
 /// La première quantité d'un texte, ramenée à son unité de base : les
@@ -1098,6 +1177,35 @@ Vogalène lyoc si nausées
         let out = compare(&[], "1 - Kardegic 75 mg : 1 sachet", &base);
         assert_eq!(out[0].label, "Kardegic", "{out:?}");
         assert_eq!(out[0].kind, Change::Added);
+    }
+
+    /// **La même dose écrite autrement est la même** : « 1 000 mg » et
+    /// « 1 g », « 500mg » et « 0,5 g ». Une autre quantité reste un
+    /// changement, et un nombre sans unité n'est pas converti.
+    #[test]
+    fn a_dose_written_in_other_units_is_kept() {
+        for (a, b) in [
+            ("1 000 mg matin et soir", "1 g matin et soir"),
+            ("1000mg matin et soir", "1 g matin et soir"),
+            ("500mg le soir", "0,5 g le soir"),
+            ("100 µg le matin", "0,1 mg le matin"),
+            ("300 mg le soir", "0,3 g le soir"),
+            ("2,5 mg le matin", "2500 µg le matin"),
+            (
+                "Metformine 1 000 mg : 1 cp matin et soir",
+                "1 cp matin et soir",
+            ),
+        ] {
+            assert!(same_dose(a, b), "{a} / {b}");
+        }
+        for (a, b) in [
+            ("1 g matin et soir", "500 mg matin et soir"),
+            ("1 000 mg le soir", "1 g matin et soir"),
+            ("1 cp le soir", "2 cp le soir"),
+            ("5 mg le soir", "5 ml le soir"),
+        ] {
+            assert!(!same_dose(a, b), "{a} / {b}");
+        }
     }
 
     /// Le dosage que le dossier retient compte : 5 mg au dossier, 10 mg

@@ -325,8 +325,8 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   les titres de section des monographies et des préparations dans
   `pdf.rs`, l'intitulé du protocole sur
   l'ordonnance, les manques du renouvellement ;
-- conciliation : « 1 000 mg matin et soir » contre « 1 g matin et soir »
-  se lit « dose changée » (sens sûr, mais bruyant) ;
+- conciliation : « 1 000 mg » contre « 1 g » — fait le 15/10 (les
+  quantités ramenées à une écriture, `same_units`) ;
 - location au mois : une location commencée le 29, le 30 ou le 31
   janvier atteint son mois le 28 février (`add_months` borne au dernier
   jour) — du 31/01 au 28/02, deux forfaits ; règle à trancher ;
