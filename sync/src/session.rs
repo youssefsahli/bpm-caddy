@@ -162,6 +162,9 @@ pub struct Session {
     peer_more: bool,
     my_end_sent: bool,
     peer_end: bool,
+    /// Records the peer has handed over in the round now open: an
+    /// answer to this post's want, never more than a round carries.
+    peer_gives: usize,
     rounds: u32,
 }
 
@@ -231,6 +234,7 @@ impl Session {
             peer_more: false,
             my_end_sent: false,
             peer_end: false,
+            peer_gives: 0,
             rounds: 0,
         })
     }
@@ -579,6 +583,20 @@ impl Session {
                 self.settle(journal, meter)
             }
             (Phase::Exchange, Frame::Give(bytes)) => {
+                // **A give answers a want.** One after the peer closed
+                // its round, or more than a round carries, is a member
+                // pushing records nobody asked for to keep this post
+                // busy: refused. (A member can write records anyway —
+                // what it cannot do is make the session endless.)
+                if self.peer_end {
+                    meter.refuse(Error::Protocol);
+                    return Err(Error::Protocol);
+                }
+                self.peer_gives += 1;
+                if self.peer_gives > MOST_PER_ROUND {
+                    meter.refuse(Error::TooLarge);
+                    return Err(Error::TooLarge);
+                }
                 let record = Record::decode(&bytes).inspect_err(|e| meter.refuse(*e))?;
                 if journal.insert(record) {
                     meter.note(Signal::Received);
@@ -744,20 +762,30 @@ impl Session {
 
     /// Opens a round: what this post needs, and what it holds.
     fn begin_round(&mut self, journal: &Journal) {
-        let mut need: Vec<Hash> = self
-            .peer_heads
+        // **The peer's heads first**, then the parents this post lacks.
+        // Sorted together, a member that wrote records naming invented
+        // parents near `0x00…` filled the want with them, ahead of the
+        // real heads, round after round.
+        let wanted = |h: &Hash| !journal.has(h) && !self.unavailable.contains(h);
+        let mut heads: Vec<Hash> = self.peer_heads.iter().copied().filter(wanted).collect();
+        heads.sort();
+        heads.dedup();
+        let mut missing: Vec<Hash> = journal
+            .missing()
             .iter()
-            .chain(journal.missing().iter())
             .copied()
-            .filter(|h| !journal.has(h) && !self.unavailable.contains(h))
+            .filter(|h| wanted(h) && heads.binary_search(h).is_err())
             .collect();
-        need.sort();
-        need.dedup();
+        missing.sort();
+        missing.dedup();
+        let mut need = heads;
+        need.extend(missing);
         need.truncate(MAX_HASHES);
         self.last_want = need.clone();
         self.my_want_empty = need.is_empty();
         self.my_end_sent = false;
         self.peer_end = false;
+        self.peer_gives = 0;
         self.peer_more = false;
         self.peer_want_empty = None;
         self.out.push_back(Frame::Want {
@@ -1059,6 +1087,38 @@ mod tests {
         )
         .unwrap();
         converse(a, b, sa, sb, true).unwrap();
+    }
+
+    /// **A give that answers no want is refused**: after the peer closed
+    /// its round, or past what a round carries.
+    #[test]
+    fn a_give_nobody_asked_for_is_refused() {
+        let mut a = Post::new(1, Some(officine(3)));
+        let mut b = Post::new(2, None);
+        pair_posts(&mut a, &mut b);
+        let record = {
+            let h = a.write(b"une ligne");
+            a.journal.get(&h).unwrap().encode()
+        };
+        let mut s = Session::new(&b.device, b.trousseau.as_ref(), Intent::Sync, true, &b.known)
+            .unwrap();
+        s.phase = Phase::Exchange;
+        // Within a round: taken.
+        s.receive(Frame::Give(record.clone()), &mut b.journal, &mut b.meter)
+            .unwrap();
+        // After the peer said it had finished answering: refused.
+        s.peer_end = true;
+        assert_eq!(
+            s.receive(Frame::Give(record.clone()), &mut b.journal, &mut b.meter),
+            Err(Error::Protocol)
+        );
+        // More than a round carries: refused.
+        s.peer_end = false;
+        s.peer_gives = MOST_PER_ROUND;
+        assert_eq!(
+            s.receive(Frame::Give(record), &mut b.journal, &mut b.meter),
+            Err(Error::TooLarge)
+        );
     }
 
     /// **A companion joins with a share**: it opens the streams it was
