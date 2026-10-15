@@ -143,7 +143,9 @@ les conditions d'utilisation qui vont avec.
 
 1. **Une passerelle**, une fois pour toutes les officines qui s'en
    servent : un petit serveur, un nom de domaine, et un proxy qui porte
-   le certificat. Avec Caddy :
+   le certificat. **`deploy/passerelle/`** fait tout cela d'un script
+   (`install.sh` : service systemd durci, Caddy, pare-feu) ; le détail
+   suit. Avec Caddy :
 
    ```text
    messagerie.example.fr {

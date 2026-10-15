@@ -1,0 +1,10 @@
+# Le proxy de la passerelle : Caddy tient le certificat du nom de domaine
+# (Let's Encrypt, de lui-même) et passe les pages à la passerelle locale.
+# Remplacer messagerie.example.fr par le nom choisi (install.sh le fait).
+messagerie.example.fr {
+	# Caddy passe l'adresse du patient (X-Forwarded-For), que la
+	# passerelle journalise ; lui-même ne tient pas de journal d'accès
+	# tant qu'aucune directive `log` ne le demande. Rien d'autre ne se sert
+	# ici : la page des patients est publiée à part.
+	reverse_proxy 127.0.0.1:8746
+}
