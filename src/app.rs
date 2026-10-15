@@ -45639,12 +45639,18 @@ impl App {
                         let lines = session.db.posologies(id).unwrap_or_default();
                         session.calc_poso = Some((id, lines));
                     }
-                    let lines: Vec<(&str, &str)> = session
+                    let lines: Vec<(&str, &str, &str)> = session
                         .calc_poso
                         .as_ref()
                         .map(|(_, l)| {
                             l.iter()
-                                .map(|p| (p.indication.as_str(), p.posologie.as_str()))
+                                .map(|p| {
+                                    (
+                                        p.indication.as_str(),
+                                        p.posologie.as_str(),
+                                        p.remarque.as_str(),
+                                    )
+                                })
                                 .collect()
                         })
                         .unwrap_or_default();
@@ -45702,16 +45708,14 @@ impl App {
                         // de « 20 mg/kg par jour, sans dépasser 500 mg »
                         // s'affichaient 800 mg, dans la couleur de ce qu'on
                         // donne.
+                        // Un plafond au poids aussi : « jusqu'à 40 mg/kg/jour »
+                        // sous « sans dépasser 1 g par jour » ne monte pas
+                        // au-delà d'un gramme — le plus bas des deux.
                         let bound = |v: f64| f.cap.map_or(v, |c| v.min(c));
-                        let capped = !f.ceiling
-                            && f.cap.is_some_and(|c| {
-                                f.low * w > c || f.high.is_some_and(|h| h * w > c)
-                            });
-                        let result = if f.ceiling {
-                            span(f.low * w, f.high.map(|h| h * w))
-                        } else {
-                            span(bound(f.low * w), f.high.map(|h| bound(h * w)))
-                        };
+                        let capped = f
+                            .cap
+                            .is_some_and(|c| f.low * w > c || f.high.is_some_and(|h| h * w > c));
+                        let result = span(bound(f.low * w), f.high.map(|h| bound(h * w)));
                         // **Un plafond n'est pas une dose** : il se dit
                         // comme tel, et pas dans la couleur de ce qu'on
                         // donne.

@@ -157,13 +157,25 @@ pub struct Found {
 /// La carte du Bactrim ne dit rien au poids ; sa ligne « Infections de
 /// l'enfant » écrit trente milligrammes par kilo. Ne lire que la carte
 /// répondait « rien » à la question même qui a fait naître l'outil.
-pub fn gather(card: &str, lines: &[(&str, &str)]) -> Vec<Found> {
+///
+/// Une ligne est `(indication, posologie, remarque)`. **Le plafond que la
+/// remarque écrit vaut pour la ligne** : l'Alfatil de l'enfant écrit
+/// « 20 mg/kg/jour » en posologie et « Sans dépasser 1 g par jour » en
+/// remarque — lu sur la seule posologie, 60 kg donnaient 1 200 mg à
+/// l'écran. Il ne remplace jamais le plafond que la phrase de la dose
+/// écrit elle-même.
+pub fn gather(card: &str, lines: &[(&str, &str, &str)]) -> Vec<Found> {
     let mut out: Vec<Found> = lines
         .iter()
-        .flat_map(|(indication, text)| {
-            read(text).into_iter().map(|dose| Found {
-                indication: Some((*indication).to_owned()),
-                dose,
+        .flat_map(|(indication, text, note)| {
+            read(text).into_iter().map(|mut dose| {
+                if dose.cap.is_none() {
+                    dose.cap = cap_in(note, dose.cadence);
+                }
+                Found {
+                    indication: Some((*indication).to_owned()),
+                    dose,
+                }
             })
         })
         .collect();
@@ -522,6 +534,14 @@ fn cap_after(hay: &str, at: usize, dose: Cadence) -> Option<f64> {
         Cadence::NonDite
     };
     (cadence == dose || cadence == Cadence::NonDite).then_some(mg)
+}
+
+/// Le premier plafond absolu qu'un texte écrit, phrase après phrase
+/// ([`cap_after`] s'arrête à la fin de la sienne).
+fn cap_in(text: &str, dose: Cadence) -> Option<f64> {
+    std::iter::once(0)
+        .chain(text.match_indices(". ").map(|(i, _)| i + 2))
+        .find_map(|start| cap_after(text, start, dose))
 }
 
 fn sentence_around(hay: &str, at: usize) -> String {
@@ -906,13 +926,60 @@ mod tests {
     fn the_lines_come_first_and_the_card_adds_only_what_they_lack() {
         let got = gather(
             "Enfant : 50 mg/kg par jour. Méningite : 100 mg/kg par jour.",
-            &[("Angine de l'enfant", "50 mg/kg par jour en 2 prises")],
+            &[("Angine de l'enfant", "50 mg/kg par jour en 2 prises", "")],
         );
         assert_eq!(got.len(), 2, "{got:?}");
         assert_eq!(got[0].indication.as_deref(), Some("Angine de l'enfant"));
         assert_eq!(got[1].indication, None);
         assert_eq!(got[1].dose.low, 100.0);
         assert!(gather("", &[]).is_empty());
+    }
+
+    /// **Le plafond de la remarque borne la ligne** — l'Alfatil de
+    /// l'enfant tel que la base l'écrit —, à son rythme seulement, et
+    /// jamais à la place de celui que la phrase de la dose écrit.
+    #[test]
+    fn a_ceiling_in_the_note_caps_the_line() {
+        let alfatil = [(
+            "Enfant, suspension buvable",
+            "20 mg/kg/jour en trois prises ; jusqu'à 40 mg/kg/jour en trois prises dans les otites moyennes et les infections plus sévères",
+            "Sans dépasser 1 g par jour. La seringue est graduée en mg par prise ; suspension reconstituée gardée au réfrigérateur 14 jours.",
+        )];
+        let got = gather("", &alfatil);
+        assert!(!got.is_empty());
+        for f in &got {
+            assert_eq!(f.dose.cap, Some(1000.0), "{f:?}");
+        }
+        // Dans une phrase suivante de la remarque, aussi.
+        let got = gather(
+            "",
+            &[(
+                "Enfant",
+                "20 mg/kg par jour",
+                "Prise au repas. Maximum 500 mg par jour.",
+            )],
+        );
+        assert_eq!(got[0].dose.cap, Some(500.0));
+        // Un plafond par jour ne borne pas une prise.
+        let got = gather(
+            "",
+            &[(
+                "Enfant",
+                "10 mg/kg par prise",
+                "Sans dépasser 1 g par jour.",
+            )],
+        );
+        assert_eq!(got[0].dose.cap, None);
+        // Celui de la phrase de la dose l'emporte.
+        let got = gather(
+            "",
+            &[(
+                "Enfant",
+                "20 mg/kg par jour, sans dépasser 500 mg par jour",
+                "Sans dépasser 1 g par jour.",
+            )],
+        );
+        assert_eq!(got[0].dose.cap, Some(500.0));
     }
 
     /// **Jamais zéro milligramme**, et pas de fausse précision.

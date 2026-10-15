@@ -398,7 +398,9 @@ selon la formule en vigueur.
 une fiche, **les doses au poids qu'elle indique** : ses lignes par
 indication d'abord, chacune sous son titre, puis celles de la posologie
 générale — chaque dose avec son rythme et la phrase source. Un plafond
-(« sans dépasser… ») est affiché comme tel, une association précise la
+(« sans dépasser… ») est affiché comme tel ; un plafond en milligrammes,
+écrit dans la phrase ou dans la remarque de la ligne, borne le calcul,
+et l'écran le dit. Une association précise la
 molécule de chaque chiffre, et une dose cumulée par cure n'est pas
 reprise. Le rythme fait partie de la dose : « 15 mg/kg par prise toutes
 les 6 heures » et « 60 mg/kg par 24 heures » décrivent le même

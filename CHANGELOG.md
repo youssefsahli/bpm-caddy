@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reconciliation: the same dose written in other units (« 1 000 mg »
   and « 1 g », « 500mg » and « 0,5 g ») is no longer read as a dose
   change.
+- Weight-based dose: a milligram ceiling written in a posology line's
+  note (Alfatil for children: « Sans dépasser 1 g par jour ») now bounds
+  that line's computed dose. A per-kilo ceiling (« jusqu'à 40 mg/kg/jour »)
+  is bounded by it too.
 - Printed monographs, preparation and device sheets title their sections
   with the screen's own words.
 - The posts window names it when two posts invited at the same moment
