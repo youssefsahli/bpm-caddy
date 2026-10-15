@@ -8,10 +8,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.437.0] - 2026-10-15
+
+### Added
+
+- `deploy/passerelle/`: what it takes to run the patient-messaging
+  gateway, in one command on Debian or Ubuntu. It provides a hardened
+  systemd service that writes nothing but its connection log, kept 92
+  days; Caddy for the certificate; and an install script that also
+  updates.
+
 ### Changed
 
 - « Copier la base vers… » no longer freezes the window: the copy runs
-  on its own thread, like the package export.
+  on its own thread, like the package export. No maintenance pass can
+  start while a copy or a package is being written, since the three
+  files would no longer be from the same moment.
+- Two posts sharing a number: only one is told to leave the group (the
+  same one on every post), instead of both.
+
+### Fixed
+
+- The gateway refused every patient once about 250 officines were
+  waiting on it. Posts' waiting connections no longer count against
+  the 512 simultaneous conversations.
 
 ## [0.436.0] - 2026-10-15
 
