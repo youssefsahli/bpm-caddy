@@ -63603,6 +63603,48 @@ mod tests {
         }
     }
 
+    /// **Deux postes sous un même numéro** se voient : la ligne de
+    /// `sync_posts` qu'apporte l'autre ne remplace pas la sienne, elle
+    /// lève une question sur `device` — celle que la fenêtre des postes
+    /// dit pour ce qu'elle est.
+    #[test]
+    fn a_twin_post_number_is_a_question_on_the_device() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-twin-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("live.db"), "secret").unwrap();
+        db.conn
+            .execute(
+                "INSERT INTO sync_posts (post, device, name, joined) VALUES (1, 'aa', 'Comptoir', '2026-10-15')",
+                [],
+            )
+            .unwrap();
+        let obj = |v: serde_json::Value| v.as_object().cloned().unwrap();
+        let op = crate::replica::Op {
+            file: crate::replica::File::Main,
+            table: "sync_posts".into(),
+            kind: crate::replica::Kind::Insert,
+            key: obj(serde_json::json!({"post": 1})),
+            old: Default::default(),
+            new: obj(
+                serde_json::json!({"post": 1, "device": "bb", "name": "Arrière", "joined": "2026-10-15"}),
+            ),
+        };
+        db.apply_record("r1", "bb", "2026-10-15", &[op]).unwrap();
+        let mine = db.sync_posts().unwrap();
+        assert_eq!(mine.len(), 1);
+        assert_eq!(mine[0].device, "aa", "sa ligne reste la sienne");
+        assert!(
+            db.sync_conflicts()
+                .unwrap()
+                .iter()
+                .any(|c| c.table == "sync_posts" && c.column == "device"),
+            "{:?}",
+            db.sync_conflicts().unwrap()
+        );
+    }
+
     /// **Le paquet se fait sur un fil, pendant que le comptoir écrit.**
     /// Le plan ne tient aucune connexion ; le fil ouvre les siennes, et
     /// la session continue d'écrire sans attendre la fin.

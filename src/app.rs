@@ -77565,7 +77565,33 @@ impl App {
                             );
                         }
                         for c in sum.conflicts.iter().take(100) {
-                            ui.add(egui::Label::new(Self::conflict_line(c)).wrap());
+                            // **Deux postes sous un même numéro** : invités
+                            // au même moment depuis deux postes qui ne
+                            // s'étaient pas encore parlé. Dit pour ce que
+                            // c'est, et sans « Prendre la leur » — qui
+                            // réécrirait l'identité de ce poste-ci.
+                            let twin = (c.table == "sync_posts" && c.column == "device")
+                                .then(|| c.key.get("post").and_then(serde_json::Value::as_i64))
+                                .flatten();
+                            if let Some(n) = twin {
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(trf("posts_twin", n + 1))
+                                            .color(motif::alert()),
+                                    )
+                                    .wrap(),
+                                );
+                                ui.add(
+                                    egui::Label::new(tr(if sum.post == Some(n) {
+                                        "posts_twin_here"
+                                    } else {
+                                        "posts_twin_there"
+                                    }))
+                                    .wrap(),
+                                );
+                            } else {
+                                ui.add(egui::Label::new(Self::conflict_line(c)).wrap());
+                            }
                             ui.horizontal_wrapped(|ui| {
                                 ui.label(
                                     egui::RichText::new(trn(
@@ -77575,7 +77601,7 @@ impl App {
                                     .size(motif::pt(ui, 10.5))
                                     .color(motif::text_faint()),
                                 );
-                                if c.kind == "CONFLIT" && !c.column.is_empty() {
+                                if c.kind == "CONFLIT" && !c.column.is_empty() && twin.is_none() {
                                     if motif::button(ui, tr("ver_keep"))
                                         .on_hover_text(tr("posts_keep_mine_tooltip"))
                                         .clicked()

@@ -225,7 +225,9 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   qu'un chemin écrit et absent est refusé ;
 - postes : deux postes invités en même temps par deux postes différents
   reçoivent le même numéro, donc les mêmes blocs d'identifiants (ne
-  laisser inviter que la référence ?) ; deux postes qui se désignent
+  laisser inviter que la référence ?) — depuis le 15/10 la fenêtre des
+  postes le dit (une question sur `sync_posts.device`, sans « Prendre la
+  leur ») et dit quoi faire ; l'empêcher reste à faire ; deux postes qui se désignent
   référence avant de se parler numérotent tous deux (une invitation se
   ferme dans la seconde quand on l'annule ou qu'on verrouille, et « × »
   et « Fonder un autre groupe » se font en deux clics : faits le 13/10) ;
