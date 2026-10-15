@@ -281,7 +281,8 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   retirable dans « Textes » depuis le 14/10 (`Overrides::orphans`) ;
   la synchronisation du contenu les compte dans son rapport (15/10) ;
   reste une table de renommage qui la reporterait d'elle-même ; « Rétablir » un document
-  n'est pas comparé à ce que l'écran montrait ;
+  se compare à ce que l'écran montrait (fait le 15/10) ; « Rétablir la
+  table » pas encore ;
 - fil du dossier : seules les rangées visibles se dessinent, et le
   résumé se relit contre `fil_rev` (fait le 13/10) ;
 - **mises à jour non signées** : le lanceur installe et exécute ce que

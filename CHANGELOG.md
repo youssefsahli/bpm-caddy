@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - « Synchroniser le contenu de référence » counts the officine's
   rewrites that no longer target any shipped text (a shipped label that
   changed) and says where to take them up.
+- « Rétablir » on a printed sheet removes only the rewrites the screen
+  showed: a sentence rewritten on another post meanwhile is kept, and
+  the notice says so.
 - Printed monographs, preparation and device sheets title their sections
   with the screen's own words.
 - The posts window names it when two posts invited at the same moment
