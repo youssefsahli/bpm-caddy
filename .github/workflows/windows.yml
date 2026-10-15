@@ -38,6 +38,8 @@ jobs:
         env:
           BPM_CADDY_REAL_AUTOSTART: "1"
         run: cargo test -p bpm-tray
+      - name: Launcher (signature, replacing itself)
+        run: cargo test -p bpm-caddy-launcher
       - name: Build
         run: cargo build --release --workspace
       - name: Installer

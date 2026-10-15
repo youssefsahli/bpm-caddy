@@ -68,6 +68,9 @@ Name: "{autodesktop}\BPM-Caddy"; Filename: "{app}\bpm-caddy-launcher.exe"; Tasks
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "BPM-Caddy"; Flags: uninsdeletevalue dontcreatekey
 
 [UninstallDelete]
+; Ce que le lanceur laisse en se remplaçant lui-même (l'ancien, de côté).
+Type: files; Name: "{app}\bpm-caddy-launcher.exe.old"
+Type: files; Name: "{app}\bpm-caddy-launcher.exe.*.nouveau"
 ; Ce que le lanceur a téléchargé à côté de la configuration — l'application
 ; et ses deux témoins de version. Ni la base, ni config.toml, ni les copies.
 Type: files; Name: "{userappdata}\bpm-caddy\bpm-caddy.exe"

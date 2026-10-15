@@ -70,6 +70,13 @@ const APP_ASSET: &str = "bpm-caddy-windows-x86_64.exe";
 #[cfg(target_os = "macos")]
 const APP_ASSET: &str = "bpm-caddy-macos-arm64";
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+const LAUNCHER_ASSET: &str = "bpm-caddy-launcher-linux-x86_64";
+#[cfg(target_os = "windows")]
+const LAUNCHER_ASSET: &str = "bpm-caddy-launcher-windows-x86_64.exe";
+#[cfg(target_os = "macos")]
+const LAUNCHER_ASSET: &str = "bpm-caddy-launcher-macos-arm64";
+
 #[derive(Clone, PartialEq)]
 enum Phase {
     Checking,
@@ -229,6 +236,21 @@ fn worker(shared: Arc<Shared>, ctx: egui::Context) {
 }
 
 fn check_and_update(shared: &Shared) -> Result<String, Box<dyn std::error::Error>> {
+    let (agent, release, tag) = latest_release()?;
+    let note = update_app(shared, &agent, &release, &tag)?;
+    // **Le lanceur aussi**, après l'application et sans la retenir : un
+    // lanceur qui ne se remplaçait jamais ne recevait ni ses corrections
+    // ni la clé qui vérifie les mises à jour. Un échec ici n'empêche rien
+    // — l'ancien lanceur reste, et l'application se lance.
+    Ok(match update_self(&agent, &release, &tag) {
+        Ok(true) => format!("{note} · lanceur mis à jour"),
+        _ => note,
+    })
+}
+
+/// La dernière publication, et l'agent qui l'a lue.
+fn latest_release() -> Result<(ureq::Agent, serde_json::Value, String), Box<dyn std::error::Error>>
+{
     // Timeouts matter here: without them a hung connection blocks the
     // pharmacy at startup even though an installed copy is ready to run.
     // The read timeout is per read() call, so slow-but-progressing
@@ -251,7 +273,158 @@ fn check_and_update(shared: &Shared) -> Result<String, Box<dyn std::error::Error
         .as_str()
         .ok_or("réponse GitHub sans tag_name")?
         .to_string();
+    Ok((agent, release, tag))
+}
 
+/// La signature d'un binaire de la publication, quand une clé est posée ;
+/// absente alors, la publication n'est pas signée et rien ne s'installe.
+fn signature_for(
+    agent: &ureq::Agent,
+    assets: &[serde_json::Value],
+    asset: &str,
+    tag: &str,
+) -> Result<Option<String>, Box<dyn std::error::Error>> {
+    if update_key().is_none() {
+        return Ok(None);
+    }
+    let name = format!("{asset}.minisig");
+    let sig_url = assets
+        .iter()
+        .find(|a| a["name"].as_str() == Some(name.as_str()))
+        .and_then(|a| a["browser_download_url"].as_str())
+        .ok_or_else(|| format!("la version {tag} n'est pas encore signée : rien n'est installé"))?;
+    let mut text = String::new();
+    agent
+        .get(sig_url)
+        .call()?
+        .into_reader()
+        .take(64 * 1024)
+        .read_to_string(&mut text)?;
+    Ok(Some(text))
+}
+
+/// **Remplacer le lanceur qui tourne** par celui de la publication, s'il
+/// est plus récent : téléchargé à côté, vérifié comme l'application
+/// (taille, octets d'un exécutable, signature quand une clé est posée),
+/// puis mis en place par deux renommages — l'ancien de côté (`.old`,
+/// retiré au lancement suivant), le nouveau à sa place. Un système qui
+/// refuse le second renommage remet l'ancien. Rend `true` une fois fait.
+///
+/// Renommer un programme en cours d'exécution est permis sous Windows
+/// comme ailleurs ; l'écraser ne l'est pas, d'où les deux temps.
+fn update_self(
+    agent: &ureq::Agent,
+    release: &serde_json::Value,
+    tag: &str,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    // Une copie de développement ne se remplace pas par la publiée.
+    if cfg!(debug_assertions) || version_parts(tag) <= version_parts(env!("CARGO_PKG_VERSION")) {
+        return Ok(false);
+    }
+    let me = std::env::current_exe()?;
+    let assets = release["assets"].as_array().ok_or("release sans assets")?;
+    let asset = assets
+        .iter()
+        .find(|a| a["name"].as_str() == Some(LAUNCHER_ASSET))
+        .ok_or_else(|| format!("pas de lanceur {LAUNCHER_ASSET} dans la release {tag}"))?;
+    let url = asset["browser_download_url"]
+        .as_str()
+        .ok_or("asset sans URL de téléchargement")?;
+    let expected_size = asset["size"].as_u64().unwrap_or(0);
+    let signature = signature_for(agent, assets, LAUNCHER_ASSET, tag)?;
+    let mut bytes = Vec::new();
+    agent
+        .get(url)
+        .call()?
+        .into_reader()
+        .take(512 << 20)
+        .read_to_end(&mut bytes)?;
+    if expected_size > 0 && bytes.len() as u64 != expected_size {
+        return Err(format!(
+            "lanceur incomplet ({} / {expected_size} octets)",
+            bytes.len()
+        )
+        .into());
+    }
+    if let (Some(key), Some(sig)) = (update_key(), &signature) {
+        verify_update(key, &bytes, sig, LAUNCHER_ASSET, tag)?;
+    }
+    install_over(&me, &bytes)?;
+    Ok(true)
+}
+
+/// Poser `bytes` à la place du programme `me` : écrit à côté, vérifié
+/// exécutable, puis deux renommages — `me` de côté en `.old`, le nouveau
+/// à sa place ; le second refusé, l'ancien revient.
+fn install_over(me: &std::path::Path, bytes: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+    let file_name = me
+        .file_name()
+        .ok_or("lanceur sans nom de fichier")?
+        .to_string_lossy()
+        .into_owned();
+    let new = me.with_file_name(format!("{file_name}.{}.nouveau", std::process::id()));
+    let old = me.with_file_name(format!("{file_name}.old"));
+    let written = (|| -> Result<(), Box<dyn std::error::Error>> {
+        let mut file = std::fs::File::create(&new)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        drop(file);
+        looks_executable(&new)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&new, std::fs::Permissions::from_mode(0o755))?;
+        }
+        Ok(())
+    })();
+    if let Err(e) = written {
+        let _ = std::fs::remove_file(&new);
+        return Err(e);
+    }
+    let _ = std::fs::remove_file(&old);
+    if let Err(e) = std::fs::rename(me, &old) {
+        let _ = std::fs::remove_file(&new);
+        return Err(e.into());
+    }
+    if let Err(e) = std::fs::rename(&new, me) {
+        let _ = std::fs::rename(&old, me);
+        let _ = std::fs::remove_file(&new);
+        return Err(e.into());
+    }
+    Ok(())
+}
+
+/// Ce que le remplacement précédent a laissé de côté : l'ancien lanceur,
+/// qui ne tourne plus, et un téléchargement coupé.
+fn sweep_old_launcher() {
+    if let Ok(me) = std::env::current_exe() {
+        sweep_beside(&me);
+    }
+}
+
+fn sweep_beside(me: &std::path::Path) {
+    let (Some(dir), Some(name)) = (me.parent(), me.file_name()) else {
+        return;
+    };
+    let name = name.to_string_lossy().into_owned();
+    let _ = std::fs::remove_file(dir.join(format!("{name}.old")));
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for e in entries.flatten() {
+            let n = e.file_name().to_string_lossy().into_owned();
+            if n.starts_with(&format!("{name}.")) && n.ends_with(".nouveau") {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
+}
+
+fn update_app(
+    shared: &Shared,
+    agent: &ureq::Agent,
+    release: &serde_json::Value,
+    tag: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let tag = tag.to_owned();
     let installed = std::fs::read_to_string(version_file()).unwrap_or_default();
     let bin = bin_path();
     // Le binaire installé est-il entier ? Sa taille est retenue à
@@ -284,27 +457,7 @@ fn check_and_update(shared: &Shared) -> Result<String, Box<dyn std::error::Error
     let expected_size = asset["size"].as_u64().unwrap_or(0);
     // La signature d'abord, quand une clé est posée : sans elle, rien ne
     // se télécharge — la version installée reste et se lance.
-    let signature = match update_key() {
-        None => None,
-        Some(_) => {
-            let name = format!("{APP_ASSET}.minisig");
-            let sig_url = assets
-                .iter()
-                .find(|a| a["name"].as_str() == Some(name.as_str()))
-                .and_then(|a| a["browser_download_url"].as_str())
-                .ok_or_else(|| {
-                    format!("la version {tag} n'est pas encore signée : rien n'est installé")
-                })?;
-            let mut text = String::new();
-            agent
-                .get(sig_url)
-                .call()?
-                .into_reader()
-                .take(64 * 1024)
-                .read_to_string(&mut text)?;
-            Some(text)
-        }
-    };
+    let signature = signature_for(agent, assets, APP_ASSET, &tag)?;
 
     let resp = agent.get(url).call()?;
     let total: u64 = resp
@@ -610,6 +763,7 @@ impl eframe::App for Launcher {
 }
 
 fn main() -> eframe::Result {
+    sweep_old_launcher();
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([420.0, 240.0])
@@ -691,6 +845,38 @@ mod tests {
             super::verify_update(&key, &bin, &forged, "bpm-caddy-linux-x86_64", "v0.437.0")
                 .is_err()
         );
+    }
+
+    /// **Le lanceur se remplace en place** : l'ancien de côté, le nouveau
+    /// à son nom, et ce qui n'est pas un exécutable ne remplace rien ; le
+    /// lancement suivant retire ce qui reste de côté.
+    #[test]
+    fn the_launcher_replaces_itself_and_sweeps_after() {
+        let dir = std::env::temp_dir().join(format!("bpm-launcher-self-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let me = dir.join("bpm-caddy-launcher");
+        let magic: &[u8] = if cfg!(windows) {
+            b"MZ\x90\x00"
+        } else if cfg!(target_os = "macos") {
+            b"\xcf\xfa\xed\xfe"
+        } else {
+            b"\x7fELF"
+        };
+        let version = |tail: &[u8]| [magic, tail].concat();
+        std::fs::write(&me, version(b" ancien")).unwrap();
+        // Pas un exécutable : rien ne bouge, rien ne traîne.
+        assert!(super::install_over(&me, b"<html>portail</html>").is_err());
+        assert_eq!(std::fs::read(&me).unwrap(), version(b" ancien"));
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+        // Un exécutable : à sa place, l'ancien de côté.
+        super::install_over(&me, &version(b" neuf")).unwrap();
+        assert_eq!(std::fs::read(&me).unwrap(), version(b" neuf"));
+        assert!(dir.join("bpm-caddy-launcher.old").exists());
+        super::sweep_beside(&me);
+        assert!(!dir.join("bpm-caddy-launcher.old").exists());
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Le fichier de clé du dépôt se lit : vide, aucune vérification ;

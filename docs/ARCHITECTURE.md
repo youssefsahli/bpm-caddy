@@ -3060,7 +3060,16 @@ signed comment to read `<APP_ASSET> <tag>` — a signature of another
 version or binary installs nothing. Signing is done offline by the
 publisher, never in CI: `scripts/sign-release.sh vX.Y.Z` downloads the
 release's binaries, signs them, checks them against the repository's
-public key and uploads the `.minisig` files. A launcher checks only once
-it carries the key: launchers in service do not update themselves, so
-posts pick it up by reinstalling (the Windows installer) or downloading
-the launcher again.
+public key and uploads the `.minisig` files.
+
+**The launcher updates itself**, after the app and without holding it
+back (`update_self`): a newer `bpm-caddy-launcher-<platform>` is fetched
+whole, checked like the app (size, executable magic, signature when a
+key is set), then put in place by two renames — the running file aside
+as `.old` (allowed on Windows too, where overwriting is not), the new one
+under its name; a refused second rename puts the old one back. The next
+start sweeps `.old` and cut downloads (`sweep_old_launcher`). A debug
+build never replaces itself. So a key committed later reaches every
+launcher one release after it ships, through the launcher it replaces —
+which is why the key must be committed one release *before* signing is
+required of the binaries that release ships.

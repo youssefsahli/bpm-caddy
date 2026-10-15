@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - « Rétablir » on a printed sheet removes only the rewrites the screen
   showed: a sentence rewritten on another post meanwhile is kept, and
   the notice says so.
+- The launcher updates itself from the release, after the app and
+  without holding it back: it used to stay as first downloaded forever.
 - The launcher can verify signed updates (minisign): off until the
   publisher's public key is committed in `launcher/update-key.pub`. With
   it, a binary installs only with the publisher's signature for that

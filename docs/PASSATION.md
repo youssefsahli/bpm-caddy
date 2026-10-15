@@ -295,9 +295,10 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   vérifie une signature minisign dès que `launcher/update-key.pub` porte
   une clé (`scripts/sign-release.sh` signe hors ligne et dépose). Reste
   à Youssef : créer la clé (`minisign -G`, en tête du script), committer
-  la clé publique, signer chaque version après sa publication ; les
-  lanceurs en service ne se mettent pas à jour eux-mêmes : la clé
-  n'agit qu'une fois le lanceur réinstallé. Les actions sont épinglées
+  la clé publique, signer chaque version après sa publication ;  depuis
+  le 15/10 le lanceur se remplace lui-même à chaque version (après la
+  0.436, la première à le faire) : la clé committée atteint les lanceurs
+  une version plus tard. Les actions sont épinglées
   par empreinte et la publication se fait sans cache depuis le 13/10 ;
 - **carte, postes de versions mêlées** (indécelable : les versions en
   service ne sont relevées que depuis la 0.433 ; s'éteint avec les mises
