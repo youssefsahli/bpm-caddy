@@ -693,9 +693,11 @@ fn conversion_tables_values(edits: &TableEdits) -> Vec<(&'static str, String)> {
             .collect::<Vec<_>>()
             .join("   ");
         out.push_str(&format!(
-            "#text(size: 8pt)[Relu en : #{} — Sources : #{}]\n",
-            typst_str(t.reviewed),
-            typst_str(&sources)
+            "#text(size: 8pt)[#{}]\n",
+            typst_str(&crate::strings::trn(
+                "pdf_table_reviewed",
+                &[&t.reviewed, &sources]
+            ))
         ));
     }
     vec![("{{TABLES}}", out)]
@@ -2117,11 +2119,13 @@ fn grid_body(lines: &[FicheLine]) -> String {
          align: (left + horizon, center + horizon, center + horizon, center + horizon, \
          center + horizon, left + horizon),\n  inset: 6pt, stroke: 0.5pt,\n  \
          fill: (_, row) => if row == 0 {{ rgb(\"#e4e4e4\") }},\n  \
-         table.header([*Médicament*], [*{}*], [*{}*], [*{}*], [*{}*], [*Indication*]),\n{rows}){legend}",
+         table.header([*#{}*], [*{}*], [*{}*], [*{}*], [*{}*], [*#{}*]),\n{rows}){legend}",
+        typst_str(crate::strings::tr("pdf_grid_drug")),
         Moment::Matin.label(),
         Moment::Midi.label(),
         Moment::Soir.label(),
         Moment::Coucher.label(),
+        typst_str(crate::strings::tr("pdf_grid_indication")),
     )
 }
 
@@ -4956,8 +4960,9 @@ fn ordonnance_advice_markup(advice: &[String]) -> String {
     if advice.is_empty() {
         return String::new();
     }
-    let mut out = String::from(
-        "#v(3mm)\n#line(length: 100%, stroke: 0.4pt)\n#v(2mm)\n         #text(weight: \"bold\", size: 10pt)[Conseils]\n#v(1.5mm)\n",
+    let mut out = format!(
+        "#v(3mm)\n#line(length: 100%, stroke: 0.4pt)\n#v(2mm)\n         #text(weight: \"bold\", size: 10pt)[#{}]\n#v(1.5mm)\n",
+        typst_str(crate::strings::tr("pdf_ordo_advice"))
     );
     for item in advice {
         out.push_str(&format!(

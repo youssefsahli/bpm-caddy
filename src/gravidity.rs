@@ -213,7 +213,7 @@ pub fn read(treatments: &[crate::revue::Treatment]) -> Vec<Finding> {
                     label: "",
                     pregnancy: Level::SansDonnee,
                     term: "",
-                    pregnancy_note: "Cette molécule n'est pas dans la table. Le CRAT la traite molécule par molécule et se tient à jour : le consulter.",
+                    pregnancy_note: UNLISTED_NOTE,
                     breastfeeding: Level::SansDonnee,
                     breastfeeding_note: "",
                     source: "lecrat.fr",
@@ -238,6 +238,22 @@ pub fn read(treatments: &[crate::revue::Treatment]) -> Vec<Finding> {
 /// Le document sous lequel les phrases du panneau sont adressées.
 pub const DOC: &str = "grossesse";
 
+/// Ce que le panneau dit d'une molécule que la table ne connaît pas.
+const UNLISTED_NOTE: &str = "Cette molécule n'est pas dans la table. Le CRAT la traite molécule par molécule et se tient à jour : le consulter.";
+
+/// L'adresse des phrases d'une molécule hors de la table : elle n'a pas
+/// de libellé, et sans adresse sa phrase ne se réécrivait pas.
+const UNLISTED: &str = "hors-table";
+
+/// Le repère d'une ligne : le libellé de sa molécule, ou [`UNLISTED`].
+fn row_id(label: &str) -> String {
+    if label.is_empty() {
+        UNLISTED.to_owned()
+    } else {
+        crate::content::slug(label)
+    }
+}
+
 /// Toutes les phrases du panneau, avec leur adresse.
 ///
 /// Le repère est le **libellé de la molécule** : il la désigne, il ne
@@ -245,9 +261,13 @@ pub const DOC: &str = "grossesse";
 /// réécriture. La source n'en est pas une — c'est une référence, pas une
 /// tournure.
 pub fn phrases() -> Vec<(String, &'static str, &'static str)> {
-    let mut out = Vec::new();
+    let mut out = vec![(
+        crate::content::key(DOC, UNLISTED, "grossesse"),
+        "grossesse",
+        UNLISTED_NOTE,
+    )];
     for a in TABLE {
-        let id = crate::content::slug(a.label);
+        let id = row_id(a.label);
         out.push((
             crate::content::key(DOC, &id, "grossesse"),
             "grossesse",
@@ -272,7 +292,7 @@ pub fn resolve(findings: Vec<Finding>, over: &crate::content::Overrides) -> Vec<
     findings
         .into_iter()
         .map(|f| {
-            let id = crate::content::slug(f.label);
+            let id = row_id(f.label);
             Resolved {
                 treatment: f.treatment,
                 label: f.label,
@@ -1511,7 +1531,8 @@ mod tests {
     fn every_gravidity_phrase_is_editable_and_every_rewrite_arrives() {
         let listed = phrases();
         let with_term = TABLE.iter().filter(|a| !a.term.is_empty()).count();
-        assert_eq!(listed.len(), TABLE.len() * 2 + with_term);
+        // Et la phrase d'une molécule hors de la table.
+        assert_eq!(listed.len(), TABLE.len() * 2 + with_term + 1);
 
         let treatments = [crate::revue::Treatment {
             name: "Codéine",
@@ -1540,6 +1561,15 @@ mod tests {
         assert_eq!(plain[0].pregnancy_note, found[0].pregnancy_note);
         assert_eq!(plain[0].breastfeeding_note, found[0].breastfeeding_note);
         assert_eq!(plain[0].worst(), found[0].worst(), "le niveau ne bouge pas");
+        // **Hors de la table aussi** : la phrase qui renvoie au CRAT n'avait
+        // pas d'adresse, et l'officine ne pouvait pas l'écrire à sa façon.
+        let unlisted = resolve(read(&[treat("Molécule inconnue")]), &over);
+        assert_eq!(unlisted.len(), 1);
+        assert!(
+            unlisted[0].pregnancy_note.starts_with("réécrit:"),
+            "{}",
+            unlisted[0].pregnancy_note
+        );
     }
 
     fn treat(name: &str) -> crate::revue::Treatment<'_> {
