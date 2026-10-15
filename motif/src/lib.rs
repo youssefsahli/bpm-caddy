@@ -884,6 +884,60 @@ pub fn icon() -> egui::IconData {
     }
 }
 
+/// The same picture as a Windows `.ico`: what Explorer, the Start menu
+/// and the taskbar show for the programs before any window is open.
+///
+/// Drawn from [`icon`] at 16, 32, 48 and 256 pixels, nearest pixel, so
+/// the bevels stay square. Held in `assets/bpm-caddy.ico` for the
+/// Windows resource compiler and the installer; a test keeps the file
+/// equal to this.
+pub fn icon_ico() -> Vec<u8> {
+    let base = icon();
+    let n = base.width as usize;
+    let sizes = [16usize, 32, 48, 256];
+    let image = |size: usize| -> Vec<u8> {
+        let mut out = Vec::new();
+        // BITMAPINFOHEADER: the height counts the colour rows and the mask.
+        for v in [40u32, size as u32, 2 * size as u32] {
+            out.extend_from_slice(&v.to_le_bytes());
+        }
+        out.extend_from_slice(&1u16.to_le_bytes());
+        out.extend_from_slice(&32u16.to_le_bytes());
+        out.extend_from_slice(&[0u8; 24]);
+        // Bottom-up, blue-green-red-alpha.
+        for y in (0..size).rev() {
+            for x in 0..size {
+                let (sy, sx) = (y * n / size, x * n / size);
+                let p = &base.rgba[(sy * n + sx) * 4..][..4];
+                out.extend_from_slice(&[p[2], p[1], p[0], p[3]]);
+            }
+        }
+        // The AND mask, all opaque: rows padded to four bytes.
+        let row = size.div_ceil(32) * 4;
+        out.extend(std::iter::repeat_n(0u8, row * size));
+        out
+    };
+    let images: Vec<Vec<u8>> = sizes.iter().map(|&s| image(s)).collect();
+    let mut out = Vec::new();
+    out.extend_from_slice(&[0, 0, 1, 0]);
+    out.extend_from_slice(&(sizes.len() as u16).to_le_bytes());
+    let mut offset = 6 + 16 * sizes.len();
+    for (size, data) in sizes.iter().zip(&images) {
+        // 256 is written 0: the field is one byte.
+        let side = if *size >= 256 { 0 } else { *size as u8 };
+        out.extend_from_slice(&[side, side, 0, 0]);
+        out.extend_from_slice(&1u16.to_le_bytes());
+        out.extend_from_slice(&32u16.to_le_bytes());
+        out.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        out.extend_from_slice(&(offset as u32).to_le_bytes());
+        offset += data.len();
+    }
+    for data in images {
+        out.extend(data);
+    }
+    out
+}
+
 /// Install the Motif style on the whole context.
 pub fn apply(ctx: &egui::Context) {
     let mut style = (*ctx.style()).clone();
@@ -3095,6 +3149,29 @@ pub fn progress_marquee(ui: &mut egui::Ui, width: f32, t: f64) {
 
 #[cfg(test)]
 mod tests {
+    /// **The `.ico` the Windows build embeds is this icon.** Written once
+    /// by `BPM_CADDY_WRITE_ICO=1 cargo test -p motif icon_ico`, then held:
+    /// a change to [`icon`] that forgot the file fails here.
+    #[test]
+    fn the_windows_icon_file_is_the_icon() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("assets")
+            .join("bpm-caddy.ico");
+        let made = super::icon_ico();
+        if std::env::var_os("BPM_CADDY_WRITE_ICO").is_some() {
+            std::fs::write(&path, &made).unwrap();
+        }
+        let held = std::fs::read(&path).expect("assets/bpm-caddy.ico");
+        assert!(
+            held == made,
+            "assets/bpm-caddy.ico n'est plus l'icône : la réécrire"
+        );
+        // Four pictures, the last one 256 pixels wide (written 0).
+        assert_eq!(&made[..6], &[0, 0, 1, 0, 4, 0]);
+        assert_eq!(made[6 + 3 * 16], 0);
+    }
+
     use super::*;
 
     /// **Une taille de texte passe par `pt`, y compris ici.**

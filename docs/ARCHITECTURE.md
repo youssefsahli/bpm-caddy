@@ -3024,3 +3024,21 @@ names (`bpm-caddy-linux-x86_64`, `-windows-x86_64.exe`, `-macos-arm64`)
 must stay in sync with `APP_ASSET` in `launcher/src/main.rs`. Bump all
 the crate versions (root, `launcher/`, `motif/`, `mobile/`, `tray/`) and move the `Unreleased` changelog section before
 tagging.
+
+**Windows: the installer and the icon.** The Windows build also makes
+`bpm-caddy-setup-windows-x86_64.exe` (`installer/bpm-caddy.iss`, Inno
+Setup, through `installer/build.ps1`): per user, no administrator
+rights, the launcher under `%LOCALAPPDATA%\Programs\BPM-Caddy`, a Start
+menu entry, a desktop icon (a checked box), and an uninstaller that
+removes the launcher, the downloaded app and the `Run` value — never the
+base, `config.toml` or the copies. The installer exists because the
+autostart entry names the launcher: run from « Téléchargements », the
+login start pointed at a file the first clean-up removed. `build.rs`
+(root and `launcher/`) embeds `assets/bpm-caddy.ico` and the program's
+name in every Windows `.exe` through `winresource`, on a Windows host
+only; the `.ico` is drawn from `motif::icon` by `motif::icon_ico`, and a
+motif test holds the file equal to it (`BPM_CADDY_WRITE_ICO=1` rewrites
+it). `.github/workflows/windows.yml` (by hand, or when one of these
+files changes) builds all of it on Windows, tests `tray/` against the
+real registry (`BPM_CADDY_REAL_AUTOSTART=1`), checks the resources are
+in the programs, and attaches the installer for a try on a real post.

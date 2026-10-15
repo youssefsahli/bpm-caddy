@@ -157,7 +157,9 @@ The repository is a Cargo workspace:
 
 ## Installing
 
-Download **`bpm-caddy-launcher`** for your platform from the [Releases](../../releases) page and run it. It fetches the latest BPM-Caddy binary into your local data directory, keeps it up to date on every start, and launches it. If the network is unavailable, it starts the already-installed version.
+**Windows:** download **`bpm-caddy-setup-windows-x86_64.exe`** from the [Releases](../../releases) page and run it — no administrator rights needed. It installs the launcher for the current user, with a Start menu entry and a desktop icon; uninstalling never touches the database.
+
+**Linux and macOS:** download **`bpm-caddy-launcher`** for your platform from the [Releases](../../releases) page and run it. It fetches the latest BPM-Caddy binary into your local data directory, keeps it up to date on every start, and launches it. If the network is unavailable, it starts the already-installed version.
 
 ## Configuration
 

@@ -348,6 +348,29 @@ mod imp {
 mod tests {
     use super::*;
 
+    /// **Le vrai registre, le vrai fichier** : poser, relire, retirer.
+    /// Seulement là où on le demande (`BPM_CADDY_REAL_AUTOSTART=1`, la
+    /// tâche Windows de la CI) : ailleurs, le test toucherait le démarrage
+    /// de la personne qui le lance.
+    #[test]
+    fn the_entry_is_written_read_back_and_removed() {
+        if std::env::var_os("BPM_CADDY_REAL_AUTOSTART").is_none() || cfg!(target_os = "macos") {
+            return;
+        }
+        let command = Command {
+            program: std::env::temp_dir()
+                .join("Mon dossier")
+                .join("bpm-caddy-launcher.exe"),
+            args: vec!["--arriere-plan".to_owned()],
+        };
+        enable(&command).unwrap();
+        assert!(is_enabled());
+        assert_eq!(current().as_deref(), Some(render(&command).as_str()));
+        disable().unwrap();
+        assert!(!is_enabled());
+        disable().expect("retirer ce qui n'est pas là");
+    }
+
     fn cmd(program: &str, args: &[&str]) -> Command {
         Command {
             program: PathBuf::from(program),

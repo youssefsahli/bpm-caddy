@@ -1,0 +1,62 @@
+name: Windows
+
+# **Ce qui ne se voit que sous Windows**, essayé avant une publication :
+# l'icône dans les `.exe` (build.rs, compilateur de ressources), la zone de
+# notification et le lancement à l'ouverture de session (`tray/`, contre le
+# vrai registre), et l'installation (Inno Setup). Lancé à la main
+# (`gh workflow run windows.yml`) ou quand l'un de ces fichiers change.
+# L'installation construite est jointe à la tâche : de quoi l'essayer sur
+# un vrai poste avant de l'étiqueter.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "build.rs"
+      - "launcher/**"
+      - "tray/**"
+      - "installer/**"
+      - "assets/bpm-caddy.ico"
+      - ".github/workflows/windows.yml"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: stable
+      - name: Tray and autostart, against the real registry
+        env:
+          BPM_CADDY_REAL_AUTOSTART: "1"
+        run: cargo test -p bpm-tray
+      - name: Build
+        run: cargo build --release --workspace
+      - name: Installer
+        shell: pwsh
+        run: |
+          Copy-Item target\release\bpm-caddy-launcher.exe bpm-caddy-launcher-windows-x86_64.exe
+          ./installer/build.ps1 -Version "0.0.0-ci" -Launcher "$PWD\bpm-caddy-launcher-windows-x86_64.exe"
+      - name: The icon is in the programs
+        shell: pwsh
+        run: |
+          foreach ($exe in "target\release\bpm-caddy.exe", "target\release\bpm-caddy-launcher.exe") {
+            $info = (Get-Item $exe).VersionInfo
+            "$exe : $($info.FileDescription) / $($info.ProductName)"
+            if ($info.ProductName -ne "BPM-Caddy") { throw "pas de ressources dans $exe" }
+          }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bpm-caddy-windows-essai
+          if-no-files-found: error
+          path: |
+            bpm-caddy-setup-windows-x86_64.exe
+            target/release/bpm-caddy.exe
