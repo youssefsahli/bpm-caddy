@@ -8,34 +8,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.436.0] - 2026-10-15
+
+### Added
+
+- **The launcher updates itself.** After launching the app, and whatever
+  happened to the app's update, it fetches the newer launcher from the
+  release, checks it like the app, and swaps it in place. Until now a
+  launcher stayed as first downloaded, forever. The outcome is written to
+  `lanceur.txt` beside the app.
+- **Signed updates, ready and off.** With the publisher's minisign public
+  key committed in `launcher/update-key.pub` (empty for now), a binary
+  installs only with the publisher's signature for that binary and that
+  version. `scripts/sign-release.sh` signs a published release offline,
+  after checking each file against the build's own artifact.
+
 ### Changed
 
-- Reconciliation: the same dose written in other units (« 1 000 mg »
-  and « 1 g », « 500mg » and « 0,5 g ») is no longer read as a dose
-  change.
 - Weight-based dose: a milligram ceiling written in a posology line's
   note (Alfatil for children: « Sans dépasser 1 g par jour ») now bounds
-  that line's computed dose. A per-kilo ceiling (« jusqu'à 40 mg/kg/jour »)
-  is bounded by it too.
+  that line's computed dose, if it states the dose's own rhythm. A
+  per-kilo ceiling (« jusqu'à 40 mg/kg/jour ») is bounded by it too.
 - « Synchroniser le contenu de référence » counts the officine's
   rewrites that no longer target any shipped text (a shipped label that
   changed) and says where to take them up.
-- « Rétablir » on a printed sheet removes only the rewrites the screen
-  showed: a sentence rewritten on another post meanwhile is kept, and
-  the notice says so.
-- The launcher updates itself from the release, after the app and
-  without holding it back: it used to stay as first downloaded forever.
-- The launcher can verify signed updates (minisign): off until the
-  publisher's public key is committed in `launcher/update-key.pub`. With
-  it, a binary installs only with the publisher's signature for that
-  binary and that version. `scripts/sign-release.sh` signs a published
-  release offline.
 - Printed monographs, preparation and device sheets title their sections
   with the screen's own words.
 - The posts window names it when two posts invited at the same moment
   from two different posts share a number. It no longer offers « Prendre
   la leur » on that question, which rewrote this post's identity, and
   says which post should leave the group to be invited again.
+
+### Fixed
+
+- **Reconciliation: a doubled dose written with spaced thousands no
+  longer reads as kept.** « 1 000 mg » against « 2 000 mg », or « 50 000
+  UI » against « 100 000 UI », read the strengths as zero, so the
+  change went unnoticed. The same dose written in other units (« 1 000
+  mg » and « 1 g », « 500mg » and « 0,5 g ») is no longer a dose change.
+  An ambiguous « 1.000 mg » is never converted.
+- Weight-based dose: a ceiling followed by another rhythm (« par
+  semaine », « 2 fois par jour », « matin et soir ») or naming another
+  molecule no longer bounds a daily dose.
+- « Rétablir » on a printed sheet, and « Rétablir la table », compare
+  with what the screen showed: a rewrite made on another post meanwhile
+  is kept, and the notice says so.
+- A release whose crates do not all carry the tag's version is refused.
 
 ## [0.435.0] - 2026-10-15
 
