@@ -2195,6 +2195,7 @@ opts_bundle_import_tooltip = "Extraire les trois fichiers d'un paquet dans un do
 opts_bundle_done = "Paquet écrit : {}"
 opts_bundle_failed = "Paquet non écrit : {}"
 opts_bundle_lost = "L'écriture du paquet s'est interrompue : rien n'a été écrit, recommencer."
+opts_db_copy_running = "Copie en cours… La fenêtre reste utilisable ; le résultat s'affichera ici."
 opts_bundle_running = "Paquet en cours d'écriture… La fenêtre reste utilisable ; le résultat s'affichera ici."
 opts_bundle_imported = "Paquet de la version {}, créé le {}, {} Mo, extrait dans {}. Son chemin est proposé ci-dessus : enregistrer pour y basculer, sur ce poste seulement. Un paquet d'un poste d'un groupe en sort, et se rejoint comme un poste neuf."
 opts_bundle_wrong_key = "Ce paquet est chiffré avec un autre mot de passe que celui de cette base."

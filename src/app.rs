@@ -19102,9 +19102,10 @@ pub struct App {
     /// requête qui gèle la fenêtre au comptoir est pire que pas de
     /// requête.
     presc_fetch: Option<std::sync::mpsc::Receiver<crate::annuaire::Fetched>>,
-    /// Le paquet en cours d'écriture, sur son fil ([`db::BundleExport`]) :
-    /// ce qu'il dit à la fin, et où.
-    bundle_job: Option<std::sync::mpsc::Receiver<(std::path::PathBuf, Result<(), String>)>>,
+    /// Une sortie de la base en cours sur son fil — le paquet
+    /// ([`db::BundleExport`]) ou « Copier la base vers… » — et ce qu'elle
+    /// dira à la fin.
+    export_job: Option<std::sync::mpsc::Receiver<(bool, String)>>,
     update_note: Option<(bool, String)>,
     /// A long pass over the base running on its own thread (Options ›
     /// Base, Options › À propos), and the step it last reported.
@@ -21674,7 +21675,7 @@ impl App {
             db_adopted: adopted_db,
             update_check: None,
             presc_fetch: None,
-            bundle_job: None,
+            export_job: None,
             update_note: None,
             maint_job: None,
             maint_kind: None,
@@ -86897,22 +86898,18 @@ impl eframe::App for App {
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => self.presc_fetch = None,
             }
         }
-        if let Some(rx) = &self.bundle_job {
+        if let Some(rx) = &self.export_job {
             match rx.try_recv() {
-                Ok((to, done)) => {
-                    self.bundle_job = None;
-                    let said = match done {
-                        Ok(()) => (false, trf("opts_bundle_done", to.display())),
-                        Err(e) => (true, trf("opts_bundle_failed", e)),
-                    };
-                    self.say_bundle(said);
+                Ok(said) => {
+                    self.export_job = None;
+                    self.say_export(said);
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => {
                     ctx.request_repaint_after(std::time::Duration::from_millis(300));
                 }
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                    self.bundle_job = None;
-                    self.say_bundle((true, tr("opts_bundle_lost").to_owned()));
+                    self.export_job = None;
+                    self.say_export((true, tr("opts_bundle_lost").to_owned()));
                 }
             }
         }
@@ -87755,7 +87752,7 @@ impl eframe::App for App {
         // changée sous elle, elle échoue à mi-chemin.
         // Ni pendant une maintenance, ni pendant un paquet : le fil du
         // paquet ouvre ses fichiers avec l'ancien mot de passe.
-        let busy = self.maint_job.is_some() || self.bundle_job.is_some();
+        let busy = self.maint_job.is_some() || self.export_job.is_some();
         if let (State::Unlocked(session), Some(form)) = (&mut self.state, &mut self.pw_change) {
             let shown = egui::Window::new(tr("pw_title"))
                 .collapsible(false)
@@ -88176,7 +88173,7 @@ impl eframe::App for App {
         let mut presc_file: Option<std::path::PathBuf> = None;
         let mut presc_url: Option<String> = None;
         let presc_busy = self.presc_fetch.is_some();
-        let bundle_busy = self.bundle_job.is_some();
+        let bundle_busy = self.export_job.is_some();
         // Ce que la page dit de l'annuaire, lu avec le reste.
         let presc_count = match (&self.options, &self.state) {
             (Some(e), State::Unlocked(s)) if e.page == OptionsPage::Database => {
@@ -89812,8 +89809,12 @@ impl eframe::App for App {
                                 // during a maintenance pass: the three files
                                 // would be taken halfway through it.
                                 ui.horizontal(|ui| {
-                                    if motif::button_enabled(ui, tr("opts_db_copy"), !maint_busy)
-                                        .clicked()
+                                    if motif::button_enabled(
+                                        ui,
+                                        tr("opts_db_copy"),
+                                        !maint_busy && !bundle_busy,
+                                    )
+                                    .clicked()
                                     {
                                         if let Some(p) = rfd::FileDialog::new()
                                             .set_file_name("bpm_caddy.db")
@@ -89822,8 +89823,12 @@ impl eframe::App for App {
                                             db_export = Some((p, false));
                                         }
                                     }
-                                    if motif::button_enabled(ui, tr("opts_db_move"), !maint_busy)
-                                        .clicked()
+                                    if motif::button_enabled(
+                                        ui,
+                                        tr("opts_db_move"),
+                                        !maint_busy && !bundle_busy,
+                                    )
+                                    .clicked()
                                     {
                                         if let Some(p) = rfd::FileDialog::new()
                                             .set_file_name("bpm_caddy.db")
@@ -90470,10 +90475,13 @@ impl eframe::App for App {
                     let password = session.password.clone();
                     let to = to.clone();
                     std::thread::spawn(move || {
-                        let done = job.run(&password);
-                        let _ = tx.send((to, done));
+                        let said = match job.run(&password) {
+                            Ok(()) => (false, trf("opts_bundle_done", to.display())),
+                            Err(e) => (true, trf("opts_bundle_failed", e)),
+                        };
+                        let _ = tx.send(said);
                     });
-                    self.bundle_job = Some(rx);
+                    self.export_job = Some(rx);
                     (false, tr("opts_bundle_running").to_owned())
                 }
                 Err(e) => (true, e),
@@ -90575,6 +90583,56 @@ impl eframe::App for App {
                 self.report_maintenance(job, true, note);
             }
         }
+        // **« Copier la base vers… » sur un fil**, comme le paquet : les
+        // trois fichiers entiers gelaient la fenêtre. Le fil ouvre la base
+        // lui-même (comme une passe de maintenance) ; le comptoir écrit
+        // pendant la copie, qui se fait par étapes. « Déplacer » reste
+        // ici : il bascule le poste sur la copie aussitôt faite, et rien
+        // ne doit s'écrire dans l'ancienne entre les deux.
+        let db_export = match (db_export, &mut self.state) {
+            (Some((target, false)), State::Unlocked(session))
+                if session.db.path().is_some()
+                    && ![
+                        target.clone(),
+                        db::scans_path(&target),
+                        db::stups_path(&target),
+                    ]
+                    .iter()
+                    .any(|p| session.db.is_live(p)) =>
+            {
+                if self.doc_dirty {
+                    self.doc_focused = false;
+                    self.save_doc();
+                }
+                if let State::Unlocked(session) = &mut self.state {
+                    session.flush_date_edits();
+                    session.flush_telemetry();
+                    // Une copie de la base entière est un export : au
+                    // journal, au départ.
+                    session
+                        .db
+                        .log_access(&session.operator, crate::audit::Act::Exporte, 0);
+                    let path = session.db.path().unwrap_or_default();
+                    let password = session.password.clone();
+                    let (tx, rx) = std::sync::mpsc::channel();
+                    std::thread::spawn(move || {
+                        let done = db::Db::open(&path, &password)
+                            .and_then(|db| db.copy_whole_to(&target, Some(&password)));
+                        let said = match done {
+                            Ok(()) => (false, trf("opts_db_copied", target.display())),
+                            Err(e) => (true, trf("opts_db_copy_error", e)),
+                        };
+                        let _ = tx.send(said);
+                    });
+                    self.export_job = Some(rx);
+                    if let Some(editor) = &mut self.options {
+                        editor.message = Some((false, tr("opts_db_copy_running").to_owned()));
+                    }
+                }
+                None
+            }
+            (other, _) => other,
+        };
         if let Some((target, point)) = db_export {
             let current = match &self.state {
                 State::Unlocked(session) => session.db.path(),
@@ -90936,7 +90994,7 @@ impl App {
     /// Ce que dit un paquet fini : dans les options si elles sont
     /// ouvertes ; fermées, un échec ne se perd pas — il passe au bandeau
     /// d'erreur de la session.
-    fn say_bundle(&mut self, said: (bool, String)) {
+    fn say_export(&mut self, said: (bool, String)) {
         if let Some(editor) = &mut self.options {
             editor.message = Some(said);
         } else if let (true, State::Unlocked(session)) = (said.0, &mut self.state) {
@@ -90946,14 +91004,14 @@ impl App {
 
     /// Un paquet s'écrit-il encore ?
     pub fn exporting(&self) -> bool {
-        self.bundle_job.is_some()
+        self.export_job.is_some()
     }
 
     /// Attendre la fin d'un paquet en cours, en appelant `tick` entre deux
     /// regards — sous Windows, répondre au système qui demande si la
     /// session peut se fermer.
     pub fn finish_export(&mut self, tick: impl Fn()) {
-        if let Some(rx) = self.bundle_job.take() {
+        if let Some(rx) = self.export_job.take() {
             while let Err(std::sync::mpsc::RecvTimeoutError::Timeout) =
                 rx.recv_timeout(std::time::Duration::from_millis(100))
             {

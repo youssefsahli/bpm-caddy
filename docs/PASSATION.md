@@ -215,8 +215,9 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   des pièces et du registre passent par étapes (`stepwise_copy`, fait le
   13/10) ; restent sous `VACUUM INTO` les instantanés de la maintenance
   (sans mot de passe) ; l'export tourne encore dans l'image — à passer à
-  un fil — fait le 15/10 (`Db::bundle_export`) ; « Copier/Déplacer la
-  base vers… » tourne encore dans l'image (un paquet porte depuis le 13/10 la taille et l'empreinte de
+  un fil — fait le 15/10 (`Db::bundle_export`) ; « Copier la base
+  vers… » aussi (15/10) ; « Déplacer » reste dans l'image, exprès (il
+  bascule aussitôt) (un paquet porte depuis le 13/10 la taille et l'empreinte de
   chaque fichier, et un paquet coupé se refuse) ;
 - **changement de mot de passe interrompu** : fait le 13/10 — un témoin
   chiffré par le nouveau mot de passe porte l'ancien (`rekey_witness`),

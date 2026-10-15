@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- « Copier la base vers… » no longer freezes the window: the copy runs
+  on its own thread, like the package export.
+
 ## [0.436.0] - 2026-10-15
 
 ### Added
