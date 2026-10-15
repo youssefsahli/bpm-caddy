@@ -19057,6 +19057,9 @@ pub struct App {
     /// requête qui gèle la fenêtre au comptoir est pire que pas de
     /// requête.
     presc_fetch: Option<std::sync::mpsc::Receiver<crate::annuaire::Fetched>>,
+    /// Le paquet en cours d'écriture, sur son fil ([`db::BundleExport`]) :
+    /// ce qu'il dit à la fin, et où.
+    bundle_job: Option<std::sync::mpsc::Receiver<(std::path::PathBuf, Result<(), String>)>>,
     update_note: Option<(bool, String)>,
     /// A long pass over the base running on its own thread (Options ›
     /// Base, Options › À propos), and the step it last reported.
@@ -21626,6 +21629,7 @@ impl App {
             db_adopted: adopted_db,
             update_check: None,
             presc_fetch: None,
+            bundle_job: None,
             update_note: None,
             maint_job: None,
             maint_kind: None,
@@ -86511,6 +86515,23 @@ impl eframe::App for App {
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => self.presc_fetch = None,
             }
         }
+        if let Some(rx) = &self.bundle_job {
+            match rx.try_recv() {
+                Ok((to, done)) => {
+                    self.bundle_job = None;
+                    if let Some(editor) = &mut self.options {
+                        editor.message = Some(match done {
+                            Ok(()) => (false, trf("opts_bundle_done", to.display())),
+                            Err(e) => (true, e),
+                        });
+                    }
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    ctx.request_repaint_after(std::time::Duration::from_millis(300));
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.bundle_job = None,
+            }
+        }
         if let Some(rx) = &self.update_check {
             match rx.try_recv() {
                 Ok(crate::release::Checked::Latest { tag, newer }) => {
@@ -87768,6 +87789,7 @@ impl eframe::App for App {
         let mut presc_file: Option<std::path::PathBuf> = None;
         let mut presc_url: Option<String> = None;
         let presc_busy = self.presc_fetch.is_some();
+        let bundle_busy = self.bundle_job.is_some();
         // Ce que la page dit de l'annuaire, lu avec le reste.
         let presc_count = match (&self.options, &self.state) {
             (Some(e), State::Unlocked(s)) if e.page == OptionsPage::Database => {
@@ -89497,9 +89519,13 @@ impl eframe::App for App {
                                 // pointe au redémarrage, comme
                                 // « Déplacer la base vers… ».
                                 ui.horizontal(|ui| {
-                                    if motif::button(ui, tr("opts_bundle_export"))
-                                        .on_hover_text(tr("opts_bundle_export_tooltip"))
-                                        .clicked()
+                                    if motif::button_enabled(
+                                        ui,
+                                        tr("opts_bundle_export"),
+                                        !bundle_busy,
+                                    )
+                                    .on_hover_text(tr("opts_bundle_export_tooltip"))
+                                    .clicked()
                                     {
                                         if let Some(p) = rfd::FileDialog::new()
                                             .set_file_name("officine.bpmpack")
@@ -90042,14 +90068,26 @@ impl eframe::App for App {
             }
         }
         if let (Some(to), State::Unlocked(session)) = (&bundle_out, &self.state) {
-            let said = match session.db.export_bundle(to, &session.password) {
-                Ok(()) => {
+            // **Sur un fil** (`Db::bundle_export`) : un paquet de
+            // plusieurs centaines de mégaoctets gelait la fenêtre.
+            let said = match session.db.bundle_export(to) {
+                Ok(job) => {
                     // Toute la base sort de l'officine : c'est un export,
-                    // et il s'écrit au journal comme les autres.
+                    // et il s'écrit au journal comme les autres — au
+                    // départ, que la session soit encore ouverte à la fin
+                    // ou non.
                     session
                         .db
                         .log_access(&session.operator, crate::audit::Act::Exporte, 0);
-                    (false, trf("opts_bundle_done", to.display()))
+                    let (tx, rx) = std::sync::mpsc::channel();
+                    let password = session.password.clone();
+                    let to = to.clone();
+                    std::thread::spawn(move || {
+                        let done = job.run(&password);
+                        let _ = tx.send((to, done));
+                    });
+                    self.bundle_job = Some(rx);
+                    (false, tr("opts_bundle_running").to_owned())
                 }
                 Err(e) => (true, e),
             };
@@ -90510,6 +90548,11 @@ impl App {
     /// la zone de notification passe par [`App::window_closed`].
     pub fn shutdown(&mut self) {
         self.window_closed();
+        // Un paquet en cours se finit : coupé, il laisserait à côté de
+        // sa destination trois copies entières de la base.
+        if let Some(rx) = self.bundle_job.take() {
+            let _ = rx.recv();
+        }
         // No cursor to protect on the way out: allow the merge.
         self.close_team_doc();
         // Ce que ce poste a compté depuis le dernier versement. Sans

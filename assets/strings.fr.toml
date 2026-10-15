@@ -1217,6 +1217,7 @@ audit_by_operator = "Par opérateur"
 # recherche de mise à jour, et la dernière. Rien ne part tout seul, rien
 # ne monte, et aucune adresse n'est livrée.
 export_onto_live = "Fichier en cours d'utilisation par ce poste (base, pièces ou registre) : choisir un autre nom."
+export_no_file = "Base en mémoire : pas de fichier à emporter."
 annuaire_empty = "Réponse vide du serveur (zéro octet) : échec de la requête."
 annuaire_archive = "Fichier compressé (zip, gzip) : le décompresser, puis l'importer avec « Importer un annuaire… »."
 annuaire_too_big = "Fichier trop volumineux (plus de 40 Mo ; l'extraction nationale complète en fait environ 800). Filtrer sur le département, puis importer l'extrait."
@@ -2176,6 +2177,7 @@ opts_bundle_export_tooltip = "Écrire la base, les pièces et le registre dans u
 opts_bundle_import = "Importer un paquet…"
 opts_bundle_import_tooltip = "Extraire les trois fichiers d'un paquet dans un dossier vide. Rien n'est écrasé ; son chemin est proposé ici, et « Enregistrer » y bascule ce poste."
 opts_bundle_done = "Paquet écrit : {}"
+opts_bundle_running = "Paquet en cours d'écriture… La fenêtre reste utilisable ; le résultat s'affichera ici."
 opts_bundle_imported = "Paquet de la version {}, créé le {}, {} Mo, extrait dans {}. Son chemin est proposé ci-dessus : enregistrer pour y basculer, sur ce poste seulement. Un paquet d'un poste d'un groupe en sort, et se rejoint comme un poste neuf."
 opts_bundle_wrong_key = "Ce paquet est chiffré avec un autre mot de passe que celui de cette base."
 opts_bundle_damaged = "Le paquet est abîmé : « {} » n'a pas la taille ou l'empreinte qu'il avait à l'export (copie coupée ?). Rien n'a été importé."

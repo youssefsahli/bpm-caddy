@@ -1737,6 +1737,174 @@ const MIGRATIONS: &[&str] = &[
     )",
 ];
 
+/// Un paquet à faire : les trois fichiers ouverts par la session, la
+/// destination, le jour. Se passe à un fil ; ne tient aucune connexion.
+#[derive(Debug, Clone)]
+pub struct BundleExport {
+    base: PathBuf,
+    scans: PathBuf,
+    stups: PathBuf,
+    to: PathBuf,
+    today: String,
+}
+
+impl BundleExport {
+    /// Le paquet, par des connexions à soi, fermées à la fin.
+    pub fn run(&self, password: &str) -> Result<(), String> {
+        let stage = self.to.with_extension("en-cours");
+        let _ = std::fs::remove_dir_all(&stage);
+        std::fs::create_dir_all(&stage).map_err(|e| e.to_string())?;
+        // **Le dossier de travail part aussi quand l'export échoue** : il
+        // laissait sur la clé trois copies entières de la base.
+        let done = self.run_in(&stage, password);
+        let _ = std::fs::remove_dir_all(&stage);
+        done
+    }
+
+    fn run_in(&self, stage: &Path, password: &str) -> Result<(), String> {
+        let open = |path: &Path| -> Result<Connection, String> {
+            let c = Connection::open(path).map_err(|e| e.to_string())?;
+            c.busy_timeout(std::time::Duration::from_secs(5))
+                .map_err(|e| e.to_string())?;
+            c.pragma_update(None, "key", password)
+                .map_err(|e| e.to_string())?;
+            Ok(c)
+        };
+        let base = stage.join(BUNDLE_BASE);
+        let scans = stage.join(BUNDLE_SCANS);
+        let stups = stage.join(BUNDLE_STUPS);
+        // Par étapes : le paquet se fait pendant que le comptoir écrit.
+        // Le registre d'abord, la base en dernier : voir `copy_whole_to`.
+        stepwise_copy(
+            &open(&self.stups)?,
+            &stups,
+            password,
+            "sauvegarde du registre impossible",
+        )?;
+        stepwise_copy(
+            &open(&self.scans)?,
+            &scans,
+            password,
+            "sauvegarde des pièces impossible",
+        )?;
+        stepwise_copy(&open(&self.base)?, &base, password, "sauvegarde impossible")?;
+        crate::telemetry::tally(crate::telemetry::Signal::Backup);
+
+        // Le paquet est réécrit et jamais complété : un export par
+        // dessus un autre laisserait la moitié d'hier sous la moitié
+        // d'aujourd'hui, et rien ne dirait laquelle est laquelle.
+        //
+        // **Écrit à côté, puis mis en place** : supprimé d'abord, un
+        // export qui échouait en route avait déjà détruit le paquet de la
+        // veille. Le nom définitif n'est pris qu'une fois tout écrit.
+        let part = stage.join("paquet.part");
+        let out = Connection::open(&part).map_err(|e| e.to_string())?;
+        out.pragma_update(None, "key", password)
+            .map_err(|e| e.to_string())?;
+        out.execute_batch(
+            "CREATE TABLE IF NOT EXISTS files (
+                 name  TEXT PRIMARY KEY,
+                 bytes BLOB NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS about (
+                 key   TEXT PRIMARY KEY,
+                 value TEXT NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS chunks (
+                 name  TEXT NOT NULL,
+                 n     INTEGER NOT NULL,
+                 bytes BLOB NOT NULL,
+                 PRIMARY KEY (name, n)
+             );",
+        )
+        .map_err(|e| e.to_string())?;
+        for (name, path) in [
+            (BUNDLE_BASE, &base),
+            (BUNDLE_SCANS, &scans),
+            (BUNDLE_STUPS, &stups),
+        ] {
+            // **Un gros fichier voyage en morceaux** : un BLOB s'arrête à
+            // un milliard d'octets, et le fichier des pièces y arrive en
+            // un an et demi — l'export échouait alors pour toujours. Un
+            // fichier qui tient en une ligne reste dans `files`, que les
+            // versions d'avant savent lire ; un plus gros n'y est pas, et
+            // une version d'avant le dit manquant plutôt que de l'écrire
+            // vide.
+            let size = std::fs::metadata(path).map_err(|e| e.to_string())?.len();
+            if size <= BUNDLE_CHUNK as u64 {
+                let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+                out.execute(
+                    "INSERT INTO files (name, bytes) VALUES (?1, ?2)",
+                    rusqlite::params![name, bytes],
+                )
+                .map_err(|e| e.to_string())?;
+                continue;
+            }
+            let mut f = std::fs::File::open(path).map_err(|e| e.to_string())?;
+            let mut n = 0i64;
+            loop {
+                let mut piece = Vec::with_capacity(BUNDLE_CHUNK);
+                std::io::Read::read_to_end(
+                    &mut std::io::Read::take(&mut f, BUNDLE_CHUNK as u64),
+                    &mut piece,
+                )
+                .map_err(|e| e.to_string())?;
+                if piece.is_empty() {
+                    break;
+                }
+                out.execute(
+                    "INSERT INTO chunks (name, n, bytes) VALUES (?1, ?2, ?3)",
+                    rusqlite::params![name, n, piece],
+                )
+                .map_err(|e| e.to_string())?;
+                n += 1;
+            }
+        }
+        // **La taille et l'empreinte de chaque fichier** : l'import vérifie
+        // ce qu'il a réécrit. Il repérait un trou entre deux morceaux, pas
+        // les derniers morceaux manquants — un paquet coupé s'importait
+        // tronqué.
+        for (name, path) in [
+            (BUNDLE_BASE, &base),
+            (BUNDLE_SCANS, &scans),
+            (BUNDLE_STUPS, &stups),
+        ] {
+            let (size, digest) = file_digest(path)?;
+            for (key, value) in [
+                (format!("taille:{name}"), size.to_string()),
+                (format!("empreinte:{name}"), digest),
+            ] {
+                out.execute(
+                    "INSERT INTO about (key, value) VALUES (?1, ?2)",
+                    rusqlite::params![key, value],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+        }
+        // De quoi et de quand : un paquet qu'on retrouve dans six mois
+        // sur une clé doit pouvoir dire lui-même ce qu'il est.
+        for (key, value) in [
+            ("version", env!("CARGO_PKG_VERSION")),
+            ("fait_le", &self.today),
+        ] {
+            out.execute(
+                "INSERT INTO about (key, value) VALUES (?1, ?2)",
+                rusqlite::params![key, value],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        drop(out);
+        let _ = std::fs::remove_file(&self.to);
+        std::fs::rename(&part, &self.to)
+            .or_else(|_| std::fs::copy(&part, &self.to).map(|_| ()))
+            .map_err(|e| e.to_string())?;
+        // Les trois copies intermédiaires ne traînent pas (l'appelant
+        // efface le dossier) : chiffrées, mais posées dans un dossier que
+        // personne ne surveille.
+        Ok(())
+    }
+}
+
 /// Copier une base SQLCipher **par petites étapes** vers `path`, chiffrée
 /// du même mot de passe — voir [`Db::backup_stepwise`]. Une écriture d'un
 /// autre poste passe entre deux paquets de pages au lieu d'attendre la
@@ -43162,144 +43330,39 @@ impl Db {
     /// n'en garde pas, et lui en faire garder un pour ce seul usage
     /// serait mettre une clé dans un objet qui vit toute la séance.
     pub fn export_bundle(&self, to: &Path, password: &str) -> Result<(), String> {
+        self.bundle_export(to)?.run(password)
+    }
+
+    /// Ce que le paquet emportera, pris ici ; le paquet lui-même se fait
+    /// ailleurs ([`BundleExport::run`], sur un fil).
+    ///
+    /// **L'export ne tient plus l'écran.** Un paquet copie les trois
+    /// fichiers entiers — des centaines de mégaoctets quand les pièces
+    /// ont un an — et le faisait dans l'image : la fenêtre ne se
+    /// redessinait plus, le système la disait « ne répond pas ». Le fil
+    /// ouvre ses propres connexions sur les fichiers que cette session a
+    /// ouverts : le comptoir continue d'écrire pendant la copie, comme
+    /// avec un autre poste.
+    pub fn bundle_export(&self, to: &Path) -> Result<BundleExport, String> {
         // **Jamais par-dessus un fichier vivant** : le paquet commençait
         // par supprimer sa destination, et choisir par mégarde la base,
         // ses pièces ou son registre les effaçait.
         if self.is_live(to) {
             return Err(crate::strings::tr("export_onto_live").to_owned());
         }
-        let stage = to.with_extension("en-cours");
-        let _ = std::fs::remove_dir_all(&stage);
-        std::fs::create_dir_all(&stage).map_err(|e| e.to_string())?;
-        // **Le dossier de travail part aussi quand l'export échoue** : il
-        // laissait sur la clé trois copies entières de la base.
-        let done = self.export_bundle_in(&stage, to, password);
-        let _ = std::fs::remove_dir_all(&stage);
-        done
-    }
-
-    fn export_bundle_in(&self, stage: &Path, to: &Path, password: &str) -> Result<(), String> {
-        let base = stage.join(BUNDLE_BASE);
-        let scans = stage.join(BUNDLE_SCANS);
-        let stups = stage.join(BUNDLE_STUPS);
-        // Par étapes : le paquet se fait pendant que le comptoir écrit.
-        // Le registre d'abord, la base en dernier : voir `copy_whole_to`.
-        self.backup_stups_stepwise(&stups, password)?;
-        self.backup_scans_stepwise(&scans, password)?;
-        self.backup_stepwise(&base, password)?;
-
-        // Le paquet est réécrit et jamais complété : un export par
-        // dessus un autre laisserait la moitié d'hier sous la moitié
-        // d'aujourd'hui, et rien ne dirait laquelle est laquelle.
-        //
-        // **Écrit à côté, puis mis en place** : supprimé d'abord, un
-        // export qui échouait en route avait déjà détruit le paquet de la
-        // veille. Le nom définitif n'est pris qu'une fois tout écrit.
-        let part = stage.join("paquet.part");
-        let out = Connection::open(&part).map_err(|e| e.to_string())?;
-        out.pragma_update(None, "key", password)
-            .map_err(|e| e.to_string())?;
-        out.execute_batch(
-            "CREATE TABLE IF NOT EXISTS files (
-                 name  TEXT PRIMARY KEY,
-                 bytes BLOB NOT NULL
-             );
-             CREATE TABLE IF NOT EXISTS about (
-                 key   TEXT PRIMARY KEY,
-                 value TEXT NOT NULL
-             );
-             CREATE TABLE IF NOT EXISTS chunks (
-                 name  TEXT NOT NULL,
-                 n     INTEGER NOT NULL,
-                 bytes BLOB NOT NULL,
-                 PRIMARY KEY (name, n)
-             );",
-        )
-        .map_err(|e| e.to_string())?;
-        for (name, path) in [
-            (BUNDLE_BASE, &base),
-            (BUNDLE_SCANS, &scans),
-            (BUNDLE_STUPS, &stups),
-        ] {
-            // **Un gros fichier voyage en morceaux** : un BLOB s'arrête à
-            // un milliard d'octets, et le fichier des pièces y arrive en
-            // un an et demi — l'export échouait alors pour toujours. Un
-            // fichier qui tient en une ligne reste dans `files`, que les
-            // versions d'avant savent lire ; un plus gros n'y est pas, et
-            // une version d'avant le dit manquant plutôt que de l'écrire
-            // vide.
-            let size = std::fs::metadata(path).map_err(|e| e.to_string())?.len();
-            if size <= BUNDLE_CHUNK as u64 {
-                let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
-                out.execute(
-                    "INSERT INTO files (name, bytes) VALUES (?1, ?2)",
-                    rusqlite::params![name, bytes],
-                )
-                .map_err(|e| e.to_string())?;
-                continue;
-            }
-            let mut f = std::fs::File::open(path).map_err(|e| e.to_string())?;
-            let mut n = 0i64;
-            loop {
-                let mut piece = Vec::with_capacity(BUNDLE_CHUNK);
-                std::io::Read::read_to_end(
-                    &mut std::io::Read::take(&mut f, BUNDLE_CHUNK as u64),
-                    &mut piece,
-                )
-                .map_err(|e| e.to_string())?;
-                if piece.is_empty() {
-                    break;
-                }
-                out.execute(
-                    "INSERT INTO chunks (name, n, bytes) VALUES (?1, ?2, ?3)",
-                    rusqlite::params![name, n, piece],
-                )
-                .map_err(|e| e.to_string())?;
-                n += 1;
-            }
-        }
-        // **La taille et l'empreinte de chaque fichier** : l'import vérifie
-        // ce qu'il a réécrit. Il repérait un trou entre deux morceaux, pas
-        // les derniers morceaux manquants — un paquet coupé s'importait
-        // tronqué.
-        for (name, path) in [
-            (BUNDLE_BASE, &base),
-            (BUNDLE_SCANS, &scans),
-            (BUNDLE_STUPS, &stups),
-        ] {
-            let (size, digest) = file_digest(path)?;
-            for (key, value) in [
-                (format!("taille:{name}"), size.to_string()),
-                (format!("empreinte:{name}"), digest),
-            ] {
-                out.execute(
-                    "INSERT INTO about (key, value) VALUES (?1, ?2)",
-                    rusqlite::params![key, value],
-                )
-                .map_err(|e| e.to_string())?;
-            }
-        }
-        // De quoi et de quand : un paquet qu'on retrouve dans six mois
-        // sur une clé doit pouvoir dire lui-même ce qu'il est.
-        for (key, value) in [
-            ("version", env!("CARGO_PKG_VERSION")),
-            ("fait_le", &self.today_iso().unwrap_or_default()),
-        ] {
-            out.execute(
-                "INSERT INTO about (key, value) VALUES (?1, ?2)",
-                rusqlite::params![key, value],
-            )
-            .map_err(|e| e.to_string())?;
-        }
-        drop(out);
-        let _ = std::fs::remove_file(to);
-        std::fs::rename(&part, to)
-            .or_else(|_| std::fs::copy(&part, to).map(|_| ()))
-            .map_err(|e| e.to_string())?;
-        // Les trois copies intermédiaires ne traînent pas (l'appelant
-        // efface le dossier) : chiffrées, mais posées dans un dossier que
-        // personne ne surveille.
-        Ok(())
+        let file = |c: &Connection| {
+            c.path()
+                .filter(|p| !p.is_empty())
+                .map(PathBuf::from)
+                .ok_or_else(|| crate::strings::tr("export_no_file").to_owned())
+        };
+        Ok(BundleExport {
+            base: file(&self.conn)?,
+            scans: file(&self.scans)?,
+            stups: file(&self.stups)?,
+            to: to.to_owned(),
+            today: self.today_iso().unwrap_or_default(),
+        })
     }
 
     /// Ce chemin est-il l'un des trois fichiers que ce poste tient
@@ -63538,6 +63601,42 @@ mod tests {
                 "le registre ne se réécrit pas : {verb}"
             );
         }
+    }
+
+    /// **Le paquet se fait sur un fil, pendant que le comptoir écrit.**
+    /// Le plan ne tient aucune connexion ; le fil ouvre les siennes, et
+    /// la session continue d'écrire sans attendre la fin.
+    #[test]
+    fn a_bundle_is_written_on_a_thread_while_the_session_writes() {
+        let dir =
+            std::env::temp_dir().join(format!("bpm-caddy-bundle-thread-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("live.db"), "secret").unwrap();
+        db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let pack = dir.join("officine.bpmpack");
+        // Jamais par-dessus un fichier vivant, dès le plan.
+        assert!(db.bundle_export(&dir.join("live.db")).is_err());
+        let job = db.bundle_export(&pack).unwrap();
+        let worker = std::thread::spawn(move || job.run("secret"));
+        for i in 0..20 {
+            db.add_patient("Martin", &format!("Paul {i}"), "1960-01-01")
+                .unwrap();
+        }
+        worker.join().unwrap().unwrap();
+        let into = dir.join("rendu");
+        std::fs::create_dir_all(&into).unwrap();
+        let base = Db::import_bundle(&pack, "secret", &into).unwrap();
+        let back = Db::open(&base, "secret").unwrap();
+        assert!(
+            back.patients()
+                .unwrap()
+                .iter()
+                .any(|p| p.last_name == "Dupont"),
+            "ce qui était écrit avant le paquet y est"
+        );
+        assert!(!pack.with_extension("en-cours").exists());
     }
 
     /// **Un paquet coupé ne s'importe pas** : ses derniers morceaux
