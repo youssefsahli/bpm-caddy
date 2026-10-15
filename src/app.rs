@@ -77608,7 +77608,9 @@ impl App {
                             // s'étaient pas encore parlé. Dit pour ce que
                             // c'est, et sans « Prendre la leur » — qui
                             // réécrirait l'identité de ce poste-ci.
-                            let twin = (c.table == "sync_posts" && c.column == "device")
+                            let twin = (c.kind == "CONFLIT"
+                                && c.table == "sync_posts"
+                                && c.column == "device")
                                 .then(|| c.key.get("post").and_then(serde_json::Value::as_i64))
                                 .flatten();
                             if let Some(n) = twin {
@@ -77619,14 +77621,35 @@ impl App {
                                     )
                                     .wrap(),
                                 );
-                                ui.add(
-                                    egui::Label::new(tr(if sum.post == Some(n) {
-                                        "posts_twin_here"
-                                    } else {
-                                        "posts_twin_there"
-                                    }))
-                                    .wrap(),
-                                );
+                                // **Un seul des deux s'en va**, et tous les
+                                // postes désignent le même : celui dont
+                                // l'identité est la plus grande. Dit aux
+                                // deux « quittez », les deux partaient.
+                                let device = |v: &Option<serde_json::Value>| {
+                                    v.as_ref()
+                                        .and_then(serde_json::Value::as_str)
+                                        .unwrap_or_default()
+                                        .to_owned()
+                                };
+                                let (mine, theirs) = (device(&c.mine), device(&c.theirs));
+                                let leaver = mine.clone().max(theirs);
+                                let short: String = leaver
+                                    .to_uppercase()
+                                    .chars()
+                                    .take(8)
+                                    .collect::<Vec<_>>()
+                                    .chunks(4)
+                                    .map(|g| g.iter().collect::<String>())
+                                    .collect::<Vec<_>>()
+                                    .join(" ");
+                                let advice = if sum.post == Some(n) && mine == leaver {
+                                    tr("posts_twin_here").to_owned()
+                                } else if sum.post == Some(n) {
+                                    tr("posts_twin_stays").to_owned()
+                                } else {
+                                    trf("posts_twin_there", short)
+                                };
+                                ui.add(egui::Label::new(advice).wrap());
                             } else {
                                 ui.add(egui::Label::new(Self::conflict_line(c)).wrap());
                             }
@@ -88188,7 +88211,10 @@ impl eframe::App for App {
         // one go grey while it runs, and the step it is on is written
         // under whichever of the two pages started it.
         let maint_running = self.maint_step.clone();
-        let maint_busy = self.maint_job.is_some();
+        // **Pas de maintenance pendant une copie ou un paquet** : les trois
+        // fichiers se copient l'un après l'autre, et un compactage ou une
+        // réinitialisation entre deux les rendait d'époques différentes.
+        let maint_busy = self.maint_job.is_some() || self.export_job.is_some();
         if let Some(editor) = &mut self.options {
             // Fit the dialog to the window: the options list is long,
             // and a fixed height clipped the last rows on small screens.
@@ -90559,7 +90585,7 @@ impl eframe::App for App {
             }
         }
         if let Some(job) = asked {
-            let note = if self.maint_job.is_some() {
+            let note = if self.maint_job.is_some() || self.export_job.is_some() {
                 // One at a time. The buttons are disabled while a pass
                 // runs, so this is the keyboard or a very fast hand.
                 Some(tr("maint_busy").to_owned())
