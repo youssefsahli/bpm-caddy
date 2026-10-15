@@ -21890,11 +21890,29 @@ impl App {
                 (n, trf("opts_db_seed_done", n))
             }
         };
-        let msg = if n == 0 && outcome.job != Job::Sync {
+        let mut msg = if n == 0 && outcome.job != Job::Sync {
             tr("opts_db_seed_none").to_owned()
         } else {
             msg
         };
+        // **Les réécritures restées sans phrase** se disent au rapport : un
+        // libellé livré qui change laisse la réécriture de l'officine en
+        // base, invisible à l'impression — c'est après une mise à jour du
+        // contenu qu'on la cherche.
+        if outcome.job == Job::Sync {
+            if let State::Unlocked(session) = &self.state {
+                let docs = crate::content::documents();
+                let known: std::collections::HashSet<&str> = docs
+                    .iter()
+                    .flat_map(|d| d.phrases.iter().map(|(k, _, _)| k.as_str()))
+                    .collect();
+                let orphans = session.content.orphans(&known).len();
+                if orphans > 0 {
+                    msg.push(' ');
+                    msg.push_str(&trn("about_sync_orphans", &[&orphans]));
+                }
+            }
+        }
         self.report_maintenance(outcome.job, false, msg);
     }
 
