@@ -298,7 +298,10 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   la clé publique, signer chaque version après sa publication ;  depuis
   le 15/10 le lanceur se remplace lui-même à chaque version (après la
   0.436, la première à le faire) : la clé committée atteint les lanceurs
-  une version plus tard. Les actions sont épinglées
+  une version plus tard. Essayé de bout en bout sous Linux le 15/10 :
+  un lanceur construit « 0.1.0 » s'est remplacé par celui de la 0.435.0
+  publiée (même empreinte), l'ancien de côté, et l'entrée de démarrage
+  nomme bien le lanceur et non `.old`. Les actions sont épinglées
   par empreinte et la publication se fait sans cache depuis le 13/10 ;
 - **carte, postes de versions mêlées** (indécelable : les versions en
   service ne sont relevées que depuis la 0.433 ; s'éteint avec les mises
