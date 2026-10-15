@@ -44,7 +44,9 @@ SystemCallArchitectures=native
 SystemCallFilter=@system-service
 SystemCallFilter=~@privileged @resources
 UMask=0077
-LimitNOFILE=4096
+# Les attentes des postes sont des prises ouvertes (jusqu'à 4 096),
+# plus les conversations (512) : de la marge.
+LimitNOFILE=16384
 
 [Install]
 WantedBy=multi-user.target

@@ -9,8 +9,8 @@ voir `docs/CHAT_PATIENT.md` et l'avis de l'avocat.
 
 ## Ce qu'il faut
 
-- Un petit serveur Linux (Debian ou Ubuntu), joignable sur Internet : un
-  vCPU et 512 Mo suffisent pour des centaines d'officines.
+- Un petit serveur Linux (Debian 12, Ubuntu 22.04 ou plus récents),
+  joignable sur Internet : un vCPU et 512 Mo suffisent.
 - Un nom de domaine qui pointe dessus (enregistrement A, et AAAA si le
   serveur a une adresse IPv6), par exemple `messagerie.mondomaine.fr`.
 - Les ports 80 et 443 (le certificat, les pages) et **7747** (les postes)
@@ -57,10 +57,13 @@ journalctl -u bpm-passerelle -f          # ce qu'elle dit d'elle-même
 ls /var/log/bpm-passerelle/              # un fichier de connexions par jour
 ```
 
-Mettre à jour : reconstruire, recopier le binaire dans `/usr/local/bin`,
-`sudo systemctl restart bpm-passerelle` — les postes se reconnectent
-d'eux-mêmes, les pages ouvertes réessaient.
+Mettre à jour : reconstruire, puis relancer `install.sh` avec le nouveau
+binaire (il le remplace et relance le service) — les postes se
+reconnectent d'eux-mêmes, les pages ouvertes réessaient.
 
 Bornes d'une passerelle (voir `src/passerelle.rs`) : 1 024 boîtes
-(officines) et 512 connexions à la fois. Au-delà, une seconde passerelle
-sous un autre nom.
+(officines), quatre attentes par boîte, seize par adresse, et 512
+conversations à la fois (pages en cours, postes qui se présentent) ; les
+attentes ne comptent pas dans les conversations. Au-delà de mille
+officines, une seconde passerelle sous un autre nom. Sans IPv6 sur le
+serveur, `install.sh` n'ouvre le port des postes qu'en IPv4.

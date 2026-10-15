@@ -360,7 +360,7 @@ pub fn serve(options: Options, stop: Arc<AtomicBool>) -> std::io::Result<()> {
                 };
                 if open.load(Ordering::SeqCst) >= MOST_CONNECTIONS {
                     if let Ok(mut b) = boxes.lock() {
-                        prune(&mut b, &open);
+                        prune(&mut b);
                     }
                     if open.load(Ordering::SeqCst) >= MOST_CONNECTIONS {
                         note(&journal, || format!("plein {}", from.ip()));
@@ -381,13 +381,12 @@ pub fn serve(options: Options, stop: Arc<AtomicBool>) -> std::io::Result<()> {
                         let place = Place {
                             boxes: &boxes,
                             calls: &calls,
-                            open: &open,
                             journal: &journal,
                             origins: &origins,
                         };
                         take_page(stream, from, &place)
                     } else {
-                        take_post(stream, from.ip(), &boxes, &calls, &open, &journal)
+                        take_post(stream, from.ip(), &boxes, &calls, &journal)
                     };
                     open.fetch_sub(1, Ordering::SeqCst);
                 });
@@ -397,12 +396,10 @@ pub fn serve(options: Options, stop: Arc<AtomicBool>) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Lâcher les attentes échues ou raccrochées, et les décompter.
-fn prune(b: &mut HashMap<String, Vec<Waiting>>, open: &AtomicUsize) {
+/// Lâcher les attentes échues ou raccrochées.
+fn prune(b: &mut HashMap<String, Vec<Waiting>>) {
     b.retain(|_, v| {
-        let before = v.len();
         v.retain(|x| x.since.elapsed() < WAIT_BOUND && alive(&x.stream));
-        open.fetch_sub(before - v.len(), Ordering::SeqCst);
         !v.is_empty()
     });
 }
@@ -447,7 +444,6 @@ fn take_post(
     ip: IpAddr,
     boxes: &Boxes,
     calls: &Calls,
-    open: &AtomicUsize,
     journal: &Option<Arc<Journal>>,
 ) -> std::io::Result<()> {
     if !admit(calls, ip, POST_CALLS_PER_MINUTE) {
@@ -467,7 +463,7 @@ fn take_post(
     let Ok(mut b) = boxes.lock() else {
         return Ok(());
     };
-    prune(&mut b, open);
+    prune(&mut b);
     if !b.contains_key(&id) && b.len() >= MOST_BOXES {
         say("trop de boîtes");
         return Ok(());
@@ -482,9 +478,11 @@ fn take_post(
         return Ok(());
     }
     say("attend");
-    // Held past this thread: counted again until it is put in touch or
-    // let go.
-    open.fetch_add(1, Ordering::SeqCst);
+    // **Une attente ne compte pas dans les conversations** : c'est une
+    // prise sans fil, bornée à part (boîtes × attentes par boîte).
+    // Comptée avec elles, deux attentes par poste remplissaient les 512
+    // places vers deux cent cinquante officines, et chaque patient était
+    // ensuite refusé.
     list.push(Waiting {
         stream,
         since: Instant::now(),
@@ -628,7 +626,6 @@ fn host_of(text: &str) -> String {
 struct Place<'a> {
     boxes: &'a Boxes,
     calls: &'a Calls,
-    open: &'a AtomicUsize,
     journal: &'a Option<Arc<Journal>>,
     origins: &'a [String],
 }
@@ -700,7 +697,7 @@ fn upgrade(
     id: &str,
     place: &Place,
 ) -> std::io::Result<&'static str> {
-    let (boxes, open) = (place.boxes, place.open);
+    let boxes = place.boxes;
     let key = head.header("sec-websocket-key");
     if !head
         .header("upgrade")
@@ -751,7 +748,6 @@ fn upgrade(
         let Some(mut w) = next else {
             break None;
         };
-        open.fetch_sub(1, Ordering::SeqCst);
         // A post that stops reading does not hold this thread either.
         let _ = w.stream.set_write_timeout(Some(HEAD_WAIT));
         if w.since.elapsed() < WAIT_BOUND

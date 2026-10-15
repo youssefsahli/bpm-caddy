@@ -26,9 +26,24 @@ head -c 4 "$bin" | grep -q $'\x7fELF' || { echo "$bin n'est pas un exécutable L
 
 install -m 0755 "$bin" /usr/local/bin/bpm-passerelle
 install -m 0644 "$here/bpm-passerelle.service" /etc/systemd/system/bpm-passerelle.service
+# Sans IPv6 sur ce serveur (ipv6.disable=1), « [::] » ne s'ouvre pas et le
+# service redémarrerait sans fin : les postes en IPv4 seulement.
+if [ ! -e /proc/net/if_inet6 ]; then
+    sed -i 's/--postes \[::\]:7747/--postes 0.0.0.0:7747/' /etc/systemd/system/bpm-passerelle.service
+fi
 
 if ! command -v caddy >/dev/null; then
     apt-get update
+    # Caddy est dans Debian 12 et Ubuntu 23.04 et suivantes ; ailleurs, son
+    # dépôt officiel.
+    if ! apt-cache policy caddy | grep -q 'Candidate: [0-9]'; then
+        apt-get install -y debian-keyring debian-archive-keyring apt-transport-https curl gnupg
+        curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+            | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+        curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+            > /etc/apt/sources.list.d/caddy-stable.list
+        apt-get update
+    fi
     apt-get install -y caddy
 fi
 mkdir -p /etc/caddy/sites
@@ -43,7 +58,9 @@ if command -v ufw >/dev/null && ufw status | grep -q active; then
 fi
 
 systemctl daemon-reload
-systemctl enable --now bpm-passerelle
+systemctl enable bpm-passerelle
+# Relancé, pas seulement allumé : réinstaller met à jour.
+systemctl restart bpm-passerelle
 systemctl reload caddy || systemctl restart caddy
 sleep 2
 systemctl --no-pager --lines=3 status bpm-passerelle || true

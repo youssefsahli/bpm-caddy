@@ -215,8 +215,8 @@ main, requête scellée ouverte par le poste, réponse ouverte par la page.
   l'officine, dont on ferme l'accès. Une page sans code valable ne coûte
   au poste qu'une réponse « inconnu ». Une passerelle partagée par
   plusieurs officines se partage aussi ses bornes (seize attentes par
-  adresse, cinq cent douze connexions) : beaucoup d'adresses peuvent la
-  saturer ; et plusieurs officines derrière une même adresse IPv4
+  adresse, cinq cent douze conversations à la fois, les attentes des
+  postes comptées à part) : beaucoup d'adresses peuvent la saturer ; et plusieurs officines derrière une même adresse IPv4
   (traduction d'opérateur) se partagent les seize attentes — huit postes
   en tout.
 * Un poste qui disparaît sans fermer sa connexion (coupure de courant)
