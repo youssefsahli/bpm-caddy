@@ -113,7 +113,12 @@ marque de l'icône de notification pour un message de patient ;
 conditions de la passerelle livrée à accepter — `assets/passerelle-conditions.md`,
 vide ; DFG ancien dit sous le chiffre ; paquet sur un fil ; séances de
 synchronisation bornées — une relecture, huit points corrigés) a passé
-son smoke dans les quatre formes (739cd58), étiquetée le 15/10.
+son smoke dans les quatre formes (739cd58), étiquetée le 15/10. La 0.436.0 (le lanceur se met à jour lui-même — essayé de bout en
+bout ; mises à jour signées prêtes, éteintes ; conciliation : une dose
+doublée écrite avec des milliers à espaces se dit ; plafonds de la dose
+au poids ; « Rétablir » comparé à l'écran ; deux postes sous un même
+numéro dits — trois relectures, corrigées) a passé son smoke dans les
+quatre formes (2672b1c), étiquetée le 15/10.
 **La messagerie des patients, où elle en est.** Un avocat a répondu
 (14/10, résumé dans `docs/CHAT_PATIENT.md`) : pas d'HDS pour la
 passerelle, l'exploitant est sous-traitant (contrat), dossier technique
