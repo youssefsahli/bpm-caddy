@@ -473,6 +473,18 @@ fn takes_in(window: &str) -> Option<u32> {
 /// lue pour elle-même. Rend `None` quand le rythme du plafond n'est pas
 /// celui de la dose : un maximum par jour ne borne pas une prise.
 fn cap_after(hay: &str, at: usize, dose: Cadence) -> Option<f64> {
+    cap_read(hay, at)
+        .and_then(|(mg, cadence)| (cadence == Some(dose) || cadence.is_none()).then_some(mg))
+}
+
+/// Le plafond absolu d'une phrase et son rythme : `Some` quand il est dit
+/// (par jour, par prise), `None` quand **rien ne suit** l'unité. Un
+/// rythme que cette lecture ne connaît pas (« par semaine », « 2 fois
+/// par jour », « de triméthoprime », une virgule et la suite) n'est pas
+/// « sans rythme » : le plafond ne se lit pas du tout. Lu sans rythme,
+/// « 1 g par semaine » bornait une dose par jour à un gramme — sept fois
+/// ce que la phrase permet.
+fn cap_read(hay: &str, at: usize) -> Option<(f64, Option<Cadence>)> {
     let rest = &hay[at..];
     let stop = rest.find(". ").unwrap_or(rest.len());
     let clause = rest[..stop].to_lowercase();
@@ -522,26 +534,60 @@ fn cap_after(hay: &str, at: usize, dose: Cadence) -> Option<f64> {
         return None;
     }
     let tail = tail.trim_start();
+    // Ce qui suit l'unité dit-il un autre rythme (« par semaine »,
+    // « , 2 fois par jour », « matin et soir ») ou une autre molécule
+    // (« de triméthoprime ») ? Le plafond ne se lit pas. Autre chose
+    // (« , à jeun », « à l'instauration », « , en une à deux
+    // administrations ») : le plafond est sans rythme dit.
+    let other = {
+        let rest = tail.trim_start_matches(',').trim_start();
+        rest.starts_with(|c: char| c.is_ascii_digit())
+            || [
+                "par ", "fois", "matin", "midi", "soir", "toutes", "tous", "x ", "deux ", "trois ",
+                "quatre ", "de ", "d'",
+            ]
+            .iter()
+            .any(|w| rest.starts_with(w))
+    };
     let cadence = if tail.starts_with("par jour")
         || tail.starts_with("/jour")
         || tail.starts_with("/j")
         || tail.starts_with("par 24")
     {
-        Cadence::Jour
+        Some(Cadence::Jour)
     } else if tail.starts_with("par prise") || tail.starts_with("par injection") {
-        Cadence::Prise
+        Some(Cadence::Prise)
+    } else if other {
+        return None;
     } else {
-        Cadence::NonDite
+        None
     };
-    (cadence == dose || cadence == Cadence::NonDite).then_some(mg)
+    Some((mg, cadence))
 }
 
 /// Le premier plafond absolu qu'un texte écrit, phrase après phrase
 /// ([`cap_after`] s'arrête à la fin de la sienne).
+///
+/// **Plus strict que dans la phrase de la dose** : la remarque vaut pour
+/// toute la ligne, qui peut porter plusieurs doses à plusieurs rythmes.
+/// Son plafond ne borne une dose que s'il dit **le même rythme** qu'elle
+/// — un « sans dépasser 1 g. » sans rythme ne dit pas lequel —, et une
+/// phrase qui vise une partie des patients (« chez le nourrisson… : »)
+/// ne borne pas la ligne entière.
 fn cap_in(text: &str, dose: Cadence) -> Option<f64> {
     std::iter::once(0)
         .chain(text.match_indices(". ").map(|(i, _)| i + 2))
-        .find_map(|start| cap_after(text, start, dose))
+        .filter(|&start| {
+            let end = text[start..].find(". ").map_or(text.len(), |e| start + e);
+            let sentence = text[start..end].to_lowercase();
+            !["chez ", "moins de ", "plus de ", ":"]
+                .iter()
+                .any(|w| sentence.contains(w))
+        })
+        .find_map(|start| match cap_read(text, start) {
+            Some((mg, Some(c))) if c == dose => Some(mg),
+            _ => None,
+        })
 }
 
 fn sentence_around(hay: &str, at: usize) -> String {
@@ -970,6 +1016,18 @@ mod tests {
             )],
         );
         assert_eq!(got[0].dose.cap, None);
+        // Un autre rythme, ou pas de rythme, ne se lit pas.
+        for note in [
+            "Sans dépasser 1 g par semaine.",
+            "Sans dépasser 1 g, 2 fois par jour.",
+            "Sans dépasser 1 g matin et soir.",
+            "Sans dépasser 1 g.",
+            "Sans dépasser 160 mg de triméthoprime par jour.",
+            "Chez le nourrisson de moins de 6 mois : sans dépasser 250 mg par jour.",
+        ] {
+            let got = gather("", &[("Enfant", "10 mg/kg par jour", note)]);
+            assert_eq!(got[0].dose.cap, None, "{note}");
+        }
         // Celui de la phrase de la dose l'emporte.
         let got = gather(
             "",
@@ -1016,6 +1074,15 @@ mod tests {
         // « 4 gélules » ne sont pas quatre grammes.
         let r = read("15 mg/kg par jour, sans dépasser 4 gélules par jour.");
         assert_eq!(r[0].cap, None);
+        // Un plafond à un autre rythme ne borne pas la dose du jour : lu
+        // sans rythme, « par semaine » la laissait monter à un gramme.
+        let r = read("10 mg/kg par jour, sans dépasser 1 g par semaine.");
+        assert_eq!(r[0].cap, None);
+        let r = read("10 mg/kg par jour, sans dépasser 1 g, 2 fois par jour.");
+        assert_eq!(r[0].cap, None);
+        // Ce qui ne dit pas de rythme laisse le plafond tel quel.
+        let r = read("75 à 100 mg/kg par jour, sans dépasser 4 g, en une à deux administrations.");
+        assert_eq!(r[0].cap, Some(4000.0));
         // Sans plafond, rien.
         assert_eq!(read("50 mg/kg par jour en 2 prises.")[0].cap, None);
     }

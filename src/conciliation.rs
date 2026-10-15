@@ -583,16 +583,8 @@ fn identity(name: &str, dci: &str) -> String {
 /// (« AMLODIPINE 5 MG CPR 1-0-0 ») passent : n'admettre que des nombres
 /// et des unités les annonçait en « dose changée ».
 fn same_dose(before: &str, after: &str) -> bool {
-    let words = |s: &str| -> Vec<String> {
-        crate::fuzzy::sort_key(s.trim())
-            .replace(',', ".")
-            .split_whitespace()
-            .map(|w| w.trim_matches([':', ';', '.', '-', '(', ')']).to_owned())
-            .filter(|w| !w.is_empty())
-            .collect()
-    };
-    let a = same_units(words(before));
-    let b = same_units(words(after));
+    let a = same_units(dose_words(before));
+    let b = same_units(dose_words(after));
     if a.is_empty() || b.is_empty() {
         return true;
     }
@@ -607,6 +599,17 @@ fn same_dose(before: &str, after: &str) -> bool {
             .all(|w| strength(w) || !takes(w))
 }
 
+/// Les mots d'une posologie, repliés (casse, accents), la virgule
+/// décimale en point, la ponctuation d'autour retirée.
+fn dose_words(text: &str) -> Vec<String> {
+    crate::fuzzy::sort_key(text.trim())
+        .replace(',', ".")
+        .split_whitespace()
+        .map(|w| w.trim_matches([':', ';', '.', '-', '(', ')']).to_owned())
+        .filter(|w| !w.is_empty())
+        .collect()
+}
+
 /// **Une quantité s'écrit d'une seule façon** avant la comparaison :
 /// « 1 000 mg », « 1000mg » et « 1 g » deviennent `1000000µg`. Sans cela
 /// la même dose écrite autrement se lisait « dose changée » — un faux qui
@@ -616,18 +619,36 @@ fn same_dose(before: &str, after: &str) -> bool {
 /// leur. Un groupe de trois chiffres qui suit un nombre et précède une
 /// unité est le reste d'un millier écrit avec une espace.
 fn same_units(words: Vec<String>) -> Vec<String> {
-    let unit_of = |u: &str| -> Option<(f64, &'static str)> {
-        match u {
-            "g" | "gramme" | "grammes" => Some((1e6, "µg")),
-            "mg" | "milligramme" | "milligrammes" => Some((1e3, "µg")),
-            "µg" | "ug" | "mcg" | "microgramme" | "microgrammes" => Some((1.0, "µg")),
-            "ui" | "unite" | "unites" => Some((1.0, "ui")),
-            "ml" => Some((1.0, "ml")),
-            _ => None,
-        }
+    let unit_of = |u: &str| -> Option<(f64, String)> {
+        // « mg/ml », « µg/h » : la masse convertie, le reste gardé — une
+        // concentration n'est pas une quantité, mais deux écritures d'une
+        // même concentration se valent.
+        let (head, per) = match u.split_once('/') {
+            Some((h, p)) => (h, format!("/{p}")),
+            None => (u, String::new()),
+        };
+        let (k, base) = match head {
+            "g" | "gramme" | "grammes" => (1e6, "µg"),
+            "mg" | "milligramme" | "milligrammes" => (1e3, "µg"),
+            "µg" | "ug" | "mcg" | "microgramme" | "microgrammes" => (1.0, "µg"),
+            "ui" | "unite" | "unites" => (1.0, "ui"),
+            "ml" => (1.0, "ml"),
+            _ => return None,
+        };
+        Some((k, format!("{base}{per}")))
+    };
+    let digits_only = |w: &str| !w.is_empty() && w.chars().all(|c| c.is_ascii_digit());
+    // **Un point (une virgule) suivi de trois chiffres ne se convertit
+    // pas** : « 1.000 mg » est un gramme pour un logiciel qui écrit les
+    // milliers ainsi, un milligramme pour qui écrit les décimales.
+    // Laissé tel quel, il n'égale qu'une écriture identique.
+    let ambiguous = |w: &str| {
+        w.split_once('.').is_some_and(|(int, dec)| {
+            dec.len() == 3 && digits_only(dec) && digits_only(int) && int != "0"
+        })
     };
     let number = |w: &str| -> Option<f64> {
-        (!w.is_empty() && w.chars().all(|c| c.is_ascii_digit() || c == '.'))
+        (!w.is_empty() && !ambiguous(w) && w.chars().all(|c| c.is_ascii_digit() || c == '.'))
             .then(|| w.parse().ok())
             .flatten()
     };
@@ -644,22 +665,29 @@ fn same_units(words: Vec<String>) -> Vec<String> {
     let mut i = 0;
     while i < words.len() {
         let w = words[i].as_str();
-        // « 1 000 mg » : le millier écrit avec une espace.
-        let (digits, mut next) = match (number(w), words.get(i + 1)) {
-            (Some(_), Some(group))
-                if group.len() == 3
-                    && group.chars().all(|c| c.is_ascii_digit())
-                    && words.get(i + 2).is_some_and(|u| unit_of(u).is_some()) =>
-            {
-                (format!("{w}{group}"), i + 2)
+        // « 1 000 mg », « 1 200 000 UI » : les milliers écrits avec une
+        // espace — chaque groupe de trois chiffres, si une unité suit le
+        // dernier. Sans unité derrière, rien n'est joint : « 2 500 » peut
+        // être deux comprimés de cinq cents.
+        let mut digits = w.to_owned();
+        let mut next = i + 1;
+        if digits_only(w) && w.len() <= 3 {
+            let mut j = i + 1;
+            let mut joined = w.to_owned();
+            while words.get(j).is_some_and(|g| g.len() == 3 && digits_only(g)) {
+                joined.push_str(&words[j]);
+                j += 1;
             }
-            _ => (w.to_owned(), i + 1),
-        };
+            if j > i + 1 && words.get(j).is_some_and(|u| unit_of(u).is_some()) {
+                digits = joined;
+                next = j;
+            }
+        }
         let amount = match number(&digits) {
             // Le nombre seul, l'unité au mot suivant.
             Some(v) => words.get(next).and_then(|u| unit_of(u)).map(|(k, unit)| {
                 next += 1;
-                write(v * k, unit)
+                write(v * k, &unit)
             }),
             // Collés : « 75mg ».
             None => {
@@ -668,7 +696,7 @@ fn same_units(words: Vec<String>) -> Vec<String> {
                     .take_while(|c| c.is_ascii_digit() || *c == '.')
                     .collect();
                 number(&lead).and_then(|v| {
-                    unit_of(&digits[lead.len()..]).map(|(k, unit)| write(v * k, unit))
+                    unit_of(&digits[lead.len()..]).map(|(k, unit)| write(v * k, &unit))
                 })
             }
         };
@@ -690,37 +718,23 @@ fn same_units(words: Vec<String>) -> Vec<String> {
 /// masses en microgrammes, les unités et les millilitres à part.
 /// « 1 g » et « 1000 mg » sont la même ; « 5mg », « 2,5 mg » se lisent.
 fn first_amount(text: &str) -> Option<(f64, &'static str)> {
-    let folded = crate::fuzzy::sort_key(text).replace(',', ".");
-    let words: Vec<&str> = folded.split_whitespace().collect();
-    for (i, w) in words.iter().enumerate() {
-        let digits: String = w
+    // **Lue par le même chemin que la comparaison** ([`same_units`]) :
+    // lue à part, « 50 000 UI » se lisait « 000 UI » — zéro —, et deux
+    // dosages différents tombaient d'accord sur rien.
+    same_units(dose_words(text)).iter().find_map(|t| {
+        let lead: String = t
             .chars()
             .take_while(|c| c.is_ascii_digit() || *c == '.')
             .collect();
-        let Ok(value) = digits.parse::<f64>() else {
-            continue;
+        let value: f64 = lead.parse().ok()?;
+        let dim = match &t[lead.len()..] {
+            "µg" => "masse",
+            "ui" => "unite",
+            "ml" => "volume",
+            _ => return None,
         };
-        let glued = &w[digits.len()..];
-        let unit = if glued.is_empty() {
-            words.get(i + 1).copied().unwrap_or("")
-        } else {
-            glued
-        };
-        let unit = unit.split('/').next().unwrap_or("");
-        let unit = unit.trim_end_matches(|c: char| !c.is_alphanumeric());
-        let found = match unit {
-            "g" | "gramme" | "grammes" => Some((value * 1e6, "masse")),
-            "mg" | "milligramme" | "milligrammes" => Some((value * 1e3, "masse")),
-            "µg" | "ug" | "mcg" | "microgramme" | "microgrammes" => Some((value, "masse")),
-            "ui" | "unite" | "unites" => Some((value, "unite")),
-            "ml" => Some((value, "volume")),
-            _ => None,
-        };
-        if found.is_some() {
-            return found;
-        }
-    }
-    None
+        Some((value, dim))
+    })
 }
 
 /// Un mot qui dit **une prise** : un moment, une liaison, une fréquence
@@ -1203,9 +1217,63 @@ Vogalène lyoc si nausées
             ("1 000 mg le soir", "1 g matin et soir"),
             ("1 cp le soir", "2 cp le soir"),
             ("5 mg le soir", "5 ml le soir"),
+            // « 1.000 » : un gramme ou un milligramme, selon qui l'écrit.
+            ("1.000 mg le soir", "1 mg le soir"),
+            ("1,000 mg le soir", "1 g le soir"),
         ] {
             assert!(!same_dose(a, b), "{a} / {b}");
         }
+        // Les milliers en plusieurs groupes, et sans unité rien n'est joint.
+        assert_eq!(
+            first_amount("1 200 000 UI une fois"),
+            Some((1_200_000.0, "unite"))
+        );
+        assert_eq!(first_amount("50 000 UI"), Some((50_000.0, "unite")));
+        assert_eq!(first_amount("1.000 mg le soir"), None);
+        assert_eq!(
+            first_amount("5 mg/ml"),
+            None,
+            "une concentration n'est pas une dose"
+        );
+    }
+
+    /// **De bout en bout** : un dosage écrit avec des espaces de milliers
+    /// se compare pour ce qu'il est — doublé, il se dit ; le même, écrit
+    /// autrement, se reconduit.
+    #[test]
+    fn a_strength_with_spaced_thousands_is_read_whole() {
+        let base = base();
+        let held = |posology: &'static str, strength: &'static str| {
+            vec![Held {
+                name: "Glucophage",
+                dci: "metformine",
+                class: "biguanide",
+                posology,
+                strength,
+            }]
+        };
+        let kind = |h: &[Held], sheet: &str| compare(h, sheet, &base)[0].kind;
+        assert_eq!(
+            kind(
+                &held("1 cp matin et soir", "1 000 mg"),
+                "Glucophage 2 000 mg : 1 cp matin et soir"
+            ),
+            Change::DoseChanged
+        );
+        assert_eq!(
+            kind(
+                &held("1 000 mg matin et soir", ""),
+                "Glucophage 1 g matin et soir"
+            ),
+            Change::Kept
+        );
+        assert_eq!(
+            kind(
+                &held("1 cp matin et soir", "1 000 mg"),
+                "Glucophage 1 000 mg : 1 cp matin et soir"
+            ),
+            Change::Kept
+        );
     }
 
     /// Le dosage que le dossier retient compte : 5 mg au dossier, 10 mg
