@@ -681,6 +681,9 @@ fn main() -> eframe::Result {
         }
     }
     desk.tray = None;
+    // Un paquet en cours, attendu en répondant au système : sous Windows,
+    // la fermeture de session attendrait sinon BPM-Caddy, puis le tuerait.
+    app.finish_export(bpm_tray::pump_messages);
     app.shutdown();
     Ok(())
 }

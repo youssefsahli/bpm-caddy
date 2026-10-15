@@ -308,15 +308,32 @@ pub enum Terms {
 /// La version d'un texte de conditions : ses douze premiers chiffres
 /// d'empreinte. Un mot changé change la version, et l'acceptation
 /// enregistrée dit laquelle on a lue.
+///
+/// **Les fins de ligne ne comptent pas** : Git pour Windows rend le fichier
+/// en CRLF, et la version acceptée sur un poste Windows se disait
+/// « changée » sur un poste Linux.
 pub fn terms_version(text: &str) -> String {
+    let text = text.replace("\r\n", "\n");
     blake3::hash(text.trim().as_bytes()).to_hex()[..12].to_owned()
+}
+
+/// Le nom seul d'un hôte, pour comparer deux passerelles : sans port ni
+/// point final. Réglée à la main sur `nom:443` ou `nom.`, la passerelle
+/// livrée passait pour une autre, et ses conditions ne se demandaient
+/// plus.
+fn bare_host(host: &str) -> &str {
+    let h = match host.strip_prefix('[') {
+        Some(v6) => v6.split(']').next().unwrap_or(""),
+        None => host.split(':').next().unwrap_or(""),
+    };
+    h.trim_end_matches('.')
 }
 
 /// Où en est l'officine. `gateway` et `built_in` sont des noms d'hôte
 /// ([`gateway_host`]) : une passerelle réglée à la main sur le même nom
 /// que la livrée est la livrée.
 pub fn terms_state(gateway: &str, built_in: &str, terms: &str, accepted: Option<&str>) -> Terms {
-    if terms.trim().is_empty() || built_in.is_empty() || gateway != built_in {
+    if terms.trim().is_empty() || built_in.is_empty() || bare_host(gateway) != bare_host(built_in) {
         return Terms::None;
     }
     match accepted {
@@ -938,8 +955,24 @@ mod terms_tests {
             terms_state("a.fr", "a.fr", "# Conditions\nLe prestataire, v2", Some(&v)),
             Terms::Changed
         );
-        // Les blancs autour ne font pas une version.
+        // Les blancs autour ne font pas une version, ni les fins de ligne.
         assert_eq!(terms_version(text), terms_version(&format!("\n{text}\n\n")));
+        assert_eq!(
+            terms_version(text),
+            terms_version(&text.replace('\n', "\r\n"))
+        );
+        // Le même hôte, avec un port ou un point final, est la livrée.
+        for same in ["a.fr:443", "a.fr.", "a.fr.:8443"] {
+            assert_eq!(
+                terms_state(same, "a.fr", text, None),
+                Terms::ToAccept,
+                "{same}"
+            );
+        }
+        assert_eq!(
+            terms_state("[::1]:443", "[::1]", text, None),
+            Terms::ToAccept
+        );
     }
 
     /// La preuve se relit telle qu'elle a été écrite ; un réglage

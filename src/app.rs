@@ -26671,73 +26671,85 @@ impl App {
             .fixed_size(size)
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(ctx, |ui| {
-                // Le pied d'abord mesuré : le texte prend ce qui reste.
-                let row = Self::row_height(ui);
-                let foot = row * if asked { 4.0 } else { 2.0 };
-                let text_h = (ui.available_height() - foot).max(row * 3.0);
-                egui::ScrollArea::vertical()
-                    .id_salt("pchat_terms_text")
-                    .max_height(text_h)
-                    .show(ui, |ui| {
-                        // Un texte en markdown simple : les titres en
-                        // gras, sans leurs dièses ; le reste tel quel.
-                        for line in GATEWAY_TERMS.trim().lines() {
-                            let head = line.trim_start_matches('#');
-                            if head.len() < line.len() {
-                                ui.add(
-                                    egui::Label::new(egui::RichText::new(head.trim()).strong())
-                                        .wrap(),
-                                );
-                            } else {
-                                ui.add(egui::Label::new(line).wrap());
-                            }
+                // **Le pied d'abord, posé du bas** : les boutons, puis ce
+                // qui les précède, et le texte prend ce qui reste. Compté
+                // à la main, le pied oubliait la ligne de l'acceptation et
+                // une erreur — « Accepter » sortait de la fenêtre.
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+                    ui.horizontal(|ui| {
+                        if asked
+                            && motif::button_enabled(
+                                ui,
+                                tr("pchat_terms_accept"),
+                                w.agreed && !w.by.trim().is_empty(),
+                            )
+                            .clicked()
+                        {
+                            accept = true;
+                        }
+                        if motif::button(ui, tr("pchat_terms_close")).clicked() {
+                            close = true;
                         }
                     });
-                motif::separator(ui);
-                if let Some(a) = &done {
-                    ui.add(
-                        egui::Label::new(
-                            egui::RichText::new(trn(
-                                "pchat_terms_accepted",
-                                &[
-                                    &db::format_french_date(&a.jour),
-                                    &a.heure,
-                                    &a.poste,
-                                    &a.par,
-                                    &a.version,
-                                ],
-                            ))
-                            .size(motif::pt(ui, 10.5))
-                            .color(motif::text_dim()),
-                        )
-                        .wrap(),
-                    );
-                }
-                if asked {
-                    motif::checkbox(ui, &mut w.agreed, tr("pchat_terms_agree"));
-                    ui.horizontal_wrapped(|ui| {
-                        Self::form_label(ui, tr("pchat_terms_by"));
-                        let fw = chars_wide(ui, 24.0).min(ui.available_width());
-                        motif::field(ui, fw, egui::TextEdit::singleline(&mut w.by));
+                    if let Some(e) = &w.error {
+                        ui.add(
+                            egui::Label::new(egui::RichText::new(e).color(motif::warn())).wrap(),
+                        );
+                    }
+                    if asked {
+                        ui.horizontal_wrapped(|ui| {
+                            Self::form_label(ui, tr("pchat_terms_by"));
+                            let fw = chars_wide(ui, 24.0).min(ui.available_width());
+                            motif::field(ui, fw, egui::TextEdit::singleline(&mut w.by));
+                        });
+                        motif::checkbox(ui, &mut w.agreed, tr("pchat_terms_agree"));
+                    }
+                    if let Some(a) = &done {
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(trn(
+                                    "pchat_terms_accepted",
+                                    &[
+                                        &db::format_french_date(&a.jour),
+                                        &a.heure,
+                                        &a.poste,
+                                        &a.par,
+                                        &a.version,
+                                    ],
+                                ))
+                                .size(motif::pt(ui, 10.5))
+                                .color(motif::text_dim()),
+                            )
+                            .wrap(),
+                        );
+                    }
+                    motif::separator(ui);
+                    ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                        egui::ScrollArea::vertical()
+                            .id_salt("pchat_terms_text")
+                            .auto_shrink(false)
+                            .show(ui, |ui| {
+                                // Un texte en markdown simple : les titres en
+                                // gras, sans leurs dièses ; le reste tel quel.
+                                for line in GATEWAY_TERMS.trim().lines() {
+                                    if line.trim().is_empty() {
+                                        ui.add_space(ui.spacing().item_spacing.y);
+                                        continue;
+                                    }
+                                    let head = line.trim_start_matches('#');
+                                    if head.len() < line.len() {
+                                        ui.add(
+                                            egui::Label::new(
+                                                egui::RichText::new(head.trim()).strong(),
+                                            )
+                                            .wrap(),
+                                        );
+                                    } else {
+                                        ui.add(egui::Label::new(line).wrap());
+                                    }
+                                }
+                            });
                     });
-                }
-                if let Some(e) = &w.error {
-                    ui.add(egui::Label::new(egui::RichText::new(e).color(motif::warn())).wrap());
-                }
-                ui.horizontal(|ui| {
-                    if asked
-                        && motif::button_enabled(
-                            ui,
-                            tr("pchat_terms_accept"),
-                            w.agreed && !w.by.trim().is_empty(),
-                        )
-                        .clicked()
-                    {
-                        accept = true;
-                    }
-                    if motif::button(ui, tr("pchat_terms_close")).clicked() {
-                        close = true;
-                    }
                 });
             });
         if close || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
@@ -26930,9 +26942,14 @@ impl App {
                 return;
             }
         }
+        // Ses conditions d'abord : la passerelle livrée, pas encore
+        // acceptée, ne tire pas de boîte.
+        session.refresh_pchat();
+        let held = session.pchat_terms == crate::patientchat::Terms::ToAccept;
         // The box's secret, drawn once: a post that drew one at the same
         // moment wins, and this one reads it back.
-        if !host.is_empty()
+        if !held
+            && !host.is_empty()
             && !setup
                 .seen_secret
                 .as_deref()
@@ -28687,26 +28704,49 @@ impl App {
                                 )
                         }) {
                             let overdue = d.level == crate::surveillance::Level::Overdue;
-                            ui.label(
-                                egui::RichText::new(trn(
-                                    if overdue {
-                                        "renal_dfg_overdue"
+                            // La marque dit ce que la couleur dit, comme
+                            // au plan de surveillance.
+                            ui.horizontal_wrapped(|ui| {
+                                motif::badge(
+                                    ui,
+                                    tr(if overdue {
+                                        "watch_overdue"
                                     } else {
-                                        "renal_dfg_soon"
+                                        "watch_soon"
+                                    }),
+                                    Some(if overdue {
+                                        motif::Pict::Stop
+                                    } else {
+                                        motif::Pict::Warn
+                                    }),
+                                    if overdue {
+                                        motif::alert()
+                                    } else {
+                                        motif::accent()
                                     },
-                                    &[
-                                        &d.months.unwrap_or_default(),
-                                        &d.drugs.join(", "),
-                                        &crate::surveillance::rhythm_text(d.every_months),
-                                    ],
-                                ))
-                                .size(motif::pt(ui, 11.0))
-                                .color(if overdue {
-                                    motif::alert()
-                                } else {
-                                    motif::text_dim()
-                                }),
-                            );
+                                    true,
+                                );
+                                ui.label(
+                                    egui::RichText::new(trn(
+                                        if overdue {
+                                            "renal_dfg_overdue"
+                                        } else {
+                                            "renal_dfg_soon"
+                                        },
+                                        &[
+                                            &d.months.unwrap_or_default(),
+                                            &d.drugs.join(", "),
+                                            &crate::surveillance::rhythm_text(d.every_months),
+                                        ],
+                                    ))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(if overdue {
+                                        motif::alert()
+                                    } else {
+                                        motif::text_dim()
+                                    }),
+                                );
+                            });
                         }
                     }
                     ui.add_space(4.0);
@@ -86798,17 +86838,19 @@ impl eframe::App for App {
             match rx.try_recv() {
                 Ok((to, done)) => {
                     self.bundle_job = None;
-                    if let Some(editor) = &mut self.options {
-                        editor.message = Some(match done {
-                            Ok(()) => (false, trf("opts_bundle_done", to.display())),
-                            Err(e) => (true, e),
-                        });
-                    }
+                    let said = match done {
+                        Ok(()) => (false, trf("opts_bundle_done", to.display())),
+                        Err(e) => (true, trf("opts_bundle_failed", e)),
+                    };
+                    self.say_bundle(said);
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => {
                     ctx.request_repaint_after(std::time::Duration::from_millis(300));
                 }
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.bundle_job = None,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.bundle_job = None;
+                    self.say_bundle((true, tr("opts_bundle_lost").to_owned()));
+                }
             }
         }
         if let Some(rx) = &self.update_check {
@@ -87648,7 +87690,9 @@ impl eframe::App for App {
         let mut close_pw = false;
         // Une maintenance en cours tient sa propre connexion : la clé
         // changée sous elle, elle échoue à mi-chemin.
-        let busy = self.maint_job.is_some();
+        // Ni pendant une maintenance, ni pendant un paquet : le fil du
+        // paquet ouvre ses fichiers avec l'ancien mot de passe.
+        let busy = self.maint_job.is_some() || self.bundle_job.is_some();
         if let (State::Unlocked(session), Some(form)) = (&mut self.state, &mut self.pw_change) {
             let shown = egui::Window::new(tr("pw_title"))
                 .collapsible(false)
@@ -90826,13 +90870,40 @@ impl eframe::App for App {
 impl App {
     /// **Quitter**, et seulement quitter : la fenêtre qui se range dans
     /// la zone de notification passe par [`App::window_closed`].
+    /// Ce que dit un paquet fini : dans les options si elles sont
+    /// ouvertes ; fermées, un échec ne se perd pas — il passe au bandeau
+    /// d'erreur de la session.
+    fn say_bundle(&mut self, said: (bool, String)) {
+        if let Some(editor) = &mut self.options {
+            editor.message = Some(said);
+        } else if let (true, State::Unlocked(session)) = (said.0, &mut self.state) {
+            session.error = Some(said.1);
+        }
+    }
+
+    /// Un paquet s'écrit-il encore ?
+    pub fn exporting(&self) -> bool {
+        self.bundle_job.is_some()
+    }
+
+    /// Attendre la fin d'un paquet en cours, en appelant `tick` entre deux
+    /// regards — sous Windows, répondre au système qui demande si la
+    /// session peut se fermer.
+    pub fn finish_export(&mut self, tick: impl Fn()) {
+        if let Some(rx) = self.bundle_job.take() {
+            while let Err(std::sync::mpsc::RecvTimeoutError::Timeout) =
+                rx.recv_timeout(std::time::Duration::from_millis(100))
+            {
+                tick();
+            }
+        }
+    }
+
     pub fn shutdown(&mut self) {
         self.window_closed();
         // Un paquet en cours se finit : coupé, il laisserait à côté de
         // sa destination trois copies entières de la base.
-        if let Some(rx) = self.bundle_job.take() {
-            let _ = rx.recv();
-        }
+        self.finish_export(|| {});
         // No cursor to protect on the way out: allow the merge.
         self.close_team_doc();
         // Ce que ce poste a compté depuis le dernier versement. Sans
