@@ -1,4 +1,4 @@
-# Passation — 14/10/2026
+# Passation — 15/10/2026
 
 Écrit pour reprendre sans l'ordinateur qui a servi.
 
@@ -106,7 +106,14 @@ base, zone de notification, lancement à l'ouverture de session — crate
 passerelle des patients livrable avec la version ; et, depuis la 0.433,
 la page des patients publiée sur https://bpmcaddy.github.io/ — une
 relecture, quatorze points corrigés) a passé son smoke dans les quatre
-formes (3522177), étiquetée le 14/10.
+formes (3522177), étiquetée le 14/10. La 0.435.0 (installation Windows
+— `installer/`, Inno Setup, essayée par `.github/workflows/windows.yml` :
+construction, icône dans les `.exe`, démarrage contre le vrai registre ;
+marque de l'icône de notification pour un message de patient ;
+conditions de la passerelle livrée à accepter — `assets/passerelle-conditions.md`,
+vide ; DFG ancien dit sous le chiffre ; paquet sur un fil ; séances de
+synchronisation bornées — une relecture, huit points corrigés) : smoke
+lancé le 15/10.
 **La messagerie des patients, où elle en est.** Un avocat a répondu
 (14/10, résumé dans `docs/CHAT_PATIENT.md`) : pas d'HDS pour la
 passerelle, l'exploitant est sous-traitant (contrat), dossier technique
@@ -121,12 +128,15 @@ permises dans l'organisation). **À décider : qui tient la
 passerelle.** Une fois tenue, la variable `BPM_CADDY_PASSERELLE` du
 dépôt l'écrit dans les versions suivantes : la messagerie est prête
 sans réglage. Sinon, chaque officine la règle dans l'onglet.
-**À vérifier sur un vrai poste Windows** : l'icône de la zone de
-notification et le lancement à l'ouverture de session (compilés,
-jamais lancés hors Linux) ; sous macOS, pas d'icône, fermer quitte.
-Le fichier suivi `-/dfcb423a1c90b6346295.bpmnet` (depuis la 0.319.0)
-est un enregistrement de dossier d'échange égaré à la racine : à
-retirer.
+**À vérifier sur un vrai poste Windows** : l'installation
+(`bpm-caddy-setup-windows-x86_64.exe` ; la tâche « Windows » de la CI en
+joint une à chaque essai), l'icône de la zone de notification et sa
+marque. Le lancement à l'ouverture de session est essayé par la CI
+contre le vrai registre ; sous macOS, pas d'icône, fermer quitte.
+**Les conditions de la passerelle** : le texte (contrat de
+sous-traitance, relu par l'avocat) va dans
+`assets/passerelle-conditions.md` ; la version qui le livre suspend la
+passerelle livrée jusqu'à l'acceptation, à annoncer.
 Les versions 0.398 à 0.420 n'ont jamais été étiquetées : le lanceur est
 resté sur la 0.397.0 jusqu'au 13/10 ; désormais chaque version dont le
 smoke passe s'étiquette aussitôt ; les étiquettes intermédiaires n'ont jamais été
@@ -193,14 +203,15 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   une vingtaine de lignes « Entre X et Y » ont encore `below: Y` (Y
   exclu) — à relire contre chaque RCP (les trois anticoagulant et
   cotrimoxazole sont faits) ; metformine « Entre 45 et 60 » est 45–59
-  au RCP ; un DFG ancien n'est pas signalé comme tel au-delà de sa date
+  au RCP ; un DFG ancien se dit sous le chiffre quand le plan de surveillance le dit à refaire (15/10) — pas au-delà de sa date
   affichée ; le plafond d'une note de posologie (Alfatil « Sans dépasser
   1 g par jour » dans la colonne note) n'atteint pas « Dose par kilo » ;
 - paquet et copie : la copie manuelle, le paquet et les copies du jour
   des pièces et du registre passent par étapes (`stepwise_copy`, fait le
   13/10) ; restent sous `VACUUM INTO` les instantanés de la maintenance
   (sans mot de passe) ; l'export tourne encore dans l'image — à passer à
-  un fil (un paquet porte depuis le 13/10 la taille et l'empreinte de
+  un fil — fait le 15/10 (`Db::bundle_export`) ; « Copier/Déplacer la
+  base vers… » tourne encore dans l'image (un paquet porte depuis le 13/10 la taille et l'empreinte de
   chaque fichier, et un paquet coupé se refuse) ;
 - **changement de mot de passe interrompu** : fait le 13/10 — un témoin
   chiffré par le nouveau mot de passe porte l'ancien (`rekey_witness`),
@@ -298,18 +309,19 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   écrit encore, et peut inscrire sa propre ligne de `sync_posts` ; la
   vraie révocation demande de tourner la clé au retrait, et l'amorce
   d'un nouveau poste par celui qui l'invite plutôt que par lui-même ;
-- `bpm-sync` : un `Give` est accepté sans `Want` en attente, et des
-  parents inventés près de `0x00…` passent devant les vraies têtes dans
-  `need` — un membre peut étirer ou faire échouer une séance ;
-- grossesse : le texte « molécule absente
-  de la table » de `gravidity.rs` n'a pas d'adresse de réécriture, et
-  `rhythm_text` (« tous les mois ») est écrit en dur ;
+- `bpm-sync` : un `Give` sans demande et des parents inventés près de
+  `0x00…` — faits le 15/10 (refusé hors manche ou au-delà d'une manche ;
+  les têtes du pair d'abord). Des parents inventés restent demandés une
+  manche par séance ;
+- grossesse : « molécule absente de la table » et `rhythm_text` — faits
+  le 15/10 ;
 - ordonnance après TROD : la nitrofurantoïne en 3e intention de la
   cystite simple, et l'amoxicilline de l'enfant « maximum 50 mg/kg/j »
   sans plafond adulte — à relire contre le texte du protocole ;
-- textes imprimés hors `strings.fr.toml` : en-têtes de la grille de
-  prises (« Médicament », « Indication », moments, repas), « Conseils »
-  et « Relu en » dans `pdf.rs`, l'intitulé du protocole sur
+- textes imprimés hors `strings.fr.toml` : « Médicament »,
+  « Indication », « Conseils » et « Relu en » faits le 15/10 ; restent
+  les titres de section des monographies et des préparations dans
+  `pdf.rs`, l'intitulé du protocole sur
   l'ordonnance, les manques du renouvellement ;
 - conciliation : « 1 000 mg matin et soir » contre « 1 g matin et soir »
   se lit « dose changée » (sens sûr, mais bruyant) ;
