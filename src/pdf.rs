@@ -775,21 +775,33 @@ fn monograph_values(
         ));
     }
     for (title, body) in [
-        ("Indications", d.indications.as_str()),
-        ("Mécanisme d'action", d.mechanism.as_str()),
-        ("Posologie", d.dosage.as_str()),
-        ("Contre-indications", d.contraindications.as_str()),
-        ("Interactions", d.ddi.as_str()),
+        (
+            crate::strings::tr("drug_sec_indications"),
+            d.indications.as_str(),
+        ),
+        (
+            crate::strings::tr("drug_sec_mechanism"),
+            d.mechanism.as_str(),
+        ),
+        (crate::strings::tr("mono_f_dosage"), d.dosage.as_str()),
+        (
+            crate::strings::tr("drug_sec_ci"),
+            d.contraindications.as_str(),
+        ),
+        (crate::strings::tr("drug_ddi"), d.ddi.as_str()),
         // La feuille dit ce que dit l'écran : la section des voies suit
         // les interactions, comme à l'écran.
-        ("Cytochromes et transporteurs", routes),
-        ("Effets indésirables", d.adverse.as_str()),
-        ("Toxicité / marge thérapeutique", d.toxicity.as_str()),
-        ("Surveillance", d.monitoring.as_str()),
-        ("Conseils au patient", d.iup.as_str()),
-        ("En cas d'oubli", d.missed_dose.as_str()),
-        ("Signes d'alerte", d.red_flags.as_str()),
-        ("Évaluation SMR / ASMR", d.smr.as_str()),
+        (crate::strings::tr("drug_sec_routes"), routes),
+        (crate::strings::tr("drug_sec_adverse"), d.adverse.as_str()),
+        (crate::strings::tr("drug_sec_toxicity"), d.toxicity.as_str()),
+        (
+            crate::strings::tr("drug_sec_monitoring"),
+            d.monitoring.as_str(),
+        ),
+        (crate::strings::tr("drug_iup"), d.iup.as_str()),
+        (crate::strings::tr("drug_missed"), d.missed_dose.as_str()),
+        (crate::strings::tr("drug_flags"), d.red_flags.as_str()),
+        (crate::strings::tr("drug_sec_smr"), d.smr.as_str()),
     ] {
         if body.trim().is_empty() {
             continue;
@@ -821,17 +833,21 @@ fn monograph_values(
             ));
         }
         src.push_str(&format!(
-            "#sec(\"Posologies par indication\", table(columns: (5cm, 1fr), inset: 3pt, \
-             stroke: none,\n{rows}))\n"
+            "#sec({}, table(columns: (5cm, 1fr), inset: 3pt, \
+             stroke: none,\n{rows}))\n",
+            typst_str(crate::strings::tr("drug_sec_poso"))
         ));
     }
     let pk = [
-        ("Formes et dosages", d.forms.as_str()),
-        ("Demi-vie", d.half_life.as_str()),
-        ("AUC / exposition", d.auc.as_str()),
-        ("Élimination", d.elimination.as_str()),
-        ("Adaptation DFG", d.renal.as_str()),
-        ("Grossesse / allaitement", d.pregnancy.as_str()),
+        (crate::strings::tr("drug_forms"), d.forms.as_str()),
+        (crate::strings::tr("drug_half_life"), d.half_life.as_str()),
+        (crate::strings::tr("drug_auc"), d.auc.as_str()),
+        (
+            crate::strings::tr("drug_elimination"),
+            d.elimination.as_str(),
+        ),
+        (crate::strings::tr("drug_renal"), d.renal.as_str()),
+        (crate::strings::tr("drug_pregnancy"), d.pregnancy.as_str()),
     ];
     if pk.iter().any(|(_, v)| !v.trim().is_empty()) || !sourced.is_empty() {
         let mut rows = String::new();
@@ -850,13 +866,15 @@ fn monograph_values(
             ));
         }
         src.push_str(&format!(
-            "#sec(\"Pharmacocinétique\", table(columns: (4.5cm, 1fr), inset: 3pt, \
-             stroke: none,\n{rows}))\n"
+            "#sec({}, table(columns: (4.5cm, 1fr), inset: 3pt, \
+             stroke: none,\n{rows}))\n",
+            typst_str(crate::strings::tr("drug_sec_pk"))
         ));
     }
     if !d.notes.trim().is_empty() {
         src.push_str(&format!(
-            "#sec(\"Notes de l'équipe\", [#{}])\n",
+            "#sec({}, [#{}])\n",
+            typst_str(crate::strings::tr("drug_notes")),
             typst_str(d.notes.trim())
         ));
     }
@@ -3377,10 +3395,16 @@ fn preparation_values(
     }
     let mut sections = String::new();
     for (title, body) in [
-        ("Mode opératoire", prep.method.as_str()),
-        ("Conservation", prep.conservation.as_str()),
-        ("Mise en garde", prep.caution.as_str()),
-        ("Indication", prep.indication.as_str()),
+        (crate::strings::tr("codex_method"), prep.method.as_str()),
+        (
+            crate::strings::tr("codex_conservation"),
+            prep.conservation.as_str(),
+        ),
+        (crate::strings::tr("codex_caution"), prep.caution.as_str()),
+        (
+            crate::strings::tr("codex_indication"),
+            prep.indication.as_str(),
+        ),
     ] {
         if body.trim().is_empty() {
             continue;
@@ -3773,10 +3797,16 @@ fn codex_values(preparations: &[crate::db::Preparation]) -> Vec<(&'static str, S
             ));
         }
         for (title, body) in [
-            ("Indication", prep.indication.as_str()),
-            ("Mode opératoire", prep.method.as_str()),
-            ("Conservation", prep.conservation.as_str()),
-            ("Mise en garde", prep.caution.as_str()),
+            (
+                crate::strings::tr("codex_indication"),
+                prep.indication.as_str(),
+            ),
+            (crate::strings::tr("codex_method"), prep.method.as_str()),
+            (
+                crate::strings::tr("codex_conservation"),
+                prep.conservation.as_str(),
+            ),
+            (crate::strings::tr("codex_caution"), prep.caution.as_str()),
         ] {
             if body.trim().is_empty() {
                 continue;
@@ -4448,12 +4478,18 @@ const DEFAULT_CONSEIL_TEMPLATE: &str = r##"
 /// never drift apart.
 fn dispositif_sections(dispo: &crate::db::Dispositif) -> Vec<(&'static str, &str)> {
     [
-        ("Indication", dispo.indication.as_str()),
-        ("Formes et tailles", dispo.sizes.as_str()),
-        ("Pose", dispo.application.as_str()),
-        ("Renouvellement", dispo.renewal.as_str()),
-        ("Prise en charge (LPP)", dispo.lpp.as_str()),
-        ("Incidents fréquents", dispo.caution.as_str()),
+        (
+            crate::strings::tr("dispo_indication"),
+            dispo.indication.as_str(),
+        ),
+        (crate::strings::tr("dispo_sizes"), dispo.sizes.as_str()),
+        (
+            crate::strings::tr("dispo_application"),
+            dispo.application.as_str(),
+        ),
+        (crate::strings::tr("dispo_renewal"), dispo.renewal.as_str()),
+        (crate::strings::tr("dispo_lpp"), dispo.lpp.as_str()),
+        (crate::strings::tr("dispo_caution"), dispo.caution.as_str()),
     ]
     .into_iter()
     .filter(|(_, body)| !body.trim().is_empty())
