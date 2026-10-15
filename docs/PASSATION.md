@@ -296,8 +296,9 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   une clé (`scripts/sign-release.sh` signe hors ligne et dépose). Reste
   à Youssef : créer la clé (`minisign -G`, en tête du script), committer
   la clé publique, signer chaque version après sa publication ; les
-  lanceurs en service ne se mettent pas à jour eux-mêmes — réinstaller (les actions sont épinglées
-  par empreinte et la publication se fait sans cache depuis le 13/10) ;
+  lanceurs en service ne se mettent pas à jour eux-mêmes : la clé
+  n'agit qu'une fois le lanceur réinstallé. Les actions sont épinglées
+  par empreinte et la publication se fait sans cache depuis le 13/10 ;
 - **carte, postes de versions mêlées** (indécelable : les versions en
   service ne sont relevées que depuis la 0.433 ; s'éteint avec les mises
   à jour du lanceur) : un poste d'avant la 0.431
