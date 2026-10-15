@@ -181,7 +181,10 @@ les conditions d'utilisation qui vont avec.
    sont rangés dans les réglages de l'officine
    (`passerelle_conditions`) et voyagent entre ses postes. Un texte
    changé se redemande sans couper la messagerie
-   (`patientchat::terms_state`).
+   (`patientchat::terms_state`). **Le premier texte, lui, coupe** : une
+   officine qui se servait de la passerelle livrée sans conditions attend,
+   à la version qui les livre, qu'on les accepte — pas de traitement
+   pour son compte sans contrat. À annoncer avec cette version.
 3. **Pour chaque patient** : « Donner l'accès », puis le code montré ou
    imprimé.
 
