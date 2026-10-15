@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   note (Alfatil for children: « Sans dépasser 1 g par jour ») now bounds
   that line's computed dose. A per-kilo ceiling (« jusqu'à 40 mg/kg/jour »)
   is bounded by it too.
+- « Synchroniser le contenu de référence » counts the officine's
+  rewrites that no longer target any shipped text (a shipped label that
+  changed) and says where to take them up.
 - Printed monographs, preparation and device sheets title their sections
   with the screen's own words.
 - The posts window names it when two posts invited at the same moment

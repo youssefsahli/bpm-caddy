@@ -279,8 +279,8 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   écrasement, rein, foie, revue, surveillance) qui change de libellé
   laisse la réécriture en base, invisible et non comptée — montrée et
   retirable dans « Textes » depuis le 14/10 (`Overrides::orphans`) ;
-  restent le rapport de maintenance et une table de renommage qui la
-  reporterait d'elle-même ; « Rétablir » un document
+  la synchronisation du contenu les compte dans son rapport (15/10) ;
+  reste une table de renommage qui la reporterait d'elle-même ; « Rétablir » un document
   n'est pas comparé à ce que l'écran montrait ;
 - fil du dossier : seules les rangées visibles se dessinent, et le
   résumé se relit contre `fil_rev` (fait le 13/10) ;
