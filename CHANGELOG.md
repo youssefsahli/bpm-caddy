@@ -8,6 +8,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.435.0] - 2026-10-15
+
+### Added
+
+- **A Windows installer.** `bpm-caddy-setup-windows-x86_64.exe` installs
+  the launcher for the current user, without administrator rights. It
+  goes under `%LOCALAPPDATA%\Programs\BPM-Caddy`, gets a Start menu entry
+  and a desktop icon, and appears in « Applications installées » with an
+  uninstaller. The uninstaller removes the launcher, the downloaded app
+  and the login-start entry, never the base, its settings or its copies.
+  The login start no longer points at a launcher left in « Téléchargements ».
+- **BPM-Caddy's icon and name in every Windows program**: Explorer, the
+  Start menu, the taskbar and the Task Manager show « BPM-Caddy »
+  instead of a generic program.
+- **The notification-area icon carries a mark** (a bevelled red square in
+  its top corner) while a patient's message is unread. On Linux it also
+  raises the « needs attention » state that the desktop highlights.
+- **Terms of a gateway shipped with the release.** When BPM-Caddy ships
+  with a patient-messaging gateway run by a provider, that provider's
+  terms (the data-processing contract, GDPR art. 28) are accepted once
+  on behalf of the officine before the gateway serves it. The proof is
+  kept in the officine's settings and travels between its posts: the
+  post, the date and time, who accepted, and the version of the text.
+  The terms can be read again from the « Accès… » menu. A changed text
+  is asked again without cutting messaging off. No text is shipped yet,
+  so nothing is asked.
+- **Kidney: an old eGFR is said under the figure.** When the monitoring
+  plan says the eGFR is due again (the tightest rhythm among the
+  treatments that need it: a DOAC, metformin, lithium…), the renal pane
+  says « à recontrôler avant de s'y fier », with its mark.
+
+### Changed
+
+- **« Exporter en un fichier… » no longer freezes the window.** The
+  package is written on its own thread while the counter keeps working.
+  A failure shows even with Options closed. Quitting waits for a package
+  being written, and the password cannot be changed during one.
+- The pregnancy panel's « molécule absente de la table » sentence can be
+  rewritten like the others. The labels printed on table sheets, the
+  ordonnance and the intake grid, and the monitoring rhythms, now come
+  from the strings file.
+- A tag with a suffix (`v0.500.0-rc1`) is published as a prerelease,
+  which the launcher never installs.
+
+### Security
+
+- Sync between posts: a member can no longer keep a session busy by
+  sending records nobody asked for. Records it writes naming invented
+  parents no longer push the real heads out of a round's request.
+
 ## [0.434.0] - 2026-10-14
 
 ### Added

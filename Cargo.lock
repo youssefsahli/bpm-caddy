@@ -798,7 +798,7 @@ dependencies = [
 
 [[package]]
 name = "bpm-caddy"
-version = "0.434.0"
+version = "0.435.0"
 dependencies = [
  "ab_glyph",
  "aes-gcm",
@@ -836,7 +836,7 @@ dependencies = [
 
 [[package]]
 name = "bpm-caddy-launcher"
-version = "0.434.0"
+version = "0.435.0"
 dependencies = [
  "dirs 5.0.1",
  "eframe",
@@ -848,7 +848,7 @@ dependencies = [
 
 [[package]]
 name = "bpm-caddy-mobile"
-version = "0.434.0"
+version = "0.435.0"
 dependencies = [
  "bpm-caddy",
  "bpm-sync",
@@ -873,7 +873,7 @@ dependencies = [
 
 [[package]]
 name = "bpm-tray"
-version = "0.434.0"
+version = "0.435.0"
 dependencies = [
  "ksni",
  "tray-icon",
@@ -3784,7 +3784,7 @@ dependencies = [
 
 [[package]]
 name = "motif"
-version = "0.434.0"
+version = "0.435.0"
 dependencies = [
  "eframe",
 ]
