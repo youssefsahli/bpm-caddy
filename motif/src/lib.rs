@@ -884,6 +884,39 @@ pub fn icon() -> egui::IconData {
     }
 }
 
+/// The icon with a mark in its top-right corner: something waits to be
+/// read (a patient's message), and the notification area says so with
+/// the picture as well as the tooltip.
+///
+/// A shape, not only a colour: a square of the alert colour, bevelled
+/// like the rest, that changes the outline of the icon at 16 pixels.
+pub fn icon_attention() -> egui::IconData {
+    let mut icon = icon();
+    let n = icon.width as usize;
+    let to4 = |c: Color32| [c.r(), c.g(), c.b(), 0xff];
+    let (alert, light, dark) = (
+        to4(crate::alert()),
+        to4(crate::bg_light()),
+        to4(crate::bg_dark()),
+    );
+    let side = n * 7 / 16;
+    for y in 0..side {
+        for x in n - side..n {
+            let edge_dark = y == side - 1 || x == n - side;
+            let edge_light = y == 0 || x == n - 1;
+            let c = if edge_dark {
+                dark
+            } else if edge_light {
+                light
+            } else {
+                alert
+            };
+            icon.rgba[(y * n + x) * 4..][..4].copy_from_slice(&c);
+        }
+    }
+    icon
+}
+
 /// The same picture as a Windows `.ico`: what Explorer, the Start menu
 /// and the taskbar show for the programs before any window is open.
 ///

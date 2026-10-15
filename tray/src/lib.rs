@@ -71,14 +71,23 @@ pub struct Tray {
 }
 
 impl Tray {
-    /// Poser l'icône. `wake` est appelé après chaque événement envoyé.
+    /// Poser l'icône. `wake` est appelé après chaque événement envoyé ;
+    /// `attention` est l'image montrée tant que quelque chose attend
+    /// d'être lu ([`Tray::set_attention`]).
     pub fn spawn(
         image: Image,
+        attention: Image,
         labels: Labels,
         tx: Sender<Event>,
         wake: Arc<dyn Fn() + Send + Sync>,
     ) -> Option<Tray> {
-        imp::spawn(image, labels, Out { tx, wake }).map(|inner| Tray { inner })
+        imp::spawn(image, attention, labels, Out { tx, wake }).map(|inner| Tray { inner })
+    }
+
+    /// Quelque chose attend d'être lu : l'icône porte sa marque (et, sous
+    /// Linux, l'état « demande l'attention » que le bureau souligne).
+    pub fn set_attention(&self, on: bool) {
+        imp::set_attention(&self.inner, on);
     }
 
     /// L'état, en infobulle (« En attente des patients », « 2 messages »…).
@@ -115,6 +124,8 @@ mod imp {
 
     pub struct Sni {
         icon: ksni::Icon,
+        attention_icon: ksni::Icon,
+        attention: bool,
         labels: Labels,
         status: String,
         out: Out,
@@ -130,8 +141,24 @@ mod imp {
         fn category(&self) -> ksni::Category {
             ksni::Category::ApplicationStatus
         }
+        fn status(&self) -> ksni::Status {
+            if self.attention {
+                ksni::Status::NeedsAttention
+            } else {
+                ksni::Status::Active
+            }
+        }
+        // Les deux : un hôte qui ne lit pas l'état voit quand même la
+        // marque.
         fn icon_pixmap(&self) -> Vec<ksni::Icon> {
-            vec![self.icon.clone()]
+            vec![if self.attention {
+                self.attention_icon.clone()
+            } else {
+                self.icon.clone()
+            }]
+        }
+        fn attention_icon_pixmap(&self) -> Vec<ksni::Icon> {
+            vec![self.attention_icon.clone()]
         }
         fn tool_tip(&self) -> ksni::ToolTip {
             ksni::ToolTip {
@@ -168,19 +195,24 @@ mod imp {
         }
     }
 
-    pub fn spawn(image: Image, labels: Labels, out: Out) -> Option<Inner> {
-        // ARGB32, octets dans l'ordre du réseau.
+    /// ARGB32, octets dans l'ordre du réseau.
+    fn pixmap(image: Image) -> ksni::Icon {
         let mut data = image.rgba;
         for px in data.as_chunks_mut::<4>().0 {
             px.rotate_right(1);
         }
-        let icon = ksni::Icon {
+        ksni::Icon {
             width: image.width as i32,
             height: image.height as i32,
             data,
-        };
+        }
+    }
+
+    pub fn spawn(image: Image, attention: Image, labels: Labels, out: Out) -> Option<Inner> {
         let sni = Sni {
-            icon,
+            icon: pixmap(image),
+            attention_icon: pixmap(attention),
+            attention: false,
             labels,
             status: String::new(),
             out,
@@ -193,6 +225,10 @@ mod imp {
     pub fn set_status(inner: &Inner, status: &str) {
         let status = status.to_owned();
         inner.0.update(move |t| t.status = status);
+    }
+
+    pub fn set_attention(inner: &Inner, on: bool) {
+        inner.0.update(move |t| t.attention = on);
     }
 
     pub fn pump_messages() {}
@@ -216,6 +252,7 @@ mod imp {
     /// détruite et recréée sans l'emporter.
     pub struct Inner {
         status: Arc<Mutex<Option<String>>>,
+        attention: Arc<Mutex<Option<bool>>>,
         stop: Arc<AtomicBool>,
         thread: Option<std::thread::JoinHandle<()>>,
     }
@@ -235,18 +272,20 @@ mod imp {
         }
     }
 
-    pub fn spawn(image: Image, labels: Labels, out: Out) -> Option<Inner> {
+    pub fn spawn(image: Image, attention: Image, labels: Labels, out: Out) -> Option<Inner> {
         let status = Arc::new(Mutex::new(None::<String>));
+        let wanted = Arc::new(Mutex::new(None::<bool>));
         let stop = Arc::new(AtomicBool::new(false));
         let (ready_tx, ready_rx) = std::sync::mpsc::channel();
-        let (st, sp) = (Arc::clone(&status), Arc::clone(&stop));
+        let (st, at, sp) = (Arc::clone(&status), Arc::clone(&wanted), Arc::clone(&stop));
         let thread = std::thread::Builder::new()
             .name("bpm-tray".into())
-            .spawn(move || run(image, labels, out, st, sp, ready_tx))
+            .spawn(move || run(image, attention, labels, out, st, at, sp, ready_tx))
             .ok()?;
         match ready_rx.recv_timeout(Duration::from_secs(5)) {
             Ok(true) => Some(Inner {
                 status,
+                attention: wanted,
                 stop,
                 thread: Some(thread),
             }),
@@ -254,11 +293,14 @@ mod imp {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn run(
         image: Image,
+        attention: Image,
         labels: Labels,
         out: Out,
         status: Arc<Mutex<Option<String>>>,
+        wanted: Arc<Mutex<Option<bool>>>,
         stop: Arc<AtomicBool>,
         ready: std::sync::mpsc::Sender<bool>,
     ) {
@@ -275,7 +317,9 @@ mod imp {
             .append(&open)
             .and_then(|_| menu.append(&PredefinedMenuItem::separator()))
             .and_then(|_| menu.append(&quit));
-        let icon = tray_icon::Icon::from_rgba(image.rgba, image.width, image.height).ok();
+        let picture =
+            |i: &Image| tray_icon::Icon::from_rgba(i.rgba.clone(), i.width, i.height).ok();
+        let icon = picture(&image);
         let tray = match (built, icon) {
             (Ok(()), Some(icon)) => TrayIconBuilder::new()
                 .with_icon(icon)
@@ -325,6 +369,10 @@ mod imp {
             if let Some(s) = said {
                 let _ = tray.set_tooltip(Some(tooltip(&labels.title, &s)));
             }
+            let mark = wanted.lock().ok().and_then(|mut s| s.take());
+            if let Some(on) = mark {
+                let _ = tray.set_icon(picture(if on { &attention } else { &image }));
+            }
             std::thread::sleep(Duration::from_millis(50));
         }
         drop(tray);
@@ -333,6 +381,12 @@ mod imp {
     pub fn set_status(inner: &Inner, status: &str) {
         if let Ok(mut s) = inner.status.lock() {
             *s = Some(status.to_owned());
+        }
+    }
+
+    pub fn set_attention(inner: &Inner, on: bool) {
+        if let Ok(mut s) = inner.attention.lock() {
+            *s = Some(on);
         }
     }
 
@@ -355,9 +409,11 @@ mod imp {
 
     pub struct Inner;
 
-    pub fn spawn(_image: Image, _labels: Labels, _out: Out) -> Option<Inner> {
+    pub fn spawn(_image: Image, _attention: Image, _labels: Labels, _out: Out) -> Option<Inner> {
         None
     }
+
+    pub fn set_attention(_inner: &Inner, _on: bool) {}
 
     pub fn set_status(_inner: &Inner, _status: &str) {}
 

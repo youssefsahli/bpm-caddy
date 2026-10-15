@@ -358,6 +358,8 @@ struct Desk {
     /// La dernière fois qu'une icône n'a pas pu se poser.
     tray_failed: Option<std::time::Instant>,
     status: String,
+    /// La marque de l'icône telle qu'elle est posée.
+    attention: bool,
     autostart: Option<bool>,
     hooked: bool,
 }
@@ -372,6 +374,7 @@ impl Desk {
             tray: None,
             tray_failed: None,
             status: String::new(),
+            attention: false,
             autostart: None,
             hooked: hooked(),
         }
@@ -407,22 +410,28 @@ impl Desk {
                 .tray_failed
                 .is_none_or(|t| t.elapsed() > std::time::Duration::from_secs(60))
         {
-            let icon = motif::icon();
+            let picture = |icon: egui::IconData| bpm_tray::Image {
+                width: icon.width,
+                height: icon.height,
+                rgba: icon.rgba,
+            };
             let labels = bpm_tray::Labels {
                 title: "BPM-Caddy".to_owned(),
                 open: strings::tr("tray_open").to_owned(),
                 quit: strings::tr("tray_quit").to_owned(),
             };
-            let image = bpm_tray::Image {
-                width: icon.width,
-                height: icon.height,
-                rgba: icon.rgba,
-            };
-            match bpm_tray::Tray::spawn(image, labels, self.tx.clone(), self.wake()) {
+            match bpm_tray::Tray::spawn(
+                picture(motif::icon()),
+                picture(motif::icon_attention()),
+                labels,
+                self.tx.clone(),
+                self.wake(),
+            ) {
                 Some(tray) => {
                     let door = instance::serve(instance::file(), self.tx.clone(), self.wake());
                     self.tray = Some((tray, door));
                     self.status.clear();
+                    self.attention = false;
                     self.tray_failed = None;
                 }
                 None => self.tray_failed = Some(std::time::Instant::now()),
@@ -433,6 +442,11 @@ impl Desk {
             if status != self.status {
                 tray.set_status(&status);
                 self.status = status;
+            }
+            let attention = app.tray_attention();
+            if attention != self.attention {
+                tray.set_attention(attention);
+                self.attention = attention;
             }
         }
         let auto = app.wants_autostart();

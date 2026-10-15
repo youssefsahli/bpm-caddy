@@ -90813,6 +90813,15 @@ impl App {
 
     /// Ce que dit l'icône de la zone de notification : le poste, puis ce
     /// qui attend — les messages des patients non lus, la passerelle.
+    /// Un patient a écrit et personne n'a lu : l'icône porte sa marque.
+    pub fn tray_attention(&self) -> bool {
+        #[cfg(feature = "sync")]
+        if let State::Unlocked(session) = &self.state {
+            return session.pchat_unread.iter().any(|(_, n)| *n > 0);
+        }
+        false
+    }
+
     pub fn tray_status(&self) -> String {
         let State::Unlocked(session) = &self.state else {
             return tr("tray_locked_closed").to_owned();
