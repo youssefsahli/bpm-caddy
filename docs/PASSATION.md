@@ -1,4 +1,4 @@
-# Passation — 15/10/2026
+# Passation — 15/10/2026 (soir)
 
 Écrit pour reprendre sans l'ordinateur qui a servi.
 
@@ -118,7 +118,12 @@ bout ; mises à jour signées prêtes, éteintes ; conciliation : une dose
 doublée écrite avec des milliers à espaces se dit ; plafonds de la dose
 au poids ; « Rétablir » comparé à l'écran ; deux postes sous un même
 numéro dits — trois relectures, corrigées) a passé son smoke dans les
-quatre formes (2672b1c), étiquetée le 15/10.
+quatre formes (2672b1c), étiquetée le 15/10. La 0.437.0 (copie de la base sur
+un fil, pas de maintenance pendant une sortie de la base, un seul des
+deux postes jumeaux s'en va, la passerelle ne refuse plus les patients
+vers deux cent cinquante officines, `deploy/passerelle` — une relecture,
+corrigée) a passé son smoke dans les quatre formes (eced58b), étiquetée
+le 15/10.
 **La messagerie des patients, où elle en est.** Un avocat a répondu
 (14/10, résumé dans `docs/CHAT_PATIENT.md`) : pas d'HDS pour la
 passerelle, l'exploitant est sous-traitant (contrat), dossier technique
