@@ -112,8 +112,8 @@ construction, icône dans les `.exe`, démarrage contre le vrai registre ;
 marque de l'icône de notification pour un message de patient ;
 conditions de la passerelle livrée à accepter — `assets/passerelle-conditions.md`,
 vide ; DFG ancien dit sous le chiffre ; paquet sur un fil ; séances de
-synchronisation bornées — une relecture, huit points corrigés) : smoke
-lancé le 15/10.
+synchronisation bornées — une relecture, huit points corrigés) a passé
+son smoke dans les quatre formes (739cd58), étiquetée le 15/10.
 **La messagerie des patients, où elle en est.** Un avocat a répondu
 (14/10, résumé dans `docs/CHAT_PATIENT.md`) : pas d'HDS pour la
 passerelle, l'exploitant est sous-traitant (contrat), dossier technique
