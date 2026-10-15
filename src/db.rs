@@ -53791,6 +53791,26 @@ impl Db {
         Ok((gone, whole))
     }
 
+    /// **Rétablir la table que l'écran montrait** : seulement si ses cases
+    /// réécrites sont encore celles que `shown` porte. Sinon rien n'est
+    /// retiré et `Ok(None)` : un autre poste a écrit une case entre-temps,
+    /// qu'on relit avant de décider. Rend le nombre de cases rétablies.
+    pub fn reset_table_seen(
+        &self,
+        table_key: &str,
+        shown: &std::collections::HashMap<(usize, usize), String>,
+    ) -> Result<Option<usize>, String> {
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
+        if self.table_cells(table_key)? != *shown {
+            return Ok(None);
+        }
+        let n = tx
+            .execute("DELETE FROM table_cells WHERE table_key = ?1", [table_key])
+            .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(Some(n))
+    }
+
     /// Drop every edit of one table, returning it to the shipped text.
     /// Returns how many cells were reset.
     pub fn reset_table(&self, table_key: &str) -> Result<usize, String> {
@@ -67272,6 +67292,20 @@ mod tests {
         db.set_table_cell("IPP", 1, 2, "15 mg", "20 mg", "20 mg")
             .unwrap();
         assert_eq!(db.all_table_cells().unwrap().len(), 2);
+        // Rétablir contre ce que l'écran montrait : une case écrite
+        // ailleurs entre-temps arrête le geste.
+        let shown = db.table_cells("IPP").unwrap();
+        db.set_table_cell("IPP", 2, 1, "40 mg", "20 mg", "20 mg")
+            .unwrap();
+        assert_eq!(db.reset_table_seen("IPP", &shown).unwrap(), None);
+        assert_eq!(db.all_table_cells().unwrap().len(), 3);
+        let shown = db.table_cells("IPP").unwrap();
+        assert_eq!(db.reset_table_seen("IPP", &shown).unwrap(), Some(3));
+        assert!(db.all_table_cells().unwrap().is_empty());
+        db.set_table_cell("IPP", 0, 1, "25 mg", "20 mg", "20 mg")
+            .unwrap();
+        db.set_table_cell("IPP", 1, 2, "15 mg", "20 mg", "20 mg")
+            .unwrap();
         assert_eq!(db.reset_table("IPP").unwrap(), 2);
         assert!(db.all_table_cells().unwrap().is_empty());
 

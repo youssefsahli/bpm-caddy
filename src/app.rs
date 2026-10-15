@@ -65914,11 +65914,20 @@ impl App {
             }
         }
         if reset {
-            if let Err(e) = session.db.reset_table(t.short) {
-                session.error = Some(e);
+            // Contre ce que l'écran montrait : une case réécrite sur un
+            // autre poste entre-temps ne part pas sans avoir été vue.
+            match session.db.reset_table_seen(t.short, &session.table_cells) {
+                Ok(Some(_)) => {
+                    session.table_cells.clear();
+                    session.table_undo = None;
+                }
+                Ok(None) => {
+                    session.table_cells = session.db.table_cells(t.short).unwrap_or_default();
+                    session.table_undo = None;
+                    session.error = Some(session.stale_note("tables_reset_stale"));
+                }
+                Err(e) => session.error = Some(e),
             }
-            session.table_cells.clear();
-            session.table_undo = None;
             session.table_rev = session.table_rev.wrapping_add(1);
         }
         if let Some(err) = &session.error {
