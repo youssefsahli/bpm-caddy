@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.438.0] - 2026-10-16
+
 ### Added
 
 - **Patient messaging without a server** ("voie directe"). The patient's
