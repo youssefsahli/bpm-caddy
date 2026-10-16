@@ -1,4 +1,4 @@
-# Passation — 15/10/2026 (soir)
+# Passation — 16/10/2026
 
 Écrit pour reprendre sans l'ordinateur qui a servi.
 
@@ -123,7 +123,19 @@ un fil, pas de maintenance pendant une sortie de la base, un seul des
 deux postes jumeaux s'en va, la passerelle ne refuse plus les patients
 vers deux cent cinquante officines, `deploy/passerelle` — une relecture,
 corrigée) a passé son smoke dans les quatre formes (eced58b), étiquetée
-le 15/10.
+le 15/10. La 0.438.0 (messagerie des patients **sans serveur** : la page
+joint un poste en WebRTC, voie directe ; le tableau de l'officine ; **le
+réseau ouvert** — plus d'invitation ni de code entre officines, ce qui
+arrive est proposé, jamais appliqué ; les officines se trouvent par la
+DHT de BitTorrent ; « Ajouter » un poste d'un clic, un code comparé sur
+les deux écrans — quatre relectures dont trois de sécurité, corrigées)
+a passé son smoke dans les quatre formes (47b1841), étiquetée le 16/10.
+**Sans serveur, décidé le 16/10** : l'éditeur ne tient aucun serveur ;
+la question « qui tient la passerelle » ne se pose plus (la passerelle
+reste possible, tenue ou choisie par une officine). **À essayer en
+vrai** : deux officines sur deux réseaux distincts qui se trouvent par
+la DHT (box avec UPnP), la voie directe sous Chrome et Safari, et
+« Ajouter » entre deux vrais postes.
 **La messagerie des patients, où elle en est.** Un avocat a répondu
 (14/10, résumé dans `docs/CHAT_PATIENT.md`) : pas d'HDS pour la
 passerelle, l'exploitant est sous-traitant (contrat), dossier technique
