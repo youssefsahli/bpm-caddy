@@ -53,6 +53,9 @@ line in that test.
   hash), `direct` (the direct way: the page reaches a post over a WebRTC data
   channel with no server — the QR code carries the posts' DTLS
   fingerprint and addresses, the post answers ICE-lite, `str0m`),
+  `dht` (the open network beyond the local network: officines announce
+  their door under one topic of the BitTorrent mainline DHT and dial
+  each other — no server, `mainline`),
   `passerelle` (the optional stateless gateway that bridges the page's
   WebSocket to a waiting post and keeps an optional connection log;
   binary `bpm-passerelle`) and `patientpost` (a post answering pages by

@@ -1518,6 +1518,13 @@ officine inconnue tient au plus 1 Mo du journal, toutes ensemble 64 Mo.
 ouvert » arrête tout échange avec les officines non appairées ; « Rejoindre
 le réseau ouvert » le rouvre.
 
+**Au-delà du réseau local.** Le poste de référence demande à la box
+d'ouvrir la porte des officines (UPnP) et s'annonce sur la DHT publique
+de BitTorrent — un annuaire partagé sans serveur : il n'y paraît qu'une
+adresse, ni nom ni contenu. Toutes les demi-heures, il y trouve d'autres
+officines et en joint quelques-unes. Une officine dont la box refuse
+d'ouvrir le port joint les autres quand même.
+
 **Connexion au lancement.** Application ouverte, chaque officine répond
 aux autres (Options › Base, « Répondre aux officines appairées ») ; une
 officine du réseau local est jointe dès qu'elle s'annonce, sans adresse à

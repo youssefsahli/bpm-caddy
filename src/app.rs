@@ -9422,7 +9422,7 @@ impl Session {
                     self.conn_dirty = true;
                     ctx.request_repaint();
                 }
-                Ok(_) | Err(std::sync::mpsc::TryRecvError::Empty) => {
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
                     ctx.request_repaint_after(Duration::from_millis(500));
                 }
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
@@ -9444,7 +9444,10 @@ impl Session {
         self.net_next =
             Some(now + Duration::from_secs(u64::from(r.intervalle_minutes.max(1)) * 60));
         // Asked only when due: a setting is a query, not a frame's work.
-        if self.db.setting("net_trousseau").is_none() {
+        // Any network counts — the open one first of all.
+        if self.db.setting("net_trousseau").is_none()
+            && self.db.net_networks().map_or(true, |n| n.is_empty())
+        {
             return;
         }
         self.start_net_sync(config);
@@ -9462,7 +9465,6 @@ impl Session {
         let Some(path) = self.db.path() else {
             return;
         };
-        let (_answers_tx, answers_rx) = std::sync::mpsc::channel();
         self.net_auto = Some(crate::network::spawn(
             crate::network::Job::Dial {
                 device: device.to_owned(),
@@ -9470,8 +9472,6 @@ impl Session {
             path,
             self.password.clone(),
             config.pharmacy.name.clone(),
-            self.today.clone(),
-            answers_rx,
         ));
         self.log_connection(false, tr("conn_dial_asked"));
     }
@@ -9485,7 +9485,6 @@ impl Session {
             return;
         };
         let folder = config.reseau.dossier.trim();
-        let (_answers_tx, answers_rx) = std::sync::mpsc::channel();
         self.net_auto = Some(crate::network::spawn(
             crate::network::Job::Sync {
                 folder: (!folder.is_empty()).then(|| std::path::PathBuf::from(folder)),
@@ -9494,8 +9493,6 @@ impl Session {
             path,
             self.password.clone(),
             config.pharmacy.name.clone(),
-            self.today.clone(),
-            answers_rx,
         ));
     }
 
@@ -16772,14 +16769,7 @@ struct NetWindow {
     /// Pourquoi `summary` manque, quand la lecture a échoué — dit à
     /// l'écran plutôt que « illisible dans cette base ».
     read_error: Option<String>,
-    job: Option<(
-        std::sync::mpsc::Receiver<crate::network::Progress>,
-        std::sync::mpsc::Sender<bool>,
-    )>,
-    /// The code both officines compare, while the thread waits for an
-    /// answer.
-    code: Option<String>,
-    waiting: Option<String>,
+    job: Option<std::sync::mpsc::Receiver<crate::network::Progress>>,
     note: Option<(bool, String)>,
     /// A peer's name and address as typed, by device.
     edits: std::collections::HashMap<String, (String, String)>,
@@ -78767,11 +78757,9 @@ impl App {
         // What the thread said since the last frame.
         let mut finished = false;
         let mut introduced = None;
-        if let Some((rx, _)) = &w.job {
+        if let Some(rx) = &w.job {
             loop {
                 match rx.try_recv() {
-                    Ok(Progress::Waiting(at)) => w.waiting = Some(at),
-                    Ok(Progress::Code(code)) => w.code = Some(code),
                     Ok(Progress::Introduced(list)) => introduced = Some(list),
                     Ok(Progress::Done(said)) => {
                         w.note = Some((false, said));
@@ -78808,12 +78796,7 @@ impl App {
         };
         if finished {
             w.job = None;
-            w.code = None;
-            w.waiting = None;
             w.reread(&session.db);
-            if let Some((_, poke)) = &session.posts_auto {
-                let _ = poke.send(crate::postes::Poke::Inviting(0));
-            }
             session.reload_supply();
             // La vue des connexions promet de se relire à la fin d'une
             // tâche : celles de cette fenêtre comprises.
@@ -79351,17 +79334,13 @@ impl App {
             }
         }
         if let Some(job) = start {
-            let (answers_tx, answers_rx) = std::sync::mpsc::channel();
             let path = session.db.path().unwrap_or_default();
-            let rx = crate::network::spawn(
+            w.job = Some(crate::network::spawn(
                 job,
                 path,
                 session.password.clone(),
                 config.pharmacy.name.clone(),
-                session.today.clone(),
-                answers_rx,
-            );
-            w.job = Some((rx, answers_tx));
+            ));
             w.note = None;
         }
         if reread_net {
@@ -91791,7 +91770,6 @@ impl App {
                     let reachable = peers.iter().any(|p| !p.address.trim().is_empty());
                     if in_network && (!folder.is_empty() || reachable) {
                         let (tx, _rx) = std::sync::mpsc::channel();
-                        let (_ans_tx, ans_rx) = std::sync::mpsc::channel();
                         let _ = crate::network::run(
                             // Sans les adresses annoncées : la fermeture attend
                             // la fin de cette tâche.
@@ -91803,9 +91781,7 @@ impl App {
                             &path,
                             &s.password,
                             &self.config.pharmacy.name,
-                            &s.today,
                             &tx,
-                            &ans_rx,
                         );
                     }
                 }

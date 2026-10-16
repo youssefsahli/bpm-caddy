@@ -1180,10 +1180,6 @@ pub fn join(
 pub enum Poke {
     /// Synchroniser maintenant : quelqu'un a appuyé sur le bouton.
     Now,
-    /// Une invitation d'officine est ouverte sur ce port (0 : plus
-    /// aucune) — l'annonce de l'officine le dit, pour qu'une voisine la
-    /// rejoigne d'un clic au lieu de recopier une adresse.
-    Inviting(u16),
     Stop,
 }
 
@@ -1599,6 +1595,24 @@ fn auto(
     // porte ne coûte plus une dérivation de clé à chaque fois. Une porte
     // où les deux sont pris lâche la conversation aussitôt.
     let answers = (side.listen != 0).then(|| answerers(path, password, tx));
+    // **Le réseau ouvert au-delà du réseau local** (`dht.rs`) : le poste
+    // de référence seul — deux postes d'une officine se disputeraient le
+    // port du routeur, et l'officine est une. Arrêté avec ce fil.
+    let dht_on = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let _dht_off = Quiet(std::sync::Arc::clone(&dht_on));
+    if side.listen != 0 && db.seeds_here() {
+        let said = tx.clone();
+        crate::dht::spawn(
+            path.to_path_buf(),
+            password.to_owned(),
+            side.listen,
+            side.name.clone(),
+            dht_on,
+            move |line| {
+                let _ = said.send(Progress::Status(line));
+            },
+        );
+    }
     let mut knocks: Vec<(std::net::IpAddr, Instant)> = Vec::new();
     // Les officines appairées, relues de temps en temps : ce qu'une
     // annonce entendue fait apprendre, et qui on a déjà composé.
@@ -1618,7 +1632,6 @@ fn auto(
     let mut dialing_to: std::collections::HashSet<String> = Default::default();
     let (dial_done_tx, dial_done) = std::sync::mpsc::channel::<(String, std::net::IpAddr, bool)>();
     let dialing = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let mut inviting: u16 = 0;
     // Chaque voisine, l'adresse d'où elle s'est annoncée, et quand.
     let mut near: Vec<(crate::network::Nearby, std::net::IpAddr, Instant)> = Vec::new();
     let mut told_near: Vec<crate::network::Nearby> = Vec::new();
@@ -1699,11 +1712,6 @@ fn auto(
         match pokes.try_recv() {
             Ok(Poke::Stop) | Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
             Ok(Poke::Now) => now_asked = true,
-            Ok(Poke::Inviting(port)) => {
-                inviting = port;
-                // Dit tout de suite, pas au prochain tour d'annonce.
-                last_beacon = long_ago;
-            }
             Err(std::sync::mpsc::TryRecvError::Empty) => {}
         }
         let mut talked = false;
@@ -2090,8 +2098,7 @@ fn auto(
                 );
                 if let Some((device, name, place)) = &officine {
                     let listening = if net_door.is_some() { side.listen } else { 0 };
-                    let b =
-                        crate::network::officine_beacon(device, name, place, listening, inviting);
+                    let b = crate::network::officine_beacon(device, name, place, listening, 0);
                     let _ = u.send_to(b.as_bytes(), ("255.255.255.255", port));
                 }
                 last_beacon = Instant::now();

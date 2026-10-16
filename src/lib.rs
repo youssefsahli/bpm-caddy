@@ -33,6 +33,8 @@ pub mod cyp;
 pub mod date;
 pub mod db;
 #[cfg(feature = "sync")]
+pub mod dht;
+#[cfg(feature = "sync")]
 pub mod direct;
 pub mod dosing;
 pub mod elderly;

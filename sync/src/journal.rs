@@ -100,6 +100,9 @@ pub struct Journal {
     /// of them together.
     held: BTreeMap<DeviceId, usize>,
     held_total: usize,
+    /// Authors outside `trusted` that only their own budget limits — see
+    /// [`Journal::favour`].
+    favoured: BTreeSet<DeviceId>,
     /// Records refused for a limit: not asked for again.
     refused: BTreeSet<Hash>,
 }
@@ -211,7 +214,8 @@ impl Journal {
         self.limits = Some(limits);
     }
 
-    /// How many bytes the authors outside `trusted` hold here.
+    /// How many bytes the authors outside `trusted` hold here, those
+    /// [favoured](Journal::favour) left out — what the total binds.
     pub fn strangers_held(&self) -> usize {
         self.held_total
     }
@@ -231,12 +235,17 @@ impl Journal {
         if let (Some(limits), false) = (self.limits, self.trusts(&author)) {
             let size = record.encode().len();
             let theirs = self.held.get(&author).copied().unwrap_or(0);
-            if theirs + size > limits.per_author || self.strangers_held() + size > limits.total {
+            let favoured = self.favoured.contains(&author);
+            if theirs + size > limits.per_author
+                || (!favoured && self.held_total + size > limits.total)
+            {
                 self.refused.insert(id);
                 return false;
             }
             self.held.insert(author, theirs + size);
-            self.held_total += size;
+            if !favoured {
+                self.held_total += size;
+            }
         }
         if self.trusts(&record.author()) {
             self.high = self.high.max(record.lamport());
@@ -273,17 +282,38 @@ impl Journal {
             .map(Record::lamport)
             .max()
             .unwrap_or(0);
-        // What the strangers hold, counted again against the new set.
-        if self.limits.is_some() {
-            let mut held: BTreeMap<DeviceId, usize> = BTreeMap::new();
-            for r in self.records.values() {
-                if !self.trusts(&r.author()) {
-                    *held.entry(r.author()).or_default() += r.encode().len();
-                }
-            }
-            self.held_total = held.values().sum();
-            self.held = held;
+        self.recount();
+    }
+
+    /// **Authors this post chose to hear, though it does not trust their
+    /// clock** — the officines it met: each keeps its own budget, but the
+    /// total does not bind them. Without this, a crowd of throwaway
+    /// authors that filled the total first shut out, for good, every
+    /// officine met after them. Refusals already made are forgotten, so
+    /// what was refused is asked for again.
+    pub fn favour(&mut self, authors: impl IntoIterator<Item = DeviceId>) {
+        self.favoured = authors.into_iter().collect();
+        self.refused.clear();
+        self.recount();
+    }
+
+    /// What the strangers hold, counted again against the current sets.
+    fn recount(&mut self) {
+        if self.limits.is_none() {
+            return;
         }
+        let mut held: BTreeMap<DeviceId, usize> = BTreeMap::new();
+        for r in self.records.values() {
+            if !self.trusts(&r.author()) {
+                *held.entry(r.author()).or_default() += r.encode().len();
+            }
+        }
+        self.held_total = held
+            .iter()
+            .filter(|(a, _)| !self.favoured.contains(a))
+            .map(|(_, n)| n)
+            .sum();
+        self.held = held;
     }
 
     fn trusts(&self, author: &DeviceId) -> bool {
@@ -1071,5 +1101,22 @@ mod tests {
                 .unwrap();
         }
         assert_eq!(j.len(), 15);
+        // **An officine met later still gets in**: favoured, the total no
+        // longer binds it, its own budget does.
+        let late = Device::generate(&mut e);
+        let mut hers = Journal::new();
+        for _ in 0..3 {
+            hers.write(&late, &t, Stream::Reseau, &[9; 200], None, &mut e)
+                .unwrap();
+        }
+        for r in hers.records() {
+            j.insert(r.clone());
+        }
+        assert_eq!(j.records().filter(|r| r.author() == late.id()).count(), 0);
+        j.favour([late.id()]);
+        for r in hers.records() {
+            j.insert(r.clone());
+        }
+        assert_eq!(j.records().filter(|r| r.author() == late.id()).count(), 2);
     }
 }

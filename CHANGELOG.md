@@ -49,6 +49,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ouvert » turns it off; networks paired before keep working as they did.
   « Nouveau réseau… », « Inviter une officine… », « Rejoindre un autre
   réseau » and the map's invite and join buttons are gone.
+- **Officines find each other beyond the local network**, with no
+  server: the reference post opens the officines' port on the router
+  (UPnP) and announces it on the public BitTorrent DHT under one topic;
+  every half hour it looks there for other officines and dials a few,
+  each at most once every six hours. Only an IPv4 address appears in the
+  DHT. An officine whose router refuses still dials the others.
+- **The open network cannot be filled for good**: relayed authors take
+  at most half of the 256 places, officines met directly keep the rest
+  and are not bound by the journal's 64 MB total (each keeps its own
+  1 MB), and an officine silent for 90 days leaves the list and is not
+  put back by relayed records.
+- The old officine invitation (« Inviter une officine… », codes,
+  joining another network) is gone from the code as well as the screens.
 - **Adding a post of the officine takes one click.** On a post of the
   group, « Connexions » lists the posts heard on the local network
   outside the group, each with « Ajouter ». The other post opens its

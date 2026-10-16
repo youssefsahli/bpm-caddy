@@ -151,6 +151,16 @@ pub fn open_mapping(port: u16) -> Option<SocketAddrV4> {
     open_mapping_of(igd_next::PortMappingProtocol::TCP, port, "BPM-Caddy postes")
 }
 
+/// [`open_mapping`] pour la porte des officines (le réseau ouvert, que
+/// la DHT annonce) : le même geste, sous son propre nom dans la box.
+pub fn open_officine_mapping(port: u16) -> Option<SocketAddrV4> {
+    open_mapping_of(
+        igd_next::PortMappingProtocol::TCP,
+        port,
+        "BPM-Caddy officines",
+    )
+}
+
 /// [`open_mapping`] en UDP : la voie directe des patients (`direct.rs`).
 pub fn open_udp_mapping(port: u16) -> Option<SocketAddrV4> {
     open_mapping_of(

@@ -95,6 +95,9 @@ base64 = { version = "0.22", optional = true }
 # (sans tokio), chiffrement en Rust pur : rien à compiler en C pour
 # Windows, macOS ou Android.
 str0m = { version = "0.24.1", default-features = false, features = ["rust-crypto"], optional = true }
+# Le réseau ouvert au-delà du réseau local : les officines se trouvent par
+# la DHT publique de BitTorrent (`src/dht.rs`) — aucun serveur à tenir.
+mainline = { version = "=8.0.1", default-features = false, features = ["node"], optional = true }
 
 [features]
 # Le réseau d'officines (voir `src/network.rs`) est livré : il ne
@@ -115,6 +118,7 @@ sync = [
     "dep:sha1",
     "dep:base64",
     "dep:str0m",
+    "dep:mainline",
 ]
 # The desktop application: the egui window, Typst printing, the system
 # keyring and file dialogs. Everything else in the library — the base,

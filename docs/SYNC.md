@@ -698,6 +698,30 @@ sous l'identité annoncée. Une synchronisation compose au plus
 `OPEN_DIALS` officines du réseau ouvert, les plus récemment jointes
 d'abord. Pas de dossier d'échange pour lui.
 
+**Au-delà du réseau local : la DHT** (`src/dht.rs`). Le poste de
+référence demande au routeur d'ouvrir la porte des officines (UPnP,
+`reach::open_officine_mapping`) et, s'il l'obtient, s'annonce sous un
+sujet fixe de la DHT publique de BitTorrent ; toutes les demi-heures, il
+y cherche les autres et en compose au plus `dht::MOST_DIALS`, chacune au
+plus une fois par six heures (`network::dial_found` : qui répond est
+inscrite, sauf soi-même). Une officine sans porte ouverte compose quand
+même : une conversation va dans les deux sens. La DHT n'apprend qu'une
+adresse IPv4 sous ce sujet ; une adresse trouvée ne prouve rien, la
+conversation dit qui répond, et ce qu'elle apporte est lu comme tout le
+réseau ouvert. **Aucun serveur** : ni l'éditeur, ni une officine.
+
+**La liste ne se remplit pas pour de bon.** Les auteurs seulement relayés
+n'ont droit qu'à la moitié de `MOST_OPEN_MEMBERS` ; l'autre reste aux
+officines jointes ou qui ont frappé. Une officine muette depuis
+`OPEN_FORGET_DAYS` (90 jours) sort de la liste, et ses enregistrements
+encore relayés ne l'y remettent pas — une conversation directe, si. Les
+officines **rencontrées** (une conversation directe réussie) ont leur
+budget au journal, mais **le total ne les lie pas** (`Journal::favour`) :
+des identités jetables qui l'auraient rempli ne ferment pas la porte aux
+officines rencontrées ensuite. Au pire, 1 Mo pour chacune des 256, en plus
+des 64 Mo des autres. Rencontrée pour la première fois quand le total est
+plein, une officine est composée une seconde fois aussitôt, favorisée.
+
 ### 7.7 La boîte scellée : un message pour quelques officines
 
 Le trousseau du réseau ouvre tout ce que le réseau transporte, et toutes
