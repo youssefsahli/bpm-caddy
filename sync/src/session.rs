@@ -126,8 +126,12 @@ pub struct Session {
     /// Answering for any of several officines (networks): each with the
     /// posts it knows. The one used is the one the caller names in its
     /// `Hello` — see [`Session::answer_any`].
-    choices: Vec<(Trousseau, Vec<DeviceId>)>,
+    choices: Vec<(Trousseau, Vec<DeviceId>, bool)>,
     chosen: Option<usize>,
+    /// **Any post that holds the trousseau**, not only the known ones: an
+    /// open network, whose trousseau is published — see
+    /// [`Session::open_to_all`].
+    open: bool,
     /// The one post this conversation is for, when the caller knows it —
     /// a pairing started from a specific neighbour.
     expected: Option<DeviceId>,
@@ -218,6 +222,7 @@ impl Session {
             proof_due: false,
             choices: Vec::new(),
             chosen: None,
+            open: false,
             expected: None,
             to_open: false,
             welcome: None,
@@ -299,10 +304,36 @@ impl Session {
     /// be a post that network knows. Then [`Session::chosen`] says which,
     /// and [`drive_any`] opens the exchange on that network's journal.
     pub fn answer_any(device: &Device, networks: Vec<(Trousseau, Vec<DeviceId>)>) -> Result<Self> {
+        Self::answer_any_open(
+            device,
+            networks.into_iter().map(|(t, k)| (t, k, false)).collect(),
+        )
+    }
+
+    /// [`Session::answer_any`], where some networks are **open**
+    /// (`true`): any caller that names one of those is answered, known or
+    /// not — see [`Session::open_to_all`].
+    pub fn answer_any_open(
+        device: &Device,
+        networks: Vec<(Trousseau, Vec<DeviceId>, bool)>,
+    ) -> Result<Self> {
         let first = networks.first().ok_or(Error::Protocol)?.0.clone();
         let mut s = Self::new(device, Some(&first), Intent::Sync, false, &[])?;
         s.choices = networks;
         Ok(s)
+    }
+
+    /// **An ordinary sync with any post that holds the trousseau**, known
+    /// or not: for an open network, whose trousseau is published and
+    /// which anybody may join. What such a conversation brings is then
+    /// the reader's to weigh — nothing here makes a stranger's record
+    /// count for more than a record. Only a sync takes it.
+    pub fn open_to_all(mut self) -> Result<Self> {
+        if self.intent != Intent::Sync {
+            return Err(Error::Protocol);
+        }
+        self.open = true;
+        Ok(self)
     }
 
     /// **Only this post, or nobody**: a pairing started from one
@@ -635,16 +666,16 @@ impl Session {
             Intent::Sync if !self.choices.is_empty() => {
                 // The network the caller names, if it is one of ours and
                 // knows this caller.
-                let found = self
-                    .choices
-                    .iter()
-                    .position(|(t, known)| Some(t.name()) == officine && known.contains(&device));
+                let found = self.choices.iter().position(|(t, known, open)| {
+                    Some(t.name()) == officine && (*open || known.contains(&device))
+                });
                 let Some(i) = found else {
                     meter.refuse(Error::Unknown);
                     return Err(Error::Unknown);
                 };
                 self.trousseau = Some(self.choices[i].0.clone());
                 self.known = self.choices[i].1.clone();
+                self.open = self.choices[i].2;
                 self.chosen = Some(i);
                 self.to_open = true;
                 self.phase = Phase::Exchange;
@@ -658,7 +689,9 @@ impl Session {
                 // A post answering for several networks names none in its
                 // `Hello` (see `answer_any`): it is the caller's officine
                 // that chooses, and the answering end checks it.
-                if !self.known.contains(&device) || (officine.is_some() && officine != mine) {
+                if !(self.open || self.known.contains(&device))
+                    || (officine.is_some() && officine != mine)
+                {
                     meter.refuse(Error::Unknown);
                     return Err(Error::Unknown);
                 }
@@ -1835,6 +1868,76 @@ mod tests {
         let mut nobody = Journal::new();
         let (a, _) = run(&caller, &ta, &mut nobody, &mut journals);
         assert!(a.is_err(), "inconnu du réseau qu'il nomme");
+    }
+
+    /// **An open network answers anybody who holds its trousseau**, and
+    /// an open caller talks to any door — while a closed network beside
+    /// it at the same door still refuses the stranger, and an open
+    /// session is a sync and nothing else.
+    #[test]
+    fn an_open_network_talks_to_strangers_and_only_syncs() {
+        let (closed, open) = (officine(5), officine(6));
+        let mut e = Counted(81);
+        let door = Device::generate(&mut e);
+        let stranger = Device::generate(&mut e);
+        let mut theirs = Journal::new();
+        theirs
+            .write(&stranger, &open, Stream::Reseau, b"ouvert", None, &mut e)
+            .unwrap();
+        let mut journals = [Journal::new(), Journal::new()];
+        let run = |t: &Trousseau, theirs: &mut Journal, journals: &mut [Journal]| {
+            use crate::link::{dial, Door};
+            let patience = std::time::Duration::from_secs(20);
+            let door_link = Door::open("127.0.0.1:0").unwrap();
+            let address = door_link.address().unwrap().to_string();
+            let mut answering = Session::answer_any_open(
+                &door,
+                vec![
+                    (closed.clone(), vec![], false),
+                    (open.clone(), vec![], true),
+                ],
+            )
+            .unwrap();
+            let mut calling = Session::new(&stranger, Some(t), Intent::Sync, true, &[])
+                .unwrap()
+                .open_to_all()
+                .unwrap();
+            std::thread::scope(|sc| {
+                let a = sc.spawn(|| {
+                    let mut link = door_link.accept(patience).unwrap();
+                    let mut load = |i: usize| std::mem::take(&mut journals[i]);
+                    drive_any(&mut answering, &mut link, &mut load, &mut Meter::new()).map(
+                        |(i, j)| {
+                            journals[i] = j;
+                            i
+                        },
+                    )
+                });
+                let mut link = dial(&address, patience).unwrap();
+                let b = drive(
+                    &mut calling,
+                    &mut link,
+                    theirs,
+                    &mut Meter::new(),
+                    &mut |_| false,
+                );
+                (a.join().unwrap(), b)
+            })
+        };
+        let (a, b) = run(&open, &mut theirs, &mut journals);
+        assert_eq!(a, Ok(1), "le réseau ouvert");
+        assert!(b.is_ok());
+        assert_eq!(journals[1].len(), 1);
+        let mut nothing = Journal::new();
+        let (a, _) = run(&closed, &mut nothing, &mut journals);
+        assert!(a.is_err(), "le réseau fermé, à la même porte");
+        assert_eq!(journals[0].len(), 0);
+        // Opening is for a sync only.
+        let t = officine(6);
+        let invite = Session::new(&door, Some(&t), Intent::Invite, true, &[]).unwrap();
+        assert!(invite.open_to_all().is_err());
+        let join = Session::new(&door, None, Intent::Join, true, &[]).unwrap();
+        assert!(join.open_to_all().is_err());
     }
 
     /// **A pairing meant for one post refuses another**, before any code.

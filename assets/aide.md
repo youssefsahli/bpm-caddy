@@ -1502,34 +1502,35 @@ patient**, un dossier, le
 registre ou la caisse —, chiffrés et signés, sous une clé propre au
 réseau.
 
-Une officine **invite** les autres — sa première invitation crée le
-réseau : « Inviter une officine… » ouvre une invitation de 5 minutes et affiche un **code
-d'invitation** (`K7QM-2XPA-9D3F-7H1Q@192.168.1.20:7742`), à transmettre
-par téléphone ou en personne. L'autre officine le colle dans
-« Rejoindre » ; rien d'autre à saisir ni à comparer. Code à usage
-unique : un code erroné ferme l'invitation, une officine sans code est
-refusée. Les deux officines doivent être à jour.
+**Le réseau ouvert.** Toute officine BPM-Caddy en est d'elle-même, sans
+invitation ni code à comparer : « Réseau d'officines… » le montre, avec
+les **officines rencontrées**. Une officine présente sur le réseau local
+est jointe dès qu'elle s'annonce ; une officine qui frappe y est
+inscrite, et paraît dans la liste. Ce qui arrive du réseau ouvert est
+**proposé, jamais appliqué de soi-même** : une version de fiche, de
+préparation ou de protocole attend dans « En ligne… », à prendre ou à
+comparer ; une rupture ou une substitution entre au journal sous le nom
+de l'officine qui l'a signée. Les messages restent scellés pour leurs
+seules destinataires, et **jamais un patient** ne quitte l'officine :
+ce qui y part n'emporte ni la note ni les initiales de qui l'a noté. Une
+officine inconnue tient au plus 1 Mo du journal, toutes ensemble 64 Mo.
+« × » écarte une officine : elle n'est plus lue. « Quitter le réseau
+ouvert » arrête tout échange avec les officines non appairées ; « Rejoindre
+le réseau ouvert » le rouvre.
 
-**Connexion au lancement.** Application ouverte, les officines appairées
-se connectent automatiquement : chacune répond aux siennes (Options ›
-Base, « Répondre aux officines appairées »), et une officine appairée
-présente sur le réseau local est jointe dès qu'elle s'annonce, sans
-adresse à saisir. Les autres ne reçoivent aucune réponse. Entre deux
-sites : une officine joignable de l'extérieur (routeur, VPN) déclare son
-adresse dans la fenêtre du réseau (« Adresse externe ») ; ses officines
-appairées l'apprennent et s'y connectent au lancement.
+**Connexion au lancement.** Application ouverte, chaque officine répond
+aux autres (Options › Base, « Répondre aux officines appairées ») ; une
+officine du réseau local est jointe dès qu'elle s'annonce, sans adresse à
+saisir. Entre deux sites : une officine joignable de l'extérieur
+(routeur, VPN) déclare son adresse dans la fenêtre du réseau (« Adresse
+externe ») ; les autres l'apprennent et s'y connectent.
 
 **Les officines voisines.** Chaque officine s'annonce sur le réseau
 local : nom, ville et empreinte, rien d'autre (Options › Base, « Annoncer
 l'officine »). La carte des connexions les place sur l'arc « À portée ».
 Chaque officine y porte **ses initiales dans une couleur tirée de son
-empreinte**, identiques sur chaque poste. Un clic propose **Inviter cette
-officine** (l'invitation apparaît sur sa carte), **Créer un réseau et
-l'inviter** quand l'officine n'en a pas encore, ou **Rejoindre son
-réseau** quand elle invite. Nom déclaré, non vérifié : ces invitations
-n'ont pas de code d'invitation, et les deux officines comparent par
-téléphone un code de cinq groupes. Un code identique des deux côtés
-garantit l'absence d'intermédiaire.
+empreinte**, identiques sur chaque poste. Nom déclaré, non vérifié :
+c'est l'empreinte, en cinq groupes, qui dit de quelle officine il s'agit.
 
 La **synchronisation** se fait par un bouton, et à la fermeture si le
 poste est configuré ainsi (Options › Base). Deux modes : connexion
@@ -1542,19 +1543,14 @@ chiffrées.
 Retirer une officine arrête ses envois ; ses envois antérieurs restent
 au journal.
 
-**Plusieurs réseaux.** Une officine peut être de plusieurs réseaux à la
-fois — son groupement, une garde de secteur, ou un simple lien avec une
-autre officine, qui est un réseau à deux. « Nouveau réseau… » en crée un
-(puis « Inviter une officine… » y fait entrer chacune, avec son code
-d'invitation) ; « Rejoindre un autre réseau » rejoint celui d'une officine
-qui invite, sans quitter les autres. Un onglet par réseau : ses
-officines, son dossier d'échange (plusieurs réseaux peuvent partager le
-même dossier sans se lire), et **ce qui y est partagé** — ruptures,
-versions des fiches et du contenu, valeurs sourcées — réglé réseau par
-réseau. Les messages et les fichiers vont toujours aux seules officines
-choisies, par le réseau qui les réunit. « Quitter ce réseau » retire sa
-clé et ses enregistrements ; les autres réseaux ne sont pas modifiés. La carte
-des connexions montre chaque réseau sur son arc, avec son nom.
+**Réseaux appairés.** Les réseaux créés par invitation avant le réseau
+ouvert restent, un onglet chacun : leurs officines, leur dossier
+d'échange, **ce qui y est partagé** — réglé réseau par réseau — et leurs
+versions, qui s'y appliquent comme avant. Une officine d'un réseau
+appairé est lue là, sous le nom qu'on lui a donné, et pas une seconde
+fois au réseau ouvert. « Quitter ce réseau » retire sa clé et ses
+enregistrements. La carte des connexions montre chaque réseau sur son
+arc, avec son nom.
 
 **Suivi de chaque officine.** Sous chaque officine appairée, la liste
 indique le nom sous lequel elle signe, le nombre d'enregistrements reçus
@@ -1613,8 +1609,17 @@ fiches, réglages. « Postes de l'officine… », dans Options › Base. Les
 le réseau d'officines a sa propre clé et n'accède à aucune de ces
 données.
 
-**Relier deux postes, pas à pas.** Un poste hors groupe indique dans
-Connexions les postes détectés et la marche à suivre :
+**Ajouter un poste, d'un clic.** Sur un poste du groupe, Connexions
+liste les postes entendus sur le réseau local hors du groupe ;
+« Ajouter », à côté de l'un d'eux, le lui propose. Sur ce poste, la
+fenêtre des postes s'ouvre d'elle-même : « Rejoindre », puis un code de
+cinq groupes s'affiche **sur les deux écrans** — identique, on l'accepte
+des deux côtés. Rien à taper ; un autre poste qui se présenterait à sa
+place est refusé avant tout code.
+
+**Relier deux postes avec un code**, pour un premier poste, un poste
+qui n'entend pas les autres ou un téléphone. Un poste hors groupe
+indique dans Connexions les postes détectés et la marche à suivre :
 
 - Sur le premier poste de l'officine, ou un poste du groupe :
   « Postes de l'officine… » puis « Inviter un poste… » (ou, sur la

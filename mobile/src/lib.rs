@@ -349,8 +349,18 @@ impl Caddy {
         })?;
         let db = self.db();
         // Un code d'invitation porte déjà la preuve : rien à comparer.
-        let (post, report) =
-            postes::join(&db, &address, &name, ticket, true, &today, &mut |_| false)?;
+        let (post, report) = postes::join(
+            &db,
+            &address,
+            &postes::JoinAs {
+                name: &name,
+                ticket,
+                expect: None,
+                companion: true,
+            },
+            &today,
+            &mut |_| false,
+        )?;
         drop(db);
         self.forget_cards();
         Ok(bpm_caddy::strings::trn(

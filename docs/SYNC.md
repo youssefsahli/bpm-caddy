@@ -652,6 +652,52 @@ enregistrements **que sa clé ouvre**. L'identité de l'appareil et sa clé
 de boîte sont les mêmes partout. Un message part par chaque réseau qui
 compte un de ses destinataires, scellé pour ceux de ce réseau.
 
+### 7.6 ter Le réseau ouvert (2026-10)
+
+Un réseau de plus, que toute officine rejoint d'elle-même (`network::join_open`,
+au déverrouillage du poste de référence) sauf quand elle l'a quitté
+(`settings.net_ouvert_quitte`). Sa clé est **publique** : tirée par
+`blake3::derive_key` d'un texte fixe, la même partout. Elle ne protège
+donc pas ce qui y circule des autres officines — ce n'est pas son rôle :
+y circule ce qu'une officine dit à toutes. Ce qui protège :
+
+- **Rien ne s'applique de soi-même.** `Net::absorb` range les versions par
+  `receive_card_edits_offered` : au journal des versions, proposées par
+  « En ligne », jamais écrites dans une fiche. Les relais offerts et
+  demandés n'y sont pas lus.
+- **Seule l'officine règle son horloge** (`Journal::trust([moi])`) : un rang
+  de Lamport au plafond, d'où qu'il vienne, ne brouille pas l'ordre.
+- **Une correction ne vaut que de son auteur** (`trusted_view`, la règle des
+  autres réseaux).
+- **Un budget par inconnue** (`Journal::limit_strangers`, `OPEN_LIMITS`) :
+  1 Mo par auteur, 64 Mo en tout ; un enregistrement de trop est refusé et
+  n'est plus demandé. Les auteurs de confiance — l'officine elle-même — ne
+  comptent pas.
+- **La session ne s'ouvre qu'à la synchronisation** (`Session::open_to_all`,
+  `Session::answer_any_open`) : jamais à une invitation ni à un appairage.
+  Un réseau fermé, à la même porte, refuse toujours l'inconnue.
+- **Une officine écartée n'est plus lue**, et ne s'inscrit plus.
+- Une officine d'un autre réseau de l'officine est lue là, pas au réseau
+  ouvert : pas deux fois, et sous le nom qu'on lui a donné.
+- **Seuls les membres sont lus** (au plus `MOST_OPEN_MEMBERS`) : au-delà,
+  un auteur reste au journal, borné, sans écrire une ligne en base.
+- **Une source porte l'empreinte** (« Nom (XXXX XXXX) »), et chaque
+  identifiant reçu est préfixé de l'auteur (`o<16 hex>:`) : une inconnue
+  ne signe pas du nom d'une autre, ne prend pas la place d'un numéro
+  d'une autre — ni de celle-ci —, ne retire pas ce qu'elle n'a pas écrit.
+- **Ce qui y part est dépouillé** : ni note ni initiales aux ruptures,
+  pas d'initiales aux versions, ni listes de contrôle, ni adresse, ni
+  relais. Une adresse annoncée n'y est pas lue : on ne compose que là où
+  l'officine a déjà répondu.
+
+Les officines qui y parlent sont inscrites (`add_open_member`, au plus
+`MOST_OPEN_MEMBERS`) : celle qui frappe, celle qu'on joint, l'auteur d'un
+enregistrement relayé. Sur le réseau local, toute officine qui s'annonce
+est composée (`dial_open`) et n'est inscrite qu'une fois qu'elle a répondu
+sous l'identité annoncée. Une synchronisation compose au plus
+`OPEN_DIALS` officines du réseau ouvert, les plus récemment jointes
+d'abord. Pas de dossier d'échange pour lui.
+
 ### 7.7 La boîte scellée : un message pour quelques officines
 
 Le trousseau du réseau ouvre tout ce que le réseau transporte, et toutes

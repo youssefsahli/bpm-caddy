@@ -5940,6 +5940,10 @@ struct Session {
     /// The posts heard on the local network, as the thread last said.
     #[cfg(feature = "sync")]
     posts_peers: Vec<crate::postes::PeerSeen>,
+    /// Les postes qui ont proposé d'ajouter celui-ci : la fenêtre ne
+    /// s'ouvre d'elle-même qu'une fois pour chacun.
+    #[cfg(feature = "sync")]
+    posts_asked: std::collections::HashSet<String>,
     /// Les officines qui s'annoncent sur le réseau local, d'après le fil
     /// automatique — la carte des connexions les pose « à portée ».
     #[cfg(feature = "sync")]
@@ -6614,6 +6618,10 @@ impl Session {
         // the others learn which versions are in service (`other_versions`).
         let _ = db.note_version();
         if db.seeds_here() {
+            // **Le réseau ouvert**, rejoint de lui-même — sauf quitté :
+            // l'officine est d'emblée prête à parler aux autres.
+            #[cfg(feature = "sync")]
+            let _ = crate::network::join_open(&db, &opening_day);
             // First unlock of a fresh base: starter drug cards (names, DCI,
             // textbook antidotes). Non-fatal if it fails.
             let _ = db.seed_drugs_if_empty();
@@ -6997,6 +7005,8 @@ impl Session {
             posts_status: None,
             #[cfg(feature = "sync")]
             posts_peers: Vec::new(),
+            #[cfg(feature = "sync")]
+            posts_asked: Default::default(),
             #[cfg(feature = "sync")]
             near_officines: Vec::new(),
             #[cfg(feature = "sync")]
@@ -9543,7 +9553,27 @@ impl Session {
                     // connexions et la marque de la barre se relisent.
                     self.conn_dirty = true;
                 }
-                crate::postes::Progress::Peers(peers) => self.posts_peers = peers,
+                crate::postes::Progress::Peers(peers) => {
+                    // **Un poste du groupe propose d'ajouter celui-ci** :
+                    // la fenêtre des postes s'ouvre d'elle-même, une fois
+                    // par poste qui le propose — c'est là qu'on accepte.
+                    let asking = peers
+                        .iter()
+                        .find(|p| p.invites_me && p.invite_tag == crate::postes::NO_CODE)
+                        .map(|p| p.device.clone());
+                    if let Some(device) = asking {
+                        if self.posts_window.is_none()
+                            && self.posts_asked.insert(device)
+                            && self.db.sync_local("trousseau").is_none()
+                        {
+                            self.posts_window = Some(PostsWindow {
+                                summary: PostsSummary::read(&self.db).ok(),
+                                ..PostsWindow::default()
+                            });
+                        }
+                    }
+                    self.posts_peers = peers;
+                }
                 crate::postes::Progress::Officines(near) => {
                     // **Une voisine qui vient d'ouvrir une invitation** se
                     // dit dans la barre d'état : on n'attend pas que
@@ -16241,8 +16271,13 @@ impl PostsSummary {
 
 #[cfg(feature = "sync")]
 impl NetWindow {
+    /// Ouverte sur le réseau ouvert quand l'officine en est : c'est là
+    /// qu'elle parle à toutes.
     fn opened(db: &Db) -> Self {
         let mut w = Self::default();
+        if crate::network::in_open(db) {
+            w.network = crate::network::open_id();
+        }
         w.reread(db);
         w
     }
@@ -16256,6 +16291,13 @@ impl NetWindow {
                 .is_ok_and(|n| n.iter().any(|n| n.id == self.network))
         {
             self.network.clear();
+        }
+        // Sans réseau principal, le premier des autres — le réseau ouvert,
+        // d'ordinaire : c'est là que l'officine parle.
+        if self.network.is_empty() && db.setting("net_trousseau").is_none() {
+            if let Some(n) = db.net_networks().ok().and_then(|n| n.into_iter().next()) {
+                self.network = n.id;
+            }
         }
         match NetSummary::read_for(db, &self.network) {
             Ok(s) => {
@@ -16739,12 +16781,8 @@ struct NetWindow {
     code: Option<String>,
     waiting: Option<String>,
     note: Option<(bool, String)>,
-    join_address: String,
     /// A peer's name and address as typed, by device.
     edits: std::collections::HashMap<String, (String, String)>,
-    /// Le nom d'un réseau à créer, et le formulaire ouvert.
-    new_label: String,
-    new_open: bool,
     /// Ce qu'on tape pour le réseau montré : son nom, son dossier.
     edit_label: String,
     edit_folder: String,
@@ -16774,6 +16812,10 @@ struct NetSummary {
     label: String,
     folder: String,
     shares: db::NetShares,
+    /// Le réseau lu est le réseau ouvert.
+    open: bool,
+    /// L'officine est du réseau ouvert.
+    open_joined: bool,
 }
 
 /// Une messagerie de démonstration : une conversation de toute l'équipe,
@@ -17142,8 +17184,12 @@ impl NetSummary {
         if db.setting("net_trousseau").is_some() {
             networks.push((String::new(), tr("net_principal").to_owned()));
         }
+        let mut open_joined = false;
         for n in db.net_networks()? {
-            let label = if n.label.trim().is_empty() {
+            let label = if crate::network::is_open(&n.id) {
+                open_joined = true;
+                tr("net_open_label").to_owned()
+            } else if n.label.trim().is_empty() {
                 trf("net_unnamed", crate::network::network_groups_of(&n.id))
             } else {
                 n.label.trim().to_owned()
@@ -17151,6 +17197,8 @@ impl NetSummary {
             networks.push((n.id, label));
         }
         Ok(Self {
+            open: net.open,
+            open_joined,
             in_network: net.in_network(),
             groups: net.groups(),
             network: net.network_groups(),
@@ -76323,6 +76371,7 @@ impl App {
                 return;
             };
             let mut reread = false;
+            let mut add_post: Option<String> = None;
             // 1 — Les postes.
             motif::panel(ui, panes[0], Some(tr("conn_posts")), |ui| {
                 ui.spacing_mut().scroll.floating = false;
@@ -76346,7 +76395,11 @@ impl App {
                             let inviting = peers.iter().find(|h| h.invites_me);
                             let group: Vec<&crate::postes::PeerSeen> =
                                 peers.iter().filter(|h| !h.alone).collect();
-                            let (line, button) = if let Some(h) = inviting {
+                            let (line, button) = if let Some(h) =
+                                inviting.filter(|h| h.invite_tag == crate::postes::NO_CODE)
+                            {
+                                (trf("posts_guide_asked", &h.address), tr("posts_open"))
+                            } else if let Some(h) = inviting {
                                 (
                                     trf("conn_alone_invited", &h.address),
                                     tr("conn_alone_enter_code"),
@@ -76434,7 +76487,19 @@ impl App {
                         if !strangers.is_empty() {
                             ui.label(small(ui, tr("conn_strangers").to_owned()));
                             for h in strangers {
-                                ui.label(small(ui, h.address.clone()));
+                                // **Un poste seul s'ajoute d'un clic** : il
+                                // le confirme sur son écran, et les deux
+                                // montrent le même code.
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.label(small(ui, h.address.clone()));
+                                    if h.alone
+                                        && motif::button(ui, tr("conn_post_add"))
+                                            .on_hover_text(tr("conn_post_add_tooltip"))
+                                            .clicked()
+                                    {
+                                        add_post = Some(h.device.clone());
+                                    }
+                                });
                             }
                         }
                         ui.add_space(6.0);
@@ -76708,6 +76773,14 @@ impl App {
             }
             if reread {
                 session.conn_dirty = true;
+            }
+            if let (Some(target), true) = (add_post, session.posts_window.is_none()) {
+                session.posts_window = Some(PostsWindow {
+                    summary: PostsSummary::read(&session.db).ok(),
+                    invite_now: true,
+                    invite_target: Some(target),
+                    ..PostsWindow::default()
+                });
             }
             if let Some(entry) = open_entry {
                 session.entry_versions = Some(entry);
@@ -77312,15 +77385,12 @@ impl App {
         let mut write_net: Option<String> = None;
         let mut file_net: Option<String> = None;
         let mut dial: Option<String> = None;
-        let mut join_near: Option<String> = None;
-        let mut invite_near = false;
         let mut invite_post: Option<String> = None;
-        let mut create_then_invite = false;
-        let mut near_device: Option<String> = None;
+        let mut join_open = false;
         let mut adopt: Option<(String, String, String)> = None;
         let mut dismiss: Option<(String, String)> = None;
         let mut arm: Option<String> = None;
-        let in_network = sum.net.as_ref().is_ok_and(|n| n.in_network);
+        let open_joined = sum.net.as_ref().is_ok_and(|n| n.open_joined);
         motif::panel(
             ui,
             side_rect,
@@ -77615,11 +77685,10 @@ impl App {
                                     }
                                 });
                             }
-                            // **Une voisine** : ce qu'elle dit d'elle, et
-                            // les deux façons de se lier — la rejoindre
-                            // quand elle invite, l'inviter sinon. Dans les
-                            // deux cas, le code se compare au téléphone :
-                            // une annonce ne prouve rien de qui l'envoie.
+                            // **Une voisine** : ce qu'elle dit d'elle. Au
+                            // réseau ouvert, rien à faire — elle est jointe
+                            // d'elle-même, et paraît parmi les officines
+                            // rencontrées une fois qu'elle a répondu.
                             NodeKind::Nearby => {
                                 let near =
                                     session.near_officines.iter().find(|x| x.device == n.device);
@@ -77628,44 +77697,25 @@ impl App {
                                 }
                                 ui.label(small(ui, crate::peer_groups(&n.device)));
                                 ui.add(
-                                    egui::Label::new(small(ui, tr("conn_near_note").to_owned()))
-                                        .wrap(),
+                                    egui::Label::new(small(
+                                        ui,
+                                        tr(if open_joined {
+                                            "conn_near_open"
+                                        } else {
+                                            "conn_near_open_off"
+                                        })
+                                        .to_owned(),
+                                    ))
+                                    .wrap(),
                                 );
-                                ui.add_space(4.0);
-                                ui.horizontal_wrapped(|ui| {
-                                    if let Some(address) = near.and_then(|x| x.invite.clone()) {
-                                        if motif::button(ui, tr("conn_near_join"))
-                                            .on_hover_text(tr("conn_near_join_tooltip"))
-                                            .clicked()
-                                        {
-                                            join_near = Some(address);
-                                            near_device = Some(n.device.clone());
-                                        }
-                                    }
-                                    if in_network
-                                        && motif::button(ui, tr("conn_near_invite"))
-                                            .on_hover_text(tr("conn_near_invite_tooltip"))
-                                            .clicked()
+                                if !open_joined {
+                                    ui.add_space(4.0);
+                                    if motif::button(ui, tr("net_open_join"))
+                                        .on_hover_text(tr("net_open_join_tooltip"))
+                                        .clicked()
                                     {
-                                        invite_near = true;
-                                        near_device = Some(n.device.clone());
+                                        join_open = true;
                                     }
-                                    // Sans réseau encore : le créer et
-                                    // l'inviter, d'un seul clic.
-                                    if !in_network
-                                        && motif::button(ui, tr("conn_near_create_invite"))
-                                            .on_hover_text(tr("conn_near_create_invite_tooltip"))
-                                            .clicked()
-                                    {
-                                        create_then_invite = true;
-                                        near_device = Some(n.device.clone());
-                                    }
-                                });
-                                if !in_network && near.is_some_and(|x| x.invite.is_none()) {
-                                    ui.add(
-                                        egui::Label::new(small(ui, tr("conn_near_ask").to_owned()))
-                                            .wrap(),
-                                    );
                                 }
                             }
                         }
@@ -77730,38 +77780,12 @@ impl App {
                 ..PostsWindow::default()
             });
         }
-        if create_then_invite {
-            match crate::network::Net::create(&session.db) {
-                Ok(()) => {
-                    invite_near = true;
-                    session.conn_dirty = true;
-                }
+        if join_open {
+            match crate::network::set_open(&session.db, true, &session.today) {
+                Ok(()) => session.log_connection(false, tr("net_open_joined")),
                 Err(e) => session.log_connection(true, &e),
             }
-        }
-        // Se lier à une voisine passe par la fenêtre du réseau : c'est là
-        // que le code se compare, et que la tâche se suit.
-        if join_near.is_some() || invite_near {
-            if session.net_window.is_none() {
-                session.net_window = Some(NetWindow::opened(&session.db));
-            }
-            if let Some(w) = &mut session.net_window {
-                if let Some(address) = join_near {
-                    w.join_address = address.clone();
-                    w.pending = Some(crate::network::Job::Join {
-                        address,
-                        ticket: None,
-                        expect: near_device.clone(),
-                    });
-                } else {
-                    w.pending = Some(crate::network::Job::Invite {
-                        port: config.reseau.port,
-                        network: w.network.clone(),
-                        nearby: true,
-                        expect: near_device.clone(),
-                    });
-                }
-            }
+            session.conn_dirty = true;
         }
         if let Some(device) = write_net {
             let _ = session.write_to_officine(&device);
@@ -78044,7 +78068,20 @@ impl App {
                                 }
                             }
                         }
-                        if let Some(code) = &w.waiting {
+                        // **« Ajouter » n'a pas de code** : l'autre poste
+                        // accepte sur son écran, et les deux comparent
+                        // ensuite le code qui s'affiche des deux côtés.
+                        if w.waiting.as_ref().is_some_and(|c| !c.contains('@')) {
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(tr("posts_waiting_asked"))
+                                        .strong()
+                                        .color(motif::accent()),
+                                )
+                                .wrap(),
+                            );
+                        }
+                        if let Some(code) = w.waiting.as_ref().filter(|c| c.contains('@')) {
                             // **Le code seul, en grand** : l'invitation
                             // s'annonce sur le réseau local, l'autre poste
                             // n'a que lui à saisir. Le code complet, adresse
@@ -78132,7 +78169,32 @@ impl App {
                             let guide = |ui: &mut egui::Ui, text: String| {
                                 ui.add(egui::Label::new(egui::RichText::new(text).strong()).wrap());
                             };
-                            if let Some(p) = inviting {
+                            if let Some(p) =
+                                inviting.filter(|p| p.invite_tag == crate::postes::NO_CODE)
+                            {
+                                // **Un poste du groupe propose d'ajouter
+                                // celui-ci**, d'un clic : rien à taper, les
+                                // deux écrans montreront le même code.
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(trf("posts_guide_asked", &p.address))
+                                            .strong()
+                                            .color(motif::accent()),
+                                    )
+                                    .wrap(),
+                                );
+                                if motif::button_enabled(ui, tr("posts_join_asked"), !busy)
+                                    .on_hover_text(tr("posts_join_asked_tooltip"))
+                                    .clicked()
+                                {
+                                    start = Some(Job::Join {
+                                        address: p.address.clone(),
+                                        name: String::new(),
+                                        ticket: None,
+                                        expect: Some(p.device.clone()),
+                                    });
+                                }
+                            } else if let Some(p) = inviting {
                                 ui.add(
                                     egui::Label::new(
                                         egui::RichText::new(trf("posts_guide_invited", &p.address))
@@ -78215,6 +78277,7 @@ impl App {
                                                 address,
                                                 name: String::new(),
                                                 ticket,
+                                                expect: None,
                                             })
                                         }
                                         Err(crate::postes::JoinText::NoMatch) => {
@@ -78698,7 +78761,6 @@ impl App {
             .map(|n| n.name.trim().to_owned())
             .filter(|n| !n.is_empty())
             .collect();
-        let mut to_map = false;
         let Some(w) = &mut session.net_window else {
             return;
         };
@@ -78762,9 +78824,8 @@ impl App {
         };
         let mut start: Option<Job> = None;
         let mut close = false;
-        let mut create = false;
         let mut reread_net = false;
-        let mut answer: Option<bool> = None;
+        let mut set_open: Option<bool> = None;
         // (device, what was typed, what the list showed)
         type PeerEdit = (String, (String, String), (String, String));
         let mut save_peer: Option<PeerEdit> = None;
@@ -78772,11 +78833,9 @@ impl App {
         let mut remove_peer: Option<String> = None;
         let mut open_folder_options = false;
         let mut pick_net: Option<String> = None;
-        let mut create_net: Option<String> = None;
         let mut save_shares: Option<db::NetShares> = None;
         let mut save_meta = false;
         let mut leave = false;
-        let mut join_typed = false;
         let mut save_public: Option<(String, Option<String>)> = None;
         let busy = w.job.is_some();
         if !busy {
@@ -78798,24 +78857,6 @@ impl App {
                     .wrap(),
                 );
                 ui.add_space(6.0);
-                if let Some(code) = &w.code {
-                    ui.label(tr("net_code_intro"));
-                    ui.label(
-                        egui::RichText::new(code.as_str())
-                            .size(motif::pt(ui, 26.0))
-                            .monospace()
-                            .strong(),
-                    );
-                    ui.horizontal_wrapped(|ui| {
-                        if motif::button(ui, tr("net_code_same")).clicked() {
-                            answer = Some(true);
-                        }
-                        if motif::button(ui, tr("net_code_other")).clicked() {
-                            answer = Some(false);
-                        }
-                    });
-                    return;
-                }
                 let footer = App::row_height(ui) * 2.0 + ui.spacing().item_spacing.y * 3.0;
                 let body_h = (ui.available_height() - footer).max(App::row_height(ui) * 4.0);
                 ui.spacing_mut().scroll.floating = false;
@@ -78838,102 +78879,56 @@ impl App {
                         // de quoi en créer un de plus — un lien avec une
                         // seule officine est un réseau à deux.
                         ui.add_space(4.0);
-                        ui.horizontal_wrapped(|ui| {
-                            for (id, label) in &sum.networks {
-                                if motif::toggle(ui, label, *id == w.network).clicked() {
-                                    pick_net = Some(id.clone());
-                                }
-                            }
-                            if !sum.networks.is_empty()
-                                && motif::button_enabled(ui, tr("net_new"), !busy)
-                                    .on_hover_text(tr("net_new_tooltip"))
-                                    .clicked()
-                            {
-                                w.new_open = !w.new_open;
-                            }
-                        });
-                        if w.new_open {
+                        // Un onglet par réseau quand il y en a plusieurs —
+                        // ceux d'avant le réseau ouvert, appairés.
+                        if sum.networks.len() > 1 {
                             ui.horizontal_wrapped(|ui| {
-                                motif::field(
-                                    ui,
-                                    chars_wide(ui, 26.0),
-                                    egui::TextEdit::singleline(&mut w.new_label)
-                                        .hint_text(motif::hint(tr("net_new_hint"))),
-                                );
-                                if motif::button_enabled(ui, tr("net_new_create"), !busy).clicked()
-                                {
-                                    create_net = Some(w.new_label.trim().to_owned());
+                                for (id, label) in &sum.networks {
+                                    if motif::toggle(ui, label, *id == w.network).clicked() {
+                                        pick_net = Some(id.clone());
+                                    }
                                 }
                             });
+                        }
+                        // **Pas du réseau ouvert** : une phrase et un
+                        // bouton. Ni invitation, ni code : le rejoindre
+                        // suffit à parler à toutes les officines.
+                        if !sum.open_joined {
+                            ui.add_space(6.0);
+                            ui.add(egui::Label::new(tr("net_open_off")).wrap());
+                            if motif::button_enabled(ui, tr("net_open_join"), !busy)
+                                .on_hover_text(tr("net_open_join_tooltip"))
+                                .clicked()
+                            {
+                                set_open = Some(true);
+                            }
+                            if !sum.in_network {
+                                return;
+                            }
+                        }
+                        if sum.open {
                             ui.add(
                                 egui::Label::new(
-                                    egui::RichText::new(tr("net_new_note"))
-                                        .size(motif::pt(ui, 10.5))
-                                        .color(motif::text_dim()),
+                                    egui::RichText::new(tr("net_open_scope"))
+                                        .size(motif::pt(ui, 11.0)),
                                 )
                                 .wrap(),
                             );
-                        }
-                        if !sum.in_network {
-                            ui.add_space(6.0);
-                            ui.label(tr("net_none"));
-                            ui.add_space(4.0);
-                            // **Ce qu'il faut faire** : une officine à
-                            // portée se relie d'un clic sur la carte ; une
-                            // officine distante, par un code.
                             if !near.is_empty() {
                                 ui.add(
                                     egui::Label::new(
-                                        egui::RichText::new(trf("net_guide_near", near.join(", ")))
-                                            .strong()
+                                        egui::RichText::new(trf("net_open_near", near.join(", ")))
                                             .color(motif::accent()),
                                     )
                                     .wrap(),
                                 );
-                                if motif::button(ui, tr("net_guide_map")).clicked() {
-                                    to_map = true;
-                                }
-                                ui.add_space(4.0);
                             }
-                            ui.add(egui::Label::new(tr("net_guide_far")).wrap());
-                            // **L'invitation sème le réseau** : la clé se
-                            // crée au premier « Inviter », sans geste à part.
-                            ui.horizontal_wrapped(|ui| {
-                                if motif::button_enabled(ui, tr("net_invite"), !busy)
-                                    .on_hover_text(tr("net_seed_tooltip"))
-                                    .clicked()
-                                {
-                                    create = true;
-                                }
-                            });
-                            ui.add_space(4.0);
-                            ui.horizontal_wrapped(|ui| {
-                                ui.label(tr("net_join_label"));
-                                motif::field(
-                                    ui,
-                                    chars_wide(ui, 22.0),
-                                    egui::TextEdit::singleline(&mut w.join_address).hint_text(
-                                        motif::hint(App::join_hint(ui, "net_join_hint")),
-                                    ),
-                                );
-                                if motif::button_enabled(
-                                    ui,
-                                    tr("net_join"),
-                                    !busy && !w.join_address.trim().is_empty(),
-                                )
-                                .clicked()
-                                {
-                                    join_typed = true;
-                                }
-                            });
-                            return;
-                        }
-                        if let Some(n) = &sum.network {
+                        } else if let Some(n) = &sum.network {
                             ui.label(trf("net_network", n));
                         }
                         // Le nom et le dossier d'un réseau de plus ; ce que
                         // l'officine partage dans celui-ci.
-                        if !w.network.is_empty() {
+                        if !w.network.is_empty() && !sum.open {
                             ui.horizontal_wrapped(|ui| {
                                 motif::field(
                                     ui,
@@ -79004,42 +78999,29 @@ impl App {
                                 }
                             });
                         }
-                        // Rejoindre un réseau de plus, sans quitter celui-ci.
-                        ui.horizontal_wrapped(|ui| {
-                            ui.label(
-                                egui::RichText::new(tr("net_join_other"))
-                                    .size(motif::pt(ui, 10.5))
-                                    .color(motif::text_dim()),
-                            );
-                            motif::field(
-                                ui,
-                                chars_wide(ui, 22.0),
-                                egui::TextEdit::singleline(&mut w.join_address)
-                                    .hint_text(motif::hint(App::join_hint(ui, "net_join_hint"))),
-                            );
-                            if motif::button_enabled(
-                                ui,
-                                tr("net_join"),
-                                !busy && !w.join_address.trim().is_empty(),
-                            )
-                            .on_hover_text(tr("net_join_other_tooltip"))
-                            .clicked()
-                            {
-                                join_typed = true;
-                            }
-                        });
                         ui.label(
                             egui::RichText::new(trn("net_records", &[&sum.records]))
                                 .size(motif::pt(ui, 10.5))
                                 .color(motif::text_faint()),
                         );
                         ui.add_space(6.0);
-                        motif::section(ui, tr("net_peers"));
+                        motif::section(
+                            ui,
+                            tr(if sum.open {
+                                "net_open_peers"
+                            } else {
+                                "net_peers"
+                            }),
+                        );
                         if sum.peers.is_empty() {
                             ui.label(
-                                egui::RichText::new(tr("net_peers_none"))
-                                    .size(motif::pt(ui, 11.0))
-                                    .color(motif::text_dim()),
+                                egui::RichText::new(tr(if sum.open {
+                                    "net_open_peers_none"
+                                } else {
+                                    "net_peers_none"
+                                }))
+                                .size(motif::pt(ui, 11.0))
+                                .color(motif::text_dim()),
                             );
                         }
                         for p in &sum.peers {
@@ -79128,6 +79110,9 @@ impl App {
                                 );
                             }
                         }
+                        if sum.open {
+                            return;
+                        }
                         ui.add_space(6.0);
                         ui.add(
                             egui::Label::new(
@@ -79148,41 +79133,6 @@ impl App {
                             .clicked()
                         {
                             open_folder_options = true;
-                        }
-                        // **Le code d'invitation, en grand** : c'est lui
-                        // que l'autre officine colle dans « Rejoindre » —
-                        // et rien à comparer ensuite.
-                        // Une invitation à une voisine n'a pas de code : elle
-                        // est annoncée, et l'on comparera les cinq groupes.
-                        if let Some(at) = w.waiting.as_ref().filter(|c| !c.contains('@')) {
-                            ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(trf("net_waiting_near", at))
-                                        .strong()
-                                        .color(motif::accent()),
-                                )
-                                .wrap(),
-                            );
-                        } else if let Some(code) = &w.waiting {
-                            ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(tr("net_waiting"))
-                                        .strong()
-                                        .color(motif::accent()),
-                                )
-                                .wrap(),
-                            );
-                            ui.horizontal_wrapped(|ui| {
-                                ui.label(
-                                    egui::RichText::new(code.as_str())
-                                        .size(motif::pt(ui, 16.0))
-                                        .monospace()
-                                        .strong(),
-                                );
-                                if motif::button(ui, tr("net_code_copy")).clicked() {
-                                    ui.ctx().copy_text(code.clone());
-                                }
-                            });
                         }
                     });
                 if let Some((bad, note)) = &w.note {
@@ -79209,25 +79159,19 @@ impl App {
                                 announced: true,
                             });
                         }
-                        if motif::button_enabled(ui, tr("net_invite"), !busy)
-                            .on_hover_text(tr("net_invite_tooltip"))
-                            .clicked()
-                        {
-                            start = Some(Job::Invite {
-                                port: config.reseau.port,
-                                network: w.network.clone(),
-                                nearby: false,
-                                expect: None,
-                            });
-                        }
+                        let open = w.summary.as_ref().is_some_and(|s| s.open);
                         if !w.network.is_empty() {
-                            let label = if w.confirm_leave {
-                                tr("net_leave_confirm")
-                            } else {
-                                tr("net_leave")
+                            let label = match (open, w.confirm_leave) {
+                                (true, false) => tr("net_open_leave"),
+                                (false, false) => tr("net_leave"),
+                                (_, true) => tr("net_leave_confirm"),
                             };
                             if motif::button_enabled(ui, label, !busy)
-                                .on_hover_text(tr("net_leave_tooltip"))
+                                .on_hover_text(tr(if open {
+                                    "net_open_leave_tooltip"
+                                } else {
+                                    "net_leave_tooltip"
+                                }))
                                 .clicked()
                             {
                                 if w.confirm_leave {
@@ -79244,12 +79188,6 @@ impl App {
                 });
             });
         motif::dialog_relief(ctx, &shown);
-        if let Some(yes) = answer {
-            if let Some((_, tx)) = &w.job {
-                let _ = tx.send(yes);
-            }
-            w.code = None;
-        }
         if let Some(id) = pick_net {
             w.network = id;
             w.confirm_leave = false;
@@ -79260,19 +79198,29 @@ impl App {
                 w.edit_folder = sum.folder.clone();
             }
         }
-        if let Some(label) = create_net {
-            match crate::network::Net::create_network(&session.db, &label, &session.today) {
-                Ok(id) => {
-                    w.network = id;
-                    w.new_open = false;
-                    w.new_label.clear();
-                    w.edit_label = label;
-                    w.edit_folder.clear();
-                    w.note = Some((false, tr("net_new_done").to_owned()));
-                    w.reread(&session.db);
+        if let Some(on) = set_open {
+            match crate::network::set_open(&session.db, on, &session.today) {
+                Ok(()) => {
+                    w.network = if on {
+                        crate::network::open_id()
+                    } else {
+                        String::new()
+                    };
+                    w.note = Some((
+                        false,
+                        tr(if on {
+                            "net_open_joined"
+                        } else {
+                            "net_open_left"
+                        })
+                        .to_owned(),
+                    ));
                 }
                 Err(e) => w.note = Some((true, e)),
             }
+            w.edits.clear();
+            w.reread(&session.db);
+            session.conn_dirty = true;
         }
         // Le nom et le partage d'un réseau de plus voyagent entre les
         // postes : écrits contre ce que la fenêtre montrait.
@@ -79312,26 +79260,16 @@ impl App {
             w.reread(&session.db);
         }
         if leave {
-            match session.db.leave_net_network(&w.network) {
+            let left = if crate::network::is_open(&w.network) {
+                crate::network::set_open(&session.db, false, &session.today)
+            } else {
+                session.db.leave_net_network(&w.network)
+            };
+            match left {
                 Ok(()) => {
                     w.network.clear();
                     w.confirm_leave = false;
                     w.note = Some((false, tr("net_left").to_owned()));
-                }
-                Err(e) => w.note = Some((true, e)),
-            }
-            w.reread(&session.db);
-        }
-        if create {
-            match crate::network::Net::create(&session.db) {
-                Ok(()) => {
-                    w.note = None;
-                    start = Some(Job::Invite {
-                        port: config.reseau.port,
-                        network: String::new(),
-                        nearby: false,
-                        expect: None,
-                    });
                 }
                 Err(e) => w.note = Some((true, e)),
             }
@@ -79412,36 +79350,7 @@ impl App {
                 w.public = None;
             }
         }
-        // Un code d'invitation, ou une adresse seule ; un code abîmé est
-        // dit, jamais changé en comparaison de code à l'insu de qui l'a
-        // tapé.
-        if join_typed {
-            match crate::network::read_join(&w.join_address) {
-                Some((address, ticket)) => {
-                    start = Some(Job::Join {
-                        address,
-                        ticket,
-                        expect: None,
-                    })
-                }
-                None => w.note = Some((true, tr("net_join_bad").to_owned())),
-            }
-        }
         if let Some(job) = start {
-            // Une invitation ouverte se dit dans l'annonce de l'officine :
-            // une voisine la rejoint d'un clic sur sa carte.
-            // Seule l'invitation faite à une voisine s'annonce : une
-            // invitation à code n'a rien à dire au réseau local, et une
-            // porte annoncée est une porte qu'on peut devancer.
-            if let (
-                Job::Invite {
-                    port, nearby: true, ..
-                },
-                Some((_, poke)),
-            ) = (&job, &session.posts_auto)
-            {
-                let _ = poke.send(crate::postes::Poke::Inviting(*port));
-            }
             let (answers_tx, answers_rx) = std::sync::mpsc::channel();
             let path = session.db.path().unwrap_or_default();
             let rx = crate::network::spawn(
@@ -79458,16 +79367,8 @@ impl App {
         if reread_net {
             w.reread(&session.db);
         }
-        // Vers la carte : la fenêtre se ferme, la vue Connexions s'ouvre
-        // sur la carte, où chaque officine voisine a ses gestes.
-        let to_map = to_map && w.job.is_none();
-        if (close || to_map) && w.job.is_none() {
+        if close && w.job.is_none() {
             session.net_window = None;
-        }
-        if to_map {
-            session.view = MainView::Connexions;
-            session.conn_map = true;
-            session.conn_dirty = true;
         }
         if peer_stale {
             session.stale("net_peer_stale");

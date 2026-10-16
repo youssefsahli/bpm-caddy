@@ -45987,10 +45987,32 @@ impl Db {
         &self,
         edits: &[crate::versions::Edit],
     ) -> Result<(usize, usize), String> {
+        self.receive_card_edits_as(edits, true)
+    }
+
+    /// Recevoir des versions **sans en appliquer aucune** : celles du
+    /// réseau ouvert, d'officines que personne ici n'a choisies. Rangées,
+    /// elles sont proposées par « En ligne », prises d'un geste.
+    pub fn receive_card_edits_offered(
+        &self,
+        edits: &[crate::versions::Edit],
+    ) -> Result<usize, String> {
+        self.receive_card_edits_as(edits, false).map(|(r, _)| r)
+    }
+
+    fn receive_card_edits_as(
+        &self,
+        edits: &[crate::versions::Edit],
+        apply: bool,
+    ) -> Result<(usize, usize), String> {
+        // **Un identifiant de cette base n'arrive pas d'ailleurs** (comme
+        // aux ruptures) : reçu, il prenait la place d'un numéro que cette
+        // officine n'a pas encore écrit, et sa version suivante échouait.
+        let ours = format!("{}:", self.base_uid()?);
         let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let (mut received, mut applied) = (0, 0);
         for e in edits {
-            if !e.kind.fields().contains(&e.field.as_str()) {
+            if !e.kind.fields().contains(&e.field.as_str()) || e.uid.starts_with(&ours) {
                 continue;
             }
             let fresh = self
@@ -46028,7 +46050,7 @@ impl Db {
             // d'ici, son nom et son téléphone sur les papiers d'ici. Elle
             // reste au journal, et « En ligne » la propose — prise ou
             // comparée d'un geste.
-            if e.kind.is_private() {
+            if !apply || e.kind.is_private() {
                 continue;
             }
             // A preparation or a protocol: its own table, the same rule.

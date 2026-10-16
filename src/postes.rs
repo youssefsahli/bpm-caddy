@@ -720,6 +720,9 @@ pub enum Job {
         address: String,
         name: String,
         ticket: Option<bpm_sync::Ticket>,
+        /// Le poste qui invite, quand on l'a entendu : tout autre qui
+        /// répondrait à l'adresse est refusé avant tout code.
+        expect: Option<String>,
     },
     /// Synchroniser une fois : le dossier d'échange, puis chaque adresse.
     Sync {
@@ -849,12 +852,22 @@ pub fn run(
                 std::thread::sleep(Duration::from_millis(200));
             }
             let door = door.ok_or_else(|| tr("posts_err_port").to_owned())?;
-            // Un ticket par invitation, comme entre officines.
-            let ticket = bpm_sync::Ticket::generate(&mut bpm_sync::OsEntropy);
-            let _ = tx.send(Progress::Waiting(crate::network::invitation_code(
-                &ticket,
-                &format!("{}:{port}", local_address()),
-            )));
+            // Un ticket par invitation, comme entre officines — **sauf pour
+            // un poste nommé** (« Ajouter », d'un clic sur un poste entendu) :
+            // ni code à lire ni à taper, les deux écrans comparent les cinq
+            // groupes, et tout autre poste est refusé avant.
+            let expected = for_device
+                .as_deref()
+                .and_then(unhex::<32>)
+                .map(DeviceId::from_bytes);
+            let ticket = expected
+                .is_none()
+                .then(|| bpm_sync::Ticket::generate(&mut bpm_sync::OsEntropy));
+            let at = format!("{}:{port}", local_address());
+            let _ = tx.send(Progress::Waiting(match &ticket {
+                Some(t) => crate::network::invitation_code(t, &at),
+                None => at,
+            }));
             // **L'invitation se dit sur le réseau local**, le temps qu'elle
             // attend : le poste invité la voit et n'a plus qu'à saisir le
             // code, sans l'adresse. L'annonce ne porte rien de secret —
@@ -868,7 +881,9 @@ pub fn run(
                 let me = posts.device_hex();
                 let group = hex(&trousseau.name().bytes());
                 let target = for_device.clone();
-                let tag = invite_tag(&ticket);
+                let tag = ticket
+                    .as_ref()
+                    .map_or_else(|| NO_CODE.to_owned(), invite_tag);
                 let port = *port;
                 std::thread::spawn(move || {
                     let Ok(u) = std::net::UdpSocket::bind("0.0.0.0:0") else {
@@ -939,7 +954,11 @@ pub fn run(
                     false,
                     &posts.known(&db),
                 )
-                .and_then(|s| s.with_ticket(ticket))
+                .and_then(|s| match (ticket, expected) {
+                    (Some(t), _) => s.with_ticket(t),
+                    (None, Some(d)) => Ok(s.expecting(d)),
+                    (None, None) => Err(bpm_sync::Error::Protocol),
+                })
                 .and_then(|s| {
                     if *companion {
                         s.sharing(&COMPANION)
@@ -1012,8 +1031,24 @@ pub fn run(
             address,
             name,
             ticket,
+            expect,
         } => {
-            let (post, report) = join(&db, address, name, *ticket, false, today, &mut confirm)?;
+            let expect = expect
+                .as_deref()
+                .and_then(unhex::<32>)
+                .map(DeviceId::from_bytes);
+            let (post, report) = join(
+                &db,
+                address,
+                &JoinAs {
+                    name,
+                    ticket: *ticket,
+                    expect,
+                    companion: false,
+                },
+                today,
+                &mut confirm,
+            )?;
             Ok(trn(
                 "posts_done_joined",
                 &[&(post + 1), &report.received.written],
@@ -1053,20 +1088,29 @@ pub fn run(
 pub fn join(
     db: &Db,
     address: &str,
-    name: &str,
-    ticket: Option<bpm_sync::Ticket>,
-    companion: bool,
+    how: &JoinAs,
     today: &str,
     confirm: &mut dyn FnMut(bpm_sync::Fingerprint) -> bool,
 ) -> Result<(i64, Report), String> {
     use crate::strings::tr;
+    let JoinAs {
+        name,
+        ticket,
+        expect,
+        companion,
+    } = *how;
     if db.sync_post().is_some() || db.sync_local("trousseau").is_some() {
         return Err(tr("posts_err_already").to_owned());
     }
     // A fresh identity: a base copied from another post carries
     // that post's, and two posts under one name would each take
-    // the other's records for their own.
-    db.set_sync_local("device", &hex(&random32()))?;
+    // the other's records for their own. **Not when this post was
+    // invited by name** (« Ajouter »): the group asked for the identity
+    // it heard, and a post that announced a member's identity would have
+    // been heard as a member, never as one to add.
+    if expect.is_none() || db.sync_local("device").is_none() {
+        db.set_sync_local("device", &hex(&random32()))?;
+    }
     let mut posts = Posts::load(db)?;
     let mut link = bpm_sync::link::dial(address, TALK_PATIENCE)
         .map_err(|_| tr("posts_err_unreachable").to_owned())?;
@@ -1074,6 +1118,10 @@ pub fn join(
         .and_then(|s| match ticket {
             Some(t) => s.with_ticket(t),
             None => Ok(s),
+        })
+        .map(|s| match expect {
+            Some(d) => s.expecting(d),
+            None => s,
         })
         .and_then(|s| if companion { s.as_companion() } else { Ok(s) })
         .map_err(|e| format!("{e:?}"))?;
@@ -1154,6 +1202,11 @@ pub struct Heard {
     pub invites: Option<(String, String)>,
 }
 
+/// L'étiquette d'une invitation **sans code** : faite d'un clic à un poste
+/// entendu sur le réseau local (« Ajouter »), elle se confirme en
+/// comparant les cinq groupes sur les deux écrans.
+pub const NO_CODE: &str = "-";
+
 /// L'annonce qu'un poste envoie sur le réseau local : son identité et
 /// son port. Rien d'autre — ni le nom de l'officine, ni une donnée.
 pub fn beacon(device: &str, port: u16) -> String {
@@ -1175,7 +1228,14 @@ pub fn heard(text: &str, from: std::net::IpAddr) -> Option<Heard> {
             } else {
                 hex(&unhex::<32>(target)?)
             };
-            invites = Some((target, hex(&unhex::<4>(tag)?)));
+            // « - » : l'invitation faite d'un clic à un poste nommé, sans
+            // code — les deux écrans comparent les cinq groupes.
+            let tag = if *tag == "-" {
+                NO_CODE.to_owned()
+            } else {
+                hex(&unhex::<4>(tag)?)
+            };
+            invites = Some((target, tag));
             (*d, *p, false)
         }
         // La seconde version dit le groupe — son empreinte, que la
@@ -1197,6 +1257,17 @@ pub fn heard(text: &str, from: std::net::IpAddr) -> Option<Heard> {
         alone,
         invites,
     })
+}
+
+/// Comment ce poste rejoint : son nom, le ticket d'un code d'invitation
+/// quand on l'a, le poste qui invite quand on l'a entendu, et s'il est un
+/// compagnon (téléphone).
+#[derive(Clone, Copy, Debug)]
+pub struct JoinAs<'a> {
+    pub name: &'a str,
+    pub ticket: Option<bpm_sync::Ticket>,
+    pub expect: Option<DeviceId>,
+    pub companion: bool,
 }
 
 /// Ce que le champ « Rejoindre » ne permet pas de faire.
@@ -1535,6 +1606,9 @@ fn auto(
     // (saisie, ou dernière réponse).
     let mut paired: Vec<(String, Vec<std::net::SocketAddr>)> = Vec::new();
     let mut paired_read: Option<Instant> = None;
+    // **Du réseau ouvert** : toute officine entendue se compose, connue
+    // ou non — par `dial_open`, qui ne l'inscrit qu'une fois jointe.
+    let mut open_joined = false;
     // Les appels aux officines appairées entendues : la dernière réussite
     // et le dernier essai de chacune, et les adresses qui ont échoué.
     let mut dial_ok: std::collections::HashMap<String, Instant> = std::collections::HashMap::new();
@@ -1838,6 +1912,7 @@ fn auto(
         }
         if paired_read.is_none_or(|t| t.elapsed() >= Duration::from_secs(30)) {
             paired_read = Some(Instant::now());
+            open_joined = crate::network::in_open(&db);
             paired = db
                 .net_peers()
                 .map(|p| {
@@ -1887,7 +1962,17 @@ fn auto(
                         }
                     }
                     dial_failed.retain(|_, t| t.elapsed() < REDIAL);
-                    if let Some((_, known)) = paired.iter().find(|(d, _)| *d == o.device) {
+                    // Au réseau ouvert, n'importe quelle identité s'annonce :
+                    // ce qu'on retient d'elles s'oublie avec le délai.
+                    dial_ok.retain(|_, t| t.elapsed() < REDIAL);
+                    dial_any.retain(|_, t| t.elapsed() < REDIAL);
+                    let no_address = Vec::new();
+                    let target = paired
+                        .iter()
+                        .find(|(d, _)| *d == o.device)
+                        .map(|(_, known)| (known, true))
+                        .or(open_joined.then_some((&no_address, false)));
+                    if let Some((known, is_paired)) = target {
                         use std::sync::atomic::Ordering;
                         let at_ip = o
                             .listen
@@ -1934,9 +2019,12 @@ fn auto(
                                         ok: false,
                                     };
                                     if let Ok(db) = Db::open(&path, &password) {
-                                        if let Ok(said) =
+                                        let went = if is_paired {
                                             crate::network::dial_heard(&db, &device, &at, &name)
-                                        {
+                                        } else {
+                                            crate::network::dial_open(&db, &device, &at, &name)
+                                        };
+                                        if let Ok(said) = went {
                                             guard.ok = true;
                                             let _ = tx.send(Progress::Status(said));
                                         }
@@ -2266,6 +2354,113 @@ mod tests {
         (dir, swept, db)
     }
 
+    /// **« Ajouter » : un poste entendu rejoint sans code à taper.** A
+    /// l'invite par son identité, B accepte en nommant A ; les deux écrans
+    /// montrent le même code, et un troisième poste qui frappe le premier
+    /// est refusé avant tout code — la porte reste ouverte pour B, qui
+    /// garde l'identité sous laquelle on l'a entendu.
+    #[test]
+    fn a_heard_post_is_added_with_a_click_and_a_compared_code() {
+        let (dir_a, _sa, a) = post("add-a");
+        let (dir_b, _sb, b) = post("add-b");
+        let (dir_c, _sc, c) = post("add-c");
+        Posts::load(&a)
+            .unwrap()
+            .found(&a, "Comptoir 1", "2026-10-16")
+            .unwrap();
+        let a_device = Posts::load(&a).unwrap().device_hex();
+        let b_device = Posts::load(&b).unwrap().device_hex();
+        drop((a, b, c));
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let (yes_a, answers_a) = std::sync::mpsc::channel();
+        let inviting = spawn(
+            Job::Invite {
+                port,
+                for_device: Some(b_device.clone()),
+                companion: false,
+            },
+            dir_a.join("poste.db"),
+            "secret".to_owned(),
+            "2026-10-16".to_owned(),
+            answers_a,
+        );
+        match inviting.recv().unwrap() {
+            Progress::Waiting(at) => assert!(!at.contains('@'), "pas de code : {at}"),
+            other => panic!("{other:?}"),
+        }
+        let join_as = |dir: &std::path::Path| {
+            let (yes, answers) = std::sync::mpsc::channel();
+            let rx = spawn(
+                Job::Join {
+                    address: format!("127.0.0.1:{port}"),
+                    name: String::new(),
+                    ticket: None,
+                    expect: Some(a_device.clone()),
+                },
+                dir.join("poste.db"),
+                "secret".to_owned(),
+                "2026-10-16".to_owned(),
+                answers,
+            );
+            (rx, yes)
+        };
+        // C frappe d'abord : A le refuse sans montrer de code — C, qui ne
+        // sait pas encore qu'il est refusé, peut en voir un, qu'aucun écran
+        // de A ne montre.
+        let (joining_c, yes_c) = join_as(&dir_c);
+        loop {
+            match joining_c.recv().unwrap() {
+                Progress::Code(_) => {
+                    let _ = yes_c.send(true);
+                }
+                Progress::Failed(_) => break,
+                Progress::Done(d) => panic!("C admis : {d}"),
+                _ => {}
+            }
+        }
+        let (joining, yes_b) = join_as(&dir_b);
+        let mut codes = Vec::new();
+        let (mut done_a, mut done_b) = (None, None);
+        while done_a.is_none() || done_b.is_none() {
+            if done_a.is_none() {
+                if let Ok(p) = inviting.recv_timeout(Duration::from_millis(50)) {
+                    match p {
+                        Progress::Code(c) => {
+                            codes.push(c);
+                            yes_a.send(true).unwrap();
+                        }
+                        Progress::Status(_) => {}
+                        other => done_a = Some(other),
+                    }
+                }
+            }
+            if done_b.is_none() {
+                if let Ok(p) = joining.recv_timeout(Duration::from_millis(50)) {
+                    match p {
+                        Progress::Code(c) => {
+                            codes.push(c);
+                            yes_b.send(true).unwrap();
+                        }
+                        other => done_b = Some(other),
+                    }
+                }
+            }
+        }
+        assert!(matches!(done_a, Some(Progress::Done(_))), "{done_a:?}");
+        assert!(matches!(done_b, Some(Progress::Done(_))), "{done_b:?}");
+        assert_eq!(codes.len(), 2, "un code sur chaque écran");
+        assert_eq!(codes[0], codes[1], "le même");
+        let b = Db::open(&dir_b.join("poste.db"), "secret").unwrap();
+        assert_eq!(Posts::load(&b).unwrap().device_hex(), b_device);
+        assert_eq!(b.sync_post(), Some(1));
+        let c = Db::open(&dir_c.join("poste.db"), "secret").unwrap();
+        assert!(c.sync_local("trousseau").is_none());
+    }
+
     /// **Deux postes, une porte, le code d'invitation** : B rejoint le
     /// groupe de A et reçoit ses dossiers ; ce que B avait est remplacé ;
     /// chacun écrit, et un dossier d'échange porte le reste. Rien de
@@ -2312,6 +2507,7 @@ mod tests {
                 address: format!("127.0.0.1:{port}"),
                 name: "Comptoir 2".to_owned(),
                 ticket,
+                expect: None,
             },
             dir_b.join("poste.db"),
             "secret".to_owned(),
@@ -2535,9 +2731,12 @@ mod tests {
         let said = join(
             &wrong,
             &format!("127.0.0.1:{port}"),
-            "Comptoir 2",
-            ticket,
-            false,
+            &JoinAs {
+                name: "Comptoir 2",
+                ticket,
+                expect: None,
+                companion: false,
+            },
             "2026-09-26",
             &mut |_| true,
         );
@@ -2553,9 +2752,12 @@ mod tests {
         let (post, _) = join(
             &phone,
             &format!("127.0.0.1:{port}"),
-            "Téléphone",
-            ticket,
-            true,
+            &JoinAs {
+                name: "Téléphone",
+                ticket,
+                expect: None,
+                companion: true,
+            },
             "2026-09-26",
             &mut |_| true,
         )
@@ -2744,9 +2946,12 @@ mod tests {
         join(
             &phone,
             &format!("127.0.0.1:{port}"),
-            "Téléphone",
-            ticket,
-            true,
+            &JoinAs {
+                name: "Téléphone",
+                ticket,
+                expect: None,
+                companion: true,
+            },
             "2026-09-26",
             &mut |_| true,
         )
@@ -2837,9 +3042,12 @@ mod tests {
         join(
             &phone,
             &format!("127.0.0.1:{port}"),
-            "Téléphone",
-            ticket,
-            true,
+            &JoinAs {
+                name: "Téléphone",
+                ticket,
+                expect: None,
+                companion: true,
+            },
             "2026-09-26",
             &mut |_| true,
         )

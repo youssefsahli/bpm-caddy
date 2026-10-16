@@ -68,6 +68,16 @@ pub struct Reading {
 /// How many heads [`Journal::frontier`] walks down from.
 const FRONTIER_HEADS: usize = 64;
 
+/// What authors this post does not trust may hold in its journal — see
+/// [`Journal::limit_strangers`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Limits {
+    /// Bytes, any one author.
+    pub per_author: usize,
+    /// Bytes, all of them together.
+    pub total: usize,
+}
+
 /// Every record this post holds.
 #[derive(Default)]
 pub struct Journal {
@@ -83,6 +93,15 @@ pub struct Journal {
     /// The authors whose ranks move this post's clock, once set — see
     /// [`Journal::trust`]. `None`: every author, as a journal always was.
     trusted: Option<BTreeSet<DeviceId>>,
+    /// What authors outside `trusted` may hold here, once set — see
+    /// [`Journal::limit_strangers`].
+    limits: Option<Limits>,
+    /// How many bytes each author outside `trusted` holds here, and all
+    /// of them together.
+    held: BTreeMap<DeviceId, usize>,
+    held_total: usize,
+    /// Records refused for a limit: not asked for again.
+    refused: BTreeSet<Hash>,
 }
 
 impl Journal {
@@ -176,9 +195,25 @@ impl Journal {
     pub fn missing(&self) -> Vec<Hash> {
         self.named
             .iter()
-            .filter(|h| !self.records.contains_key(h))
+            .filter(|h| !self.records.contains_key(h) && !self.refused.contains(h))
             .copied()
             .collect()
+    }
+
+    /// **A budget for the authors this post does not trust** (see
+    /// [`Journal::trust`]) — for a journal anybody may write to (an open
+    /// network), where one author writing without end, or a thousand
+    /// throwaway ones, would otherwise fill every disk that relays them.
+    /// A record past either limit is refused and not asked for again;
+    /// what is held stays held. The trusted authors — this post itself
+    /// first — are never counted. Set it before the first insert.
+    pub fn limit_strangers(&mut self, limits: Limits) {
+        self.limits = Some(limits);
+    }
+
+    /// How many bytes the authors outside `trusted` hold here.
+    pub fn strangers_held(&self) -> usize {
+        self.held_total
     }
 
     /// Adds a record. Answers whether it was new.
@@ -191,6 +226,17 @@ impl Journal {
         let id = record.id();
         if self.records.contains_key(&id) {
             return false;
+        }
+        let author = record.author();
+        if let (Some(limits), false) = (self.limits, self.trusts(&author)) {
+            let size = record.encode().len();
+            let theirs = self.held.get(&author).copied().unwrap_or(0);
+            if theirs + size > limits.per_author || self.strangers_held() + size > limits.total {
+                self.refused.insert(id);
+                return false;
+            }
+            self.held.insert(author, theirs + size);
+            self.held_total += size;
         }
         if self.trusts(&record.author()) {
             self.high = self.high.max(record.lamport());
@@ -227,6 +273,17 @@ impl Journal {
             .map(Record::lamport)
             .max()
             .unwrap_or(0);
+        // What the strangers hold, counted again against the new set.
+        if self.limits.is_some() {
+            let mut held: BTreeMap<DeviceId, usize> = BTreeMap::new();
+            for r in self.records.values() {
+                if !self.trusts(&r.author()) {
+                    *held.entry(r.author()).or_default() += r.encode().len();
+                }
+            }
+            self.held_total = held.values().sum();
+            self.held = held;
+        }
     }
 
     fn trusts(&self, author: &DeviceId) -> bool {
@@ -970,5 +1027,49 @@ mod tests {
             .write(&me, &t, Stream::Reseau, b"c", None, &mut e)
             .unwrap();
         assert_eq!(j.get(&id).unwrap().lamport(), u64::MAX);
+    }
+
+    /// **A stranger's records stop at its budget**, and the total stops a
+    /// crowd of throwaway authors; this post's own writes are never
+    /// counted, and a refused record is not asked for again.
+    #[test]
+    fn strangers_hold_no_more_than_their_budget() {
+        let mut e = Counted(71);
+        let me = Device::generate(&mut e);
+        let t = Trousseau::generate(&mut e);
+        let crowd: Vec<Device> = (0..4).map(|_| Device::generate(&mut e)).collect();
+        let mut theirs = Journal::new();
+        for d in &crowd {
+            for _ in 0..3 {
+                theirs
+                    .write(d, &t, Stream::Reseau, &[7; 200], None, &mut e)
+                    .unwrap();
+            }
+        }
+        let one = theirs.records().next().unwrap().encode().len();
+        let mut j = Journal::new();
+        j.trust([me.id()]);
+        // Two records each, five in all.
+        j.limit_strangers(Limits {
+            per_author: 2 * one + one / 2,
+            total: 5 * one + one / 2,
+        });
+        for r in theirs.records() {
+            j.insert(r.clone());
+        }
+        assert_eq!(j.len(), 5);
+        assert!(j.strangers_held() <= 5 * one + one / 2);
+        for d in &crowd {
+            let n = j.records().filter(|r| r.author() == d.id()).count();
+            assert!(n <= 2, "{n}");
+        }
+        // Whatever a held record names that was refused is not missing.
+        assert!(j.missing().iter().all(|h| !theirs.has(h) || j.has(h)));
+        // This post writes past every budget.
+        for _ in 0..10 {
+            j.write(&me, &t, Stream::Reseau, &[1; 200], None, &mut e)
+                .unwrap();
+        }
+        assert_eq!(j.len(), 15);
     }
 }

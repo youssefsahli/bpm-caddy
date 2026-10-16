@@ -29,6 +29,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read again every minute, like a departures board. Other software can
   read the same JSON object.
 
+### Changed
+
+- **One open network, no invitations.** Every officine is now in an open
+  network, joined on its own: no invitation, no code to type or compare.
+  An officine heard on the local network is reached as soon as it
+  announces itself; one that knocks is listed among the « officines
+  rencontrées ». What arrives from the open network is offered, never
+  applied by itself: a card, preparation or protocol version waits in
+  « En ligne… ». Messages stay sealed for their recipients, no patient ever
+  leaves the officine, and what is published there carries neither the
+  note nor the initials of whoever wrote it. An unknown officine's name
+  always carries its fingerprint, and its records' numbers are its own,
+  so it can neither sign as another officine nor take or withdraw
+  another's records. Safeguards: only this officine moves its
+  clock, a correction counts only from its own author, an unknown
+  officine holds at most 1 MB of the journal (64 MB for all of them),
+  and an officine set aside is no longer read. « Quitter le réseau
+  ouvert » turns it off; networks paired before keep working as they did.
+  « Nouveau réseau… », « Inviter une officine… », « Rejoindre un autre
+  réseau » and the map's invite and join buttons are gone.
+- **Adding a post of the officine takes one click.** On a post of the
+  group, « Connexions » lists the posts heard on the local network
+  outside the group, each with « Ajouter ». The other post opens its
+  posts window by itself and offers « Rejoindre »; both screens then show
+  the same five-group code to accept. Nothing to type, and any other post
+  that comes forward instead is refused before a code is shown. The
+  posts carry patient files, so this one comparison stays. Codes remain
+  for a first post, a post that does not hear the others, and phones.
+
 ## [0.437.0] - 2026-10-15
 
 ### Added
