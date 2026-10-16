@@ -206,6 +206,62 @@ mod tests {
         );
     }
 
+    /// **De bout en bout** : A tient sa porte des officines et s'annonce ;
+    /// B, qui ne la connaît pas, la trouve dans la DHT, la compose au
+    /// réseau ouvert, et chacune inscrit l'autre — sans adresse saisie,
+    /// sans code, sans serveur.
+    #[test]
+    fn an_officine_found_in_the_dht_is_dialled_and_met() {
+        let dir = |tag: &str| {
+            let d =
+                std::env::temp_dir().join(format!("bpm-caddy-dht-{tag}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&d);
+            std::fs::create_dir_all(&d).unwrap();
+            d
+        };
+        let (dir_a, dir_b) = (dir("a"), dir("b"));
+        let (_sa, _sb) = (
+            crate::db::Swept(dir_a.clone()),
+            crate::db::Swept(dir_b.clone()),
+        );
+        let a = crate::db::Db::open(&dir_a.join("net.db"), "secret").unwrap();
+        let b = crate::db::Db::open(&dir_b.join("net.db"), "secret").unwrap();
+        for db in [&a, &b] {
+            crate::network::join_open(db, "2026-10-16").unwrap();
+        }
+        let (a_dev, b_dev) = (
+            crate::network::device_hex(&a).unwrap(),
+            crate::network::device_hex(&b).unwrap(),
+        );
+        let door = bpm_sync::link::Door::open("127.0.0.1:0").unwrap();
+        let port = door.address().unwrap().port();
+        let path_a = dir_a.join("net.db");
+        let answering = std::thread::spawn(move || {
+            let db = crate::db::Db::open(&path_a, "secret").unwrap();
+            let mut link = door.accept(Duration::from_secs(30)).unwrap();
+            crate::network::answer(&db, &mut link)
+        });
+        let testnet = mainline::Testnet::new(8).unwrap();
+        let finder_a = Finder::start(Some(&testnet.bootstrap)).unwrap();
+        let finder_b = Finder::start(Some(&testnet.bootstrap)).unwrap();
+        assert!(finder_a.announce(port));
+        let found = finder_b.find();
+        let at = found.iter().find(|a| a.port() == port).expect("trouvée");
+        crate::network::dial_found(&b, &at.to_string(), "Pharmacie B").expect("jointe");
+        assert_eq!(answering.join().unwrap(), Ok(b_dev.clone()));
+        let open = crate::network::open_id();
+        assert!(b
+            .net_members(&open)
+            .unwrap()
+            .iter()
+            .any(|p| p.device == a_dev));
+        assert!(a
+            .net_members(&open)
+            .unwrap()
+            .iter()
+            .any(|p| p.device == b_dev));
+    }
+
     /// **Ce qu'on compose d'un tour** : pas la nôtre, pas une adresse
     /// locale, au plus six, et pas deux fois avant le délai.
     #[test]
