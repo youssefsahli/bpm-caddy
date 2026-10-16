@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Patient messaging without a server** ("voie directe"). The patient's
+  page now reaches a post of the officine directly, over a WebRTC data
+  channel, with no gateway and no signalling server: the QR code carries
+  the posts' certificate fingerprint and addresses, and each answer
+  gives the page the posts' current addresses. Each post in service
+  listens on UDP 7748 at its public IPv6 addresses and at its router's
+  IPv4 address, which it asks the router to open (UPnP). Turned on in
+  « Régler la messagerie… » (checked by default); the tab says whether
+  this post can be reached from the internet. A gateway stays possible
+  as a second way, run or chosen by the officine. Tried in Firefox with
+  the real page, from the conversation to the base.
+- **The officine's board** (« Tableau de l'officine », Ctrl+K « garde »):
+  lines on three channels — the pharmacy on duty, products available
+  here, news — each with its dates. The posts serve it with no server:
+  on the patient's page, alone through the board's own QR code (window,
+  door, website), and on any screen that opens its link full screen,
+  read again every minute, like a departures board. Other software can
+  read the same JSON object.
+
 ## [0.437.0] - 2026-10-15
 
 ### Added

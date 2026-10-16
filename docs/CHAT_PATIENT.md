@@ -4,8 +4,11 @@ Demande : un QR code sur la fiche du patient, qu'il scanne pour écrire à
 l'officine depuis une application ou un site, côté patient.
 
 **Décidé le 14/10/2026 : le chemin A** — pas de serveur qui garde, le
-poste allumé. Ce document dit ce qui a été construit, ce que cela
-demande, et ce qui reste ouvert.
+poste allumé. **Le 16/10/2026 : sans serveur du tout** — la voie directe
+(WebRTC, de la page au poste) est le chemin par défaut ; la passerelle
+reste un second chemin facultatif, que l'officine tient ou choisit ; la
+passerelle livrée (`BPM_CADDY_PASSERELLE`) n'est pas réglée. Ce document dit ce qui a été construit, ce
+que cela demande, et ce qui reste ouvert.
 
 ## Ce qui change par rapport à aujourd'hui
 
@@ -22,9 +25,9 @@ conversation. D'où un code par patient, qu'on peut fermer et remplacer.
 ## Ce qui a été construit
 
 **Côté patient : une page, pas une application.** Le code QR ouvre
-`https://bpmcaddy.github.io/<empreinte>/#b=<boîte>&k=<clé>&p=<passerelle>`.
+`https://bpmcaddy.github.io/<empreinte>/#b=<boîte>&k=<clé>&f=<certificat>&a=<adresses>[&p=<passerelle>]`.
 Le fragment (après `#`) n'est envoyé à personne par le navigateur : la
-clé ne quitte pas le téléphone, et GitHub ne sait pas quelle passerelle
+clé ne quitte pas le téléphone, et GitHub ne sait pas quelle officine
 la page appelle.
 La page (`assets/patient/`) est du HTML, du CSS et un script sans
 bibliothèque ; elle chiffre avec WebCrypto. Une fois la clé gardée sur
@@ -58,8 +61,51 @@ nombres), AES-256-GCM. Une conversation enregistrée ne se rejoue pas.
 La page envoie ce qui attendait sur le téléphone et les numéros des
 réponses qu'elle a déjà ; le poste range, et rend ce qu'elle n'a pas.
 
-**La passerelle** (`src/passerelle.rs`, binaire `bpm-passerelle`).
-Pourquoi il en faut une : un navigateur ne parle pas TCP. Depuis une
+**La voie directe** (`src/direct.rs`), le chemin par défaut, sans
+serveur. Un navigateur ne parle pas TCP, et depuis une page en HTTPS il
+n'ouvre de WebSocket que vers un nom qui a un certificat. WebRTC, lui,
+joint une simple adresse, sans nom ni autorité de certification, pourvu
+que chaque bout ait la description de l'autre — ce que d'habitude un
+serveur de signalisation fait passer. Ici **le code QR est la
+signalisation** : il porte l'empreinte du certificat DTLS de l'officine
+(`f`, le même sur tous ses postes, un réglage de l'officine) et les
+adresses de ses postes (`a`, six au plus) ; les identifiants ICE se
+tirent du numéro de la boîte. La page écrit elle-même la réponse des
+postes, chaque adresse en candidate : une seule connexion les essaie
+toutes et garde la première qui répond. Le poste écoute en ICE-lite
+(`str0m`, sans E/S, chiffrement en Rust pur), au port UDP **7748**, à ses
+adresses IPv6 publiques et à son adresse IPv4 côté box, dont il demande
+l'ouverture (UPnP) ; il range ce qu'il a trouvé dans un réglage de
+l'officine par poste (`pchat_adr.<poste>`), et chaque réponse rend à la
+page les adresses à jour : une officine dont l'adresse change reste
+joignable de qui lui a écrit depuis. Le canal porte les mêmes trames
+que la passerelle (une longueur, puis la trame), en morceaux de seize
+kilo-octets. DTLS garantit en plus à la page qu'elle parle au poste de
+l'officine (l'empreinte) ; le chiffrement des messages reste celui du
+protocole. Essayé dans Firefox avec la vraie page
+(`patientpost::tests::serve_directly_for_a_browser`, `--ignored`) :
+tableau, conversation et envoi d'un message jusqu'à la base.
+
+**Le tableau de l'officine** (`src/tableau.rs`, outil « Tableau de
+l'officine », Ctrl+K « garde ») : ce qu'elle affiche pour tous, par
+canal — la pharmacie de garde, les produits disponibles chez elle, ses
+informations — chaque ligne avec ses dates. Un réglage de l'officine
+(`tableau`), qui voyage entre ses postes. Les postes le servent par les
+mêmes chemins, sans clé : la trame `BPMT1` seule, et le poste rend
+l'objet JSON `tableau::Public` (`v`, `officine`, `adresse`, `telephone`,
+`horaires`, `le`, `lignes` : `canal` `garde|produit|info`, `titre`,
+`detail`, `du`, `au` en dates ISO) — c'est aussi la forme qu'un autre
+logiciel peut lire. La page l'affiche au-dessus de la conversation ;
+**le code du tableau** (`#b=…&t=1&f=…&a=…`, sans clé) l'ouvre seul, sur
+un téléphone, en vitrine ou sur le site de l'officine ; avec `&e=1`, en
+**écran** — en grand, relu chaque minute, gardant le dernier lu quand
+l'officine ne répond pas : un tableau des départs pour la salle
+d'attente, sur n'importe quel écran qui a un navigateur. Le 3237 (les
+gardes, Résogardes) y est toujours rappelé.
+
+**La passerelle** (`src/passerelle.rs`, binaire `bpm-passerelle`),
+facultative : un second chemin, pour une officine dont aucun poste n'est
+joignable depuis Internet. Pourquoi il en faut une alors : un navigateur ne parle pas TCP. Depuis une
 page en HTTPS, il n'ouvre qu'un WebSocket chiffré (`wss://`), qui
 demande un nom de domaine et un certificat — ce qu'un poste d'officine
 n'a pas, et souvent il n'a même pas d'adresse joignable. Le relais des
@@ -76,8 +122,9 @@ jour, effacé au bout de `--garde` jours (trois mois sans rien dire, six
 au plus).
 
 **Côté officine** (`src/patientpost.rs`, onglet « Messagerie » du
-dossier). Chaque poste de bureau ouvert attend à la passerelle (deux
-attentes à la fois) et répond avec la base. La clé et les messages
+dossier). Chaque poste de bureau ouvert écoute sur la voie directe et, si
+une passerelle est réglée, y attend (deux attentes à la fois) ; il
+répond avec la base. La clé et les messages
 voyagent entre les postes avec les dossiers (`patient_chat_keys`,
 `patient_messages`, flux `Dossiers`). Un code par dossier : en donner un
 nouveau ferme le précédent ; fermer l'accès coupe le patient, et sa page
@@ -141,6 +188,20 @@ les conditions d'utilisation qui vont avec.
 
 ## Mettre en service
 
+**Par la voie directe**, rien d'autre que BPM-Caddy : onglet
+« Messagerie » d'un dossier, « Régler la messagerie… », « Voie directe »
+cochée (elle l'est d'emblée), Enregistrer. Le poste tire le certificat
+de l'officine et le secret de sa boîte ; chaque poste en service écoute.
+L'onglet dit si ce poste est joignable depuis Internet. S'il ne l'est
+pas : une box sans UPnP s'ouvre à la main (port UDP 7748 vers un poste),
+et son adresse publique s'écrit dans la même fenêtre (« Box ouverte à la
+main ») — les codes la portent en tête ;
+une ligne sans IPv6 et derrière une traduction d'opérateur ne se joint
+pas — une passerelle reste alors le seul chemin. Puis, pour chaque
+patient, « Donner l'accès ».
+
+**Une passerelle, en plus** (facultative), se met en service ainsi :
+
 1. **Une passerelle**, une fois pour toutes les officines qui s'en
    servent : un petit serveur, un nom de domaine, et un proxy qui porte
    le certificat. **`deploy/passerelle/`** fait tout cela d'un script
@@ -199,6 +260,30 @@ contre une passerelle et un poste factices
 main, requête scellée ouverte par le poste, réponse ouverte par la page.
 
 ## Limites connues
+
+* **La voie directe demande un poste joignable** : une adresse IPv6
+  publique que la box laisse entrer, ou une box qui ouvre le port UDP
+  7748 (UPnP, ou à la main). Une ligne derrière une traduction
+  d'opérateur (CGNAT) sans IPv6 ne se joint pas ; un téléphone sur un
+  réseau qui bloque l'UDP (certains Wi-Fi d'entreprise) non plus. Si
+  toutes les adresses d'une officine changent entre deux visites d'un
+  patient, son code ne mène plus nulle part : un nouveau code. Le
+  relais d'une autre officine du réseau (§ 7.9 de `SYNC.md`), qui
+  garderait ce chemin sans serveur, ne parle pas encore WebRTC.
+* Sous Windows et macOS, le poste ne sait pas distinguer une adresse
+  IPv6 temporaire (qui tourne en une semaine) d'une adresse stable :
+  un code peut en porter une qui mourra. Les réponses rendent les
+  adresses à jour à qui écrit ; un code de tableau imprimé, lui, ne les
+  suit pas — le réimprimer quand l'onglet dit d'autres adresses.
+* Un écran du tableau sur le réseau de l'officine joint le poste à son
+  adresse locale, que « Copier le lien de l'écran » met en tête ; un
+  écran ailleurs passe par l'adresse publique.
+* Le tableau ne se lit que par la voie directe : rien, sur une
+  passerelle, ne garantit qu'il vient de l'officine (une pharmacie de
+  garde changée en chemin). Dans une conversation, il est scellé avec
+  elle.
+* Essayée dans Firefox ; Chrome et Safari font la même chose (c'est le
+  « WebRTC direct » de libp2p), pas encore essayés ici.
 
 * Un message n'arrive que si un poste est **en service** — ouvert,
   écran voilé ou fenêtre rangée dans la zone de notification, lancé à

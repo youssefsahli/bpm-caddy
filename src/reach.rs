@@ -148,6 +148,32 @@ fn local_v4_towards(gateway: SocketAddr) -> Option<Ipv4Addr> {
 /// pas (CGNAT) — dans ce cas, l'IPv6 ou un transfert écrit à la main
 /// dans la box.
 pub fn open_mapping(port: u16) -> Option<SocketAddrV4> {
+    open_mapping_of(igd_next::PortMappingProtocol::TCP, port, "BPM-Caddy postes")
+}
+
+/// [`open_mapping`] en UDP : la voie directe des patients (`direct.rs`).
+pub fn open_udp_mapping(port: u16) -> Option<SocketAddrV4> {
+    open_mapping_of(
+        igd_next::PortMappingProtocol::UDP,
+        port,
+        "BPM-Caddy patients",
+    )
+}
+
+/// **L'adresse IPv4 de cette machine sur le réseau de l'officine** :
+/// celle par laquelle partirait un paquet vers Internet (la route par
+/// défaut). Rien n'est envoyé. Elle sert à écouter ce que la box traduit,
+/// que le port y soit ouvert par UPnP ou à la main.
+pub fn lan_v4() -> Option<Ipv4Addr> {
+    let a = local_v4_towards(SocketAddr::from(([198, 51, 100, 1], 9)))?;
+    (!a.is_loopback() && !a.is_unspecified() && !a.is_link_local()).then_some(a)
+}
+
+fn open_mapping_of(
+    protocol: igd_next::PortMappingProtocol,
+    port: u16,
+    label: &str,
+) -> Option<SocketAddrV4> {
     let options = igd_next::SearchOptions {
         timeout: Some(Duration::from_secs(3)),
         ..Default::default()
@@ -156,11 +182,11 @@ pub fn open_mapping(port: u16) -> Option<SocketAddrV4> {
     let local = local_v4_towards(gateway.addr)?;
     gateway
         .add_port(
-            igd_next::PortMappingProtocol::TCP,
+            protocol,
             port,
             SocketAddr::V4(SocketAddrV4::new(local, port)),
             LEASE.as_secs() as u32,
-            "BPM-Caddy postes",
+            label,
         )
         .ok()?;
     match gateway.get_external_ip().ok()? {
@@ -171,12 +197,21 @@ pub fn open_mapping(port: u16) -> Option<SocketAddrV4> {
 
 /// Refermer ce que [`open_mapping`] a ouvert. Sans routeur, rien.
 pub fn close_mapping(port: u16) {
+    close_mapping_of(igd_next::PortMappingProtocol::TCP, port);
+}
+
+/// Refermer ce que [`open_udp_mapping`] a ouvert.
+pub fn close_udp_mapping(port: u16) {
+    close_mapping_of(igd_next::PortMappingProtocol::UDP, port);
+}
+
+fn close_mapping_of(protocol: igd_next::PortMappingProtocol, port: u16) {
     let options = igd_next::SearchOptions {
         timeout: Some(Duration::from_secs(2)),
         ..Default::default()
     };
     if let Ok(gateway) = igd_next::search_gateway(options) {
-        let _ = gateway.remove_port(igd_next::PortMappingProtocol::TCP, port);
+        let _ = gateway.remove_port(protocol, port);
     }
 }
 

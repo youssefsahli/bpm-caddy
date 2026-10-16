@@ -281,8 +281,9 @@ porte le nombre de ceux qu'on n'a pas lus. On lui répond au même
 endroit ; il lit la réponse à sa visite suivante de la page.
 
 La conversation est **chiffrée de bout en bout** entre son téléphone et
-les postes de l'officine, sous une clé à lui que porte le code : la
-passerelle qui les met en relation ne la voit pas et ne garde rien. Un
+les postes de l'officine, sous une clé à lui que porte le code. Par la
+**voie directe**, rien ne se tient entre les deux : la page joint un
+poste de l'officine elle-même, sans serveur. Un
 message ne passe que **pendant qu'un poste de l'officine est en
 service** — ouvert, verrouillé ou rangé dans la zone de notification
 (voir « Le poste en service ») ; sinon il attend sur le téléphone du
@@ -295,7 +296,7 @@ Le patient peut demander **une copie de sa conversation** (son droit
 d'accès) : « Imprimer la conversation », dans le menu « Accès… », ou à
 côté de « Donner l'accès » quand son accès est fermé.
 
-La page est publiée par l'éditeur, à part de la passerelle ; chaque
+La page est publiée par l'éditeur (sur GitHub Pages) ; chaque
 poste vérifie qu'elle est bien celle que livre le logiciel. Si elle ne
 l'est pas, l'onglet le dit en rouge : ne remettez plus de code et
 prévenez l'éditeur.
@@ -305,17 +306,52 @@ perdu ou changé) ; « Fermer l'accès » coupe la messagerie de ce
 patient, dont la page le lui dit. La conversation reste au dossier, et
 part avec lui.
 
-**La passerelle** : livrée réglée quand l'éditeur en tient une — la
-messagerie est alors prête, sans réglage. Sinon, à régler une fois pour
-l'officine : son adresse (« Régler la passerelle… », dans l'onglet), un
-serveur tenu par une officine. Une passerelle réglée remplace celle qui
-est livrée ; réglée vide, la messagerie est éteinte. Une passerelle
+**L'allumer** : « Régler la messagerie… », dans l'onglet, une fois pour
+l'officine. **La voie directe** (cochée) suffit : chaque poste en
+service écoute à ses adresses publiques — son IPv6, ou la box qui lui
+ouvre le port UDP 7748 (UPnP) — et la page le joint en WebRTC. L'onglet
+dit si ce poste est joignable ; un poste qui ne l'est pas laisse répondre
+les autres, et le code porte les adresses de tous. Si aucun ne l'est,
+ouvrir ce port dans la box, ou régler une passerelle.
+
+**Une passerelle**, facultative, est un serveur que l'officine tient ou
+choisit (son adresse, dans la même fenêtre) : elle sert de second
+chemin, pour les postes qu'on ne joint pas depuis Internet. Une passerelle
 livrée avec des conditions (le contrat de sous-traitance des données)
 attend qu'on les accepte, une fois, au nom de l'officine : « Lire et
 accepter les conditions… », dans l'onglet. Le poste, le jour, l'heure,
 le nom et la version du texte sont gardés ; « Conditions de la
 passerelle… », au menu « Accès… », les relit. Des conditions qui
 changent se redemandent, sans couper la messagerie.
+
+# Le tableau de l'officine
+
+« Tableau de l'officine » (Ctrl+K, « garde ») : ce que l'officine
+affiche pour tous, ligne par ligne, sur trois canaux — **la pharmacie
+de garde**, **les produits disponibles** ici, **les informations** du
+moment (une fermeture, une campagne, un service). Chaque ligne a un
+titre, un détail et ses dates : elle s'affiche de son premier à son
+dernier jour ; sans dates, dès maintenant et jusqu'à ce qu'on la
+retire. « Ajouter… » ajoute une ligne (une garde vaut pour le jour
+même, à changer) ou retire les lignes passées ; « Enregistrer » l'écrit
+pour tous les postes.
+
+Le tableau se lit **sans serveur**, servi par les postes de l'officine
+par la voie directe de la messagerie (à allumer d'abord, voir plus
+haut) :
+
+- sur la page des patients, au-dessus de leur conversation ;
+- par **son code** (« Lien et code… », « Code du tableau ») : en vitrine,
+  sur la porte, sur le site de l'officine — il ouvre le tableau seul,
+  sans clé ni conversation ;
+- sur **un écran** : « Ouvrir l'écran », ou « Copier le lien de l'écran »
+  pour le navigateur de l'écran de la vitrine ou de la salle d'attente,
+  en plein écran. Il se relit chaque minute, garde ce qu'il a lu quand
+  l'officine ne répond pas, et suit ses adresses quand elles changent.
+
+Le 3237 (la pharmacie de garde la plus proche) y est toujours rappelé.
+Un code imprimé mène aux adresses que les postes avaient ce jour-là :
+si elles changent toutes, le réimprimer.
 
 # Croisement
 

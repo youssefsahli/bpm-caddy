@@ -88,6 +88,13 @@ hmac = { version = "0.12", optional = true }
 sha2 = { version = "0.10", optional = true }
 sha1 = { version = "0.10", optional = true }
 base64 = { version = "0.22", optional = true }
+# **La voie directe** (`src/direct.rs`) : la page du patient joint un
+# poste de l'officine par un canal de données WebRTC, sans passerelle ni
+# serveur de signalisation — le code QR porte l'empreinte du certificat
+# DTLS et les adresses ; le poste ne répond qu'en ICE-lite. Sans E/S
+# (sans tokio), chiffrement en Rust pur : rien à compiler en C pour
+# Windows, macOS ou Android.
+str0m = { version = "0.24.1", default-features = false, features = ["rust-crypto"], optional = true }
 
 [features]
 # Le réseau d'officines (voir `src/network.rs`) est livré : il ne
@@ -107,6 +114,7 @@ sync = [
     "dep:sha2",
     "dep:sha1",
     "dep:base64",
+    "dep:str0m",
 ]
 # The desktop application: the egui window, Typst printing, the system
 # keyring and file dialogs. Everything else in the library — the base,

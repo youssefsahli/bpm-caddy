@@ -50,10 +50,16 @@ line in that test.
   map, signed, and what each shares), `patientchat` (the patient
   messaging protocol, WebCrypto-compatible; the patient page itself is
   published on GitHub Pages by `.github/workflows/page.yml`, under its
-  hash), `passerelle` (the stateless gateway that bridges the page's
+  hash), `direct` (the direct way: the page reaches a post over a WebRTC data
+  channel with no server — the QR code carries the posts' DTLS
+  fingerprint and addresses, the post answers ICE-lite, `str0m`),
+  `passerelle` (the optional stateless gateway that bridges the page's
   WebSocket to a waiting post and keeps an optional connection log;
-  binary `bpm-passerelle`) and `patientpost` (a post waiting there,
-  answering from the base, checking the published page) — all under `sync`; `geo`
+  binary `bpm-passerelle`) and `patientpost` (a post answering pages by
+  both ways, from the base, keeping its addresses in the officine's
+  settings, checking the published page) — all under `sync`; `tableau`
+  (the officine's board — duty pharmacy, products available, news —
+  served to the page and to any screen that opens its link); `geo`
   (département outlines and communes, for the map), `finess` (the
   officines of the public FINESS register, read against what a card
   declares),

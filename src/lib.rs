@@ -32,6 +32,8 @@ pub mod crush;
 pub mod cyp;
 pub mod date;
 pub mod db;
+#[cfg(feature = "sync")]
+pub mod direct;
 pub mod dosing;
 pub mod elderly;
 pub mod enligne;
@@ -91,6 +93,7 @@ pub mod selfcheck;
 pub mod shipped;
 pub mod strings;
 pub mod surveillance;
+pub mod tableau;
 pub mod tables;
 pub mod telemetry;
 pub mod timeline;

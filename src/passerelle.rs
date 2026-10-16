@@ -1433,6 +1433,9 @@ mod browser {
         fn officine(&mut self) -> crate::patientchat::Officine {
             self.0.officine()
         }
+        fn board(&mut self) -> crate::tableau::Public {
+            self.0.board()
+        }
     }
 
     /// The page as GitHub Pages serves it, on 18745: what a browser

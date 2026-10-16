@@ -15,10 +15,12 @@
 pharmacie. En cas d'urgence, appelez le <strong>15</strong> (ou le <strong>112</strong>).
 En cas d'effet indésirable grave, contactez immédiatement un médecin.</p>
 <header>
-  <p class="sur">Messagerie</p>
+  <p class="sur" id="sur">Messagerie</p>
   <h1 id="officine">Votre pharmacie</h1>
   <p id="horaires" class="discret" hidden></p>
 </header>
+<section id="tableau" aria-live="polite" hidden></section>
+<p id="lu" class="discret"></p>
 <main id="fil" aria-live="polite"></main>
 <section id="ecrire" hidden>
   <label for="texte" class="cache">Votre message</label>
@@ -31,18 +33,24 @@ En cas d'effet indésirable grave, contactez immédiatement un médecin.</p>
 </section>
 <p id="etat" role="status"></p>
 <footer>
-  <p class="discret">Vos messages sont chiffrés de bout en bout entre ce téléphone et
+  <p class="discret pour-tableau">Ces informations sont lues directement sur un ordinateur de
+  la pharmacie, qui voit l'adresse IP de cet appareil. Cette page est publiée par GitHub Pages
+  (GitHub, Inc., aux États-Unis), qui la voit aussi. Rien n'est gardé sur cet appareil.</p>
+  <p class="discret conv">Vos messages sont chiffrés de bout en bout entre ce téléphone et
   la pharmacie : personne d'autre ne peut les lire. Ils restent aussi sur ce
   téléphone.</p>
-  <details class="discret">
+  <details class="discret conv">
     <summary>Vos données personnelles</summary>
     <p><strong>Responsable du traitement :</strong> <span id="rt">votre pharmacie</span>.</p>
     <p><strong>Pourquoi :</strong> échanger avec l'équipe de la pharmacie au sujet de vos
     traitements et de votre prise en charge. Base légale : la prise en charge sanitaire
     (RGPD, art. 9.2.h). Les échanges sont couverts par le secret professionnel.</p>
-    <p><strong>Qui les lit :</strong> l'équipe de la pharmacie seulement. Un serveur relais
-    les transmet chiffrés, sans pouvoir les lire ni les garder ; il note, pour la sécurité,
-    l'adresse IP, l'heure et la pharmacie appelée de chaque connexion, six mois au plus.
+    <p><strong>Qui les lit :</strong> l'équipe de la pharmacie seulement. Ils passent de ce
+    téléphone à un ordinateur de la pharmacie, directement ou par un serveur relais qu'elle
+    a choisi ; l'ordinateur de la pharmacie voit l'adresse IP du téléphone. Si un serveur
+    relais est utilisé, il les transmet chiffrés, sans pouvoir les lire ni les garder ; il
+    note, pour la sécurité, l'adresse IP, l'heure et la pharmacie appelée de chaque connexion,
+    six mois au plus.
     Cette page est publiée par GitHub Pages (GitHub, Inc., aux États-Unis), qui voit
     l'adresse IP de qui l'ouvre, jamais les messages.</p>
     <p><strong>Combien de temps :</strong> à la pharmacie, dans votre dossier, aussi

@@ -360,6 +360,21 @@ const PCHAT_GATEWAY_KEY: &str = "patientchat_passerelle";
 /// fois, au premier réglage, par le poste qui règle.
 #[cfg(feature = "sync")]
 const PCHAT_SECRET_KEY: &str = "patientchat_secret";
+/// **La voie directe** (`direct.rs`) : l'identité de l'officine — le
+/// certificat de ses postes —, tirée quand on l'allume ; vide ou absente,
+/// éteinte. Les postes répondent alors eux-mêmes aux pages, sans
+/// passerelle.
+#[cfg(feature = "sync")]
+const PCHAT_DIRECT_KEY: &str = "patientchat_directe";
+/// Éteinte, l'identité reste rangée derrière cette marque : rallumée, les
+/// codes déjà remis portent encore la bonne empreinte.
+#[cfg(feature = "sync")]
+const PCHAT_DIRECT_OFF: &str = "eteinte:";
+/// **L'adresse publique de la box**, écrite à la main quand le port UDP
+/// 7748 y est ouvert à la main (une box sans UPnP) : une adresse IPv4 ou
+/// un nom, et un port s'il n'est pas 7748. Un réglage de l'officine.
+#[cfg(feature = "sync")]
+const PCHAT_BOX_KEY: &str = "patientchat_box";
 /// **La passerelle livrée** : écrite à la construction
 /// (`BPM_CADDY_PASSERELLE`, une variable du dépôt que lit
 /// `release.yml`), elle vaut tant que l'officine n'en a réglé aucune —
@@ -3384,6 +3399,7 @@ enum Tool {
     Appels,
     Facturation,
     Cascades,
+    Tableau,
 }
 
 impl Tool {
@@ -3416,6 +3432,7 @@ impl Tool {
             Tool::Appels => "appels",
             Tool::Facturation => "facturation",
             Tool::Cascades => "cascades",
+            Tool::Tableau => "tableau",
         }
     }
 
@@ -3423,7 +3440,7 @@ impl Tool {
         Tool::ALL.into_iter().find(|t| t.key() == key)
     }
 
-    const ALL: [Tool; 24] = [
+    const ALL: [Tool; 25] = [
         Tool::Trame,
         Tool::Planning,
         Tool::Reseau,
@@ -3448,6 +3465,7 @@ impl Tool {
         Tool::Appels,
         Tool::Facturation,
         Tool::Cascades,
+        Tool::Tableau,
     ];
 
     fn title(self) -> &'static str {
@@ -3476,6 +3494,7 @@ impl Tool {
             Tool::Appels => tr("tool_appels"),
             Tool::Facturation => tr("tool_facturation"),
             Tool::Cascades => tr("tool_cascades"),
+            Tool::Tableau => tr("tool_tableau"),
         }
     }
 
@@ -3507,6 +3526,7 @@ impl Tool {
             Tool::Appels => tr("tool_appels_purpose"),
             Tool::Facturation => tr("tool_facturation_purpose"),
             Tool::Cascades => tr("tool_cascades_purpose"),
+            Tool::Tableau => tr("tool_tableau_purpose"),
         }
     }
 
@@ -4588,7 +4608,96 @@ struct PchatSetup {
     text: String,
     seen_gateway: Option<String>,
     seen_secret: Option<String>,
+    /// La voie directe, cochée ou non, et ce que la base portait.
+    direct: bool,
+    seen_direct: Option<String>,
+    /// L'adresse de la box ouverte à la main, et ce que la base portait.
+    box_text: String,
+    seen_box: Option<String>,
     error: Option<String>,
+}
+
+/// **La fenêtre du tableau de l'officine** (`tableau.rs`) : les lignes
+/// telles qu'on les tape, ce que la base portait à l'ouverture, et le
+/// code montré à la place des lignes quand on le demande.
+struct TableauWindow {
+    rows: Vec<TableauRow>,
+    seen: Option<String>,
+    error: Option<String>,
+    note: Option<String>,
+    /// Le code montré, et son lien.
+    code: Option<String>,
+}
+
+/// Une ligne du tableau à l'écran : ses dates comme on les tape.
+#[derive(Clone, Default)]
+struct TableauRow {
+    canal: crate::tableau::Canal,
+    titre: String,
+    detail: String,
+    du: String,
+    au: String,
+}
+
+impl TableauWindow {
+    fn opened(db: &Db) -> Self {
+        let seen = db.setting(crate::tableau::SETTING);
+        let t = crate::tableau::Tableau::read(seen.as_deref());
+        Self {
+            rows: t
+                .lignes
+                .into_iter()
+                .map(|l| TableauRow {
+                    canal: l.canal,
+                    titre: l.titre,
+                    detail: l.detail,
+                    du: db::format_french_date(&l.du),
+                    au: db::format_french_date(&l.au),
+                })
+                .collect(),
+            seen,
+            error: None,
+            note: None,
+            code: None,
+        }
+    }
+
+    /// Les lignes tapées, lues : la première date illisible dit sa ligne.
+    fn read(&self, year: u32) -> Result<crate::tableau::Tableau, String> {
+        let mut lignes = Vec::new();
+        for (i, r) in self.rows.iter().enumerate() {
+            if r.titre.trim().is_empty() {
+                continue;
+            }
+            let date = |t: &str| -> Result<String, String> {
+                if t.trim().is_empty() {
+                    Ok(String::new())
+                } else {
+                    db::parse_french_date(t, year, db::YearHint::Future)
+                        .map_err(|_| trf("tableau_bad_date", i + 1))
+                }
+            };
+            lignes.push(crate::tableau::Ligne {
+                canal: r.canal,
+                titre: r.titre.trim().to_owned(),
+                detail: r.detail.trim().to_owned(),
+                du: date(&r.du)?,
+                au: date(&r.au)?,
+            });
+        }
+        Ok(crate::tableau::Tableau { lignes })
+    }
+}
+
+/// **Le réglage de la messagerie** de l'officine, tel que la base le
+/// porte : la passerelle (vide : aucune), le secret de sa boîte, et
+/// l'identité de la voie directe (`None` : éteinte).
+#[cfg(feature = "sync")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PchatConf {
+    gateway: String,
+    secret: String,
+    direct: Option<crate::direct::Identity>,
 }
 
 /// La fenêtre des conditions de la passerelle : la case cochée, le nom
@@ -5432,6 +5541,8 @@ struct Session {
     ord_offers_key: Option<(i64, u64)>,
     /// The TROD lines editor, open over the ordonnance box.
     trod_edit: Option<TrodEdit>,
+    /// Le tableau de l'officine, quand sa fenêtre est ouverte.
+    tableau_window: Option<TableauWindow>,
     /// Moved by every write to `trod_lines`.
     trod_rev: u64,
     /// The open drug card's dated notes, newest first.
@@ -5778,7 +5889,7 @@ struct Session {
     /// Le réglage de l'officine — la passerelle et le secret de sa boîte
     /// —, relu de la base au premier regard et à chaque relecture.
     #[cfg(feature = "sync")]
-    pchat_conf: Option<(String, String)>,
+    pchat_conf: Option<PchatConf>,
     pchat_conf_read: bool,
     /// La fenêtre de réglage de la passerelle, quand elle est ouverte.
     #[cfg(feature = "sync")]
@@ -5793,7 +5904,7 @@ struct Session {
     #[cfg(feature = "sync")]
     pchat_wait: Option<(
         crate::patientpost::Waiting,
-        (String, String, crate::patientchat::Officine),
+        (PchatConf, crate::patientchat::Officine),
     )>,
     /// Ce que le fil a dit en dernier quand la passerelle ne répond pas.
     #[cfg(feature = "sync")]
@@ -5801,6 +5912,14 @@ struct Session {
     /// La page publiée, comparée à la nôtre (`patientpost::check_page`).
     #[cfg(feature = "sync")]
     pchat_page: Option<crate::patientpost::PageCheck>,
+    /// Les adresses de ce poste sur la voie directe, telles que le fil les
+    /// a trouvées en dernier ; `None` tant qu'il n'a rien dit.
+    #[cfg(feature = "sync")]
+    pchat_direct_at: Option<(Vec<String>, Vec<String>)>,
+    /// Comment une page joint l'officine (`pchat_reach`), relu avec le
+    /// réglage et quand le fil a dit ses adresses — jamais à chaque image.
+    #[cfg(feature = "sync")]
+    pchat_reach_cache: crate::patientchat::Reach,
     /// The posts window, when open.
     #[cfg(feature = "sync")]
     posts_window: Option<PostsWindow>,
@@ -6725,6 +6844,7 @@ impl Session {
             ord_offers: Vec::new(),
             ord_offers_key: None,
             trod_edit: None,
+            tableau_window: None,
             trod_rev: 0,
             drug_notes: Vec::new(),
             trans_day: String::new(),
@@ -6863,6 +6983,10 @@ impl Session {
             pchat_unreachable: None,
             #[cfg(feature = "sync")]
             pchat_page: None,
+            #[cfg(feature = "sync")]
+            pchat_direct_at: None,
+            #[cfg(feature = "sync")]
+            pchat_reach_cache: crate::patientchat::Reach::default(),
             #[cfg(feature = "sync")]
             posts_window: None,
             #[cfg(feature = "sync")]
@@ -8209,6 +8333,11 @@ impl Session {
             // elle se lit ; la facturation, depuis l'écran des recettes.
             Tool::Appels => self.activate_tab(&WorkTab::Dashboard),
             Tool::Facturation => self.activate_tab(&WorkTab::Finances),
+            Tool::Tableau => {
+                if self.tableau_window.is_none() {
+                    self.tableau_window = Some(TableauWindow::opened(&self.db));
+                }
+            }
         }
     }
 
@@ -13062,8 +13191,21 @@ impl Session {
                     .set_setting(PCHAT_SECRET_KEY, &hex, seen, &day, &who);
                 secret = self.db.setting(PCHAT_SECRET_KEY).unwrap_or_default();
             }
-            self.pchat_conf =
-                (!held && !gateway.is_empty() && secret.len() == 64).then_some((gateway, secret));
+            // La voie directe ne passe par aucun prestataire : pas de
+            // conditions à accepter pour elle.
+            let direct = self
+                .db
+                .setting(PCHAT_DIRECT_KEY)
+                .and_then(|t| crate::direct::Identity::read(&t));
+            let gateway = if held { String::new() } else { gateway };
+            self.pchat_conf = ((!gateway.is_empty() || direct.is_some())
+                && crate::patientchat::is_box_secret(&secret))
+            .then_some(PchatConf {
+                gateway,
+                secret,
+                direct,
+            });
+            self.pchat_reach_cache = App::read_reach(self);
         }
         if let Ok(list) = self.db.unread_patient_messages() {
             self.pchat_unread = list;
@@ -13125,42 +13267,59 @@ impl Session {
         if !self.pchat_conf_read {
             self.refresh_pchat();
         }
-        let want = self
-            .pchat_conf
-            .clone()
-            .filter(|(_, s)| crate::patientchat::is_box_secret(s))
-            .map(|(g, s)| {
-                let p = &config.pharmacy;
-                let hours: Vec<(String, String, String)> = p
-                    .horaires
-                    .iter()
-                    .map(|h| (h.jour.clone(), h.de.clone(), h.a.clone()))
-                    .collect();
-                let who = crate::patientchat::Officine {
-                    nom: p.name.trim().to_owned(),
-                    adresse: p.address.trim().replace('\n', ", "),
-                    telephone: p.phone.trim().to_owned(),
-                    horaires: crate::patientpost::opening_hours(&hours),
-                };
-                (g, s, who)
-            });
+        let want = self.pchat_conf.clone().map(|c| {
+            let p = &config.pharmacy;
+            let hours: Vec<(String, String, String)> = p
+                .horaires
+                .iter()
+                .map(|h| (h.jour.clone(), h.de.clone(), h.a.clone()))
+                .collect();
+            let who = crate::patientchat::Officine {
+                nom: p.name.trim().to_owned(),
+                adresse: p.address.trim().replace('\n', ", "),
+                telephone: p.phone.trim().to_owned(),
+                horaires: crate::patientpost::opening_hours(&hours),
+                adresses: Vec::new(),
+            };
+            (c, who)
+        });
+        // The officine's name or hours changed: told to the running
+        // thread, which keeps listening — restarted, the direct way lost
+        // its port while the old listening gave it back.
+        if let (Some((w, running)), Some((c, who))) = (&mut self.pchat_wait, &want) {
+            if running.0 == *c && running.1 != *who {
+                w.set_officine(who.clone());
+                running.1 = who.clone();
+            }
+        }
         let running = self.pchat_wait.as_ref().map(|(_, c)| c.clone());
         if want != running {
             self.pchat_wait = None;
             self.pchat_unreachable = None;
             self.pchat_page = None;
+            self.pchat_direct_at = None;
             if let (Some(c), Some(path)) = (want, self.db.path()) {
+                let direct =
+                    c.0.direct
+                        .clone()
+                        .map(|identity| crate::patientpost::Direct {
+                            identity,
+                            port: crate::direct::DEFAULT_PORT,
+                            at: None,
+                        });
                 let w = crate::patientpost::spawn(
                     path,
                     self.password.clone(),
-                    &c.0,
+                    &c.0.gateway,
+                    c.0.secret.clone(),
                     c.1.clone(),
-                    c.2.clone(),
+                    direct,
                 );
                 self.pchat_wait = Some((w, c));
             }
         }
         let mut arrived = false;
+        let mut refresh_reach = false;
         if let Some((w, _)) = &self.pchat_wait {
             while let Ok(e) = w.events.try_recv() {
                 match e {
@@ -13168,8 +13327,17 @@ impl Session {
                     crate::patientpost::Event::Unreachable(t) => self.pchat_unreachable = Some(t),
                     crate::patientpost::Event::Reached => self.pchat_unreachable = None,
                     crate::patientpost::Event::Page(c) => self.pchat_page = Some(c),
+                    crate::patientpost::Event::Direct { public, bound } => {
+                        self.pchat_direct_at = Some((public, bound));
+                        refresh_reach = true;
+                    }
                 }
             }
+        }
+        // The addresses this post found are in the base now (or will be
+        // in a moment): what the codes carry, read again.
+        if refresh_reach {
+            self.pchat_reach_cache = App::read_reach(self);
         }
         // The base moved under this screen: read it at once rather than
         // at the next two-second look.
@@ -19804,6 +19972,44 @@ impl App {
                             session.patient_tab = PatientTab::Messagerie;
                             session.view = MainView::Search;
                         }
+                        // Le tableau de l'officine, trois lignes — une garde,
+                        // un produit, une information.
+                        Ok("tableau") => {
+                            let day = session.today.clone();
+                            let t = crate::tableau::Tableau {
+                                lignes: vec![
+                                    crate::tableau::Ligne {
+                                        canal: crate::tableau::Canal::Garde,
+                                        titre: "Pharmacie du Marché, 2 place du Marché".into(),
+                                        detail:
+                                            "De 19 h à 9 h : sonner à la grille. 02 98 00 00 01"
+                                                .into(),
+                                        du: day.clone(),
+                                        au: day.clone(),
+                                    },
+                                    crate::tableau::Ligne {
+                                        canal: crate::tableau::Canal::Produit,
+                                        titre: "Amoxicilline buvable 250 mg/5 ml".into(),
+                                        ..Default::default()
+                                    },
+                                    crate::tableau::Ligne {
+                                        canal: crate::tableau::Canal::Info,
+                                        titre: "Vaccination contre la grippe sans rendez-vous"
+                                            .into(),
+                                        detail: "Le matin, du lundi au samedi.".into(),
+                                        ..Default::default()
+                                    },
+                                ],
+                            };
+                            let _ = session.db.set_setting(
+                                crate::tableau::SETTING,
+                                &t.text(),
+                                session.db.setting(crate::tableau::SETTING).as_deref(),
+                                &day,
+                                "AB",
+                            );
+                            session.tableau_window = Some(TableauWindow::opened(&session.db));
+                        }
                         Ok("fil") => {
                             // Le dossier qui porte le plus de
                             // **sources** — actes, vaccins, biologie,
@@ -26249,6 +26455,44 @@ impl App {
                     .wrap(),
                 );
             }
+            // La voie directe, telle que ce poste la tient : joignable ou
+            // non depuis Internet, et ce que les codes portent.
+            if session
+                .pchat_conf
+                .as_ref()
+                .is_some_and(|c| c.direct.is_some())
+            {
+                let everywhere = session
+                    .pchat_reach_cache
+                    .addresses
+                    .len()
+                    .min(crate::patientchat::LINK_ADDRESSES);
+                match session.pchat_direct_at.as_ref().map(|(public, _)| public) {
+                    Some(here) if here.is_empty() => {
+                        let key = if everywhere > 0 {
+                            "pchat_direct_not_here"
+                        } else {
+                            "pchat_direct_nowhere"
+                        };
+                        ui.add(
+                            egui::Label::new(egui::RichText::new(tr(key)).color(motif::warn()))
+                                .wrap(),
+                        );
+                    }
+                    Some(here) => {
+                        ui.label(
+                            egui::RichText::new(trn(
+                                "pchat_direct_here",
+                                &[&here.len().to_string(), &everywhere.to_string()],
+                            ))
+                            .size(motif::pt(ui, 10.5))
+                            .color(motif::text_dim()),
+                        )
+                        .on_hover_text(here.join("\n"));
+                    }
+                    None => {}
+                }
+            }
             match &session.pchat_page {
                 Some(crate::patientpost::PageCheck::Different) => {
                     ui.add(
@@ -26492,21 +26736,67 @@ impl App {
         }
     }
 
-    /// Le lien du code du dossier ouvert : la passerelle, la boîte, la clé.
+    /// **Comment une page joint l'officine** : la voie directe (l'empreinte
+    /// et les adresses de tous ses postes, lues des réglages) et la
+    /// passerelle.
+    #[cfg(feature = "sync")]
+    fn pchat_reach(session: &Session) -> crate::patientchat::Reach {
+        session.pchat_reach_cache.clone()
+    }
+
+    /// [`Self::pchat_reach`], lu de la base : les adresses que ses postes
+    /// ont rangées, et celle de la box écrite à la main, d'abord.
+    #[cfg(feature = "sync")]
+    fn read_reach(session: &Session) -> crate::patientchat::Reach {
+        let Some(conf) = session.pchat_conf.as_ref() else {
+            return crate::patientchat::Reach::default();
+        };
+        let (fingerprint, addresses) = match &conf.direct {
+            Some(id) => {
+                let rows = session
+                    .db
+                    .settings_with_prefix(crate::patientpost::ADDRESSES)
+                    .unwrap_or_default();
+                let mut addresses: Vec<String> = session
+                    .db
+                    .setting(PCHAT_BOX_KEY)
+                    .and_then(|t| crate::patientchat::box_address(&t))
+                    .into_iter()
+                    .collect();
+                for a in crate::patientpost::officine_addresses(&rows, &session.today) {
+                    if !addresses.contains(&a) {
+                        addresses.push(a);
+                    }
+                }
+                (
+                    crate::direct::fingerprint_text(&id.fingerprint()),
+                    addresses,
+                )
+            }
+            None => (String::new(), Vec::new()),
+        };
+        crate::patientchat::Reach {
+            fingerprint,
+            addresses,
+            gateway: conf.gateway.clone(),
+        }
+    }
+
+    /// Le lien du code du dossier ouvert : le chemin, la boîte, la clé.
+    /// `None` quand aucun chemin ne mène à l'officine.
     #[cfg(feature = "sync")]
     fn pchat_link(session: &Session) -> Option<String> {
-        let (gateway, secret) = session.pchat_conf.as_ref()?;
+        let conf = session.pchat_conf.as_ref()?;
         let key = session.pchat.as_ref()?.key.as_ref()?;
         let key = crate::patientchat::key_from_text(&key.key)?;
-        let secret: Vec<u8> = (0..secret.len())
-            .step_by(2)
-            .map(|i| u8::from_str_radix(secret.get(i..i + 2)?, 16).ok())
-            .collect::<Option<_>>()?;
-        Some(crate::patientchat::link(
-            gateway,
-            &crate::patientchat::box_id(&secret),
-            &key,
-        ))
+        let reach = Self::pchat_reach(session);
+        reach.any().then(|| {
+            crate::patientchat::link(
+                &reach,
+                &crate::patientchat::box_of_secret(&conf.secret).unwrap_or_default(),
+                &key,
+            )
+        })
     }
 
     /// **Donner l'accès** (ou un nouveau code) : une clé tirée ici, la
@@ -26865,12 +27155,409 @@ impl App {
         }
     }
 
+    /// Le lien du tableau (`screen` : en écran), quand un chemin mène à
+    /// l'officine.
+    fn tableau_link(session: &mut Session, screen: bool) -> Option<String> {
+        #[cfg(feature = "sync")]
+        {
+            if !session.pchat_conf_read {
+                session.refresh_pchat();
+            }
+            let mut reach = Self::pchat_reach(session);
+            // A screen in the officine reaches this post on its own
+            // network: no box has to turn the public address back inward.
+            if screen {
+                if let Some((_, bound)) = &session.pchat_direct_at {
+                    for a in bound.iter().rev() {
+                        let lan = a.parse::<std::net::SocketAddr>().is_ok_and(
+                            |s| matches!(s.ip(), std::net::IpAddr::V4(v4) if v4.is_private()),
+                        );
+                        if lan && !reach.addresses.contains(a) {
+                            reach.addresses.insert(0, a.clone());
+                        }
+                    }
+                }
+            }
+            let b = crate::patientchat::box_of_secret(&session.pchat_conf.as_ref()?.secret)?;
+            reach
+                .any()
+                .then(|| crate::patientchat::board_link(&reach, &b, screen))
+        }
+        #[cfg(not(feature = "sync"))]
+        {
+            let _ = (session, screen);
+            None
+        }
+    }
+
+    /// **Le tableau de l'officine** : ses lignes, canal par canal, avec
+    /// leurs dates ; le code qui l'ouvre sur un téléphone et le lien d'un
+    /// écran. Écrit contre ce que la fenêtre avait lu.
+    fn tableau_window(ctx: &egui::Context, session: &mut Session) {
+        let Some(mut w) = session.tableau_window.take() else {
+            return;
+        };
+        let (mut close, mut save, mut prune) = (false, false, false);
+        let mut add: Option<crate::tableau::Canal> = None;
+        let mut remove: Option<usize> = None;
+        let (mut want_code, mut want_copy, mut want_open) = (false, false, false);
+        let year = session.db.current_year();
+        let today = session.today.clone();
+        let screen = ctx.screen_rect();
+        egui::Window::new(tr("tableau_title"))
+            .collapsible(false)
+            .resizable(false)
+            .fixed_size(dialog_size(screen.size(), egui::vec2(820.0, 600.0)))
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("tableau_hint"))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+                let row = Self::row_height(ui);
+                let gap = ui.spacing().item_spacing.y;
+                // The two bands of buttons and the notes keep their rows
+                // at the bottom; the lines take what is left and scroll.
+                // Below the lines: the menu, the count, the note as it
+                // wraps (measured from the text drawn below), the buttons.
+                let button = motif::button_height(ui);
+                let note = w
+                    .error
+                    .clone()
+                    .map(|e| (e, true))
+                    .or_else(|| w.note.clone().map(|n| (n, false)));
+                let note_h = note.as_ref().map_or(0.0, |(t, _)| {
+                    let font = egui::TextStyle::Body.resolve(ui.style());
+                    let width = ui.available_width();
+                    ui.fonts(|f| {
+                        f.layout(t.clone(), font, egui::Color32::PLACEHOLDER, width)
+                            .size()
+                            .y
+                    })
+                });
+                let footer = button * 2.0 + row + note_h + gap * 6.0;
+                // Whole entries only: two rows of fields and a rule each,
+                // as the last frame measured them (an estimate before).
+                let entry_id = egui::Id::new("tableau_entry_h");
+                let entry = ui
+                    .ctx()
+                    .data(|d| d.get_temp::<f32>(entry_id))
+                    .filter(|h| *h > 0.0)
+                    .unwrap_or(button * 2.0 + gap * 4.0);
+                let room = (ui.available_height() - footer).max(row * 3.0);
+                // egui draws a scroll area's content `clip_rect_margin`
+                // past its edge: taken off, the next entry stays hidden.
+                let margin = ui.visuals().clip_rect_margin;
+                let body_h = if room >= entry {
+                    (room / entry).floor() * entry - margin
+                } else {
+                    room
+                };
+                if let Some(link) = &w.code {
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(tr("tableau_code_hint"))
+                                .size(motif::pt(ui, 10.5))
+                                .color(motif::text_dim()),
+                        )
+                        .wrap(),
+                    );
+                    let side = body_h.min(ui.available_width()).max(row * 3.0);
+                    // Without the network there is no link, so no code.
+                    #[cfg(feature = "sync")]
+                    ui.vertical_centered(|ui| qr_code(ui, link, side));
+                    #[cfg(not(feature = "sync"))]
+                    let _ = (link, side);
+                } else {
+                    egui::ScrollArea::vertical()
+                        .id_salt("tableau_rows")
+                        .max_height(body_h)
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            if w.rows.is_empty() {
+                                ui.label(
+                                    egui::RichText::new(tr("tableau_empty"))
+                                        .color(motif::text_dim()),
+                                );
+                            }
+                            let canals: Vec<(crate::tableau::Canal, String)> =
+                                crate::tableau::Canal::ALL
+                                    .iter()
+                                    .map(|c| (*c, tr(c.label_key()).to_owned()))
+                                    .collect();
+                            for (i, r) in w.rows.iter_mut().enumerate() {
+                                let top = ui.cursor().top();
+                                ui.horizontal(|ui| {
+                                    motif::select(
+                                        ui,
+                                        ("tableau_canal", i),
+                                        chars_wide(ui, 16.0),
+                                        &mut r.canal,
+                                        &canals,
+                                    );
+                                    let remove_w = chars_wide(ui, 8.0);
+                                    let title_w = (ui.available_width()
+                                        - remove_w
+                                        - ui.spacing().item_spacing.x * 2.0)
+                                        .max(chars_wide(ui, 12.0));
+                                    motif::field(
+                                        ui,
+                                        title_w,
+                                        egui::TextEdit::singleline(&mut r.titre)
+                                            .char_limit(crate::tableau::TITLE_MAX)
+                                            .hint_text(motif::hint(tr("tableau_title_hint"))),
+                                    );
+                                    if motif::button(ui, tr("tableau_remove")).clicked() {
+                                        remove = Some(i);
+                                    }
+                                });
+                                // The dates beside the detail: on the first
+                                // line they left the title a few letters.
+                                ui.horizontal(|ui| {
+                                    let date_w = Self::date_field_width(ui);
+                                    motif::field(
+                                        ui,
+                                        date_w,
+                                        egui::TextEdit::singleline(&mut r.du)
+                                            .hint_text(motif::hint(tr("tableau_from"))),
+                                    );
+                                    motif::field(
+                                        ui,
+                                        date_w,
+                                        egui::TextEdit::singleline(&mut r.au)
+                                            .hint_text(motif::hint(tr("tableau_to"))),
+                                    );
+                                    let rest = (ui.available_width() - ui.spacing().item_spacing.x)
+                                        .max(chars_wide(ui, 12.0));
+                                    motif::field(
+                                        ui,
+                                        rest,
+                                        egui::TextEdit::singleline(&mut r.detail)
+                                            .char_limit(crate::tableau::DETAIL_MAX)
+                                            .hint_text(motif::hint(tr("tableau_detail_hint"))),
+                                    );
+                                });
+                                motif::separator(ui);
+                                if i == 0 {
+                                    let h = ui.cursor().top() - top;
+                                    ui.ctx().data_mut(|d| d.insert_temp(entry_id, h));
+                                }
+                            }
+                        });
+                    let full = w.rows.len() >= crate::tableau::MOST_LINES;
+                    ui.horizontal_wrapped(|ui| {
+                        // One menu, not four buttons: wrapped at 1.6 they
+                        // took two rows from the lines.
+                        let mut options: Vec<(Option<crate::tableau::Canal>, String)> = Vec::new();
+                        if !full {
+                            options.extend([
+                                (
+                                    Some(crate::tableau::Canal::Garde),
+                                    tr("tableau_add_garde").to_owned(),
+                                ),
+                                (
+                                    Some(crate::tableau::Canal::Produit),
+                                    tr("tableau_add_produit").to_owned(),
+                                ),
+                                (
+                                    Some(crate::tableau::Canal::Info),
+                                    tr("tableau_add_info").to_owned(),
+                                ),
+                            ]);
+                        }
+                        options.push((None, tr("tableau_prune").to_owned()));
+                        let mw = chars_wide(ui, 24.0).min(ui.available_width());
+                        match motif::menu(ui, "tableau_add_menu", mw, tr("tableau_add"), &options)
+                            .inner
+                        {
+                            Some(Some(c)) => add = Some(c),
+                            Some(None) => prune = true,
+                            None => {}
+                        }
+                        if full {
+                            ui.label(
+                                egui::RichText::new(trf(
+                                    "tableau_full",
+                                    crate::tableau::MOST_LINES,
+                                ))
+                                .color(motif::text_dim()),
+                            );
+                        }
+                    });
+                }
+                // What the board shows today, from what is typed.
+                if let Ok(t) = w.read(year) {
+                    ui.label(
+                        egui::RichText::new(trn(
+                            "tableau_today",
+                            &[
+                                &t.today(&today).len().to_string(),
+                                &t.lignes.len().to_string(),
+                            ],
+                        ))
+                        .size(motif::pt(ui, 10.5))
+                        .color(motif::text_dim()),
+                    );
+                }
+                if let Some((t, error)) = &note {
+                    let color = if *error {
+                        motif::warn()
+                    } else {
+                        motif::text_dim()
+                    };
+                    ui.add(egui::Label::new(egui::RichText::new(t).color(color)).wrap());
+                }
+                ui.horizontal(|ui| {
+                    if motif::button(ui, tr("tableau_save")).clicked() {
+                        save = true;
+                    }
+                    // The three ways out behind one menu: five buttons
+                    // wrapped to two rows at 1.6.
+                    let code_label = if w.code.is_some() {
+                        tr("tableau_back")
+                    } else {
+                        tr("tableau_code")
+                    };
+                    let options = [
+                        (0u8, code_label.to_owned()),
+                        (1, tr("tableau_open_screen").to_owned()),
+                        (2, tr("tableau_copy").to_owned()),
+                    ];
+                    let close_w = chars_wide(ui, 9.0);
+                    let mw = (ui.available_width() - close_w).min(chars_wide(ui, 22.0));
+                    match motif::menu(ui, "tableau_link_menu", mw, tr("tableau_links"), &options)
+                        .inner
+                    {
+                        Some(0) => want_code = true,
+                        Some(1) => want_open = true,
+                        Some(_) => want_copy = true,
+                        None => {}
+                    }
+                    if motif::button(ui, tr("tableau_close")).clicked() {
+                        close = true;
+                    }
+                });
+            });
+        if let Some(c) = add {
+            w.rows.push(TableauRow {
+                canal: c,
+                // A duty is for a day: today, to be changed.
+                du: if c == crate::tableau::Canal::Garde {
+                    db::format_french_date(&today)
+                } else {
+                    String::new()
+                },
+                au: if c == crate::tableau::Canal::Garde {
+                    db::format_french_date(&today)
+                } else {
+                    String::new()
+                },
+                ..Default::default()
+            });
+        }
+        if let Some(i) = remove {
+            if i < w.rows.len() {
+                w.rows.remove(i);
+            }
+        }
+        if prune {
+            match w.read(year) {
+                Ok(t) => {
+                    let kept = t.without_past(&today);
+                    w.rows.retain(|r| {
+                        r.titre.trim().is_empty() || {
+                            let au = db::parse_french_date(&r.au, year, db::YearHint::Future)
+                                .unwrap_or_default();
+                            au.is_empty() || au.as_str() >= today.as_str()
+                        }
+                    });
+                    w.note = Some(trf("tableau_pruned", t.lignes.len() - kept.lignes.len()));
+                    w.error = None;
+                }
+                Err(e) => w.error = Some(e),
+            }
+        }
+        if want_code {
+            w.code = match w.code {
+                Some(_) => None,
+                None => {
+                    let link = Self::tableau_link(session, false);
+                    if link.is_none() {
+                        w.error = Some(tr("tableau_no_reach").to_owned());
+                    }
+                    link
+                }
+            };
+        }
+        if want_copy || want_open {
+            match Self::tableau_link(session, true) {
+                Some(link) if want_open => {
+                    if let Err(e) = open::that(&link) {
+                        w.error = Some(e.to_string());
+                    }
+                }
+                Some(link) => {
+                    ctx.copy_text(link);
+                    w.note = Some(tr("tableau_copied").to_owned());
+                    w.error = None;
+                }
+                None => w.error = Some(tr("tableau_no_reach").to_owned()),
+            }
+        }
+        if save {
+            match w.read(year) {
+                Err(e) => w.error = Some(e),
+                Ok(t) => {
+                    let (day, who) = (today.clone(), session.operator.clone());
+                    let text = t.text();
+                    match session.db.set_setting(
+                        crate::tableau::SETTING,
+                        &text,
+                        w.seen.as_deref(),
+                        &day,
+                        &who,
+                    ) {
+                        Ok(true) => {
+                            w = TableauWindow::opened(&session.db);
+                            w.note = Some(tr("tableau_saved").to_owned());
+                        }
+                        Ok(false) => {
+                            w = TableauWindow::opened(&session.db);
+                            w.error = Some(session.stale_note("tableau_stale"));
+                        }
+                        Err(e) => w.error = Some(e),
+                    }
+                }
+            }
+        }
+        if close || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            return;
+        }
+        session.tableau_window = Some(w);
+    }
+
     /// Ouvrir le réglage de la passerelle, avec ce que la base porte.
     #[cfg(feature = "sync")]
     fn open_pchat_setup(session: &mut Session) {
         let seen_gateway = session.db.setting(PCHAT_GATEWAY_KEY);
         let seen_secret = session.db.setting(PCHAT_SECRET_KEY);
+        let seen_direct = session.db.setting(PCHAT_DIRECT_KEY);
+        let seen_box = session.db.setting(PCHAT_BOX_KEY);
         session.pchat_setup = Some(PchatSetup {
+            // Jamais réglée, et aucune passerelle : cochée — c'est le
+            // chemin sans prestataire. Une officine qui avait une
+            // passerelle ouvre un port de plus seulement si elle le coche.
+            direct: match seen_direct.as_deref() {
+                None => seen_gateway.as_deref().is_none_or(|g| g.trim().is_empty()),
+                Some(t) => crate::direct::Identity::read(t).is_some(),
+            },
+            seen_direct,
+            box_text: seen_box.clone().unwrap_or_default(),
+            seen_box,
             // Rien de réglé : la passerelle livrée, écrite telle quelle —
             // « Enregistrer » sans rien toucher ne l'éteint pas.
             text: seen_gateway
@@ -26896,7 +27583,7 @@ impl App {
         egui::Window::new(tr("pchat_setup_title"))
             .collapsible(false)
             .resizable(false)
-            .fixed_size(dialog_size(screen.size(), egui::vec2(520.0, 300.0)))
+            .fixed_size(dialog_size(screen.size(), egui::vec2(560.0, 400.0)))
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(ctx, |ui| {
                 ui.add(
@@ -26919,6 +27606,28 @@ impl App {
                     );
                     save |= f.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                 });
+                ui.add_space(4.0);
+                motif::checkbox(ui, &mut setup.direct, tr("pchat_setup_direct"));
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("pchat_setup_direct_hint"))
+                            .size(motif::pt(ui, 10.5))
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+                if setup.direct {
+                    ui.horizontal_wrapped(|ui| {
+                        Self::form_label(ui, tr("pchat_setup_box_field"));
+                        let w = chars_wide(ui, 24.0).min(ui.available_width());
+                        motif::field(
+                            ui,
+                            w,
+                            egui::TextEdit::singleline(&mut setup.box_text)
+                                .hint_text(motif::hint(tr("pchat_setup_box_example"))),
+                        );
+                    });
+                }
                 if let Some(secret) = setup
                     .seen_secret
                     .as_deref()
@@ -26987,14 +27696,92 @@ impl App {
                 return;
             }
         }
+        // La voie directe : une identité tirée en l'allumant, gardée tant
+        // qu'elle reste allumée (les codes donnés portent son empreinte),
+        // effacée en l'éteignant.
+        let seen = setup.seen_direct.as_deref().unwrap_or("");
+        let had = crate::direct::Identity::read(seen);
+        // Turned off, kept behind its mark; turned on again, the same
+        // identity — the codes already given carry its fingerprint.
+        let kept = seen
+            .strip_prefix(PCHAT_DIRECT_OFF)
+            .and_then(crate::direct::Identity::read);
+        let wanted = match (setup.direct, &had) {
+            (true, Some(_)) | (false, None) => None,
+            (true, None) => match kept.or_else(crate::direct::Identity::draw) {
+                Some(id) => Some(id.text()),
+                None => {
+                    setup.error = Some(tr("pchat_setup_direct_failed").to_owned());
+                    session.pchat_setup = Some(setup);
+                    return;
+                }
+            },
+            (false, Some(id)) => Some(format!("{PCHAT_DIRECT_OFF}{}", id.text())),
+        };
+        // The box's address, typed by hand: read, or refused.
+        let typed_box = setup.box_text.trim().to_owned();
+        if !typed_box.is_empty() && crate::patientchat::box_address(&typed_box).is_none() {
+            setup.error = Some(tr("pchat_setup_box_bad").to_owned());
+            session.pchat_setup = Some(setup);
+            return;
+        }
+        if setup.seen_box.as_deref().unwrap_or("") != typed_box {
+            match session.db.set_setting(
+                PCHAT_BOX_KEY,
+                &typed_box,
+                setup.seen_box.as_deref(),
+                &day,
+                &who,
+            ) {
+                Ok(true) => {}
+                Ok(false) => {
+                    session.refresh_pchat();
+                    Self::open_pchat_setup(session);
+                    let said = session.stale_note("pchat_setup_stale");
+                    if let Some(s) = &mut session.pchat_setup {
+                        s.error = Some(said);
+                    }
+                    return;
+                }
+                Err(e) => {
+                    setup.error = Some(e);
+                    session.pchat_setup = Some(setup);
+                    return;
+                }
+            }
+        }
+        if let Some(value) = wanted {
+            match session.db.set_setting(
+                PCHAT_DIRECT_KEY,
+                &value,
+                setup.seen_direct.as_deref(),
+                &day,
+                &who,
+            ) {
+                Ok(true) => {}
+                Ok(false) => {
+                    session.refresh_pchat();
+                    Self::open_pchat_setup(session);
+                    let said = session.stale_note("pchat_setup_stale");
+                    if let Some(s) = &mut session.pchat_setup {
+                        s.error = Some(said);
+                    }
+                    return;
+                }
+                Err(e) => {
+                    setup.error = Some(e);
+                    session.pchat_setup = Some(setup);
+                    return;
+                }
+            }
+        }
         // Ses conditions d'abord : la passerelle livrée, pas encore
         // acceptée, ne tire pas de boîte.
         session.refresh_pchat();
         let held = session.pchat_terms == crate::patientchat::Terms::ToAccept;
         // The box's secret, drawn once: a post that drew one at the same
         // moment wins, and this one reads it back.
-        if !held
-            && !host.is_empty()
+        if ((!held && !host.is_empty()) || setup.direct)
             && !setup
                 .seen_secret
                 .as_deref()
@@ -86986,6 +87773,7 @@ impl eframe::App for App {
             }
             Self::versions_window(ctx, session);
             Self::entry_versions_window(ctx, session);
+            Self::tableau_window(ctx, session);
             session.refresh_online_fresh();
             Self::online_window(ctx, session);
             // The posts: their automatic synchronisation, polled every

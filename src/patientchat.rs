@@ -40,6 +40,15 @@ use sha2::{Digest, Sha256};
 
 /// Les cinq octets qui ouvrent le bonjour d'une page.
 pub const MAGIC: &[u8; 5] = b"BPMP1";
+/// **La demande du tableau** (`tableau.rs`), seule dans sa trame : le
+/// poste rend [`crate::tableau::Public`] en JSON, en clair — ce que
+/// l'officine affiche pour tous. Pas de clé : le code du tableau n'en
+/// porte pas. Ce qui le garantit venu de l'officine, c'est la voie
+/// directe (l'empreinte du certificat, dans le lien) : la page ne le
+/// demande jamais par une passerelle, qui pourrait changer la pharmacie
+/// de garde. Le tableau qu'un patient reçoit dans sa conversation, lui,
+/// est scellé avec elle.
+pub const BOARD: &[u8; 5] = b"BPMT1";
 /// La réponse d'un poste à une clé que l'officine a fermée — suivie de
 /// [`closed_tag`] : la page ne s'en tient pour fermée que signée par qui
 /// tient sa clé. Nue, une passerelle pouvait fermer un patient pour de
@@ -197,6 +206,19 @@ pub fn box_id(secret: &[u8]) -> String {
     hex(&h.finalize()[..16])
 }
 
+/// La boîte d'une officine depuis son secret tel que la base le range
+/// (64 chiffres hexadécimaux) ; `None` pour autre chose.
+pub fn box_of_secret(secret: &str) -> Option<String> {
+    if !is_box_secret(secret) {
+        return None;
+    }
+    let bytes: Vec<u8> = (0..secret.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(secret.get(i..i + 2)?, 16).ok())
+        .collect::<Option<_>>()?;
+    Some(box_id(&bytes))
+}
+
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -255,13 +277,93 @@ pub fn page_url() -> String {
     format!("{PAGE_SITE}{}/", page_hash())
 }
 
+/// **Comment la page joint l'officine** : la voie directe (l'empreinte
+/// du certificat des postes et leurs adresses, `direct.rs`), une
+/// passerelle (un nom d'hôte), ou les deux — la page essaie la voie
+/// directe d'abord.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Reach {
+    /// L'empreinte, en base64 (`direct::fingerprint_text`) ; vide : pas
+    /// de voie directe.
+    pub fingerprint: String,
+    pub addresses: Vec<String>,
+    /// Le nom d'hôte de la passerelle ; vide : aucune.
+    pub gateway: String,
+}
+
+/// Combien d'adresses un lien porte, au plus : un code QR reste lisible.
+pub const LINK_ADDRESSES: usize = 6;
+
+impl Reach {
+    /// Le fragment qui le dit : `f`, `a` (séparées par des virgules), `p`.
+    fn fragment(&self) -> String {
+        let mut out = String::new();
+        if !self.fingerprint.is_empty() && !self.addresses.is_empty() {
+            let a: Vec<&str> = self
+                .addresses
+                .iter()
+                .map(String::as_str)
+                .take(LINK_ADDRESSES)
+                .collect();
+            out.push_str(&format!("&f={}&a={}", self.fingerprint, a.join(",")));
+        }
+        let host = gateway_host(&self.gateway);
+        if !host.is_empty() {
+            out.push_str(&format!("&p={host}"));
+        }
+        out
+    }
+
+    /// Un chemin au moins.
+    pub fn any(&self) -> bool {
+        !self.fragment().is_empty()
+    }
+}
+
+/// **L'adresse de la box écrite à la main**, telle que la page la
+/// compose : une IPv4 (`203.0.113.7`), une IPv6 (`2001:db8::1` ou entre
+/// crochets) ou l'une d'elles avec son port ; sans port, 7748. `None`
+/// pour autre chose — un nom ne se compose pas en WebRTC sans serveur.
+pub fn box_address(typed: &str) -> Option<String> {
+    let t = typed.trim();
+    if let Ok(a) = t.parse::<std::net::SocketAddr>() {
+        return Some(a.to_string());
+    }
+    let ip: std::net::IpAddr = t
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .parse()
+        .ok()?;
+    Some(std::net::SocketAddr::new(ip, crate::direct::DEFAULT_PORT).to_string())
+}
+
 /// **Le lien du code QR** : la page publiée, puis dans le fragment la
-/// boîte, la clé et la passerelle (`p`) — un fragment n'est envoyé à
-/// personne, pas même à GitHub. `gateway` est un nom d'hôte (et un
-/// port), sans schéma : la page ne l'appelle qu'en `wss://`.
-pub fn link(gateway: &str, box_id: &str, key: &Key) -> String {
-    let host = gateway_host(gateway);
-    format!("{}#b={box_id}&k={}&p={host}", page_url(), key_text(key))
+/// boîte, la clé et le chemin ([`Reach`]) — un fragment n'est envoyé à
+/// personne, pas même à GitHub.
+pub fn link(reach: &Reach, box_id: &str, key: &Key) -> String {
+    format!(
+        "{}#b={box_id}&k={}{}",
+        page_url(),
+        key_text(key),
+        reach.fragment()
+    )
+}
+
+/// **Le lien du tableau** (`tableau.rs`) : la boîte et la voie directe,
+/// sans clé — le code de la vitrine ou du site de l'officine. Jamais la
+/// passerelle : rien n'y garantit le tableau venu de l'officine.
+/// `screen` : la page en écran, en grand, qui se relit seule.
+pub fn board_link(reach: &Reach, box_id: &str, screen: bool) -> String {
+    let direct = Reach {
+        gateway: String::new(),
+        ..reach.clone()
+    };
+    format!(
+        "{}#b={box_id}&t=1{}{}",
+        page_url(),
+        if screen { "&e=1" } else { "" },
+        direct.fragment()
+    )
 }
 
 /// Le nom d'hôte d'une passerelle telle qu'on l'a tapée : sans schéma,
@@ -431,6 +533,14 @@ pub struct Response {
     /// qu'alors.
     #[serde(default)]
     pub horaires: String,
+    /// Les adresses de ses postes sur la voie directe, à jour : la page
+    /// les garde à la place de celles du lien — une officine dont
+    /// l'adresse change reste joignable de qui lui a écrit depuis.
+    #[serde(default)]
+    pub adresses: Vec<String>,
+    /// Son tableau du jour (`tableau.rs`).
+    #[serde(default)]
+    pub tableau: Vec<crate::tableau::Ligne>,
 }
 
 /// L'officine, telle que la page la présente au patient.
@@ -440,6 +550,8 @@ pub struct Officine {
     pub adresse: String,
     pub telephone: String,
     pub horaires: String,
+    /// Les adresses de ses postes sur la voie directe.
+    pub adresses: Vec<String>,
 }
 
 /// Une clé de patient de la base.
@@ -463,6 +575,8 @@ pub trait Store {
     fn replies(&mut self, key: i64, seen: &[i64]) -> Result<Vec<ToPatient>, String>;
     /// Qui est l'officine.
     fn officine(&mut self) -> Officine;
+    /// Son tableau du jour.
+    fn board(&mut self) -> crate::tableau::Public;
 }
 
 /// Une connexion qui passe des trames.
@@ -505,6 +619,8 @@ pub enum Outcome {
     Closed,
     /// Une clé que l'officine ne connaît pas.
     Unknown,
+    /// Le tableau, demandé et rendu.
+    Board,
 }
 
 fn bad() -> std::io::Error {
@@ -518,6 +634,22 @@ pub fn answer(
     fill: impl FnOnce(&mut [u8]),
 ) -> std::io::Result<Outcome> {
     let hello = link.recv()?;
+    answer_to(hello, link, store, fill)
+}
+
+/// [`answer`], le premier mot de la page déjà lu (`hello`) — par qui a
+/// dû le lire pour savoir où envoyer la page.
+pub fn answer_to(
+    hello: Vec<u8>,
+    link: &mut impl Frames,
+    store: &mut impl Store,
+    fill: impl FnOnce(&mut [u8]),
+) -> std::io::Result<Outcome> {
+    if hello == BOARD {
+        let board = serde_json::to_vec(&store.board()).map_err(|_| bad())?;
+        link.send(&board)?;
+        return Ok(Outcome::Board);
+    }
     if hello.len() != MAGIC.len() + NONCE + TAG || !hello.starts_with(MAGIC) {
         return Err(bad());
     }
@@ -570,6 +702,7 @@ pub fn answer(
         messages.drain(..messages.len() - IN_MAX);
     }
     let who = store.officine();
+    let tableau = store.board().lignes;
     let response = Response {
         got,
         messages,
@@ -578,6 +711,8 @@ pub fn answer(
         adresse: who.adresse,
         telephone: who.telephone,
         horaires: who.horaires,
+        adresses: who.adresses,
+        tableau,
     };
     let plain = serde_json::to_vec(&response).map_err(|_| bad())?;
     link.send(&outbound.seal(&plain))?;
@@ -663,6 +798,20 @@ pub(crate) mod memory {
                 adresse: "1 quai des Pêcheurs, 29900 Concarneau".into(),
                 telephone: "02 98 00 00 00".into(),
                 horaires: "lundi 09:00-19:00".into(),
+                adresses: vec!["203.0.113.7:7748".into()],
+            }
+        }
+        fn board(&mut self) -> crate::tableau::Public {
+            crate::tableau::Public {
+                v: crate::tableau::PUBLIC_VERSION,
+                officine: "Pharmacie du Port".into(),
+                le: "2026-10-16".into(),
+                lignes: vec![crate::tableau::Ligne {
+                    canal: crate::tableau::Canal::Garde,
+                    titre: "Pharmacie du Port, ce soir".into(),
+                    ..Default::default()
+                }],
+                ..Default::default()
             }
         }
     }
@@ -755,6 +904,9 @@ mod tests {
         assert_eq!(r.officine, "Pharmacie du Port");
         assert_eq!(r.telephone, "02 98 00 00 00");
         assert_eq!(r.horaires, "lundi 09:00-19:00");
+        // The addresses kept up to date, and the board of the day.
+        assert_eq!(r.adresses, vec!["203.0.113.7:7748".to_string()]);
+        assert_eq!(r.tableau.len(), 1);
         assert_eq!(
             o,
             Outcome::Talked {
@@ -792,6 +944,20 @@ mod tests {
         );
         assert_eq!(r.unwrap_err(), UNKNOWN.to_vec());
         assert_eq!(o, Outcome::Unknown);
+    }
+
+    /// The board needs no key: asked, it comes back in the clear, and
+    /// nothing else happens.
+    #[test]
+    fn the_board_is_given_to_whoever_asks() {
+        let (mut a, mut b) = pair();
+        let mut store = officine_with([5; 32], true);
+        let post = std::thread::spawn(move || answer(&mut b, &mut store, |n| n.fill(7)).unwrap());
+        a.send(BOARD).unwrap();
+        let board: crate::tableau::Public = serde_json::from_slice(&a.recv().unwrap()).unwrap();
+        assert_eq!(post.join().unwrap(), Outcome::Board);
+        assert_eq!(board.officine, "Pharmacie du Port");
+        assert_eq!(board.lignes[0].canal, crate::tableau::Canal::Garde);
     }
 
     /// A post that does not hold the key cannot pass for the officine:
@@ -876,20 +1042,72 @@ mod tests {
         let id = box_id(&[1; 32]);
         assert!(is_box_id(&id));
         assert_ne!(id, box_id(&[2; 32]));
+        let gateway = Reach {
+            gateway: "https://Chat.Example.fr/".into(),
+            ..Default::default()
+        };
         assert_eq!(
-            link("https://Chat.Example.fr/", &id, &key),
+            link(&gateway, &id, &key),
             format!(
                 "{PAGE_SITE}{}/#b={id}&k={}&p=chat.example.fr",
                 page_hash(),
                 key_text(&key)
             )
         );
+        // The direct way first, then the gateway; addresses capped.
+        let both = Reach {
+            fingerprint: "F".repeat(43),
+            addresses: (0..9).map(|i| format!("203.0.113.{i}:7748")).collect(),
+            gateway: "chat.example.fr".into(),
+        };
+        let l = link(&both, &id, &key);
+        assert!(
+            l.contains(&format!("&f={}&a=203.0.113.0:7748,", "F".repeat(43))),
+            "{l}"
+        );
+        assert!(l.ends_with("203.0.113.5:7748&p=chat.example.fr"), "{l}");
+        // A fingerprint without an address is no way at all.
+        let none = Reach {
+            fingerprint: "F".repeat(43),
+            ..Default::default()
+        };
+        assert!(!none.any());
+        assert!(both.any() && gateway.any());
+        // The board's code carries no key.
+        let b = board_link(&both, &id, true);
+        assert!(
+            b.contains(&format!("#b={id}&t=1&e=1&f=")) && !b.contains("&k="),
+            "{b}"
+        );
+        assert!(!b.contains("&p="), "never through a gateway: {b}");
         assert_eq!(
             gateway_host(" chat.example.fr:8443 "),
             "chat.example.fr:8443"
         );
         assert_eq!(gateway_host("chat example"), "");
         assert_eq!(gateway_host("<script>"), "");
+    }
+
+    #[test]
+    fn a_box_address_typed_by_hand_reads_as_the_page_dials_it() {
+        assert_eq!(
+            box_address(" 203.0.113.7 ").as_deref(),
+            Some("203.0.113.7:7748")
+        );
+        assert_eq!(
+            box_address("203.0.113.7:9000").as_deref(),
+            Some("203.0.113.7:9000")
+        );
+        assert_eq!(
+            box_address("2001:db8::1").as_deref(),
+            Some("[2001:db8::1]:7748")
+        );
+        assert_eq!(
+            box_address("[2001:db8::1]:9000").as_deref(),
+            Some("[2001:db8::1]:9000")
+        );
+        assert_eq!(box_address("box.exemple.fr"), None);
+        assert_eq!(box_address(""), None);
     }
 
     /// The page is published by `.github/workflows/page.yml` under the
