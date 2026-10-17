@@ -54542,8 +54542,29 @@ impl App {
             // enveloppe.
             let body_w = ui.available_width() - 14.0;
             let gapx = gap * 2.0;
-            let name_w = chars_wide(ui, 24.0).min(body_w * 0.34);
-            let value_w = chars_wide(ui, 16.0).min(body_w * 0.24);
+            // Seize caractères pour le nom sur un axe d'organe, où
+            // l'explication est ce qu'on lit ; vingt-quatre sur l'axe des
+            // demi-vies, où la liste des organes est courte.
+            let name_w =
+                chars_wide(ui, if axis.is_some() { 16.0 } else { 24.0 }).min(body_w * 0.34);
+            // Sur un axe d'organe, la colonne ne porte que le poids —
+            // « majeur », « notable », « mineur » : seize caractères y
+            // laissaient l'explication en douze, enveloppée sur six
+            // lignes à l'échelle 1,6. Trois mots se mesurent sans coût.
+            let value_w = match axis {
+                Some(_) => {
+                    use crate::facets::Grade;
+                    Self::widest_in(
+                        ui,
+                        egui::TextStyle::Body.resolve(ui.style()),
+                        [Grade::Majeur, Grade::Notable, Grade::Mineur]
+                            .into_iter()
+                            .map(Grade::label),
+                    )
+                }
+                None => chars_wide(ui, 16.0),
+            }
+            .min(body_w * 0.24);
             let rest_w = (body_w - name_w - value_w - gapx * 2.0).max(chars_wide(ui, 10.0));
             // **`show_viewport` et non `show`** : c'est lui qui dit
             // quelle tranche du contenu est à l'écran, et le tableau ne

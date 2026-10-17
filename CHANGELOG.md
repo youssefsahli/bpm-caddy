@@ -44,6 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   turn), the channel menu shows « Produit disponible » whole, and at
   text 1.6, where one line in three fits, the scroll bar is solid so the
   other two are seen to exist.
+- **Explorer, organ axes.** The weight column is as wide as « notable »
+  and no wider, and the card name takes sixteen characters: the
+  explanation, which is what one reads there, wraps on four lines at text
+  1.6 instead of six.
 
 ## [0.438.0] - 2026-10-16
 
