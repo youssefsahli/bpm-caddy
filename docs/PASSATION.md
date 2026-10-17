@@ -1,4 +1,4 @@
-# Passation — 16/10/2026
+# Passation — 17/10/2026
 
 Écrit pour reprendre sans l'ordinateur qui a servi.
 
@@ -130,6 +130,14 @@ arrive est proposé, jamais appliqué ; les officines se trouvent par la
 DHT de BitTorrent ; « Ajouter » un poste d'un clic, un code comparé sur
 les deux écrans — quatre relectures dont trois de sécurité, corrigées)
 a passé son smoke dans les quatre formes (47b1841), étiquetée le 16/10.
+La 0.439.0 (finitions de mise en page, sans fonction nouvelle : volet
+de droite sur une rangée ou deux rangées égales, listes en rangées
+entières, nombres creusés comme les cases — `motif::number`, et un test
+qui refuse le prochain `DragValue` plat —, tableau de l'officine,
+explorateur, biologie, campagne, registre, pièces, tableau de bord à la
+taille du texte ; chaque vue regardée à 1024x700 et 1280x800, échelles
+1,25 et 1,6, volets larges, base vierge) a passé son smoke dans les
+quatre formes (4daf63c), étiquetée le 17/10.
 **Sans serveur, décidé le 16/10** : l'éditeur ne tient aucun serveur ;
 la question « qui tient la passerelle » ne se pose plus (la passerelle
 reste possible, tenue ou choisie par une officine). **À essayer en
