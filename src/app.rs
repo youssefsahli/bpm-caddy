@@ -89621,12 +89621,16 @@ impl eframe::App for App {
                                     .num_columns(2)
                                     .spacing([12.0, 5.0])
                                     .show(ui, |ui| {
-                                        Self::form_label(ui, tr("about_version"));
+                                        // Une liste qu'on lit, pas un formulaire :
+                                        // `form_label` prend la hauteur d'une
+                                        // rangée de champs, et les deux premières
+                                        // lignes s'écartaient des autres.
+                                        ui.label(dim(tr("about_version")));
                                         ui.label(
                                             egui::RichText::new(crate::release::current()).strong(),
                                         );
                                         ui.end_row();
-                                        Self::form_label(ui, tr("about_target"));
+                                        ui.label(dim(tr("about_target")));
                                         ui.label(crate::release::target());
                                         ui.end_row();
                                         // Only when this copy was put

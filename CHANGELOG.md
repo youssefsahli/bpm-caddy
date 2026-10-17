@@ -48,6 +48,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and no wider, and the card name takes sixteen characters: the
   explanation, which is what one reads there, wraps on four lines at text
   1.6 instead of six.
+- Options › À propos: the version and platform rows have the same pitch
+  as the rest of the list.
 
 ## [0.438.0] - 2026-10-16
 
