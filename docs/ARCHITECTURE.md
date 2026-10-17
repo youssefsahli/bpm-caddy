@@ -1094,6 +1094,15 @@ add clicking and typing; it is not the price of entry.
   same length and not the same rule.
   `no_egui_combo_box_is_drawn_flat_beside_a_bevelled_button` refuses
   the next one.
+- **A number is a field too.** egui's `DragValue` painted a flat
+  one-pixel outline beside sunken fields — the last flat input in the
+  application, thirty of them in the options alone (ports, delays,
+  quotas, fees), where a row of « 15 € » read as labels rather than as
+  values to set. `motif::number` (and `number_sized`) keeps the widget,
+  its size and its drag, takes away its fill and stroke, and paints the
+  sunken bevel and the focus ring over what it allocated.
+  `no_number_is_drawn_flat_beside_a_sunken_field` refuses the next
+  `DragValue` that is not its argument.
 - **And an egui widget that paints itself from `widgets.*.bg_fill` comes
   out invisible here.** `apply` sets that field to `bg()` for every
   widget state — right for a button, which is a raised panel on the

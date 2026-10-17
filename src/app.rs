@@ -23708,38 +23708,82 @@ impl App {
                 ui.add_space(6.0);
                 // One pane, three contents: the shared documentation,
                 // the day's carnet, or the operator's own notes.
-                ui.horizontal_wrapped(|ui| {
-                    // **Quatre onglets sur deux rangées, pas sur quatre.**
-                    // Avec la marge d'un bouton (quatorze points de chaque
-                    // côté, ×1,6), un seul onglet remplissait la largeur
-                    // du volet à 1024 px : les quatre s'empilaient, et les
-                    // notes d'équipe — ce que le volet existe pour montrer
-                    // — n'avaient plus que trois lignes. Un demi-caractère
-                    // de marge suffit à un mot qui n'est pas un bouton.
-                    let tight = chars_wide(ui, 0.5);
-                    ui.spacing_mut().button_padding.x = tight;
-                    ui.spacing_mut().item_spacing = egui::vec2(tight, tight);
-                    for (value, label) in [
-                        ("docs", tr("side_pane_docs")),
-                        ("carnet", tr("side_pane_carnet")),
-                        ("notes", tr("side_pane_notes")),
-                        ("aide", tr("side_pane_help")),
-                    ] {
-                        if ui
-                            .selectable_label(self.side_pane == value, label)
-                            .on_hover_text(tr("side_pane_switch"))
-                            .clicked()
-                        {
-                            self.side_pane = value.to_owned();
-                            if value == "carnet" {
-                                if let State::Unlocked(session) = &mut self.state {
-                                    session.trans_day.clear();
-                                    session.load_transmissions();
+                // **Quatre onglets en une rangée, ou deux sur deux —
+                // jamais trois et un.** Avec la marge d'un bouton (quatorze
+                // points de chaque côté, ×1,6), un seul onglet remplissait
+                // la largeur du volet à 1024 px : les quatre s'empilaient,
+                // et les notes d'équipe — ce que le volet existe pour
+                // montrer — n'avaient plus que trois lignes. Enveloppés,
+                // ils tombaient ailleurs en trois et un, « Aide » seul sur
+                // sa rangée comme un intitulé.
+                let tabs = [
+                    ("docs", tr("side_pane_docs")),
+                    ("carnet", tr("side_pane_carnet")),
+                    ("notes", tr("side_pane_notes")),
+                    ("aide", tr("side_pane_help")),
+                ];
+                let gap = chars_wide(ui, 0.5);
+                // Un pixel de jeu, arrondi par défaut : un volet
+                // redimensionnable grandit jusqu'à ce que son contenu y
+                // tienne, et des cases qui remplissaient sa largeur au
+                // pixel près la dépassaient d'un arrondi — le volet
+                // s'élargissait d'image en image jusqu'à son plafond.
+                let room = ui.available_width() - 1.0;
+                let font = egui::TextStyle::Button.resolve(ui.style());
+                // La galée nue et la marge qu'on lui pose — `widest_in`
+                // ajoute une gouttière à chacune, quatre de trop ici.
+                let natural: Vec<f32> = tabs
+                    .iter()
+                    .map(|(_, l)| {
+                        ui.fonts(|f| {
+                            f.layout_no_wrap((*l).to_owned(), font.clone(), motif::text())
+                                .size()
+                                .x
+                        }) + 2.0 * gap
+                    })
+                    .collect();
+                // Le pixel de jeu ne compte pas pour décider : c'était
+                // assez pour renvoyer « Aide » sur deux rangées à 1280.
+                let one_row = natural.iter().sum::<f32>() + 3.0 * gap <= room + 1.0;
+                // En une rangée, chacun sa largeur et le reste partagé ;
+                // sur deux, des colonnes d'une largeur.
+                let widths: Vec<f32> = if one_row {
+                    let slack = ((room - natural.iter().sum::<f32>() - 3.0 * gap) / 4.0).max(-0.25);
+                    natural.iter().map(|w| (w + slack).floor()).collect()
+                } else {
+                    vec![((room - gap) / 2.0).floor().max(1.0); 4]
+                };
+                let per_row = if one_row { 4 } else { 2 };
+                let cell_h = ui.text_style_height(&egui::TextStyle::Button) + 2.0 * gap;
+                for (r, line) in tabs.chunks(per_row).enumerate() {
+                    ui.horizontal_top(|ui| {
+                        // La marge que la mesure a comptée : celle d'un
+                        // bouton, quatorze points de chaque côté, faisait
+                        // l'étiquette plus large que sa case — et le
+                        // volet grandissait pour la contenir.
+                        ui.spacing_mut().button_padding.x = gap;
+                        ui.spacing_mut().item_spacing.x = gap;
+                        for (k, (value, label)) in line.iter().enumerate() {
+                            let on = self.side_pane == *value;
+                            let clicked = ui
+                                .add_sized(
+                                    egui::vec2(widths[r * per_row + k], cell_h),
+                                    egui::SelectableLabel::new(on, *label),
+                                )
+                                .on_hover_text(tr("side_pane_switch"))
+                                .clicked();
+                            if clicked {
+                                self.side_pane = (*value).to_owned();
+                                if *value == "carnet" {
+                                    if let State::Unlocked(session) = &mut self.state {
+                                        session.trans_day.clear();
+                                        session.load_transmissions();
+                                    }
                                 }
                             }
                         }
-                    }
-                });
+                    });
+                }
                 ui.add_space(4.0);
                 if self.side_pane == "carnet" {
                     self.side_carnet(ui);
@@ -31333,11 +31377,9 @@ impl App {
                                     // l'enveloppe de l'italique à la
                                     // largeur qu'elle aura, gouttière
                                     // comprise.
+                                    let name_h = Self::loc_name_cell_height(ui, &foot, name_w);
                                     ui.allocate_ui_with_layout(
-                                        egui::vec2(
-                                            name_w,
-                                            Self::loc_name_cell_height(ui, &foot, name_w),
-                                        ),
+                                        egui::vec2(name_w, name_h),
                                         egui::Layout::top_down(egui::Align::LEFT),
                                         |ui| {
                                             ui.set_width(name_w);
@@ -31412,18 +31454,18 @@ impl App {
                                                 }
                                                 _ => motif::text(),
                                             };
-                                            Self::grid_cell(
+                                            Self::grid_cell_top(
                                                 ui,
-                                                renew_w,
+                                                egui::vec2(renew_w, name_h),
                                                 egui::RichText::new(db::format_french_date(&day))
                                                     .size(motif::pt(ui, 11.5))
                                                     .color(colour),
                                             );
                                         }
                                         _ => {
-                                            Self::grid_cell(
+                                            Self::grid_cell_top(
                                                 ui,
-                                                renew_w,
+                                                egui::vec2(renew_w, name_h),
                                                 egui::RichText::new("—")
                                                     .size(motif::pt(ui, 11.5))
                                                     .color(motif::text_dim()),
@@ -34618,6 +34660,21 @@ impl App {
         .inner
     }
 
+    /// [`Self::grid_cell`], **en haut d'une cellule de la hauteur
+    /// donnée** — celle de la cellule la plus haute de sa rangée.
+    ///
+    /// Une `Grid` centre chaque cellule sur la hauteur de sa rangée : à
+    /// côté d'un nom qui porte une seconde ligne en italique, l'échéance
+    /// d'une location flottait entre les deux, et se lisait comme la
+    /// ligne d'un autre matériel.
+    fn grid_cell_top(ui: &mut egui::Ui, size: egui::Vec2, text: egui::RichText) -> egui::Response {
+        ui.allocate_ui_with_layout(size, egui::Layout::top_down(egui::Align::LEFT), |ui| {
+            ui.set_width(size.x);
+            ui.add(egui::Label::new(text).truncate())
+        })
+        .inner
+    }
+
     /// De la prose dans une cellule de grille, sous une largeur
     /// annoncée — elle enveloppe au lieu de s'élider.
     ///
@@ -35951,7 +36008,8 @@ impl App {
                                         .size(motif::pt(ui, 11.0))
                                         .color(motif::text_dim()),
                                 );
-                                ui.add_sized(
+                                motif::number_sized(
+                                    ui,
                                     egui::vec2(field, row_h),
                                     egui::DragValue::new(v).range(0..=max).speed(0.2),
                                 );
@@ -37924,7 +37982,8 @@ impl App {
         // question it had no answer to.
         if row.itv.kind.has_duration() {
             let mut minutes = row.itv.duration_minutes;
-            let drag = ui.add(
+            let drag = motif::number(
+                ui,
                 egui::DragValue::new(&mut minutes)
                     .range(0..=480)
                     .suffix(tr("itv_minutes_suffix")),
@@ -42582,9 +42641,13 @@ impl App {
                                             .size(motif::pt(ui, 11.0))
                                             .color(motif::text_dim()),
                                     );
+                                    // La largeur mesurée pour la rangée, et
+                                    // non douze « 0 » : « JJ/MM/AAAA » est
+                                    // plus large, et l'invite sortait
+                                    // « JJ/MM/AAA » tranchée par le creux.
                                     motif::field(
                                         ui,
-                                        chars_wide(ui, 12.0),
+                                        field_w,
                                         egui::TextEdit::singleline(
                                             &mut session.shift_form.until_text,
                                         )
@@ -46396,17 +46459,22 @@ impl App {
                     .spacing([10.0, 5.0])
                     .show(ui, |ui| {
                         ui.label(tr("calc_age"));
-                        ui.add(egui::DragValue::new(&mut session.calc_age).range(1.0..=110.0));
+                        motif::number(
+                            ui,
+                            egui::DragValue::new(&mut session.calc_age).range(1.0..=110.0),
+                        );
                         ui.end_row();
                         ui.label(tr("calc_weight"));
-                        ui.add(
+                        motif::number(
+                            ui,
                             egui::DragValue::new(&mut session.calc_weight)
                                 .range(2.0..=250.0)
                                 .suffix(" kg"),
                         );
                         ui.end_row();
                         ui.label(tr("calc_creat"));
-                        ui.add(
+                        motif::number(
+                            ui,
                             egui::DragValue::new(&mut session.calc_creat)
                                 .range(10.0..=1500.0)
                                 .suffix(" µmol/L"),
@@ -46489,21 +46557,26 @@ impl App {
                     .spacing([10.0, 5.0])
                     .show(ui, |ui| {
                         ui.label(tr("calc_weight"));
-                        ui.add(
+                        motif::number(
+                            ui,
                             egui::DragValue::new(&mut session.calc_kg_weight)
                                 .range(2.0..=250.0)
                                 .suffix(" kg"),
                         );
                         ui.end_row();
                         ui.label(tr("calc_dose_kg"));
-                        ui.add(
+                        motif::number(
+                            ui,
                             egui::DragValue::new(&mut session.calc_per_kg)
                                 .range(0.1..=200.0)
                                 .suffix(" mg/kg"),
                         );
                         ui.end_row();
                         ui.label(tr("calc_takes"));
-                        ui.add(egui::DragValue::new(&mut session.calc_takes).range(1..=6));
+                        motif::number(
+                            ui,
+                            egui::DragValue::new(&mut session.calc_takes).range(1..=6),
+                        );
                         ui.end_row();
                     });
                 let per_take = session.calc_kg_weight * session.calc_per_kg;
@@ -46718,16 +46791,16 @@ impl App {
                 );
                 ui.horizontal_wrapped(|ui| {
                     ui.label(tr("calc_renal_dfg"));
-                    if ui
-                        .add(
-                            egui::DragValue::new(&mut session.calc_renal_dfg)
-                                .range(3.0..=140.0)
-                                // Des entiers, comme les paliers les
-                                // écrivent : 50,4 tombait sous « ≤ 50 ».
-                                .max_decimals(0)
-                                .suffix(" mL/min"),
-                        )
-                        .changed()
+                    if motif::number(
+                        ui,
+                        egui::DragValue::new(&mut session.calc_renal_dfg)
+                            .range(3.0..=140.0)
+                            // Des entiers, comme les paliers les
+                            // écrivent : 50,4 tombait sous « ≤ 50 ».
+                            .max_decimals(0)
+                            .suffix(" mL/min"),
+                    )
+                    .changed()
                     {
                         // Tapé, il n'est pas arrondi par le champ (seul le
                         // glisser l'est) : 29,6 s'affichait « 30 » et se
@@ -46856,13 +46929,15 @@ impl App {
             );
             ui.horizontal(|ui| {
                 ui.label(tr("calc_t12"));
-                ui.add(
+                motif::number(
+                    ui,
                     egui::DragValue::new(&mut session.calc_half_life)
                         .range(0.1..=200.0)
                         .suffix(" h"),
                 );
                 ui.label(tr("calc_interval"));
-                ui.add(
+                motif::number(
+                    ui,
                     egui::DragValue::new(&mut session.calc_interval)
                         .range(1.0..=72.0)
                         .suffix(" h"),
@@ -48200,7 +48275,8 @@ impl App {
         };
         ui.horizontal_wrapped(|ui| {
             pair(ui, tr("insulin_daily"), &mut |ui| {
-                ui.add(
+                motif::number(
+                    ui,
                     egui::DragValue::new(&mut session.insulin_daily)
                         .range(1.0..=200.0)
                         .suffix(" UI"),
@@ -48229,14 +48305,16 @@ impl App {
         ui.add_space(4.0);
         ui.horizontal_wrapped(|ui| {
             pair(ui, tr("insulin_carbs"), &mut |ui| {
-                ui.add(
+                motif::number(
+                    ui,
                     egui::DragValue::new(&mut session.insulin_carbs)
                         .range(0.0..=400.0)
                         .suffix(" g"),
                 );
             });
             pair(ui, tr("insulin_measured"), &mut |ui| {
-                ui.add(
+                motif::number(
+                    ui,
                     egui::DragValue::new(&mut session.insulin_measured)
                         .range(0.3..=6.0)
                         .speed(0.05)
@@ -48244,7 +48322,8 @@ impl App {
                 );
             });
             pair(ui, tr("insulin_target"), &mut |ui| {
-                ui.add(
+                motif::number(
+                    ui,
                     egui::DragValue::new(&mut session.insulin_target)
                         .range(0.7..=2.5)
                         .speed(0.05)
@@ -61351,16 +61430,23 @@ impl App {
                 // Les vaccins de la saison, puis la courbe de celui qu'on lit :
                 // la liste prend ce qu'elle porte jusqu'à la moitié du
                 // panneau, la courbe le reste.
+                //
+                // **En rangées de liste entières.** Comptée en rangées de
+                // boutons, la liste s'arrêtait au milieu de la quatrième
+                // rangée — « Pneumocoque » tranché à mi-hauteur au-dessus
+                // de la courbe. Ce sont des rangées de liste, sans
+                // gouttière entre elles.
                 let inner = ui.available_rect_before_wrap();
-                let line = Self::row_height(ui) + ui.spacing().item_spacing.y;
-                let want = line * session.camp.tally.len() as f32;
-                let list_h = want.min(inner.height() * 0.5).max(line);
+                let row = motif::list_row_height(ui);
+                let rows = session.camp.tally.len() as f32;
+                let list_h = whole_rows((inner.height() * 0.5).max(row), row, 0.0, rows);
                 let parts = motif::split_rows(inner, &[list_h, 0.0], 6.0);
                 motif::inside(ui, parts[0], |ui| {
                     egui::ScrollArea::vertical()
                         .id_salt("camp_tally")
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
+                            ui.spacing_mut().item_spacing.y = 0.0;
                             for t in &session.camp.tally {
                                 let name = if t.code.is_empty() || t.label.is_empty() {
                                     t.code.clone()
@@ -63784,29 +63870,47 @@ impl App {
                         Self::conseil_note(ui, tr("conseil_plan_empty"));
                     }
                     let mut change: Option<(i64, f64)> = None;
+                    // **Le compteur d'un bloc, la phrase dans sa colonne.**
+                    // Posée dans la même rangée enveloppée, la phrase
+                    // repartait à la ligne *sous le bouton « − »* : « de
+                    // protéines » se lisait comme l'étiquette du compteur.
+                    // Le nombre a la largeur de « 00 », pour que les
+                    // phrases des lignes commencent toutes au même endroit.
+                    let count_w = Self::widest(ui, 12.0, std::iter::once("00"));
                     for l in &lines {
-                        ui.horizontal_wrapped(|ui| {
+                        ui.horizontal_top(|ui| {
                             if motif::button(ui, "-").clicked() {
                                 change = Some((l.product.id, l.units - 1.0));
                             }
-                            ui.label(
-                                egui::RichText::new(format!("{}", l.units).replace('.', ","))
-                                    .size(motif::pt(ui, 12.0))
-                                    .strong(),
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(count_w, Self::button_height(ui)),
+                                egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
+                                |ui| {
+                                    ui.label(
+                                        egui::RichText::new(
+                                            format!("{}", l.units).replace('.', ","),
+                                        )
+                                        .size(motif::pt(ui, 12.0))
+                                        .strong(),
+                                    );
+                                },
                             );
                             if motif::button(ui, "+").clicked() {
                                 change = Some((l.product.id, l.units + 1.0));
                             }
-                            ui.label(
-                                egui::RichText::new(trn(
-                                    "conseil_plan_line",
-                                    &[
-                                        &l.product.name,
-                                        &format!("{:.0}", l.product.kcal * l.units),
-                                        &format!("{:.0}", l.product.protein * l.units),
-                                    ],
-                                ))
-                                .size(motif::pt(ui, 11.5)),
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(trn(
+                                        "conseil_plan_line",
+                                        &[
+                                            &l.product.name,
+                                            &format!("{:.0}", l.product.kcal * l.units),
+                                            &format!("{:.0}", l.product.protein * l.units),
+                                        ],
+                                    ))
+                                    .size(motif::pt(ui, 11.5)),
+                                )
+                                .wrap(),
                             );
                         });
                     }
@@ -70571,16 +70675,27 @@ impl App {
                     .id_salt("carnets_list")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
+                        // **La feuille ouverte se voit dans sa liste.**
+                        // Ouverte d'ailleurs — « Aller à… », le dossier —,
+                        // la sixième n'était qu'un liseré de sélection au
+                        // bas du volet. Amenée en vue une fois par
+                        // changement, pas à chaque image : la liste reste
+                        // libre de défiler ensuite.
+                        let shown_id = egui::Id::new("carnets_list_shown");
+                        let shown = ui.ctx().data(|d| d.get_temp::<&'static str>(shown_id));
                         for sheet in crate::selfcheck::SHEETS {
                             let on = session.carnet_open.map(|s| s.key) == Some(sheet.key);
-                            if motif::list_row(
+                            let row = motif::list_row(
                                 ui,
                                 egui::RichText::new(sheet.title).size(motif::pt(ui, 11.5)),
                                 on,
                             )
-                            .on_hover_text(sheet.purpose)
-                            .clicked()
-                            {
+                            .on_hover_text(sheet.purpose);
+                            if on && shown != Some(sheet.key) {
+                                row.scroll_to_me(None);
+                                ui.ctx().data_mut(|d| d.insert_temp(shown_id, sheet.key));
+                            }
+                            if row.clicked() {
                                 session.carnet_open = Some(sheet);
                             }
                         }
@@ -89675,7 +89790,8 @@ impl eframe::App for App {
                                 // postes purgent à la même.
                                 ui.horizontal(|ui| {
                                     ui.label(dim(tr("audit_keep_label")));
-                                    ui.add(
+                                    motif::number(
+                                        ui,
                                         egui::DragValue::new(&mut editor.cfg.audit.keep_days)
                                             .range(0..=3650)
                                             .suffix(tr("audit_keep_suffix")),
@@ -89717,7 +89833,8 @@ impl eframe::App for App {
                                 });
                                 ui.horizontal_wrapped(|ui| {
                                     ui.label(dim(tr("opts_reseau_port")));
-                                    ui.add(
+                                    motif::number(
+                                        ui,
                                         egui::DragValue::new(&mut editor.cfg.reseau.port)
                                             .range(1024..=65535),
                                     );
@@ -89733,7 +89850,8 @@ impl eframe::App for App {
                                         &mut editor.cfg.reseau.automatique,
                                         tr("opts_reseau_auto"),
                                     );
-                                    ui.add(
+                                    motif::number(
+                                        ui,
                                         egui::DragValue::new(
                                             &mut editor.cfg.reseau.intervalle_minutes,
                                         )
@@ -89755,7 +89873,8 @@ impl eframe::App for App {
                                     )
                                     .on_hover_text(tr("opts_reseau_listen_tooltip"));
                                     ui.label(dim(tr("opts_reseau_listen_port")));
-                                    ui.add(
+                                    motif::number(
+                                        ui,
                                         egui::DragValue::new(&mut editor.cfg.reseau.port_ecoute)
                                             .range(1024..=65535),
                                     );
@@ -89778,7 +89897,8 @@ impl eframe::App for App {
                                     )
                                     .on_hover_text(tr("opts_reseau_relay_tooltip"));
                                     ui.label(dim(tr("opts_reseau_listen_port")));
-                                    ui.add(
+                                    motif::number(
+                                        ui,
                                         egui::DragValue::new(&mut editor.cfg.reseau.port_relais)
                                             .range(1024..=65535),
                                     );
@@ -89791,7 +89911,8 @@ impl eframe::App for App {
                                     )
                                     .on_hover_text(tr("opts_reseau_repertoire_tooltip"));
                                     ui.label(dim(tr("opts_reseau_listen_port")));
-                                    ui.add(
+                                    motif::number(
+                                        ui,
                                         egui::DragValue::new(
                                             &mut editor.cfg.reseau.port_repertoire,
                                         )
@@ -89878,7 +89999,8 @@ impl eframe::App for App {
                                     .on_hover_text(tr("opts_postes_relay_tooltip"));
                                     ui.horizontal_wrapped(|ui| {
                                         ui.label(dim(tr("opts_reseau_port")));
-                                        ui.add(
+                                        motif::number(
+                                            ui,
                                             egui::DragValue::new(&mut editor.cfg.postes.port)
                                                 .range(1024..=65535),
                                         );
@@ -90352,7 +90474,8 @@ impl eframe::App for App {
                                     .spacing([12.0, 6.0])
                                     .show(ui, |ui| {
                                         Self::form_label(ui, tr("opts_autolock"));
-                                        ui.add(
+                                        motif::number(
+                                            ui,
                                             egui::DragValue::new(
                                                 &mut editor.cfg.database.auto_lock_timeout_minutes,
                                             )
@@ -90360,7 +90483,8 @@ impl eframe::App for App {
                                         );
                                         ui.end_row();
                                         Self::form_label(ui, tr("opts_backups"));
-                                        ui.add(
+                                        motif::number(
+                                            ui,
                                             egui::DragValue::new(
                                                 &mut editor.cfg.database.backups_keep,
                                             )
@@ -90488,7 +90612,8 @@ impl eframe::App for App {
                                 );
                                 ui.horizontal(|ui| {
                                     ui.label(dim(tr("opts_scan_max")));
-                                    ui.add(
+                                    motif::number(
+                                        ui,
                                         egui::DragValue::new(&mut editor.cfg.scans.max_mb)
                                             .range(0..=200)
                                             .suffix(" Mo"),
@@ -90880,7 +91005,8 @@ impl eframe::App for App {
                                                 );
                                                 for rank in 0..ActFees::STEPS {
                                                     if rank < steps {
-                                                        ui.add(
+                                                        motif::number(
+                                                            ui,
                                                             egui::DragValue::new(
                                                                 fees.slot_mut(year, rank),
                                                             )
@@ -90918,7 +91044,8 @@ impl eframe::App for App {
                                                 .strong()
                                                 .color(motif::accent()),
                                         );
-                                        ui.add(
+                                        motif::number(
+                                            ui,
                                             egui::DragValue::new(&mut editor.cfg.billing.adhesion)
                                                 .range(0.0..=100.0)
                                                 .speed(0.01)
@@ -90936,7 +91063,8 @@ impl eframe::App for App {
                                                 .strong()
                                                 .color(motif::accent()),
                                         );
-                                        ui.add(
+                                        motif::number(
+                                            ui,
                                             egui::DragValue::new(
                                                 &mut editor.cfg.billing.teleconsultation,
                                             )
@@ -90957,7 +91085,8 @@ impl eframe::App for App {
                                     .spacing([12.0, 6.0])
                                     .show(ui, |ui| {
                                         Self::form_label(ui, tr("opts_cycle_months"));
-                                        ui.add(
+                                        motif::number(
+                                            ui,
                                             egui::DragValue::new(
                                                 &mut editor.cfg.rules.cycle_months,
                                             )
@@ -91019,7 +91148,10 @@ impl eframe::App for App {
                                         ];
                                         for (i, (label, n)) in rules.into_iter().enumerate() {
                                             ui.label(dim(label));
-                                            ui.add(egui::DragValue::new(n).range(0..=12));
+                                            motif::number(
+                                                ui,
+                                                egui::DragValue::new(n).range(0..=12),
+                                            );
                                             if i % 2 == 1 {
                                                 ui.end_row();
                                             }
@@ -91043,7 +91175,8 @@ impl eframe::App for App {
                                     .spacing([12.0, 6.0])
                                     .show(ui, |ui| {
                                         Self::form_label(ui, tr("opts_notice_days"));
-                                        ui.add(
+                                        motif::number(
+                                            ui,
                                             egui::DragValue::new(
                                                 &mut editor.cfg.ordonnance.notice_days,
                                             )
@@ -94465,6 +94598,32 @@ mod tests {
         // Les deux maisons existent, et sont employées.
         assert!(SOURCE.contains(concat!("motif::sel", "ect(")));
         assert!(SOURCE.contains(concat!("motif::me", "nu(")));
+    }
+
+    #[test]
+    fn no_number_is_drawn_flat_beside_a_sunken_field() {
+        const SOURCE: &str = include_str!("app.rs");
+        // Assemblés, sinon le test se trouve lui-même.
+        let drag = concat!("egui::Drag", "Value::new(");
+        let wrapper = concat!("motif::num", "ber");
+        let mut offenders: Vec<usize> = Vec::new();
+        let mut from = 0;
+        while let Some(found) = SOURCE[from..].find(drag) {
+            let at = from + found;
+            // Ce qui précède l'appel, depuis l'instruction d'avant : le
+            // `DragValue` est l'argument de la maison, ou il sort plat.
+            let before = &SOURCE[..at];
+            let start = before.rfind([';', '{']).map_or(0, |i| i + 1);
+            if !before[start..].contains(wrapper) {
+                offenders.push(before.lines().count());
+            }
+            from = at + drag.len();
+        }
+        assert!(
+            offenders.is_empty(),
+            "un nombre d'egui, qui sortira plat à côté des cases creusées : lignes {offenders:?}"
+        );
+        assert!(SOURCE.contains(concat!("motif::num", "ber(")));
     }
 
     #[test]

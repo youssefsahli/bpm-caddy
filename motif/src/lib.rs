@@ -2479,10 +2479,22 @@ pub fn section_ink(ui: &mut egui::Ui, label: &str, ink: Color32) {
             break_anywhere: false,
         };
         let galley = ui.fonts(|f| f.layout_job(job));
+        let wrapped = galley.rows.len() > 1;
         ui.add(egui::Label::new(galley));
         // A heading long enough to fill the row leaves nothing for the
         // rule — and egui panics on a negative allocation. The rule is
         // the decoration here, so it is what gives way.
+        //
+        // **Et il cède tout entier plutôt qu'en moignon.** Sur un dock
+        // étroit, « Prochains RDV » et « Amérique du Nord » passent sur
+        // deux lignes et le filet n'avait plus que quelques pixels, posé
+        // au milieu des deux : un tiret égaré, qui ne se lit ni comme un
+        // filet ni comme rien d'autre. Un intitulé sur deux lignes, ou
+        // un reste plus court qu'un filet qui se voit, s'en passe.
+        let rest = (ui.available_width() - 8.0).max(0.0);
+        if wrapped || rest < pt(ui, 24.0) {
+            return;
+        }
         let (rect, _) = ui.allocate_exact_size(
             Vec2::new((ui.available_width() - 8.0).max(0.0), 2.0),
             egui::Sense::hover(),
@@ -2787,6 +2799,60 @@ pub fn field_floor(ui: &egui::Ui) -> f32 {
     let font = egui::TextStyle::Body.resolve(ui.style());
     // 4 : la marge propre du `TextEdit` ; 6 : le creux de [`sunken`].
     ui.fonts(|f| f.row_height(&font)) + 4.0 + 6.0
+}
+
+/// Un nombre qu'on tape **ou** qu'on tire — le `DragValue` d'egui —
+/// dans le même creux qu'une case.
+///
+/// Il était le dernier champ plat de l'application : un rectangle à
+/// liseré d'un pixel, peint par egui, à côté de cases creusées. Les
+/// options en portent trente — ports, délais, quotas, honoraires —, et
+/// la page « Honoraires » alignait des rangées de « 15 € » qui se
+/// lisaient comme des étiquettes et non comme des valeurs à régler.
+///
+/// Le widget garde sa taille et son geste ; on lui retire son fond et
+/// son trait, puis le creux est peint **par-dessus** ce qu'il a alloué,
+/// avec le liseré d'accent quand on y tape.
+pub fn number(ui: &mut egui::Ui, value: egui::DragValue<'_>) -> egui::Response {
+    number_with(ui, |ui| ui.add(value))
+}
+
+/// [`number`], à une taille imposée.
+pub fn number_sized(ui: &mut egui::Ui, size: Vec2, value: egui::DragValue<'_>) -> egui::Response {
+    number_with(ui, |ui| ui.add_sized(size, value))
+}
+
+fn number_with(
+    ui: &mut egui::Ui,
+    add: impl FnOnce(&mut egui::Ui) -> egui::Response,
+) -> egui::Response {
+    let response = ui
+        .scope(|ui| {
+            let visuals = ui.visuals_mut();
+            // En cours de frappe, le `DragValue` devient un `TextEdit`,
+            // qui se peint dans `extreme_bg_color`.
+            visuals.extreme_bg_color = crate::trough();
+            let w = &mut visuals.widgets;
+            for state in [&mut w.inactive, &mut w.hovered, &mut w.active] {
+                state.bg_fill = crate::trough();
+                state.weak_bg_fill = crate::trough();
+                state.bg_stroke = Stroke::NONE;
+                state.expansion = 0.0;
+            }
+            add(ui)
+        })
+        .inner;
+    if ui.is_rect_visible(response.rect) {
+        bevel(ui.painter(), response.rect, false);
+        if response.has_focus() {
+            ui.painter().rect_stroke(
+                response.rect.shrink(2.0),
+                0.0,
+                Stroke::new(1.0_f32, crate::accent()),
+            );
+        }
+    }
+    response
 }
 
 /// Une **zone** de saisie : le même creux, pour plusieurs lignes.

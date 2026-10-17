@@ -24,6 +24,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sat above its half-life, and long organ lists floated to the middle of
   their row). Options › Interface draws its right-pane choice as Motif
   toggles like the rest of the dialog.
+- **Number boxes are sunken fields.** Every numeric input (ports,
+  delays, quotas, the fee grid in Options › Honoraires, the calculators)
+  was egui's flat outlined box beside bevelled fields; they now share the
+  fields' sunken relief and focus ring (`motif::number`), and a test
+  refuses the next flat one.
+- **More layout polish.** The right-hand pane's tabs sit on one row when
+  their words fit and on two even rows when not — never three and one,
+  with « Aide » alone. A section heading that wraps (« Amérique du
+  Nord », « Prochains RDV » in a narrow dock) drops its rule instead of
+  leaving a stray dash. A rental's renewal date sits on its row. The
+  planning's « jusqu'au » field is as wide as its own hint. The
+  campaign's count list stops on a whole row above its chart. The oral
+  supplement plan keeps each line's wording beside its − n + stepper
+  instead of wrapping under it. The carnets list scrolls the open sheet
+  into view.
 
 ## [0.438.0] - 2026-10-16
 

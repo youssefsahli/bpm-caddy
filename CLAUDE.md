@@ -175,9 +175,9 @@ cheap reclaim, `cargo clean` the full one. Do not rebuild while
 
 **Look and layout** (egui, Motif chrome)
 - Square corners; raised bevel = pressed, sunken = filled in.
-  Use `motif::field`/`area`/`select`/`menu`/`scale_range`/`separator` —
-  never flat egui `TextEdit` frames, `ComboBox`, `Slider` or
-  `ui.separator()`. Charts are hand-painted in `motif::chart`.
+  Use `motif::field`/`area`/`number`/`select`/`menu`/`scale_range`/
+  `separator` — never flat egui `TextEdit` frames, `DragValue`,
+  `ComboBox`, `Slider` or `ui.separator()`. Charts are hand-painted in `motif::chart`.
 - Colour from the theme (`motif::bg()`, `accent()`…, `data_ramp`), never
   a literal; rules about colour are distances (two palettes are dark).
   Hints through `motif::hint`. A verdict colour also carries a `Pict`.
