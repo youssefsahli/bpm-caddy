@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Therapeutic classes at text scale 1.6.** The families column was a
+  fixed width that left family names seven letters (« Cardiol… »); it
+  now holds the longest word of a family name plus its count, so names
+  wrap between words.
+
 ## [0.439.0] - 2026-10-17
 
 ### Fixed

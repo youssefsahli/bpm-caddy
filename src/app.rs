@@ -49334,7 +49334,30 @@ impl App {
         // c'est la dernière qui peut passer dessous.
         let work = rows[1];
         let wide = work.width() >= chars_wide(ui, 107.0);
-        let fam_w = (work.width() * 0.26).clamp(190.0, 300.0);
+        // **Et la colonne des familles tient leur plus long mot.** Cent
+        // quatre-vingt-dix pixels écrits pour l'échelle 1 ne grandissaient
+        // pas avec le texte : à `text_scale = 1,6` il ne restait au nom
+        // que sept lettres — « Cardiol… », « Neurolo… » —, et un libellé
+        // qui ne peut pas se couper proprement ne s'enveloppe pas, il
+        // s'élide. Le plancher est le mot le plus long, plus la réserve
+        // du compte (celle de `list_row_count`), le retrait de la ligne,
+        // le puits et le cadre du panneau ; le libellé s'enveloppe alors
+        // entre ses mots.
+        let fam_floor = Self::widest(
+            ui,
+            motif::BODY_PT,
+            crate::classes::FAMILIES
+                .iter()
+                .flat_map(|f| f.label.split_whitespace()),
+        ) + Self::widest(ui, motif::BODY_PT, ["000"].into_iter())
+            + 16.0
+            + 8.0
+            + 8.0
+            + 16.0;
+        let fam_w = (work.width() * 0.26)
+            .clamp(190.0, 300.0)
+            .max(fam_floor)
+            .min((work.width() * 0.5).max(190.0));
         let cls_w = if wide {
             (work.width() * 0.30).clamp(220.0, 360.0)
         } else {
