@@ -39,6 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   supplement plan keeps each line's wording beside its − n + stepper
   instead of wrapping under it. The carnets list scrolls the open sheet
   into view.
+- **The officine's board dialog.** Its lines share one right edge
+  (« Retirer » is measured; it used to overflow and widen each line in
+  turn), the channel menu shows « Produit disponible » whole, and at
+  text 1.6, where one line in three fits, the scroll bar is solid so the
+  other two are seen to exist.
 
 ## [0.438.0] - 2026-10-16
 

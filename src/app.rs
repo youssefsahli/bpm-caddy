@@ -27390,6 +27390,10 @@ impl App {
                     #[cfg(not(feature = "sync"))]
                     let _ = (link, side);
                 } else {
+                    // **Barre pleine** : à l'échelle 1,6 une ligne sur trois
+                    // tient, et la barre flottante d'egui est invisible au
+                    // repos — rien ne disait que deux autres existaient.
+                    ui.spacing_mut().scroll.floating = false;
                     egui::ScrollArea::vertical()
                         .id_salt("tableau_rows")
                         .max_height(body_h)
@@ -27406,20 +27410,35 @@ impl App {
                                     .iter()
                                     .map(|c| (*c, tr(c.label_key()).to_owned()))
                                     .collect();
+                            // **Une largeur pour toutes les lignes**, prise
+                            // avant la première, et le bouton mesuré. Huit
+                            // caractères ne faisaient pas « Retirer » : chaque
+                            // ligne débordait, la zone qui défile s'élargissait
+                            // d'autant, et la suivante prenait cette largeur —
+                            // trois lignes, trois bords droits.
+                            // La largeur **dedans**, barre ôtée : mesurée
+                            // dehors, le détail passait sous la barre et
+                            // sortait par le bord de la fenêtre.
+                            let row_w = Self::scrolled_width(ui, ui.available_width());
+                            let gap = ui.spacing().item_spacing.x;
+                            let remove_w = Self::button_width(ui, tr("tableau_remove"));
+                            // Le menu à la mesure de son plus long canal, et
+                            // pas plus : « Produit disponible » sortait
+                            // « Produit dispo… ».
+                            let canal_w =
+                                motif::select_width(ui, canals.iter().map(|(_, l)| l.as_str()))
+                                    .min(row_w * 0.35);
                             for (i, r) in w.rows.iter_mut().enumerate() {
                                 let top = ui.cursor().top();
                                 ui.horizontal(|ui| {
                                     motif::select(
                                         ui,
                                         ("tableau_canal", i),
-                                        chars_wide(ui, 16.0),
+                                        canal_w,
                                         &mut r.canal,
                                         &canals,
                                     );
-                                    let remove_w = chars_wide(ui, 8.0);
-                                    let title_w = (ui.available_width()
-                                        - remove_w
-                                        - ui.spacing().item_spacing.x * 2.0)
+                                    let title_w = (row_w - canal_w - remove_w - gap * 2.0)
                                         .max(chars_wide(ui, 12.0));
                                     motif::field(
                                         ui,
@@ -27448,7 +27467,7 @@ impl App {
                                         egui::TextEdit::singleline(&mut r.au)
                                             .hint_text(motif::hint(tr("tableau_to"))),
                                     );
-                                    let rest = (ui.available_width() - ui.spacing().item_spacing.x)
+                                    let rest = (row_w - 2.0 * date_w - 2.0 * gap)
                                         .max(chars_wide(ui, 12.0));
                                     motif::field(
                                         ui,

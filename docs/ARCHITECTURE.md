@@ -1379,7 +1379,7 @@ add clicking and typing; it is not the price of entry.
   explorer's axes, the map's lenses, the batch sheet's natures, as the
   register form already did (`richest_form`); it says nothing useful
   about a form, a dialog or a table of records, where what is under the
-  fold is the control you came to use. 70 regions now set
+  fold is the control you came to use. 71 regions now set
   `ui.spacing_mut().scroll.floating = false`, each for a loss seen on a
   capture at 1024x700: the planning's entry row (« Poser »), the
   register's write form (its natures and nothing else — the quantity,
