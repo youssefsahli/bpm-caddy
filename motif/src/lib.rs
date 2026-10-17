@@ -1692,6 +1692,20 @@ pub fn label_rows(ui: &egui::Ui, text: &str, font: &egui::FontId, max_width: f32
     }
 }
 
+/// La hauteur d'une rangée de liste **sur une ligne** : celle que
+/// [`list_row`] et [`list_row_pair`] prennent quand leur texte tient.
+///
+/// Écrite ici, où la rangée se dessine, pour qu'une bande qui se taille
+/// en rangées entières compte avec le même nombre que le dessin : la
+/// recherche partageait sa hauteur en tiers, et chacune de ses trois
+/// listes s'arrêtait au milieu d'une rangée.
+pub fn list_row_height(ui: &egui::Ui) -> f32 {
+    let line = ui.text_style_height(&egui::TextStyle::Body);
+    (ui.spacing().interact_size.y + 2.0)
+        .max(line + 4.0)
+        .max(18.0)
+}
+
 pub fn list_row(ui: &mut egui::Ui, text: egui::RichText, selected: bool) -> egui::Response {
     let width = ui.available_width();
     // The face comes from the style, so `[ui] text_scale` and the

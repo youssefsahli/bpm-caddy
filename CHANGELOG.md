@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Layout polish at small sizes.** The right-hand pane's four tabs
+  (Équipe, Carnet, Perso, Aide) take two rows instead of stacking one
+  per row at 1024x700 and text 1.6, which left the team notes three
+  lines; they now get eight. The search screen's two lists (today,
+  recent files) stop on whole rows and give the rest to the day's notes.
+  The agenda's control band no longer shows the top edge of a hidden
+  third row of buttons, and the patient band no longer shows a sliver of
+  the next row of act buttons under the last one it shows (at 1280x800
+  as well). The till drawer stops on a whole denomination. The patient
+  messaging tab's « Envoyer » button is measured and no longer clipped by
+  the panel edge. The explorer's columns are top-aligned (the card name
+  sat above its half-life, and long organ lists floated to the middle of
+  their row). Options › Interface draws its right-pane choice as Motif
+  toggles like the rest of the dialog.
+
 ## [0.438.0] - 2026-10-16
 
 ### Added

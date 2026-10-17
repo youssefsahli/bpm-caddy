@@ -23709,6 +23709,16 @@ impl App {
                 // One pane, three contents: the shared documentation,
                 // the day's carnet, or the operator's own notes.
                 ui.horizontal_wrapped(|ui| {
+                    // **Quatre onglets sur deux rangées, pas sur quatre.**
+                    // Avec la marge d'un bouton (quatorze points de chaque
+                    // côté, ×1,6), un seul onglet remplissait la largeur
+                    // du volet à 1024 px : les quatre s'empilaient, et les
+                    // notes d'équipe — ce que le volet existe pour montrer
+                    // — n'avaient plus que trois lignes. Un demi-caractère
+                    // de marge suffit à un mot qui n'est pas un bouton.
+                    let tight = chars_wide(ui, 0.5);
+                    ui.spacing_mut().button_padding.x = tight;
+                    ui.spacing_mut().item_spacing = egui::vec2(tight, tight);
                     for (value, label) in [
                         ("docs", tr("side_pane_docs")),
                         ("carnet", tr("side_pane_carnet")),
@@ -25002,12 +25012,31 @@ impl App {
         // à l'échelle 1 et cinquante-neuf à 1,6, où deux colonnes ne
         // tiennent plus une ligne lisible chacune.
         let split = body.width() >= chars_wide(ui, 95.0);
+        // **Les deux listes en rangées entières**, et ce qui reste aux
+        // notes, qui sont de la prose et se coupent n'importe où. Des
+        // tiers égaux tranchaient chacune des trois listes au milieu
+        // d'une rangée à 1024x700 : « 09:15 Lucie Moreau » se lisait à
+        // moitié, sous une barre qui seule disait qu'il y avait une
+        // suite. Une liste vide garde une rangée, pour sa phrase.
+        let row = motif::list_row_height(ui);
+        let chrome = motif::panel_chrome(ui, true);
+        let today_rows = session
+            .appointments
+            .iter()
+            .filter(|a| !session.today.is_empty() && a.date <= session.today)
+            .count()
+            .max(1) as f32;
+        let recent_rows = session.recent.len().max(1) as f32;
+        let band = |share: f32, rows: f32| chrome + whole_rows(share - chrome, row, 1.0, rows);
         let rects: [egui::Rect; 3] = if split {
-            let rows = motif::split_rows(body, &[body.height() * 0.55, 0.0], 8.0);
+            let top_h = band(body.height() * 0.55, today_rows.max(recent_rows));
+            let rows = motif::split_rows(body, &[top_h, 0.0], 8.0);
             let top = motif::split_columns(rows[0], 2, 8.0);
             [top[0], top[1], rows[1]]
         } else {
-            let rows = motif::split_rows(body, &[0.0, 0.0, 0.0], 8.0);
+            let third = (body.height() - 16.0) / 3.0;
+            let heads = [band(third, today_rows), band(third, recent_rows), 0.0];
+            let rows = motif::split_rows(body, &heads, 8.0);
             [rows[0], rows[1], rows[2]]
         };
         let titles = [tr("home_today"), tr("dash_recent"), tr("dash_today_notes")];
@@ -26674,7 +26703,13 @@ impl App {
                 let draft = &mut session.pchat_draft.1;
                 motif::inside(ui, parts[1], |ui| {
                     ui.horizontal_top(|ui| {
-                        let send_w = chars_wide(ui, 10.0);
+                        // **Le bouton mesuré, pas deviné.** Dix caractères
+                        // ne font pas « Envoyer » et sa marge à l'échelle
+                        // 1,6, ni la gouttière entre les deux, ni la barre
+                        // de la zone qui défile : le bouton sortait par le
+                        // bord droit du panneau, son relief tranché.
+                        let send_w =
+                            Self::button_width(ui, tr("pchat_send")) + ui.spacing().item_spacing.x;
                         let field_w = (ui.available_width() - send_w).max(chars_wide(ui, 12.0));
                         egui::ScrollArea::vertical()
                             .id_salt("pchat_draft")
@@ -26683,7 +26718,7 @@ impl App {
                             .show(ui, |ui| {
                                 motif::field(
                                     ui,
-                                    field_w,
+                                    Self::scrolled_width(ui, field_w),
                                     egui::TextEdit::multiline(draft)
                                         .desired_rows(2)
                                         .hint_text(motif::hint(tr("pchat_write_hint"))),
@@ -35132,6 +35167,15 @@ impl App {
         // plus haut lui compte ; un formulaire ouvert garde l'ancienne
         // coupe, parce que ses rangées sont une `Grid`.
         let room = (cap - head).max(0.0);
+        // **La coupe se pose sous la rangée, pas sous sa gouttière.**
+        // Les marques sont relevées au curseur et les rangées modélisées
+        // gouttière comprise : chaque coupe tombait donc au pixel où la
+        // rangée suivante *commence*, et egui peint une zone défilante
+        // `clip_rect_margin` au-delà de son bord — le haut des boutons
+        // de la deuxième rangée d'actes se montrait sous la première, un
+        // liseré de reliefs sans boutons, à 1280x800 comme à 1024x700.
+        // Une gouttière de moins et la rangée suivante reste cachée.
+        let tail = ui.spacing().item_spacing.y;
         let plain = !(n.dosing || n.correcting || n.typing);
         if plain && !n.marks.is_empty() {
             // Les marques relevées au dessin, depuis le haut du contenu ;
@@ -35156,11 +35200,11 @@ impl App {
                 .copied()
                 .filter(|c| *c <= content_cap + 0.5)
                 .fold(head - chrome, f32::max);
-            return (chrome + fits).max(Self::row_height(ui) + 2.0);
+            return (chrome + fits - tail).max(Self::row_height(ui) + 2.0);
         }
         let chips = (room / treat_row).floor().clamp(0.0, treat_lines);
         let after = ((room - chips * treat_row) / row).floor().max(0.0);
-        (head + chips * treat_row + after * row).max(Self::row_height(ui) + 2.0)
+        (head + chips * treat_row + after * row - tail).max(Self::row_height(ui) + 2.0)
     }
 
     /// Who the patient is: identity, corrections, treatments, and the
@@ -41368,7 +41412,6 @@ impl App {
         // estimer `want`, qui compte un peu large exprès — et le cadre
         // du panneau, qui prend seize pixels avant de rendre le moindre
         // pixel d'intérieur.
-        let pitch = Self::row_height(ui) + ui.spacing().item_spacing.y;
         let cap = (body.height() * 0.32).max(120.0);
         // **La bande prend ce qu'il lui faut, jusqu'à une limite ; au
         // delà, elle défile.**
@@ -41393,10 +41436,19 @@ impl App {
         // perdait la moitié de ses semaines. Ici la bande ne prend que
         // ce qu'elle a mesuré.
         let generous = body.height() * 0.45;
+        // Rangées **et gouttières entre elles** : `n × pitch` en comptait
+        // une de trop, et le bord haut de la troisième rangée — les deux
+        // boutons d'impression — se montrait seize pixels sous la
+        // deuxième à l'échelle 1,6, comme un filet égaré sous la bande.
         let band_h = if want <= generous {
             want
         } else {
-            16.0 + ((cap - 16.0) / pitch).floor().max(1.0) * pitch
+            16.0 + whole_rows(
+                cap - 16.0,
+                Self::row_height(ui),
+                ui.spacing().item_spacing.y,
+                f32::INFINITY,
+            )
         };
         let rows = motif::split_rows(body, &[band_h, 0.0], 6.0);
         // Set inside the band's closure, applied after it: the closure
@@ -49488,7 +49540,12 @@ impl App {
         open: &mut Option<String>,
     ) {
         let (name_w, value_w, rest_w) = widths;
-        ui.horizontal(|ui| {
+        // **En haut, toutes les colonnes.** `ui.horizontal` centre sur la
+        // hauteur de la rangée en cours : la fiche se posait cinq pixels
+        // au-dessus de sa demi-vie, et les organes de la Cordarone
+        // flottaient au milieu de leur ligne, loin de la valeur qu'ils
+        // suivent. L'en-tête et l'axe des organes font de même.
+        ui.horizontal_top(|ui| {
             Self::explorer_cell(ui, name_w, &mut |ui| {
                 if ui
                     .add(
@@ -49552,7 +49609,7 @@ impl App {
         use crate::facets::Grade;
         let (name_w, value_w, rest_w) = widths;
         let (f, im) = entry;
-        ui.horizontal(|ui| {
+        ui.horizontal_top(|ui| {
             Self::explorer_cell(ui, value_w, &mut |ui| {
                 ui.add(
                     egui::Label::new(egui::RichText::new(im.grade.label()).color(match im.grade {
@@ -49813,7 +49870,7 @@ impl App {
         }
         match axis {
             None => {
-                ui.horizontal(|ui| {
+                ui.horizontal_top(|ui| {
                     for (w, key, short) in [
                         (name_w, "explorer_col_card", None),
                         (
@@ -73619,7 +73676,22 @@ impl App {
             // est le volet où l'on tape.
             let cap = avail * 0.45;
             let sum_h = (5.0 * line).min(cap);
-            motif::split_rows(rows[1], &[avail - sum_h, 0.0], gutter)
+            // **Le tiroir s'arrête sur une coupure entière**, et ce qui
+            // reste va à la synthèse. Taillé au pixel, il tranchait la
+            // ligne des 100 € en son milieu à 1024x700 : un champ coupé
+            // en deux ne se lit pas « il y en a d'autres », il se lit
+            // cassé. L'en-tête, puis des rangées de champs à trois
+            // pixels l'une de l'autre, comme la grille les pose.
+            let chrome = motif::panel_chrome(ui, true);
+            let head_h = line.max(ui.spacing().interact_size.y);
+            let lines = whole_rows(
+                avail - sum_h - chrome - head_h - 3.0,
+                Self::button_height(ui),
+                3.0,
+                DENOMINATIONS.len() as f32,
+            );
+            let drawer_h = (chrome + head_h + 3.0 + lines).min(avail - sum_h);
+            motif::split_rows(rows[1], &[drawer_h, 0.0], gutter)
         };
 
         motif::panel(ui, panes[0], Some(tr("caisse_drawer")), |ui| {
@@ -90131,18 +90203,24 @@ impl eframe::App for App {
                                         });
                                         ui.end_row();
                                         Self::form_label(ui, tr("opts_side_pane"));
-                                        ui.horizontal(|ui| {
+                                        // Des bascules en relief, comme les pages
+                                        // de cette fenêtre : une étiquette plate
+                                        // y était le seul choix qui ne se lisait
+                                        // pas comme un bouton. Et enveloppées :
+                                        // les trois ne tiennent pas sur une
+                                        // rangée à l'échelle 1,6.
+                                        ui.horizontal_wrapped(|ui| {
                                             for (value, label) in [
                                                 ("docs", tr("docs_title")),
                                                 ("carnet", tr("trans_title")),
                                                 ("notes", tr("side_pane_notes")),
                                             ] {
-                                                if ui
-                                                    .selectable_label(
-                                                        editor.cfg.ui.side_pane == value,
-                                                        label,
-                                                    )
-                                                    .clicked()
+                                                if motif::toggle(
+                                                    ui,
+                                                    label,
+                                                    editor.cfg.ui.side_pane == value,
+                                                )
+                                                .clicked()
                                                 {
                                                     editor.cfg.ui.side_pane = value.to_owned();
                                                 }
