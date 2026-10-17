@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.439.0] - 2026-10-17
+
 ### Fixed
 
 - **Layout polish at small sizes.** The right-hand pane's four tabs
