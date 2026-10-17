@@ -31918,7 +31918,13 @@ impl App {
             // à `text_scale = 1,25`, et une valeur à moitié lue est une
             // valeur qu'on ne lit pas. Le reste, moins d'une rangée, va
             // entre la table et le formulaire.
-            let header_h = ui.text_style_height(&egui::TextStyle::Body);
+            // L'en-tête vaut une rangée de grille, et une grille d'egui ne
+            // descend jamais sous `interact_size.y` : mesuré à la seule
+            // hauteur du corps, il était compté cinq pixels trop court, et
+            // la seconde rangée perdait le bas de sa croix à 1024x700.
+            let header_h = ui
+                .text_style_height(&egui::TextStyle::Body)
+                .max(ui.spacing().interact_size.y);
             let chrome_h = 8.0 + header_h + 5.0;
             let table_h = chrome_h
                 + whole_rows(

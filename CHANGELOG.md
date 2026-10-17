@@ -51,7 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Options › À propos: the version and platform rows have the same pitch
   as the rest of the list.
 - **Text scale 1.25 at 1280x800.** The biology results table stops on a
-  whole row instead of showing half of the next one; a campaign call's
+  whole row instead of showing half of the next one (its header measured
+  as a grid row, so the last row keeps its whole button at 1024x700); a campaign call's
   reason goes on its own line when it does not fit beside the buttons;
   the stupéfiants register's unit box fits the unit it holds
   (« comprimé »); long names in the patient's « Pièces » table are cut
