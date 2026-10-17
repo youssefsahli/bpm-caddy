@@ -984,7 +984,17 @@ fn elide(ui: &egui::Ui, text: &str, width: f32, size: f32) -> String {
     // La taille est en points, comme partout : élidé à onze pixels et
     // peint à dix-huit, le texte revient plus large que ce qu'on vient
     // de mesurer, et l'élision n'a servi à rien.
-    let font = egui::FontId::proportional(motif::pt(ui, size));
+    elide_in(
+        ui,
+        text,
+        width,
+        egui::FontId::proportional(motif::pt(ui, size)),
+    )
+}
+
+/// [`elide`] dans une fonte donnée — celle d'un bouton, par exemple,
+/// qui se lit dans le style et non en points.
+fn elide_in(ui: &egui::Ui, text: &str, width: f32, font: egui::FontId) -> String {
     let measure = |t: &str| {
         ui.fonts(|f| {
             f.layout_no_wrap(t.to_owned(), font.clone(), motif::text())
@@ -27563,7 +27573,8 @@ impl App {
                         (1, tr("tableau_open_screen").to_owned()),
                         (2, tr("tableau_copy").to_owned()),
                     ];
-                    let close_w = chars_wide(ui, 9.0);
+                    let close_w = Self::button_width(ui, tr("tableau_close"))
+                        + 2.0 * ui.spacing().item_spacing.x;
                     let mw = (ui.available_width() - close_w).min(chars_wide(ui, 22.0));
                     match motif::menu(ui, "tableau_link_menu", mw, tr("tableau_links"), &options)
                         .inner
@@ -31900,8 +31911,25 @@ impl App {
             // seulement du gris sous « Ajouter ».
             let foot = (Self::rows_height(ui, form_rows) + 6.0).min(body.height());
             let rest = body.height() - foot - 6.0;
-            let table = (rest >= table_floor)
-                .then(|| egui::Rect::from_min_size(body.min, egui::vec2(body.width(), rest)));
+            // **Et la table s'arrête sur une rangée entière** : le puits
+            // (quatre pixels de chaque bord), l'en-tête, puis des rangées
+            // à la hauteur d'un bouton — la croix qui retire. Coupée à ce
+            // qui restait, la troisième rangée montrait sa moitié haute
+            // à `text_scale = 1,25`, et une valeur à moitié lue est une
+            // valeur qu'on ne lit pas. Le reste, moins d'une rangée, va
+            // entre la table et le formulaire.
+            let header_h = ui.text_style_height(&egui::TextStyle::Body);
+            let chrome_h = 8.0 + header_h + 5.0;
+            let table_h = chrome_h
+                + whole_rows(
+                    (rest - chrome_h).max(0.0),
+                    Self::row_height(ui),
+                    5.0,
+                    f32::INFINITY,
+                );
+            let table = (rest >= table_floor).then(|| {
+                egui::Rect::from_min_size(body.min, egui::vec2(body.width(), table_h.min(rest)))
+            });
             let form = egui::Rect::from_min_size(
                 egui::pos2(body.left(), body.bottom() - foot),
                 egui::vec2(body.width(), foot),
@@ -55003,16 +55031,36 @@ impl App {
                                         ui.scope(|ui| {
                                             ui.set_width(label_w);
                                             ui.vertical(|ui| {
-                                                if motif::button(ui, &sc.label)
-                                                    .on_hover_text(if sc.remark.is_empty() {
-                                                        tr("scan_open_tooltip").to_owned()
-                                                    } else {
-                                                        format!(
-                                                            "{} — {}",
-                                                            tr("scan_open_tooltip"),
-                                                            sc.remark
-                                                        )
-                                                    })
+                                                // **Élidé à sa colonne** : un
+                                                // libellé plus large qu'elle
+                                                // élargissait la grille, et la
+                                                // croix qui retire sortait du
+                                                // volet par la droite (« Déclaration
+                                                // AT — chute au travail » à
+                                                // `text_scale = 1,25`). Entier
+                                                // au survol.
+                                                let pad =
+                                                    (ui.spacing().button_padding.x + 4.0) * 2.0;
+                                                let shown = elide_in(
+                                                    ui,
+                                                    &sc.label,
+                                                    label_w - pad,
+                                                    egui::TextStyle::Button.resolve(ui.style()),
+                                                );
+                                                let mut hover = if sc.remark.is_empty() {
+                                                    tr("scan_open_tooltip").to_owned()
+                                                } else {
+                                                    format!(
+                                                        "{} — {}",
+                                                        tr("scan_open_tooltip"),
+                                                        sc.remark
+                                                    )
+                                                };
+                                                if shown != sc.label {
+                                                    hover = format!("{}\n{}", sc.label, hover);
+                                                }
+                                                if motif::button(ui, &shown)
+                                                    .on_hover_text(hover)
                                                     .clicked()
                                                 {
                                                     open_id = Some(sc.id);
@@ -56264,7 +56312,15 @@ impl App {
             // l'invite s'allonge. Elles sont calculées une fois, ici,
             // et le dessin les reçoit.
             let thr_w = Self::field_width(ui, [tr("stup_threshold_hint")].into_iter()).max(70.0);
-            let unit_w = Self::field_width(ui, [tr("stup_unit_hint")].into_iter()).max(90.0);
+            // L'unité se mesure aussi sur **celle qui est écrite** :
+            // mesurée sur son invite (« unité »), la case coupait
+            // « comprimé » à `text_scale = 1,25` — et c'est l'unité du
+            // solde, celle qu'on lit, pas une invite qu'on remplace.
+            let unit_w = Self::field_width(
+                ui,
+                [tr("stup_unit_hint"), product.unit.as_str()].into_iter(),
+            )
+            .max(90.0);
             let box_w = Self::field_width(ui, [tr("stup_per_box_hint")].into_iter()).max(70.0);
             let others = thr_w + unit_w + box_w + arch_w + ui.spacing().item_spacing.x * 4.0;
             let label_w = (w - others).clamp(90.0, 240.0);
@@ -61404,11 +61460,28 @@ impl App {
                                 {
                                     rdv_toggle = Some(r.patient_id);
                                 }
-                                ui.label(
-                                    egui::RichText::new(note)
-                                        .size(motif::pt(ui, 10.5))
-                                        .color(motif::text_faint()),
-                                );
+                                // **Sur la rangée si elle y tient, sinon sur
+                                // la sienne** : enveloppée dans le bout de
+                                // rangée qui restait, la raison mettait
+                                // « Campagne en » à droite des boutons et la
+                                // suite dessous, sous « Prévenu » — une
+                                // phrase coupée en deux colonnes.
+                                let text = egui::RichText::new(note)
+                                    .size(motif::pt(ui, 10.5))
+                                    .color(motif::text_faint());
+                                let note_w = egui::WidgetText::from(text.clone())
+                                    .into_galley(
+                                        ui,
+                                        Some(egui::TextWrapMode::Extend),
+                                        f32::INFINITY,
+                                        egui::TextStyle::Body,
+                                    )
+                                    .size()
+                                    .x;
+                                if note_w > ui.available_width() {
+                                    ui.end_row();
+                                }
+                                ui.label(text);
                             });
                             // Le rendez-vous pris au téléphone : le jour,
                             // l'heure, et l'agenda le porte.
@@ -83412,8 +83485,13 @@ impl App {
                             rdv.patient_name,
                             rdv.kind.label()
                         );
+                        // Le numéro **d'un bloc** : la ligne enveloppe
+                        // sur une colonne étroite, et elle coupait entre
+                        // ses paires — « 06 » au bout d'une ligne,
+                        // « 01 02 03 04 » sur la suivante, un numéro
+                        // qu'on ne compose pas tel qu'on le lit.
                         if !rdv.phone.is_empty() {
-                            text.push_str(&format!("   —  {}", rdv.phone));
+                            text.push_str(&format!("   —  {}", rdv.phone.replace(' ', "\u{a0}")));
                         }
                         if overdue {
                             text.push_str(tr("dash_overdue"));

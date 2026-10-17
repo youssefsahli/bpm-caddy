@@ -50,6 +50,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   1.6 instead of six.
 - Options › À propos: the version and platform rows have the same pitch
   as the rest of the list.
+- **Text scale 1.25 at 1280x800.** The biology results table stops on a
+  whole row instead of showing half of the next one; a campaign call's
+  reason goes on its own line when it does not fit beside the buttons;
+  the stupéfiants register's unit box fits the unit it holds
+  (« comprimé »); long names in the patient's « Pièces » table are cut
+  with an ellipsis (whole name on hover), so « Corriger » and the
+  delete button stay inside the pane; a phone number on the dashboard's
+  appointment list no longer breaks across two lines; the board
+  dialog's link menu leaves room for « Fermer » as measured.
 
 ## [0.438.0] - 2026-10-16
 
