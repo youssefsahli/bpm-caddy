@@ -80483,6 +80483,18 @@ impl App {
                 if session.patients.is_empty() {
                     panels.insert(0, (tr("dash_start"), 300.0));
                 }
+                // **Les hauteurs suivent le texte.** Écrites pour
+                // l'échelle 1, elles restaient les mêmes quand le texte
+                // grandissait : à `text_scale = 1,25` « RDV à venir »
+                // montrait deux rendez-vous et demi au lieu de quatre, et
+                // « Renouvellements de location » sa première ligne
+                // tranchée. La page défile ; c'est elle qui s'allonge, et
+                // chaque panneau garde ce qu'il montre.
+                let grow =
+                    (egui::TextStyle::Body.resolve(ui.style()).size / motif::BODY_PT).max(1.0);
+                for (_, h) in panels.iter_mut() {
+                    *h *= grow;
+                }
                 // On a tall screen the natural grid stopped short and
                 // left a band of grey under it; stretch the panels to
                 // fill what is there, within reason — a funnel of five

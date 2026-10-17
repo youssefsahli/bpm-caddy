@@ -59,6 +59,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   delete button stay inside the pane; a phone number on the dashboard's
   appointment list no longer breaks across two lines; the board
   dialog's link menu leaves room for « Fermer » as measured.
+- **Dashboard panels grow with the text.** Their heights were written
+  for text scale 1, so at 1.25 « RDV à venir » showed two and a half
+  appointments and « Renouvellements de location » a cut first line;
+  the page now scrolls further and each panel keeps what it shows.
 
 ## [0.438.0] - 2026-10-16
 
