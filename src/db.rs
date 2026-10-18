@@ -42618,6 +42618,44 @@ fn write_tx(conn: &Connection) -> rusqlite::Result<rusqlite::Transaction<'_>> {
 /// refusé (base tenue) laissait la transaction ouverte sur la connexion
 /// de l'écran — chaque écriture suivante tombait alors sur « transaction
 /// dans une transaction ».
+/// Les migrations d'un fichier capturé, capture coupée, dans une
+/// transaction — **annulée quand elles n'ont rien changé**.
+///
+/// Couper la capture est une écriture (une ligne posée puis effacée) :
+/// validée, elle ne laisse rien dans le fichier mais fait bouger le
+/// témoin de toutes les autres connexions. La sauvegarde du jour et le
+/// fil des postes ouvrent la base sur la leur, et l'écran du comptoir
+/// relisait alors tout en annonçant « un autre poste a écrit » pour sa
+/// propre ouverture. Une migration qui change vraiment quelque chose —
+/// une ligne (`total_changes`) ou le schéma (`schema_version`) — se
+/// valide, et se voit, comme avant.
+fn migrate_muted(conn: &Connection, migrations: &[&str]) -> rusqlite::Result<()> {
+    let mark = |c: &Connection| -> rusqlite::Result<(i64, i64)> {
+        Ok((
+            c.query_row("SELECT total_changes()", [], |r| r.get(0))?,
+            c.query_row("PRAGMA schema_version", [], |r| r.get(0))?,
+        ))
+    };
+    conn.execute_batch("BEGIN IMMEDIATE; INSERT INTO sync_mute (mute) VALUES (1);")?;
+    let before = mark(conn);
+    for migration in migrations {
+        // Sans effet quand la colonne est déjà là.
+        let _ = conn.execute(migration, []);
+    }
+    // Une marque illisible ne prouve rien : on valide.
+    let unchanged = matches!((&before, mark(conn)), (Ok(b), Ok(a)) if *b == a);
+    let end = if unchanged {
+        "ROLLBACK;"
+    } else {
+        "DELETE FROM sync_mute; COMMIT;"
+    };
+    let done = conn.execute_batch(end);
+    if done.is_err() && !conn.is_autocommit() {
+        let _ = conn.execute_batch("ROLLBACK");
+    }
+    done
+}
+
 fn batch_tx(conn: &Connection, body: &str) -> rusqlite::Result<()> {
     let done = conn.execute_batch(&format!("BEGIN IMMEDIATE;\n{body}\nCOMMIT;"));
     if done.is_err() && !conn.is_autocommit() {
@@ -42756,7 +42794,8 @@ impl Db {
         // Only on a base of a group, where there is a capture to mute: the
         // switch is a write, and a write at every opening would tell every
         // other connection — the counter's own screen, when a background
-        // thread opens the base — that someone changed something.
+        // thread opens the base — that someone changed something. On a
+        // base of a group, see `migrate_muted`.
         let grouped = conn
             .query_row(
                 "SELECT 1 FROM sync_local WHERE key = 'post'",
@@ -42765,16 +42804,13 @@ impl Db {
             )
             .is_ok();
         if grouped {
-            conn.execute_batch("BEGIN IMMEDIATE; INSERT INTO sync_mute (mute) VALUES (1);")
+            migrate_muted(&conn, MIGRATIONS)
                 .map_err(|e| format!("initialisation du schéma impossible : {e}"))?;
-        }
-        for migration in MIGRATIONS {
-            // Fails harmlessly when the column already exists.
-            let _ = conn.execute(migration, []);
-        }
-        if grouped {
-            conn.execute_batch("DELETE FROM sync_mute; COMMIT;")
-                .map_err(|e| format!("initialisation du schéma impossible : {e}"))?;
+        } else {
+            for migration in MIGRATIONS {
+                // Fails harmlessly when the column already exists.
+                let _ = conn.execute(migration, []);
+            }
         }
         // Last, because an index names a column and a column added since
         // this base was made is only there once the migrations have run.
@@ -42849,16 +42885,13 @@ impl Db {
             )
             .is_ok();
         if captured {
-            conn.execute_batch("BEGIN IMMEDIATE; INSERT INTO sync_mute (mute) VALUES (1);")
+            migrate_muted(&conn, STUP_MIGRATIONS)
                 .map_err(|e| format!("schéma du registre impossible : {e}"))?;
-        }
-        for migration in STUP_MIGRATIONS {
-            // Sans effet quand la colonne est déjà là.
-            let _ = conn.execute(migration, []);
-        }
-        if captured {
-            conn.execute_batch("DELETE FROM sync_mute; COMMIT;")
-                .map_err(|e| format!("schéma du registre impossible : {e}"))?;
+        } else {
+            for migration in STUP_MIGRATIONS {
+                // Sans effet quand la colonne est déjà là.
+                let _ = conn.execute(migration, []);
+            }
         }
         Ok(conn)
     }
@@ -64703,6 +64736,57 @@ mod tests {
             stups_after, after.2,
             "le registre vit dans son fichier : sa version est la sienne"
         );
+    }
+
+    /// **Ouvrir la base ailleurs n'est pas écrire.**
+    ///
+    /// Sur un poste d'un groupe, chaque ouverture coupait la capture le
+    /// temps des migrations — une ligne écrite puis effacée, validée.
+    /// Le contenu n'avait pas bougé, mais le témoin si : la sauvegarde du
+    /// jour ou le fil des postes ouvraient la base sur leur propre
+    /// connexion, et l'écran du comptoir relisait tout en annonçant
+    /// « un autre poste a écrit » pour sa propre ouverture. Quand aucune
+    /// migration ne change rien, la transaction s'annule.
+    #[test]
+    fn opening_a_grouped_base_again_tells_no_one() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-reouvrir-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("shared.db");
+
+        let counter = Db::open(&path, "secret").unwrap();
+        counter
+            .found_posts("aa", "Comptoir 1", "2026-09-23")
+            .unwrap();
+        let seen = counter.data_version();
+        let _backup = Db::open(&path, "secret").unwrap();
+        assert_eq!(
+            counter.data_version(),
+            seen,
+            "une ouverture sans migration ne doit réveiller personne"
+        );
+
+        // Une migration qui change vraiment le fichier, elle, se valide
+        // et se voit.
+        counter
+            .conn
+            .execute_batch(
+                "DROP TRIGGER sync_i_patients; DROP TRIGGER sync_u_patients;
+                 DROP TRIGGER sync_d_patients;
+                 ALTER TABLE patients DROP COLUMN pregnancy_ddr;",
+            )
+            .unwrap();
+        let seen = counter.data_version();
+        let _later = Db::open(&path, "secret").unwrap();
+        assert!(
+            counter
+                .conn
+                .prepare("SELECT pregnancy_ddr FROM patients")
+                .is_ok(),
+            "la migration a remis la colonne"
+        );
+        assert_ne!(counter.data_version(), seen, "et cela se voit");
     }
 
     /// **Une phrase imprimée se réécrit, et la table ne porte que de

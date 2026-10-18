@@ -161,3 +161,12 @@ required-features = ["sync"]
 lto = true
 strip = true
 codegen-units = 1
+
+# Pour mesurer (`samply record`, `scripts/frames.sh`) : le code de la
+# version optimisée avec ses symboles, construit plus vite.
+[profile.profiling]
+inherits = "release"
+lto = "thin"
+codegen-units = 16
+strip = false
+debug = "line-tables-only"

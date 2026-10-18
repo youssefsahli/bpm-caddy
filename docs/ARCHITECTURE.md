@@ -2556,6 +2556,24 @@ add clicking and typing; it is not the price of entry.
   few seconds and sorts them slowest first. The 0.370.0 sweep at
   1280x800: every view under 6 ms a frame on average, the Options and
   Templates dialogs slowest; the maximum is the first frame (font atlas).
+  It also writes the whole frame as eframe measured it (`frame-full`:
+  layout, tessellation and paint) and each frame over 20 ms after the
+  thirtieth (`frame-slow`) — a hitch drowns in a mean, and a maximum does
+  not say whether it comes back. The 0.440.0 sweep at 1024x700, scale
+  1.6, found every view with one such hitch: the first frame after the
+  unlock rebuilt the connections summary (the network journal, every
+  signature checked again, a tenth of a second) for the status-bar mark
+  alone, and a second connection opening a base of a group (the daily
+  backup, the posts thread) committed its capture switch, so the
+  counter reread everything and announced « another post wrote ». Each
+  view restores all three files (base, `_scans`, `_stups`): restoring
+  the base alone left the register of a view that founded a group beside
+  a fresh base. The `profiling` profile (`cargo build --profile
+  profiling`) is the release code with line tables, for `samply record`
+  where `perf_event_paranoid` allows it. The headless stub
+  (`scripts/headless/xvfb-run`) turns vertical sync off: its rootful
+  Xwayland sometimes stops answering the present event, and the window
+  then waits in its first buffer swap without drawing or saying so.
 
 The workspace's shape — window size, dock widths, whether each dock is
 open, the right pane's content, the view on screen — is remembered in

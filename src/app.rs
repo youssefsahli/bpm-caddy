@@ -9132,6 +9132,35 @@ impl Session {
         }
     }
 
+    /// Relire ce que compte la marque des connexions dans la barre
+    /// d'état : les autres postes, le réseau, les officines jointes
+    /// aujourd'hui — trois lectures courtes.
+    ///
+    /// **À part de la vue des connexions**, parce que celle-ci relit le
+    /// journal du réseau et en vérifie chaque signature : un dixième de
+    /// seconde sur la base de démonstration, que la première image après
+    /// le déverrouillage payait pour une marque.
+    #[cfg(feature = "sync")]
+    fn reload_conn_badge(&mut self) {
+        let others = self
+            .db
+            .sync_posts()
+            .unwrap_or_default()
+            .iter()
+            .filter(|p| p.left_on.is_empty() && Some(p.post) != self.db.sync_post())
+            .count();
+        let reached = self
+            .db
+            .net_peers()
+            .unwrap_or_default()
+            .iter()
+            .filter(|p| p.last_ok.starts_with(&self.today))
+            .count();
+        let network = self.db.setting("net_trousseau").is_some()
+            || self.db.net_networks().is_ok_and(|n| !n.is_empty());
+        self.conn_badge = (others, network, reached);
+    }
+
     /// Relire ce que la vue des connexions montre : les postes, le réseau
     /// d'officines, et les fiches qui ont une version reçue à arbitrer.
     fn reload_connections(&mut self) {
@@ -9149,23 +9178,7 @@ impl Session {
                     (n > 0).then(|| (d.id, d.name.clone(), n))
                 })
                 .collect();
-            let others = self
-                .db
-                .sync_posts()
-                .unwrap_or_default()
-                .iter()
-                .filter(|p| p.left_on.is_empty() && Some(p.post) != self.db.sync_post())
-                .count();
-            let reached = self
-                .db
-                .net_peers()
-                .unwrap_or_default()
-                .iter()
-                .filter(|p| p.last_ok.starts_with(&self.today))
-                .count();
-            let network = self.db.setting("net_trousseau").is_some()
-                || self.db.net_networks().is_ok_and(|n| !n.is_empty());
-            self.conn_badge = (others, network, reached);
+            self.reload_conn_badge();
             let mut entries = Vec::new();
             let mut names: Vec<(crate::versions::Kind, String)> = self
                 .preparations
@@ -9533,7 +9546,9 @@ impl Session {
         if !self.posts_auto_tried {
             self.posts_auto_tried = true;
             self.start_posts_auto(config);
-            self.reload_connections();
+            // La marque seulement : la vue des connexions se relit
+            // elle-même quand elle s'ouvre (`conn_summary` vide).
+            self.reload_conn_badge();
         }
         let Some((rx, _)) = &self.posts_auto else {
             return;
@@ -87756,9 +87771,31 @@ fn fuzz_input(raw: &mut egui::RawInput) -> bool {
 struct FrameStopwatch(Option<Instant>);
 
 impl FrameStopwatch {
-    fn start() -> Self {
+    fn start(previous_cpu: Option<f32>) -> Self {
         static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
         let on = *ON.get_or_init(|| std::env::var_os("BPM_CADDY_FRAME_STATS").is_some());
+        if on {
+            // L'image précédente entière, telle qu'eframe l'a mesurée :
+            // la mise en page, la tessellation et le rendu — ce qu'un
+            // à-coup coûte vraiment, que `update` seul ne voit pas.
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static FULL_MAX_US: AtomicU64 = AtomicU64::new(0);
+            static FULL_TOTAL_US: AtomicU64 = AtomicU64::new(0);
+            static FULL_N: AtomicU64 = AtomicU64::new(0);
+            if let Some(cpu) = previous_cpu {
+                let us = (cpu * 1e6) as u64;
+                FULL_MAX_US.fetch_max(us, Ordering::Relaxed);
+                FULL_TOTAL_US.fetch_add(us, Ordering::Relaxed);
+                let n = FULL_N.fetch_add(1, Ordering::Relaxed) + 1;
+                if n.is_multiple_of(60) {
+                    eprintln!(
+                        "frame-full frames={n} avg_us={} max_us={}",
+                        FULL_TOTAL_US.load(Ordering::Relaxed) / n,
+                        FULL_MAX_US.load(Ordering::Relaxed)
+                    );
+                }
+            }
+        }
         FrameStopwatch(on.then(Instant::now))
     }
 }
@@ -87776,6 +87813,11 @@ impl Drop for FrameStopwatch {
         let n = FRAMES.fetch_add(1, Ordering::Relaxed) + 1;
         let total = TOTAL_US.fetch_add(us, Ordering::Relaxed) + us;
         let max = MAX_US.fetch_max(us, Ordering::Relaxed).max(us);
+        // Un à-coup se dit à part : la moyenne le noie, le maximum ne
+        // dit pas s'il revient.
+        if n > 30 && us > 20_000 {
+            eprintln!("frame-slow frame={n} us={us}");
+        }
         if n.is_multiple_of(60) {
             eprintln!("frame-stats frames={n} avg_us={} max_us={max}", total / n);
         }
@@ -87794,7 +87836,7 @@ impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Le chronomètre des images, pour qui le demande
         // (`BPM_CADDY_FRAME_STATS=1`) : rien n'est mesuré sinon.
-        let _stopwatch = FrameStopwatch::start();
+        let _stopwatch = FrameStopwatch::start(_frame.info().cpu_usage);
         // Mesurer demande des images : sans saisie, egui n'en dessine pas.
         if _stopwatch.0.is_some() {
             ctx.request_repaint();

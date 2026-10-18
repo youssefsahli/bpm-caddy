@@ -23,6 +23,11 @@ for i in \$(seq 50); do [ -e /tmp/.X11-unix/X$disp ] && break; sleep 0.1; done
 sleep 0.5
 export DISPLAY=:$disp
 unset WAYLAND_DISPLAY
+# Sans synchronisation verticale : l'Xwayland racine d'un KWin sans
+# écran cesse parfois de rendre l'événement de présentation, et
+# l'application attend alors pour toujours dans son premier échange de
+# tampons — une fenêtre qui ne dessine rien, sans une erreur.
+export vblank_mode=0 __GL_SYNC_TO_VBLANK=0
 eval "\$(cat $inner.cmd)"
 echo \$? > $inner.rc
 EOS

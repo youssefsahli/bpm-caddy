@@ -36,7 +36,12 @@ XDG_CONFIG_HOME="$tmp/seed" \
 cargo build || exit 1
 bin="$tmp/bpm-caddy"
 cp ./target/debug/bpm-caddy "$bin" || exit 1
-cp "$BPM_CADDY_DB" "$tmp/pristine.db"
+# Les trois fichiers, pas la base seule : une vue qui fonde un groupe
+# pose ses déclencheurs dans le registre aussi, et un registre gardé
+# d'une vue à l'autre à côté d'une base neuve écrit à chaque ouverture
+# — l'écran le prend pour un autre poste et relit tout.
+mkdir -p "$tmp/pristine"
+cp "$tmp"/demo*.db "$tmp/pristine/"
 # Le hasard tape aussi des chemins relatifs (« - » comme dossier
 # d'échange a laissé un fichier dans le dépôt, 0.319.0) : l'application
 # tourne dans un dossier jetable.
@@ -74,7 +79,8 @@ for view in "${views[@]}"; do
     n=$((n + 1))
     seed=${FUZZ_SEED:-$((RANDOM * 32768 + RANDOM + n))}
     # Chaque vue repart de la base de démonstration : le hasard écrit.
-    cp "$tmp/pristine.db" "$BPM_CADDY_DB"
+    rm -f "$tmp"/demo*.db
+    cp "$tmp"/pristine/demo*.db "$tmp/"
     rm -f "$BPM_CADDY_DB"-journal
     out=$(
         # Des écrans virtuels à partir de 200 : `smoke.sh` part de 99, et

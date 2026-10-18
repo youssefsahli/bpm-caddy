@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **No pause after the unlock.** The first frame of a session rebuilt the
+  whole connections summary — the network journal, every signature
+  checked again — for the status bar's mark alone; a tenth of a second
+  on the demonstration base. The mark now reads its three counts, and
+  the connections view reads the rest when it opens.
+- **No false « another post wrote » at launch.** On a post of a group,
+  the daily backup and the posts thread open the base on their own
+  connection, and each opening committed a switch around the
+  migrations even when none had anything to do: the counter reread
+  every list and announced another post's writing for its own launch.
+  An opening that changes nothing now leaves no trace.
+
 - **Therapeutic classes at text scale 1.6.** The families column was a
   fixed width that left family names seven letters (« Cardiol… »); it
   now holds the longest word of a family name plus its count, so names

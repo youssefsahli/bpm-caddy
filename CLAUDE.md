@@ -221,7 +221,9 @@ Headless under Xvfb with `unset WAYLAND_DISPLAY`, a throwaway
   (`BPM_CADDY_FUZZ=<graine>`: clicks, wheel, keys), fails on a panic;
   smoke only opens views. Replay a failure with `FUZZ_SEED=`.
 - `./scripts/frames.sh [taille] [échelle] [vue…]` — mean and max time
-  per frame for each view, release build (`BPM_CADDY_FRAME_STATS=1`).
+  per frame for each view, release build (`BPM_CADDY_FRAME_STATS=1`),
+  the whole frame as eframe measured it, and the hitches (frames over
+  20 ms) counted apart.
 - A new view key goes in the ARCHITECTURE.md list, `smoke.sh` and
   `eyeball.sh` (a test holds the three together).
 
