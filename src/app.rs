@@ -44257,11 +44257,13 @@ impl App {
                                                 && row.id == row.source_id
                                                 && sh.kind.worked()
                                         });
+                                // Le libellé « Coller … » ne s'écrit que
+                                // menu ouvert : la fermeture ne tourne pas
+                                // tant qu'on ne clique pas à droite.
                                 let paste = session
                                     .planning_clip
                                     .as_ref()
-                                    .filter(|_| mine.is_empty() && !key.is_empty())
-                                    .map(|(label, _)| trf("planning_paste_here", label));
+                                    .filter(|_| mine.is_empty() && !key.is_empty());
                                 if !mine.is_empty() || paste.is_some() {
                                     cell.context_menu(|ui| {
                                         let mut act = |a| {
@@ -44275,8 +44277,8 @@ impl App {
                                             act(CellAction::Copy);
                                             ui.close_menu();
                                         }
-                                        if let Some(label) = &paste {
-                                            if motif::button(ui, label)
+                                        if let Some((label, _)) = paste {
+                                            if motif::button(ui, &trf("planning_paste_here", label))
                                                 .on_hover_text(tr("planning_paste_tooltip"))
                                                 .clicked()
                                             {
