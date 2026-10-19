@@ -18041,13 +18041,32 @@ fn operator_color(operator: &str) -> egui::Color32 {
 enum CellAction {
     Copy,
     Paste,
-    /// La journée passe en congé, aux mêmes heures.
-    DayOff,
+    /// La journée passe en absence — congé, maladie —, aux mêmes heures.
+    DayOff(planning::ShiftKind),
     /// La case est vidée, ce jour seulement (Suppr).
     Drop,
-    /// Un congé sur toute la plage désignée (Maj+clic).
-    LeaveRange,
+    /// Une absence sur toute la plage désignée (Maj+clic).
+    LeaveRange(planning::ShiftKind),
 }
+
+/// Les absences que le menu d'une case pose d'un clic : celles qui
+/// tombent sans prévenir — le congé qu'on accorde, l'arrêt maladie du
+/// matin. Une formation se prévoit, par la saisie. Chaque nature, son
+/// libellé de jour, de plage, et son retour arrière.
+const MENU_ABSENCES: [(planning::ShiftKind, &str, &str, &str); 2] = [
+    (
+        planning::ShiftKind::Conge,
+        "planning_day_off",
+        "planning_leave_range",
+        "planning_undo_dayoff",
+    ),
+    (
+        planning::ShiftKind::Maladie,
+        "planning_sick_day",
+        "planning_sick_range",
+        "planning_undo_sick",
+    ),
+];
 
 /// What the planning's own row is holding: one shift being written.
 ///
@@ -43231,18 +43250,20 @@ impl App {
             // La plage d'abord : quand elle est là, c'est elle qu'on vient
             // de tracer.
             if let Some((first, last)) = range {
-                item(
-                    ui,
-                    &trn(
-                        "planning_leave_range",
-                        &[
-                            &db::format_french_date(first),
-                            &db::format_french_date(last),
-                        ],
-                    ),
-                    tr("planning_leave_range_tooltip"),
-                    CellAction::LeaveRange,
-                );
+                for (kind, _, range_key, _) in MENU_ABSENCES {
+                    item(
+                        ui,
+                        &trn(
+                            range_key,
+                            &[
+                                &db::format_french_date(first),
+                                &db::format_french_date(last),
+                            ],
+                        ),
+                        tr("planning_leave_range_tooltip"),
+                        CellAction::LeaveRange(kind),
+                    );
+                }
             }
             if has_shifts {
                 item(
@@ -43261,12 +43282,14 @@ impl App {
                 );
             }
             if worked {
-                item(
-                    ui,
-                    tr("planning_day_off"),
-                    tr("planning_day_off_tooltip"),
-                    CellAction::DayOff,
-                );
+                for (kind, day_key, _, _) in MENU_ABSENCES {
+                    item(
+                        ui,
+                        tr(day_key),
+                        tr("planning_day_off_tooltip"),
+                        CellAction::DayOff(kind),
+                    );
+                }
             }
             if has_shifts {
                 item(
@@ -43292,8 +43315,8 @@ impl App {
         session.planning_notice = None;
         // Le congé sur la plage part de la plage, pas de la case cliquée :
         // la désigner d'abord effacerait ce qu'on vient de tracer.
-        if action == CellAction::LeaveRange {
-            Self::planning_leave_range(session);
+        if let CellAction::LeaveRange(kind) = action {
+            Self::planning_leave_range(session, kind);
             return;
         }
         session.shift_form.operator = who.to_owned();
@@ -43307,9 +43330,9 @@ impl App {
                 }
             }
             CellAction::Paste => Self::planning_paste_cell(session),
-            CellAction::DayOff => Self::planning_rewrite_day(session, true),
+            CellAction::DayOff(kind) => Self::planning_rewrite_day(session, Some(kind)),
             CellAction::Drop => Self::planning_clear_cell(session),
-            CellAction::LeaveRange => Self::planning_leave_range(session),
+            CellAction::LeaveRange(kind) => Self::planning_leave_range(session, kind),
         }
     }
 
@@ -45363,7 +45386,7 @@ impl App {
     /// seul jour, c'est un congé de ce jour-là. L'heure de début est la
     /// plus matinale de la personne sur la plage, à défaut neuf heures :
     /// une borne à minuit étirerait le plan de journée jusqu'à la nuit.
-    fn planning_leave_range(session: &mut Session) {
+    fn planning_leave_range(session: &mut Session, kind: planning::ShiftKind) {
         let Some((first, last)) = Self::planning_range_bounds(session) else {
             return;
         };
@@ -45390,7 +45413,7 @@ impl App {
             operator: who.clone(),
             day: first.clone(),
             start_time: planning::format_bound(start),
-            kind: planning::ShiftKind::Conge.as_str().to_owned(),
+            kind: kind.as_str().to_owned(),
             repeat_days: rhythm.pas(),
             cadence: rhythm.as_str().to_owned(),
             repeat_until: if first == last {
@@ -45410,6 +45433,7 @@ impl App {
                     "planning_leave_set",
                     &[
                         &who,
+                        &kind.label(),
                         &db::format_french_date(&first),
                         &db::format_french_date(&last),
                     ],
@@ -45426,7 +45450,7 @@ impl App {
     /// jour-là, pour cette personne, et rien d'autre. Voir
     /// [`App::planning_rewrite_day`].
     fn planning_clear_cell(session: &mut Session) {
-        Self::planning_rewrite_day(session, false);
+        Self::planning_rewrite_day(session, None);
     }
 
     /// Réécrire la journée de la case désignée : **la vider**
@@ -45445,7 +45469,8 @@ impl App {
     ///
     /// Les deux moitiés d'une journée coupée ensemble, et **un** retour
     /// arrière rend la case telle qu'elle était.
-    fn planning_rewrite_day(session: &mut Session, off: bool) {
+    fn planning_rewrite_day(session: &mut Session, absence: Option<planning::ShiftKind>) {
+        let off = absence.is_some();
         let who = session.shift_form.operator.trim().to_owned();
         let day = session.shift_form.day.clone();
         let here: Vec<db::PlannedShift> = session
@@ -45457,7 +45482,6 @@ impl App {
         if here.is_empty() {
             return;
         }
-        let conge = planning::ShiftKind::Conge.as_str();
         let mut added: Vec<(i64, String)> = Vec::new();
         let mut removed: Vec<Vec<db::NewShift>> = Vec::new();
         for occ in &here {
@@ -45497,11 +45521,7 @@ impl App {
                 } else {
                     String::new()
                 },
-                kind: if off {
-                    conge.to_owned()
-                } else {
-                    occ.kind.clone()
-                },
+                kind: absence.map_or_else(|| occ.kind.clone(), |k| k.as_str().to_owned()),
                 cancelled: !off,
                 cadence: if backed {
                     String::new()
@@ -45520,11 +45540,9 @@ impl App {
                 added,
                 removed,
                 who: who.clone(),
-                what: if off {
-                    "planning_undo_dayoff"
-                } else {
-                    "planning_undo_cleared"
-                },
+                what: absence
+                    .and_then(|k| MENU_ABSENCES.iter().find(|(m, ..)| *m == k))
+                    .map_or("planning_undo_cleared", |(.., undo)| undo),
             });
         }
         session.load_shifts(true);
@@ -104156,7 +104174,7 @@ mod tests {
         // Congé ce lundi : les deux moitiés, aux mêmes heures, la trame
         // intacte le lundi suivant, un seul retour arrière.
         pick(&mut s, "CL", "2026-10-19");
-        super::App::planning_rewrite_day(&mut s, true);
+        super::App::planning_rewrite_day(&mut s, Some(ShiftKind::Conge));
         let conge = ShiftKind::Conge.as_str().to_owned();
         assert!(cell(&s, "CL", "2026-10-19")
             .iter()
@@ -104231,7 +104249,7 @@ mod tests {
         // un seul retour arrière rend les deux.
         pick(&mut s, "CL", "2026-10-19");
         let before = cell(&s, "CL", "2026-10-19");
-        super::App::planning_rewrite_day(&mut s, true);
+        super::App::planning_rewrite_day(&mut s, Some(ShiftKind::Conge));
         assert_eq!(
             cell(&s, "CL", "2026-10-19"),
             vec![
@@ -104244,7 +104262,7 @@ mod tests {
         // Des postes d'un jour passent en congé d'un jour.
         pick(&mut s, "YS", "2026-10-21");
         super::App::planning_paste_cell(&mut s);
-        super::App::planning_rewrite_day(&mut s, true);
+        super::App::planning_rewrite_day(&mut s, Some(ShiftKind::Conge));
         assert!(cell(&s, "YS", "2026-10-21")
             .iter()
             .all(|(_, _, k)| *k == conge));
@@ -104257,7 +104275,7 @@ mod tests {
         assert!(cell(&s, "YS", "2026-10-21").is_empty());
 
         pick(&mut s, "CL", "2026-10-19");
-        super::App::planning_rewrite_day(&mut s, true);
+        super::App::planning_rewrite_day(&mut s, Some(ShiftKind::Conge));
         assert_eq!(s.shift_form.kind, Some(ShiftKind::Conge));
         pick(&mut s, "MB", "2026-10-20");
         assert_eq!(s.shift_form.kind, Some(ShiftKind::Journee));
@@ -104372,7 +104390,7 @@ mod tests {
             Some(("2026-10-26".to_owned(), "2026-10-30".to_owned())),
             "rangée, quel que soit le sens du tracé"
         );
-        super::App::planning_leave_range(&mut s);
+        super::App::planning_leave_range(&mut s, ShiftKind::Conge);
         assert_eq!(s.planning_range, None, "la plage est consommée");
         let leave = s.db.shifts_between("2026-10-26", "2026-11-02").unwrap();
         let kinds = |d: &str| {
@@ -104470,7 +104488,7 @@ mod tests {
         .unwrap();
         s.load_shifts(true);
         pick(&mut s, "CL", "2026-10-19");
-        super::App::planning_rewrite_day(&mut s, true);
+        super::App::planning_rewrite_day(&mut s, Some(ShiftKind::Conge));
         let monday = cell(&s, "CL", "2026-10-19");
         assert!(
             monday.contains(&("14:00".into(), ShiftKind::Maladie.as_str().into())),
@@ -104624,6 +104642,16 @@ mod tests {
             s.planning_notice.as_deref(),
             Some(crate::strings::tr("planning_hidden_by_leave"))
         );
+
+        // L'arrêt maladie du matin, d'un clic : une maladie, pas un congé,
+        // et défait sous son nom.
+        pick(&mut s, "CL", "2026-10-19");
+        super::App::planning_rewrite_day(&mut s, Some(ShiftKind::Maladie));
+        assert!(cell(&s, "CL", "2026-10-19")
+            .iter()
+            .any(|(_, k)| k == ShiftKind::Maladie.as_str()));
+        assert!(super::undo_label(s.planning_undo.last().unwrap()).contains("maladie"));
+        super::App::planning_undo(&mut s);
     }
 
     #[test]

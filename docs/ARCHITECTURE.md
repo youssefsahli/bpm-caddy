@@ -616,7 +616,10 @@ The one that was missing — « combien de fois un autre poste avait
   hides too; telling it apart by id fails across posts, whose blocks
   are not in time order, so the write **says it** instead
   (`note_if_hidden`, « caché par le congé »), with the gesture that
-  lifts the leave for that day. The demo's Thursday
+  lifts the leave for that day. The menu's absences are a table,
+  `MENU_ABSENCES` — congé and maladie, the two that fall without
+  notice (a training is planned, through the form) —, each with its
+  day label, its range label and its undo's name. The demo's Thursday
   training had shown it without anyone seeing: its exception replaced
   the morning only once days were split, and the afternoon gap its
   comment promises never appeared. Held by

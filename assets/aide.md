@@ -843,9 +843,10 @@ la trame reste — et **Ctrl+Z** défait le dernier geste.
 
 Le **clic droit** sur une case — dans la semaine de l'équipe comme dans
 le mois d'une personne — propose les mêmes gestes : « Copier la
-journée », « Coller … », et sur une case remplie « Congé ce jour » —
-la journée devient un congé aux mêmes heures, ce qui explique le creux
-au comptoir — et « Retirer ce jour », qui la vide comme Suppr. Les
+journée », « Coller … », et sur une case remplie « Congé ce jour » ou
+« Maladie ce jour » — la journée devient une absence aux mêmes heures,
+ce qui explique le creux au comptoir — et « Retirer ce jour », qui la
+vide comme Suppr. Les
 deux portent sur ce jour seul, les deux moitiés d'une journée coupée
 ensemble ; la trame reste intacte, et chaque geste se défait d'un seul
 « Annuler ».
@@ -864,7 +865,8 @@ définitivement après une année de 53 semaines.
 Un congé se saisit comme une plage : « tous les jours », du 12 au 26.
 La date de fin est alors obligatoire. Plus court : un clic sur le 12,
 **Maj+clic** sur le 26 — la plage s'encadre, dans la semaine comme dans
-le mois —, puis clic droit, « Congé du 12/10 au 26/10 ». Le congé **remplace la trame**
+le mois —, puis clic droit, « Congé du 12/10 au 26/10 » (ou « Maladie
+du … au … » pour un arrêt). Le congé **remplace la trame**
 ces jours-là : la personne n'est comptée ni au comptoir ni dans les
 heures. Sans heure de fin, il couvre la journée entière ; avec des
 heures, il remplace ce qu'il contient entièrement — une formation de
