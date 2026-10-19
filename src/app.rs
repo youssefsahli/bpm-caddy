@@ -104175,6 +104175,28 @@ mod tests {
         assert_eq!(monday[0].kind, ShiftKind::Conge);
         assert_eq!(crate::planning::day_total(&monday, "CL"), None);
         assert!(crate::planning::who_is_in(&monday, crate::agenda::Slot::new(600, 660)).is_empty());
+        // Une garde posée ce soir-là, par-dessus le congé, reste : un
+        // poste écrit pour ce jour est voulu, et l'officine de garde ne
+        // doit pas se retrouver sans personne la nuit.
+        let garde =
+            s.db.add_shift(&crate::db::NewShift {
+                operator: "CL".into(),
+                day: "2026-10-20".into(),
+                start_time: "20:00".into(),
+                end_time: "26:00".into(),
+                kind: ShiftKind::Garde.as_str().into(),
+                ..Default::default()
+            })
+            .unwrap();
+        s.load_shifts(true);
+        let tuesday = day(&s, "2026-10-20");
+        assert!(
+            tuesday.iter().any(|x| x.kind == ShiftKind::Garde),
+            "{tuesday:?}"
+        );
+        assert_eq!(crate::planning::day_total(&tuesday, "CL"), Some(360));
+        s.db.delete_shift(garde, "CL").unwrap();
+        s.load_shifts(true);
         // Le lundi d'après, hors du congé, la trame est là.
         assert_eq!(
             s.db.shifts_between("2026-10-26", "2026-10-26").unwrap()[0].kind,

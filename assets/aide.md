@@ -868,7 +868,9 @@ le mois —, puis clic droit, « Congé du 12/10 au 26/10 ». Le congé **rempla
 ces jours-là : la personne n'est comptée ni au comptoir ni dans les
 heures. Sans heure de fin, il couvre la journée entière ; avec des
 heures, il remplace ce qu'il contient entièrement — une formation de
-14 h à 17 h laisse affiché un après-midi de 14 h à 19 h.
+14 h à 17 h laisse affiché un après-midi de 14 h à 19 h. Seule la trame
+s'efface : un poste posé pour ce jour-là — une garde le soir d'un jour
+de congé — reste affiché et compté.
 
 ## Trame hebdomadaire
 

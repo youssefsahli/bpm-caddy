@@ -604,7 +604,12 @@ The one that was missing — « combien de fois un autre poste avait
   no end (the form asks the start, not the end) is the whole day; a
   bounded one hides what it *contains*, and a training of 14 h–17 h
   over an afternoon of 14 h–19 h hides nothing — both stay drawn
-  rather than the module inventing the hours left. The demo's Thursday
+  rather than the module inventing the hours left. And only **what a
+  pattern unfolds** is hidden: a one-off or an exception written for
+  that day was put there on purpose — a garde taken the evening of a
+  day off — and hiding it left the officine on duty with nobody at
+  night. The pure rule says what is covered; `present` hides the
+  covered rows that a pattern unfolded. The demo's Thursday
   training had shown it without anyone seeing: its exception replaced
   the morning only once days were split, and the afternoon gap its
   comment promises never appeared. Held by

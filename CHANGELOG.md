@@ -55,7 +55,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unfolding under it: on leave, they still counted at the counter, in
   the day's and the week's hours, and their cell read « Congé » next to
   their usual hours. A leave with no end hour covers the whole day; one
-  with hours hides the shifts it entirely contains. Removing the leave
+  with hours hides the pattern shifts it entirely contains. A shift
+  written for that day on purpose — a garde the evening of a day off —
+  stays drawn and counted. Removing the leave
   for one day brings the pattern back for that day. The demonstration's
   training Thursday now shows the afternoon gap it was written to show.
 

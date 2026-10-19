@@ -3248,8 +3248,8 @@ pub struct PlannedShift {
     pub note: String,
 }
 
-/// The day's shifts **as they will be lived**: a worked shift that an
-/// absence of the same person covers is dropped
+/// The day's shifts **as they will be lived**: a pattern's worked day
+/// that an absence of the same person covers is dropped
 /// (`planning::hidden_by_absence`).
 ///
 /// A leave is written as a range — one daily row, « du 12 au 26 » —
@@ -3259,6 +3259,13 @@ pub struct PlannedShift {
 /// h ». Applied here, once, so that every reader — the grid, the totals,
 /// the coverage, the phone, the usual day — sees the same day. Rows
 /// whose nature or hours this version cannot read are left as they are.
+///
+/// **Only what a pattern unfolds is hidden.** A shift written for that
+/// very day — a one-off, an exception — was put there on purpose, on
+/// top of the leave: a garde taken the evening of a day off. Hidden, the
+/// officine on duty showed nobody at night, which is the one place
+/// where the planning must not be wrong; drawn, the cell says the leave
+/// *and* the garde, and the hours count.
 fn present(rows: Vec<PlannedShift>) -> Vec<PlannedShift> {
     use crate::planning;
     let read = |r: &PlannedShift| {
@@ -3283,7 +3290,8 @@ fn present(rows: Vec<PlannedShift>) -> Vec<PlannedShift> {
             .collect();
         let day: Vec<planning::Shift> = readable.iter().map(|(_, s)| s.clone()).collect();
         for ((i, _), h) in readable.iter().zip(planning::hidden_by_absence(&day)) {
-            hidden[*i] = h;
+            let unfolded = rows[*i].repeat_days > 0 && rows[*i].id == rows[*i].source_id;
+            hidden[*i] = h && unfolded;
         }
         at = end;
     }
