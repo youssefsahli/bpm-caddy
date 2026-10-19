@@ -43453,7 +43453,7 @@ impl App {
                 session.shift_form.to.clear();
                 session.shift_form.pause.clear();
                 session.load_shifts(true);
-                Self::note_if_hidden(session, &[id]);
+                Self::note_if_hidden(session, new.operator.trim(), &new.day, &[id]);
             }
             Err(e) => session.error = Some(e),
         }
@@ -45266,7 +45266,7 @@ impl App {
         }
         let n = ids.len();
         session.load_shifts(true);
-        Self::note_if_hidden(session, &ids);
+        Self::note_if_hidden(session, who, day, &ids);
         if n > 0 {
             session.remember(PlanningUndo::Placed {
                 ids,
@@ -45282,11 +45282,20 @@ impl App {
     /// celui qu'on vient de poser — quelqu'un rappelé un jour de congé :
     /// écrit en base et absent de l'écran, sans un mot, ce serait le
     /// piège qu'on évite partout ailleurs. La phrase dit quoi faire.
-    fn note_if_hidden(session: &mut Session, ids: &[i64]) {
-        if ids
-            .iter()
-            .any(|id| !session.shifts.iter().any(|s| s.id == *id))
-        {
+    ///
+    /// **Le congé, et rien d'autre.** Un poste absent de l'écran ne l'est
+    /// pas toujours par un congé : « semaines paires » posé une semaine
+    /// impaire, ou un jour hors de la semaine affichée. Le jour est donc
+    /// relu en base, et la phrase n'est dite que si la personne y a une
+    /// absence — sans quoi elle accusait un congé qui n'existait pas.
+    fn note_if_hidden(session: &mut Session, who: &str, day: &str, ids: &[i64]) {
+        let read = session.db.shifts_between(day, day).unwrap_or_default();
+        let hidden = ids.iter().any(|id| !read.iter().any(|s| s.id == *id));
+        let absent = read.iter().any(|s| {
+            s.operator.trim() == who
+                && planning::ShiftKind::parse(&s.kind).is_some_and(planning::ShiftKind::is_absence)
+        });
+        if hidden && absent {
             session.planning_notice = Some(tr("planning_hidden_by_leave").to_owned());
         }
     }
@@ -104642,6 +104651,21 @@ mod tests {
             s.planning_notice.as_deref(),
             Some(crate::strings::tr("planning_hidden_by_leave"))
         );
+
+        // Une trame des semaines paires posée en semaine 43, impaire :
+        // rien à l'écran cette semaine, et pas de congé à accuser.
+        super::App::free_planning_cell(&mut s);
+        s.shift_form.operator = "YS".into();
+        s.shift_form.day = "2026-10-19".into();
+        s.shift_form.kind = Some(ShiftKind::Journee);
+        s.shift_form.cadence = Some(Cadence::Paires);
+        s.shift_form.from = "9h".into();
+        s.shift_form.to = "12h".into();
+        s.planning_notice = None;
+        super::App::planning_write(&mut s);
+        assert!(s.error.is_none(), "{:?}", s.error);
+        assert_eq!(s.planning_notice, None, "aucun congé n'est en cause");
+        super::App::planning_undo(&mut s);
 
         // L'arrêt maladie du matin, d'un clic : une maladie, pas un congé,
         // et défait sous son nom.

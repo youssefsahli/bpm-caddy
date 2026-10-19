@@ -615,7 +615,11 @@ The one that was missing — « combien de fois un autre poste avait
   under a leave — someone called in on a day off — which the leave
   hides too; telling it apart by id fails across posts, whose blocks
   are not in time order, so the write **says it** instead
-  (`note_if_hidden`, « caché par le congé »), with the gesture that
+  (`note_if_hidden`, « caché par le congé » — said only when the base
+  holds an absence of that person that day: a shift missing from the
+  screen can also be « semaines paires » posted an odd week, or a day
+  outside the week shown, and the first version blamed a leave that
+  did not exist), with the gesture that
   lifts the leave for that day. The menu's absences are a table,
   `MENU_ABSENCES` — congé and maladie, the two that fall without
   notice (a training is planned, through the form) —, each with its
