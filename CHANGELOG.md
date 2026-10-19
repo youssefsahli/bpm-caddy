@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Planning: hours adjusted without retyping.** Clicking a shift puts
+  its hours in the fields and aims the gesture at that day only (the
+  pattern stays whole): change « 12h » to « 12h30 » and press Enter.
+  « Fin -15 min » / « Fin +15 min » move the end by a quarter of an
+  hour in one click, and the day stays selected for a second click. A
+  split day is picked half by half: a second click takes the afternoon.
+- **Planning: one more day in one click.** Clicking an empty cell picks
+  that row's person (not the one in the menu) and proposes their usual
+  day, read on the surrounding weeks — the same weekday first, otherwise
+  their most frequent day. A split day is put down whole by « Poser 9 h–
+  12 h 30 · 14 h–19 h », one day only, taken back by one « Annuler ».
+- **Planning: a selected shift shows its own gestures.** With a shift
+  selected, « Poser » and the rhythm are hidden (with the fields now
+  filled, « Poser » would have written a duplicate of the pattern);
+  click the cell again to free it.
+
 ### Fixed
 
 - **No pause after the unlock.** The first frame of a session rebuilt the

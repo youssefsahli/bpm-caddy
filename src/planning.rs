@@ -774,6 +774,99 @@ pub fn hhmm_or_dash(minutes: Option<u16>) -> String {
     minutes.map_or_else(|| "—".to_owned(), hhmm)
 }
 
+/// « 12h30 », « 9h » : une borne écrite **comme on la tape**, pour
+/// remplir un champ que `db::parse_hour` relira.
+///
+/// Une nuit revient sur l'horloge du jour — `1560` s'écrit « 2h » —,
+/// parce que c'est ainsi que la rangée de saisie la reçoit : une fin
+/// antérieure au début est le lendemain.
+pub fn typed_hour(minutes: u16) -> String {
+    let m = minutes % (24 * 60);
+    match m % 60 {
+        0 => format!("{}h", m / 60),
+        mm => format!("{}h{mm:02}", m / 60),
+    }
+}
+
+/// La fin d'un poste avancée ou reculée de `delta` minutes — « je
+/// reste jusqu'à 12 h 30 » —, ou `None` quand le geste n'a plus de
+/// sens : **une fin qui passerait le début ne se pose pas**, et une
+/// fin au-delà de la nuit suivante n'est plus une borne que la base
+/// relise.
+pub fn nudge_end(start: u16, end: u16, delta: i16) -> Option<u16> {
+    let moved = end.checked_add_signed(delta)?;
+    (moved > start && moved < 48 * 60).then_some(moved)
+}
+
+/// La journée habituelle d'une personne : ce qu'elle fait **d'ordinaire**,
+/// pour la poser d'un clic un jour de plus.
+///
+/// `days` porte des jours voisins (date ISO, postes de ce jour) ; seuls
+/// les postes travaillés de `who` comptent — un congé n'est pas une
+/// journée qu'on recopie. Deux préférences, dans l'ordre :
+///
+/// * **le même jour de la semaine** (`weekday`, lundi = 1) : un samedi
+///   en plus se pose avec les heures d'un samedi, qui ne sont pas
+///   celles d'un mardi ;
+/// * à défaut, **la forme de journée la plus fréquente** — les mêmes
+///   heures, la même pause, la même nature —, et à égalité la plus
+///   récente, qui est la plus proche de ce qui se fait aujourd'hui.
+///
+/// Rien de travaillé à lire, rien de proposé : **une journée inventée
+/// est pire qu'un champ vide**. Les postes rendus sont rangés par heure
+/// de début, et leur `id` ne désigne plus rien — c'est une forme, pas
+/// une ligne.
+pub fn usual_day(days: &[(String, Vec<Shift>)], who: &str, weekday: i64) -> Vec<Shift> {
+    type Shape = Vec<(ShiftKind, u16, Option<u16>, u16)>;
+    let shape_of = |shifts: &[Shift]| -> Shape {
+        let mut s: Shape = shifts
+            .iter()
+            .filter(|s| s.operator == who && s.kind.worked())
+            .map(|s| (s.kind, s.start, s.end, s.pause))
+            .collect();
+        s.sort_by_key(|&(_, start, end, _)| (start, end));
+        s
+    };
+    let mut seen: Vec<(String, Shape)> = days
+        .iter()
+        .map(|(day, shifts)| (day.clone(), shape_of(shifts)))
+        .filter(|(_, shape)| !shape.is_empty())
+        .collect();
+    seen.sort_by(|a, b| a.0.cmp(&b.0));
+    let same_day: Vec<&(String, Shape)> = seen
+        .iter()
+        .filter(|(day, _)| crate::date::weekday(day) == Some(weekday))
+        .collect();
+    let pool: Vec<&(String, Shape)> = if same_day.is_empty() {
+        seen.iter().collect()
+    } else {
+        same_day
+    };
+    // La plus fréquente, et à égalité la plus récente : le parcours va
+    // du plus ancien au plus récent, et `>=` laisse le dernier gagner.
+    let mut best: Option<(&Shape, usize)> = None;
+    for (_, shape) in &pool {
+        let n = pool.iter().filter(|(_, s)| s == shape).count();
+        if best.is_none_or(|(_, m)| n >= m) {
+            best = Some((shape, n));
+        }
+    }
+    best.map(|(shape, _)| {
+        shape
+            .iter()
+            .map(|&(kind, start, end, pause)| Shift {
+                id: 0,
+                operator: who.to_owned(),
+                start,
+                end,
+                pause,
+                kind,
+            })
+            .collect()
+    })
+    .unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1283,5 +1376,87 @@ mod tests {
         assert_eq!((next[0].start, next[0].end), (0, Some(9 * 60)));
         assert_eq!(next[0].operator, "CL");
         assert!(spill(&[shift(3, "MB", 9 * 60, Some(19 * 60), ShiftKind::Journee)]).is_empty());
+    }
+
+    /// **Une borne se remplit comme elle se tape**, et une nuit revient
+    /// sur l'horloge du jour.
+    #[test]
+    fn a_bound_is_written_back_as_it_is_typed() {
+        assert_eq!(typed_hour(9 * 60), "9h");
+        assert_eq!(typed_hour(12 * 60 + 30), "12h30");
+        assert_eq!(typed_hour(8 * 60 + 5), "8h05");
+        assert_eq!(typed_hour(26 * 60), "2h");
+    }
+
+    /// **Rester une demi-heure de plus** recule la fin ; une fin qui
+    /// passerait le début, ou la nuit suivante, ne se pose pas.
+    #[test]
+    fn a_nudged_end_never_crosses_its_start() {
+        assert_eq!(nudge_end(540, 720, 15), Some(735));
+        assert_eq!(nudge_end(540, 720, -15), Some(705));
+        assert_eq!(nudge_end(540, 555, -15), None);
+        assert_eq!(nudge_end(540, 10, -15), None);
+        assert_eq!(nudge_end(1200, 48 * 60 - 10, 15), None);
+    }
+
+    /// **Un jour de plus se pose avec la journée ordinaire** : le même
+    /// jour de la semaine d'abord, sinon la forme la plus fréquente, et
+    /// rien quand rien de travaillé ne se lit.
+    #[test]
+    fn the_usual_day_is_what_the_person_ordinarily_works() {
+        let morning = |id| shift(id, "CL", 540, Some(750), ShiftKind::Journee);
+        let afternoon = |id| shift(id, "CL", 840, Some(1170), ShiftKind::Journee);
+        // Lundi 19, mardi 20, jeudi 22 octobre 2026 : la journée coupée
+        // deux fois, un mardi plus court ; un collègue et un congé
+        // n'entrent pas dans la forme.
+        let days = vec![
+            (
+                "2026-10-19".to_owned(),
+                vec![
+                    afternoon(2),
+                    morning(1),
+                    shift(9, "YS", 600, Some(1140), ShiftKind::Journee),
+                ],
+            ),
+            (
+                "2026-10-20".to_owned(),
+                vec![shift(3, "CL", 540, Some(780), ShiftKind::Journee)],
+            ),
+            ("2026-10-22".to_owned(), vec![morning(4), afternoon(5)]),
+            (
+                "2026-10-23".to_owned(),
+                vec![shift(6, "CL", 540, Some(1170), ShiftKind::Conge)],
+            ),
+        ];
+        // Mercredi : aucun mercredi lu, la journée coupée est la plus
+        // fréquente, et elle revient rangée par heure.
+        let wed = usual_day(&days, "CL", 3);
+        assert_eq!(
+            wed.iter().map(|s| (s.start, s.end)).collect::<Vec<_>>(),
+            vec![(540, Some(750)), (840, Some(1170))]
+        );
+        assert!(wed.iter().all(|s| s.operator == "CL" && s.id == 0));
+        // Mardi : le mardi lu gagne sur la forme la plus fréquente.
+        let tue = usual_day(&days, "CL", 2);
+        assert_eq!(
+            tue.iter().map(|s| (s.start, s.end)).collect::<Vec<_>>(),
+            vec![(540, Some(780))]
+        );
+        // Vendredi n'a qu'un congé : la journée ordinaire, pas le congé.
+        assert_eq!(usual_day(&days, "CL", 5).len(), 2);
+        // Personne d'inconnu, rien d'inventé.
+        assert!(usual_day(&days, "MB", 3).is_empty());
+        // À égalité, la plus récente.
+        let tie = vec![
+            (
+                "2026-10-19".to_owned(),
+                vec![shift(1, "MB", 540, Some(780), ShiftKind::Journee)],
+            ),
+            (
+                "2026-10-20".to_owned(),
+                vec![shift(2, "MB", 840, Some(1140), ShiftKind::Journee)],
+            ),
+        ];
+        assert_eq!(usual_day(&tie, "MB", 3)[0].start, 840);
     }
 }

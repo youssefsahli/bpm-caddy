@@ -18058,6 +18058,11 @@ struct ShiftForm {
     /// « Claire est absente mardi prochain » n'avait d'autre issue que
     /// de supprimer tous ses mardis.
     this_day_only: bool,
+    /// La journée habituelle de la personne, proposée sur la case vide
+    /// désignée (`planning::usual_day`) — vide ailleurs. Une journée
+    /// coupée y porte ses deux moitiés, que « Poser » seul écrirait en
+    /// deux fois.
+    usual: Vec<planning::Shift>,
 }
 
 /// La journée que « Lundi à vendredi » recopie : celle modifiée en
@@ -18310,6 +18315,9 @@ enum PlanningUndo {
     /// Une semaine recopiée : les postes écrits d'un coup s'enlèvent
     /// d'un coup.
     Copied { ids: Vec<i64>, who: Vec<String> },
+    /// Une journée habituelle posée d'un clic — ses deux moitiés : elles
+    /// s'enlèvent ensemble, comme elles ont été posées.
+    Placed { ids: Vec<i64>, who: String },
     /// Une trame posée : les lignes rangées écrites d'un coup, **et
     /// celles que « Remplacer » avait retirées**, qui reviennent avec
     /// leurs exceptions. Sans cette seconde moitié, le retour arrière
@@ -18331,6 +18339,7 @@ fn undo_label(what: &PlanningUndo) -> String {
             family.first().map_or("", |f| f.operator.as_str()),
         ),
         PlanningUndo::Copied { ids, .. } => trf("planning_undo_copied", ids.len()),
+        PlanningUndo::Placed { who, .. } => trf("planning_undo_placed", who),
         // **Poser et retirer sont le même geste rangé**, et le retour
         // arrière doit dire lequel : « la trame de 0 poste(s) » est
         // exactement le libellé qu'on ne reconnaît pas, donc qu'on
@@ -41331,11 +41340,11 @@ impl App {
                 // « Supprimer » agissent sur ce qu'on vient d'atteindre,
                 // pas sur ce qu'on avait cliqué avant.
                 let picked = Self::picked_shift(session);
-                session.shift_pick = picked.as_ref().map(|s| s.id);
-                if let Some(s) = picked {
-                    session.shift_form.kind = planning::ShiftKind::parse(&s.kind);
-                    session.shift_form.cadence = planning::Cadence::parse(&s.cadence);
-                }
+                let (who, day) = (
+                    session.shift_form.operator.clone(),
+                    session.shift_form.day.clone(),
+                );
+                Self::pick_planning_cell(session, &who, &day, picked);
             }
         }
         // Au planning-mois, les flèches déplacent le mois : la grille
@@ -42565,6 +42574,12 @@ impl App {
         let mut remove: Option<i64> = None;
         let mut copy_week = false;
         let mut undo = false;
+        // Entrée dans une heure : le geste du bouton qui écrit, celui
+        // qu'on aurait pressé — « Poser » sur une case vide, « Modifier »
+        // sur un poste désigné.
+        let mut submit = false;
+        let mut nudge: Option<i16> = None;
+        let mut place_usual = false;
         motif::inside(ui, rect, |ui| {
             // **La barre de cette région-là ne flotte pas.** Le
             // formulaire est plafonné à la moitié du volet et défile —
@@ -42638,102 +42653,232 @@ impl App {
                             egui::RichText::new(db::format_french_date(&session.shift_form.day))
                                 .size(motif::pt(ui, 11.0)),
                         );
-                        motif::field(
+                        let entered = |ui: &egui::Ui, r: &egui::Response| {
+                            r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                        };
+                        let r = motif::field(
                             ui,
                             day_field,
                             egui::TextEdit::singleline(&mut session.shift_form.from)
                                 .hint_text(motif::hint(tr("agenda_hour_hint"))),
                         )
                         .on_hover_text(tr("planning_from_tooltip"));
-                        motif::field(
+                        submit |= entered(ui, &r);
+                        let r = motif::field(
                             ui,
                             day_field,
                             egui::TextEdit::singleline(&mut session.shift_form.to)
                                 .hint_text(motif::hint(tr("agenda_end_hint"))),
                         )
                         .on_hover_text(tr("planning_to_tooltip"));
-                        motif::field(
+                        submit |= entered(ui, &r);
+                        let r = motif::field(
                             ui,
                             chars_wide(ui, 5.0),
                             egui::TextEdit::singleline(&mut session.shift_form.pause)
                                 .hint_text(motif::hint("45")),
                         )
                         .on_hover_text(tr("planning_pause_tooltip"));
-                        // Le rythme, là où il y avait une case à cocher.
-                        // « Chaque semaine » n'était qu'un des sept, et
-                        // les six autres — dont les deux parités, qui
-                        // sont ce qu'une officine écrit vraiment — ne
-                        // s'exprimaient pas du tout.
-                        let rhythm = session
-                            .shift_form
-                            .cadence
-                            .unwrap_or(planning::Cadence::Unique);
-                        let cadences: Vec<(Option<planning::Cadence>, String, String)> =
-                            planning::Cadence::ALL
-                                .into_iter()
-                                .map(|c| (Some(c), c.label().to_owned(), c.hint().to_owned()))
-                                .collect();
-                        motif::select_hinted(
-                            ui,
-                            "planning_cadence",
-                            chars_wide(ui, 20.0),
-                            &mut session.shift_form.cadence,
-                            &cadences,
-                        )
-                        .on_hover_text(rhythm.hint());
-                        // **La fin ne se demande que quand elle a un
-                        // sens.** Sur « ce jour-là » il n'y a rien à
-                        // borner ; sur « tous les jours » elle est
-                        // obligatoire, et c'est ainsi qu'un congé du 12
-                        // au 26 s'écrit en une ligne.
-                        if rhythm != planning::Cadence::Unique {
-                            // **« jusqu'au » ne quitte pas sa date.** La
-                            // rangée enveloppe, et egui passe à la ligne
-                            // entre les deux : les deux volets tirés
-                            // larges, « jusqu'au » finissait une rangée
-                            // et le champ commençait la suivante, sous
-                            // une case sans rapport. Un mot qui nomme un
-                            // champ posé loin de lui ne nomme rien.
-                            let label_w =
-                                Self::widest(ui, 11.0, std::iter::once(tr("planning_until")));
-                            let field_w = Self::date_field_width(ui);
-                            Self::keep_together(
+                        submit |= entered(ui, &r);
+                        if let Some(id) = session.shift_pick {
+                            // **La bascule n'apparaît que là où elle a
+                            // un sens** : sur l'occurrence d'une trame,
+                            // et sur une occurrence qu'aucune exception
+                            // ne remplace déjà — celle-là *est* déjà le
+                            // jour, et les deux boutons portent sur
+                            // elle.
+                            let series = Self::picked_occurrence(session)
+                                .is_some_and(|o| o.repeat_days > 0 && o.id == o.source_id);
+                            if !series {
+                                session.shift_form.this_day_only = false;
+                            }
+                            let only = series && session.shift_form.this_day_only;
+                            if series
+                                && motif::toggle(
+                                    ui,
+                                    tr("planning_this_day"),
+                                    session.shift_form.this_day_only,
+                                )
+                                .on_hover_text(tr("planning_this_day_tooltip"))
+                                .clicked()
+                            {
+                                session.shift_form.this_day_only =
+                                    !session.shift_form.this_day_only;
+                            }
+                            // Corriger un poste, c'est retaper ses heures : le
+                            // glissé du §4 viendra, l'erreur de frappe est de
+                            // tous les jours.
+                            //
+                            // Le libellé **dit sur quoi le bouton
+                            // porte** : une bascule qui laisse les deux
+                            // boutons identiques est une bascule qu'on
+                            // oublie d'avoir mise.
+                            if motif::button(
                                 ui,
-                                egui::vec2(
-                                    Self::group_width(ui, [label_w, field_w].into_iter()),
-                                    Self::row_height(ui),
-                                ),
-                                |ui| {
-                                    ui.label(
-                                        egui::RichText::new(tr("planning_until"))
-                                            .size(motif::pt(ui, 11.0))
-                                            .color(motif::text_dim()),
-                                    );
-                                    // La largeur mesurée pour la rangée, et
-                                    // non douze « 0 » : « JJ/MM/AAAA » est
-                                    // plus large, et l'invite sortait
-                                    // « JJ/MM/AAA » tranchée par le creux.
-                                    motif::field(
-                                        ui,
-                                        field_w,
-                                        egui::TextEdit::singleline(
-                                            &mut session.shift_form.until_text,
-                                        )
-                                        .hint_text(motif::hint(tr("vacc_date_hint")))
-                                        .desired_width(field_w),
-                                    )
-                                    .on_hover_text(
-                                        if rhythm.needs_an_end() {
-                                            tr("planning_until_required")
-                                        } else {
-                                            tr("planning_until_tooltip")
-                                        },
-                                    );
+                                if only {
+                                    tr("planning_edit_day")
+                                } else {
+                                    tr("planning_edit")
                                 },
-                            );
+                            )
+                            .on_hover_text(if only {
+                                tr("planning_edit_day_tooltip")
+                            } else {
+                                tr("planning_edit_tooltip")
+                            })
+                            .clicked()
+                            {
+                                edit = Some(id);
+                            }
+                            // **Rester un quart d'heure de plus** — ou
+                            // partir un quart d'heure plus tôt — sans
+                            // rien taper : la fin bouge et s'écrit,
+                            // sur ce jour ou sur la série selon la
+                            // bascule, comme « Modifier ».
+                            let has_end = Self::picked_occurrence(session)
+                                .is_some_and(|o| planning::parse_bound(&o.end_time).is_some());
+                            if has_end {
+                                if motif::button(ui, tr("planning_end_less"))
+                                    .on_hover_text(tr("planning_end_less_tooltip"))
+                                    .clicked()
+                                {
+                                    nudge = Some(-15);
+                                }
+                                if motif::button(ui, tr("planning_end_more"))
+                                    .on_hover_text(tr("planning_end_more_tooltip"))
+                                    .clicked()
+                                {
+                                    nudge = Some(15);
+                                }
+                            }
+                            // Et sur une case qui *est* une exception,
+                            // le bouton ne supprime pas : il **rétablit**
+                            // le jour que la trame portait. Le nommer
+                            // « Supprimer » ferait croire qu'on efface
+                            // la série.
+                            let restores = Self::picked_occurrence(session)
+                                .is_some_and(|o| o.id != o.source_id);
+                            if motif::button(
+                                ui,
+                                match (only, restores) {
+                                    (true, _) => tr("planning_drop_day"),
+                                    (false, true) => tr("planning_restore_day"),
+                                    (false, false) => tr("planning_delete"),
+                                },
+                            )
+                            .on_hover_text(match (only, restores) {
+                                (true, _) => tr("planning_drop_day_tooltip"),
+                                (false, true) => tr("planning_restore_day_tooltip"),
+                                (false, false) => tr("planning_delete_tooltip"),
+                            })
+                            .clicked()
+                            {
+                                remove = Some(id);
+                            }
                         }
-                        if motif::button(ui, tr("planning_add")).clicked() {
-                            write = true;
+                        // **Un poste désigné se corrige, une case libre se
+                        // remplit** : « Poser » sous un poste désigné en
+                        // écrivait un double — mêmes heures, même rythme —,
+                        // maintenant que la désignation remplit les champs.
+                        // Les gestes du poste viennent donc juste après ses
+                        // heures, et le rythme avec « Poser » sur une case
+                        // libre seulement.
+                        if session.shift_pick.is_none() {
+                            // Le rythme, là où il y avait une case à cocher.
+                            // « Chaque semaine » n'était qu'un des sept, et
+                            // les six autres — dont les deux parités, qui
+                            // sont ce qu'une officine écrit vraiment — ne
+                            // s'exprimaient pas du tout.
+                            let rhythm = session
+                                .shift_form
+                                .cadence
+                                .unwrap_or(planning::Cadence::Unique);
+                            let cadences: Vec<(Option<planning::Cadence>, String, String)> =
+                                planning::Cadence::ALL
+                                    .into_iter()
+                                    .map(|c| (Some(c), c.label().to_owned(), c.hint().to_owned()))
+                                    .collect();
+                            motif::select_hinted(
+                                ui,
+                                "planning_cadence",
+                                chars_wide(ui, 20.0),
+                                &mut session.shift_form.cadence,
+                                &cadences,
+                            )
+                            .on_hover_text(rhythm.hint());
+                            // **La fin ne se demande que quand elle a un
+                            // sens.** Sur « ce jour-là » il n'y a rien à
+                            // borner ; sur « tous les jours » elle est
+                            // obligatoire, et c'est ainsi qu'un congé du 12
+                            // au 26 s'écrit en une ligne.
+                            if rhythm != planning::Cadence::Unique {
+                                // **« jusqu'au » ne quitte pas sa date.** La
+                                // rangée enveloppe, et egui passe à la ligne
+                                // entre les deux : les deux volets tirés
+                                // larges, « jusqu'au » finissait une rangée
+                                // et le champ commençait la suivante, sous
+                                // une case sans rapport. Un mot qui nomme un
+                                // champ posé loin de lui ne nomme rien.
+                                let label_w =
+                                    Self::widest(ui, 11.0, std::iter::once(tr("planning_until")));
+                                let field_w = Self::date_field_width(ui);
+                                Self::keep_together(
+                                    ui,
+                                    egui::vec2(
+                                        Self::group_width(ui, [label_w, field_w].into_iter()),
+                                        Self::row_height(ui),
+                                    ),
+                                    |ui| {
+                                        ui.label(
+                                            egui::RichText::new(tr("planning_until"))
+                                                .size(motif::pt(ui, 11.0))
+                                                .color(motif::text_dim()),
+                                        );
+                                        // La largeur mesurée pour la rangée, et
+                                        // non douze « 0 » : « JJ/MM/AAAA » est
+                                        // plus large, et l'invite sortait
+                                        // « JJ/MM/AAA » tranchée par le creux.
+                                        motif::field(
+                                            ui,
+                                            field_w,
+                                            egui::TextEdit::singleline(
+                                                &mut session.shift_form.until_text,
+                                            )
+                                            .hint_text(motif::hint(tr("vacc_date_hint")))
+                                            .desired_width(field_w),
+                                        )
+                                        .on_hover_text(
+                                            if rhythm.needs_an_end() {
+                                                tr("planning_until_required")
+                                            } else {
+                                                tr("planning_until_tooltip")
+                                            },
+                                        );
+                                    },
+                                );
+                            }
+                            if motif::button(ui, tr("planning_add")).clicked() {
+                                write = true;
+                            }
+                            // **Un jour de plus, d'un clic** : la journée
+                            // habituelle de la personne, ses deux moitiés
+                            // ensemble. Une seule moitié, « Poser » la dit
+                            // déjà — les champs la portent.
+                            if session.shift_form.usual.len() > 1
+                                && motif::button(
+                                    ui,
+                                    &trf(
+                                        "planning_usual",
+                                        Self::planning_cell_text(
+                                            &session.shift_form.usual.iter().collect::<Vec<_>>(),
+                                        ),
+                                    ),
+                                )
+                                .on_hover_text(tr("planning_usual_tooltip"))
+                                .clicked()
+                            {
+                                place_usual = true;
+                            }
                         }
                         // Le mois de la personne choisie, plutôt que la
                         // semaine de l'équipe : c'est la même grille de
@@ -42798,172 +42943,42 @@ impl App {
                                     .color(motif::text_dim()),
                             );
                         }
-                        if let Some(id) = session.shift_pick {
-                            // **La bascule n'apparaît que là où elle a
-                            // un sens** : sur l'occurrence d'une trame,
-                            // et sur une occurrence qu'aucune exception
-                            // ne remplace déjà — celle-là *est* déjà le
-                            // jour, et les deux boutons portent sur
-                            // elle.
-                            let series = Self::picked_occurrence(session)
-                                .is_some_and(|o| o.repeat_days > 0 && o.id == o.source_id);
-                            if !series {
-                                session.shift_form.this_day_only = false;
-                            }
-                            let only = series && session.shift_form.this_day_only;
-                            if series
-                                && motif::toggle(
-                                    ui,
-                                    tr("planning_this_day"),
-                                    session.shift_form.this_day_only,
-                                )
-                                .on_hover_text(tr("planning_this_day_tooltip"))
-                                .clicked()
-                            {
-                                session.shift_form.this_day_only =
-                                    !session.shift_form.this_day_only;
-                            }
-                            // Corriger un poste, c'est retaper ses heures : le
-                            // glissé du §4 viendra, l'erreur de frappe est de
-                            // tous les jours.
-                            //
-                            // Le libellé **dit sur quoi le bouton
-                            // porte** : une bascule qui laisse les deux
-                            // boutons identiques est une bascule qu'on
-                            // oublie d'avoir mise.
-                            if motif::button(
-                                ui,
-                                if only {
-                                    tr("planning_edit_day")
-                                } else {
-                                    tr("planning_edit")
-                                },
-                            )
-                            .on_hover_text(if only {
-                                tr("planning_edit_day_tooltip")
-                            } else {
-                                tr("planning_edit_tooltip")
-                            })
-                            .clicked()
-                            {
-                                edit = Some(id);
-                            }
-                            // Et sur une case qui *est* une exception,
-                            // le bouton ne supprime pas : il **rétablit**
-                            // le jour que la trame portait. Le nommer
-                            // « Supprimer » ferait croire qu'on efface
-                            // la série.
-                            let restores = Self::picked_occurrence(session)
-                                .is_some_and(|o| o.id != o.source_id);
-                            if motif::button(
-                                ui,
-                                match (only, restores) {
-                                    (true, _) => tr("planning_drop_day"),
-                                    (false, true) => tr("planning_restore_day"),
-                                    (false, false) => tr("planning_delete"),
-                                },
-                            )
-                            .on_hover_text(match (only, restores) {
-                                (true, _) => tr("planning_drop_day_tooltip"),
-                                (false, true) => tr("planning_restore_day_tooltip"),
-                                (false, false) => tr("planning_delete_tooltip"),
-                            })
-                            .clicked()
-                            {
-                                remove = Some(id);
-                            }
-                        }
                     });
                 });
         });
-        if write {
-            let form = session.shift_form.clone();
-            // Une heure de début est le seul champ obligatoire : sans
-            // elle le poste n'a pas de place dans la journée. La fin
-            // peut manquer, et **cela ne vaut pas zéro heure**.
-            let Some(from) = db::parse_hour(&form.from) else {
-                session.error = Some(tr("planning_needs_an_hour").to_owned());
-                return;
-            };
-            // **Une garde se tape « 20 h » → « 2 h ».** Personne
-            // n'écrit « 26:00 », et c'est pourtant ce que la base
-            // range — un seul intervalle, au jour qui le commence.
-            // Une fin antérieure au début est donc le lendemain, et
-            // non une faute de frappe à refuser.
-            let to = Self::shift_end(&form.from, &form.to);
-            let rhythm = form.cadence.unwrap_or(planning::Cadence::Unique);
-            // **Un rythme quotidien sans fin n'est pas un congé**, c'est
-            // quelqu'un d'absent pour toujours — et une ligne que chaque
-            // lecture déplierait sur des centaines de jours.
-            // **Une fin tapée qui ne se lit pas n'est pas « sans fin »** :
-            // « 31/04 » faisait revenir le poste pour toujours. Et une fin
-            // sans année qui tombe avant le début est l'an prochain
-            // (« 1501 » tapé en octobre) : rangée telle quelle, la ligne
-            // était en base et ne se montrait jamais.
-            let until = if rhythm == planning::Cadence::Unique {
-                String::new()
-            } else {
-                match Self::shift_until(&form.until_text, &form.day, session.year_now()) {
-                    Ok(until) => until,
-                    Err(key) => {
-                        session.error = Some(tr(key).to_owned());
-                        return;
+        if submit {
+            match session.shift_pick {
+                Some(id) => edit = Some(id),
+                None => write = true,
+            }
+        }
+        if let Some(delta) = nudge {
+            if let Some(occ) = Self::picked_occurrence(session) {
+                let start = planning::parse_bound(&occ.start_time);
+                let end = planning::parse_bound(&occ.end_time);
+                let moved = start.zip(end).and_then(|(start, end)| {
+                    planning::nudge_end(start, end, delta).map(|end| (start, end))
+                });
+                match moved {
+                    Some((start, end)) => {
+                        // Les heures du poste lui-même, et non ce que
+                        // les champs portaient : le bouton dit « la fin
+                        // du poste », pas « la frappe en cours ».
+                        session.shift_form.from = planning::typed_hour(start);
+                        session.shift_form.to = planning::typed_hour(end);
+                        edit = Some(occ.id);
                     }
+                    None => session.error = Some(tr("planning_end_nudge_refused").to_owned()),
                 }
-            };
-            // Une pause qui ne se lit pas n'est pas zéro : « 30 min »
-            // comptait la pause dans les heures.
-            let pause = form.pause.trim();
-            let Ok(pause_minutes) = (if pause.is_empty() {
-                Ok(0)
-            } else {
-                pause.parse::<i64>()
-            }) else {
-                session.error = Some(tr("planning_bad_pause").to_owned());
-                return;
-            };
-            if rhythm.needs_an_end() && until.is_empty() {
-                session.error = Some(tr("planning_needs_an_end").to_owned());
-                return;
             }
-            let new = db::NewShift {
-                operator: form.operator.trim().to_owned(),
-                day: form.day.clone(),
-                start_time: from,
-                end_time: to,
-                // **Une fin ne s'applique qu'à ce qui revient.** Le
-                // champ disparaît quand on repasse sur « ce jour-là »
-                // et ce qu'on y avait tapé reste dans le formulaire :
-                // appliqué quand même, un poste posé après cette
-                // date-là serait écrit en base et invisible à l'écran.
-                repeat_until: until,
-                pause_minutes,
-                kind: form
-                    .kind
-                    .unwrap_or(planning::ShiftKind::Journee)
-                    .as_str()
-                    .to_owned(),
-                // **Le pas rangé vient du rythme**, et la clé du
-                // rythme est rangée avec : « les semaines paires »
-                // avance de sept jours et s'en tient une sur deux,
-                // ce qu'un nombre de jours seul ne saurait pas dire.
-                repeat_days: rhythm.pas(),
-                cadence: rhythm.as_str().to_owned(),
-                ..Default::default()
-            };
-            match session.db.add_shift(&new) {
-                Ok(id) => {
-                    session.remember(PlanningUndo::Added {
-                        id,
-                        who: new.operator.clone(),
-                    });
-                    session.shift_form.from.clear();
-                    session.shift_form.to.clear();
-                    session.shift_form.pause.clear();
-                    session.load_shifts(true);
-                }
-                Err(e) => session.error = Some(e),
-            }
+        }
+        if place_usual {
+            session.planning_notice = None;
+            Self::planning_place_usual(session);
+            return;
+        }
+        if write {
+            Self::planning_write(session);
         }
         // Le compte de la dernière commande ne survit pas à la
         // suivante : « 12 postes recopiés » resté à l'écran après une
@@ -42983,83 +42998,8 @@ impl App {
             return;
         }
         if let Some(id) = edit {
-            let form = session.shift_form.clone();
-            let Some(from) = db::parse_hour(&form.from) else {
-                session.error = Some(tr("planning_needs_an_hour").to_owned());
-                return;
-            };
-            let to = Self::shift_end(&form.from, &form.to);
-            // **Ce jour seulement : on écrit une exception.** La trame
-            // reste intacte, une seconde ligne la remplace ce jour-là,
-            // et la semaine dit la vérité. C'est l'idée de l'annulation
-            // du registre, sans son inaltérabilité.
-            if form.this_day_only {
-                if let Some(occ) = Self::picked_occurrence(session) {
-                    Self::write_exception(
-                        session,
-                        &occ,
-                        db::NewShift {
-                            start_time: from,
-                            end_time: to,
-                            pause_minutes: form.pause.trim().parse().unwrap_or(0),
-                            kind: form
-                                .kind
-                                .unwrap_or(planning::ShiftKind::Journee)
-                                .as_str()
-                                .to_owned(),
-                            ..Default::default()
-                        },
-                    );
-                }
-                return;
-            }
-            // **Compare-and-set**, comme toute ligne partagée : le
-            // `WHERE` porte les heures que *cet écran* affichait. Deux
-            // PC qui déplacent le même poste ne doivent pas voir chacun
-            // le sien.
-            let was = session
-                .shifts
-                .iter()
-                .find(|s| s.id == id)
-                .map(|s| (s.start_time.clone(), s.end_time.clone()));
-            if let Some((was_from, was_to)) = was {
-                let was_pause = session
-                    .shifts
-                    .iter()
-                    .find(|s| s.id == id)
-                    .map_or(0, |s| s.pause_minutes);
-                // **Un champ de pause vide garde la pause du poste** : le
-                // champ n'est pas rempli depuis le poste choisi, et changer
-                // les heures remettait la pause à zéro — les heures du
-                // jour et du mois en gagnaient trois quarts d'heure.
-                let pause = match form.pause.trim() {
-                    "" => was_pause,
-                    typed => typed.parse().unwrap_or(was_pause),
-                };
-                match session.db.update_shift(
-                    id,
-                    (&from, &to, pause),
-                    (&was_from, &was_to, was_pause),
-                ) {
-                    Ok(true) => {
-                        session.remember(PlanningUndo::Edited {
-                            id,
-                            start: was_from.clone(),
-                            end: was_to.clone(),
-                            pause: was_pause,
-                            now_start: from.clone(),
-                            now_end: to.clone(),
-                            now_pause: pause,
-                        });
-                        session.load_shifts(true);
-                    }
-                    Ok(false) => {
-                        session.stale("planning_stale");
-                        session.load_shifts(true);
-                    }
-                    Err(e) => session.error = Some(e),
-                }
-            }
+            Self::planning_edit(session, id);
+            return;
         }
         if let Some(id) = remove {
             // **Ce jour seulement : l'occurrence n'a pas lieu**, et la
@@ -43115,6 +43055,181 @@ impl App {
                     }
                     Err(e) => session.error = Some(e),
                 }
+            }
+        }
+    }
+
+    /// « Poser » : le poste que la rangée porte, écrit tel quel.
+    fn planning_write(session: &mut Session) {
+        let form = session.shift_form.clone();
+        // Une heure de début est le seul champ obligatoire : sans
+        // elle le poste n'a pas de place dans la journée. La fin
+        // peut manquer, et **cela ne vaut pas zéro heure**.
+        let Some(from) = db::parse_hour(&form.from) else {
+            session.error = Some(tr("planning_needs_an_hour").to_owned());
+            return;
+        };
+        // **Une garde se tape « 20 h » → « 2 h ».** Personne
+        // n'écrit « 26:00 », et c'est pourtant ce que la base
+        // range — un seul intervalle, au jour qui le commence.
+        // Une fin antérieure au début est donc le lendemain, et
+        // non une faute de frappe à refuser.
+        let to = Self::shift_end(&form.from, &form.to);
+        let rhythm = form.cadence.unwrap_or(planning::Cadence::Unique);
+        // **Un rythme quotidien sans fin n'est pas un congé**, c'est
+        // quelqu'un d'absent pour toujours — et une ligne que chaque
+        // lecture déplierait sur des centaines de jours.
+        // **Une fin tapée qui ne se lit pas n'est pas « sans fin »** :
+        // « 31/04 » faisait revenir le poste pour toujours. Et une fin
+        // sans année qui tombe avant le début est l'an prochain
+        // (« 1501 » tapé en octobre) : rangée telle quelle, la ligne
+        // était en base et ne se montrait jamais.
+        let until = if rhythm == planning::Cadence::Unique {
+            String::new()
+        } else {
+            match Self::shift_until(&form.until_text, &form.day, session.year_now()) {
+                Ok(until) => until,
+                Err(key) => {
+                    session.error = Some(tr(key).to_owned());
+                    return;
+                }
+            }
+        };
+        // Une pause qui ne se lit pas n'est pas zéro : « 30 min »
+        // comptait la pause dans les heures.
+        let pause = form.pause.trim();
+        let Ok(pause_minutes) = (if pause.is_empty() {
+            Ok(0)
+        } else {
+            pause.parse::<i64>()
+        }) else {
+            session.error = Some(tr("planning_bad_pause").to_owned());
+            return;
+        };
+        if rhythm.needs_an_end() && until.is_empty() {
+            session.error = Some(tr("planning_needs_an_end").to_owned());
+            return;
+        }
+        let new = db::NewShift {
+            operator: form.operator.trim().to_owned(),
+            day: form.day.clone(),
+            start_time: from,
+            end_time: to,
+            // **Une fin ne s'applique qu'à ce qui revient.** Le
+            // champ disparaît quand on repasse sur « ce jour-là »
+            // et ce qu'on y avait tapé reste dans le formulaire :
+            // appliqué quand même, un poste posé après cette
+            // date-là serait écrit en base et invisible à l'écran.
+            repeat_until: until,
+            pause_minutes,
+            kind: form
+                .kind
+                .unwrap_or(planning::ShiftKind::Journee)
+                .as_str()
+                .to_owned(),
+            // **Le pas rangé vient du rythme**, et la clé du
+            // rythme est rangée avec : « les semaines paires »
+            // avance de sept jours et s'en tient une sur deux,
+            // ce qu'un nombre de jours seul ne saurait pas dire.
+            repeat_days: rhythm.pas(),
+            cadence: rhythm.as_str().to_owned(),
+            ..Default::default()
+        };
+        match session.db.add_shift(&new) {
+            Ok(id) => {
+                session.remember(PlanningUndo::Added {
+                    id,
+                    who: new.operator.clone(),
+                });
+                session.shift_form.from.clear();
+                session.shift_form.to.clear();
+                session.shift_form.pause.clear();
+                session.load_shifts(true);
+            }
+            Err(e) => session.error = Some(e),
+        }
+    }
+
+    /// « Modifier » (ou Entrée, ou « Fin ±15 min ») sur le poste
+    /// désigné : ce jour seul par une exception quand la bascule le
+    /// dit, sinon la ligne rangée, en compare-and-set.
+    fn planning_edit(session: &mut Session, id: i64) {
+        let form = session.shift_form.clone();
+        let Some(from) = db::parse_hour(&form.from) else {
+            session.error = Some(tr("planning_needs_an_hour").to_owned());
+            return;
+        };
+        let to = Self::shift_end(&form.from, &form.to);
+        // **Ce jour seulement : on écrit une exception.** La trame
+        // reste intacte, une seconde ligne la remplace ce jour-là,
+        // et la semaine dit la vérité. C'est l'idée de l'annulation
+        // du registre, sans son inaltérabilité.
+        if form.this_day_only {
+            if let Some(occ) = Self::picked_occurrence(session) {
+                Self::write_exception(
+                    session,
+                    &occ,
+                    db::NewShift {
+                        start_time: from,
+                        end_time: to,
+                        pause_minutes: form.pause.trim().parse().unwrap_or(0),
+                        kind: form
+                            .kind
+                            .unwrap_or(planning::ShiftKind::Journee)
+                            .as_str()
+                            .to_owned(),
+                        ..Default::default()
+                    },
+                );
+            }
+            return;
+        }
+        // **Compare-and-set**, comme toute ligne partagée : le
+        // `WHERE` porte les heures que *cet écran* affichait. Deux
+        // PC qui déplacent le même poste ne doivent pas voir chacun
+        // le sien.
+        let was = session
+            .shifts
+            .iter()
+            .find(|s| s.id == id)
+            .map(|s| (s.start_time.clone(), s.end_time.clone()));
+        if let Some((was_from, was_to)) = was {
+            let was_pause = session
+                .shifts
+                .iter()
+                .find(|s| s.id == id)
+                .map_or(0, |s| s.pause_minutes);
+            // **Le champ de pause porte la pause du poste** : la case
+            // désignée l'y a écrite (`pick_planning_cell`), et le
+            // vider, c'est la retirer. Une frappe illisible garde
+            // celle du poste plutôt que de la mettre à zéro — les
+            // heures du jour et du mois en gagneraient trois quarts
+            // d'heure.
+            let pause = match form.pause.trim() {
+                "" => 0,
+                typed => typed.parse().unwrap_or(was_pause),
+            };
+            match session
+                .db
+                .update_shift(id, (&from, &to, pause), (&was_from, &was_to, was_pause))
+            {
+                Ok(true) => {
+                    session.remember(PlanningUndo::Edited {
+                        id,
+                        start: was_from.clone(),
+                        end: was_to.clone(),
+                        pause: was_pause,
+                        now_start: from.clone(),
+                        now_end: to.clone(),
+                        now_pause: pause,
+                    });
+                    session.load_shifts(true);
+                }
+                Ok(false) => {
+                    session.stale("planning_stale");
+                    session.load_shifts(true);
+                }
+                Err(e) => session.error = Some(e),
             }
         }
     }
@@ -43438,11 +43553,8 @@ impl App {
             // disparaissaient au moment même où l'on venait de désigner
             // le jour sur lequel on voulait agir.
             let picked = Self::picked_shift(session);
-            session.shift_pick = picked.as_ref().map(|s| s.id);
-            if let Some(s) = picked {
-                session.shift_form.kind = planning::ShiftKind::parse(&s.kind);
-                session.shift_form.cadence = planning::Cadence::parse(&s.cadence);
-            }
+            let who = session.shift_form.operator.clone();
+            Self::pick_planning_cell(session, &who, &day, picked);
             *pick_day = Some(day);
         }
     }
@@ -43489,45 +43601,87 @@ impl App {
         // vient d'apparaître.
         let btn = |l: &str| Self::button_width(ui, l);
         let combo = |l: &str| Self::button_width(ui, l) + chars_wide(ui, 2.0);
-        let form_rows = Self::wrapped_rows_of(
-            ui,
-            rect.width() - 20.0,
-            [
-                btn(tr("planning_who")),
-                // **La même largeur que le dessin** : la mesure comptait
-                // trois lettres là où le menu en montrait seize.
-                Self::team_select_width(ui, config),
-                combo(planning::ShiftKind::Recup.label()),
-                btn("00/00/0000"),
-                Self::field_width(ui, [tr("agenda_hour_hint")].into_iter()),
-                Self::field_width(ui, [tr("agenda_end_hint")].into_iter()),
-                chars_wide(ui, 5.0),
-                combo(planning::Cadence::UneSurQuatre.label()),
-                // **« jusqu'au » et sa date font un article.** Le dessin
-                // les alloue d'un seul tenant — un mot qui nomme un champ
-                // posé à la ligne au-dessus ne nomme rien —, donc la
-                // mesure les compte de même. Et le libellé se mesure dans
-                // sa fonte, onze points, et non comme un bouton.
-                Self::group_width(
+        // **La mesure suit le dessin, état par état** : un poste désigné
+        // montre ses gestes et cache le rythme et « Poser », une case
+        // libre l'inverse. Compter les deux à la fois réservait une
+        // rangée qui ne se remplissait jamais.
+        let mut items: Vec<f32> = vec![
+            btn(tr("planning_who")),
+            // **La même largeur que le dessin** : la mesure comptait
+            // trois lettres là où le menu en montrait seize.
+            Self::team_select_width(ui, config),
+            combo(planning::ShiftKind::Recup.label()),
+            btn("00/00/0000"),
+            Self::field_width(ui, [tr("agenda_hour_hint")].into_iter()),
+            Self::field_width(ui, [tr("agenda_end_hint")].into_iter()),
+            chars_wide(ui, 5.0),
+        ];
+        if session.shift_pick.is_some() {
+            let occ = Self::picked_occurrence(session);
+            if occ
+                .as_ref()
+                .is_some_and(|o| o.repeat_days > 0 && o.id == o.source_id)
+            {
+                items.push(btn(tr("planning_this_day")));
+            }
+            items.push(btn(tr("planning_edit_day")));
+            if occ
+                .as_ref()
+                .is_some_and(|o| planning::parse_bound(&o.end_time).is_some())
+            {
+                items.push(btn(tr("planning_end_less")));
+                items.push(btn(tr("planning_end_more")));
+            }
+            items.push(
+                [
+                    tr("planning_drop_day"),
+                    tr("planning_restore_day"),
+                    tr("planning_delete"),
+                ]
+                .into_iter()
+                .map(btn)
+                .fold(0.0, f32::max),
+            );
+        } else {
+            items.push(combo(planning::Cadence::UneSurQuatre.label()));
+            // **« jusqu'au » et sa date font un article.** Le dessin
+            // les alloue d'un seul tenant — un mot qui nomme un champ
+            // posé à la ligne au-dessus ne nomme rien —, donc la
+            // mesure les compte de même. Et le libellé se mesure dans
+            // sa fonte, onze points, et non comme un bouton.
+            if session
+                .shift_form
+                .cadence
+                .unwrap_or(planning::Cadence::Unique)
+                != planning::Cadence::Unique
+            {
+                items.push(Self::group_width(
                     ui,
                     [
                         Self::widest(ui, 11.0, std::iter::once(tr("planning_until"))),
                         Self::date_field_width(ui),
                     ]
                     .into_iter(),
-                ),
-                btn(tr("planning_add")),
-                btn(tr("frame_open")),
-                btn(tr("planning_month_toggle")),
-                btn(tr("planning_print")),
-                btn(tr("planning_copy")),
-                btn(tr("planning_undo")),
-                btn(tr("planning_this_day")),
-                btn(tr("planning_edit_day")),
-                btn(tr("planning_restore_day")),
-            ]
-            .into_iter(),
-        );
+                ));
+            }
+            items.push(btn(tr("planning_add")));
+            if session.shift_form.usual.len() > 1 {
+                items.push(btn(&trf(
+                    "planning_usual",
+                    Self::planning_cell_text(&session.shift_form.usual.iter().collect::<Vec<_>>()),
+                )));
+            }
+        }
+        items.push(btn(tr("planning_month_toggle")));
+        items.push(btn(tr("frame_open")));
+        if !session.planning_month {
+            items.push(btn(tr("planning_print")));
+            items.push(btn(tr("planning_copy")));
+        }
+        if !session.planning_undo.is_empty() {
+            items.push(btn(tr("planning_undo")));
+        }
+        let form_rows = Self::wrapped_rows_of(ui, rect.width() - 20.0, items.into_iter());
         let pitch = Self::row_height(ui) + ui.spacing().item_spacing.y;
         // **Mesuré, et plafonné à la moitié du volet.**
         //
@@ -43649,6 +43803,10 @@ impl App {
         let mut grand_total_partial = false;
         // Un nom cliqué : sa trame s'ouvre une fois la grille lâchée.
         let mut open_frame = false;
+        // Une case cliquée : le formulaire s'y pose une fois la grille
+        // lâchée, puisqu'il relit la base et que la grille tient encore
+        // les postes de la session.
+        let mut cell_pick: Option<(String, String, Option<db::PlannedShift>)> = None;
         // Une deuxième région défilante sans nom dans la même vue peint
         // ses deux bannières rouges en travers de l'écran.
         motif::inside(ui, rect, |ui| {
@@ -43912,6 +44070,9 @@ impl App {
                                 if !mine.is_empty() {
                                     hover.push('\n');
                                     hover.push_str(tr("planning_pick"));
+                                } else if !key.is_empty() {
+                                    hover.push('\n');
+                                    hover.push_str(tr("planning_pick_empty"));
                                 }
                                 let picked =
                                     mine.iter().any(|sh| Some(sh.id) == session.shift_pick);
@@ -43924,17 +44085,47 @@ impl App {
                                     // même le désélectionne, sans quoi
                                     // on ne peut plus rien poser
                                     // ailleurs sans risquer d'effacer.
-                                    session.shift_pick = match mine.first() {
-                                        Some(_) if picked => None,
-                                        Some(sh) => Some(sh.id),
-                                        None => None,
+                                    //
+                                    // **Une journée coupée se désigne
+                                    // moitié par moitié** : le premier
+                                    // clic prend le matin, le suivant
+                                    // l'après-midi, le dernier rend la
+                                    // case — sans quoi la fin de
+                                    // l'après-midi ne se corrigeait
+                                    // jamais d'ici.
+                                    let next = match mine
+                                        .iter()
+                                        .position(|sh| Some(sh.id) == session.shift_pick)
+                                    {
+                                        Some(i) => mine.get(i + 1),
+                                        None => mine.first(),
                                     };
-                                    session.shift_form.day = date.clone();
-                                    if !picked {
-                                        if let Some(sh) = mine.first() {
-                                            session.shift_form.operator = sh.operator.clone();
-                                            session.shift_form.kind = Some(sh.kind);
-                                        }
+                                    let occurrence = next.and_then(|sh| {
+                                        session
+                                            .shifts
+                                            .iter()
+                                            .find(|s| s.id == sh.id && s.day == *date)
+                                            .cloned()
+                                    });
+                                    if picked && occurrence.is_none() {
+                                        // Rendue, la case repart vide —
+                                        // un seul jour, des heures à
+                                        // taper : un « Poser » qui
+                                        // hériterait du rythme du poste
+                                        // lâché poserait une seconde
+                                        // trame sur la première.
+                                        session.shift_pick = None;
+                                        let form = &mut session.shift_form;
+                                        form.day = date.clone();
+                                        form.from.clear();
+                                        form.to.clear();
+                                        form.pause.clear();
+                                        form.usual.clear();
+                                        form.this_day_only = false;
+                                        form.cadence = Some(planning::Cadence::Unique);
+                                    } else {
+                                        cell_pick =
+                                            Some((key.to_owned(), date.clone(), occurrence));
                                     }
                                 }
                             }
@@ -44094,6 +44285,9 @@ impl App {
                     });
             });
         });
+        if let Some((who, day, occurrence)) = cell_pick {
+            Self::pick_planning_cell(session, &who, &day, occurrence);
+        }
         if open_frame {
             Self::open_frame_on_view(session);
         }
@@ -44167,6 +44361,15 @@ impl App {
                 let mut last = Ok(());
                 for (id, w) in ids.iter().zip(&who) {
                     if let Err(e) = session.db.delete_shift(*id, w) {
+                        last = Err(e);
+                    }
+                }
+                last
+            }
+            PlanningUndo::Placed { ids, who } => {
+                let mut last = Ok(());
+                for id in &ids {
+                    if let Err(e) = session.db.delete_shift(*id, &who) {
                         last = Err(e);
                     }
                 }
@@ -44390,6 +44593,147 @@ impl App {
             .cloned()
     }
 
+    /// Désigner une case du planning : la personne, le jour, et le poste
+    /// qu'elle porte — ou aucun.
+    ///
+    /// **Le formulaire se remplit de ce qu'on désigne.** Il ne le
+    /// faisait pas, et rester jusqu'à 12 h 30 au lieu de 12 h demandait
+    /// de cocher « Ce jour seulement », de retaper les *deux* heures et
+    /// de trouver « Modifier » ; venir un jour de plus, de choisir la
+    /// personne dans le menu alors qu'on venait de cliquer sa ligne. Ici,
+    /// les heures du poste sont dans les champs, il reste à changer celle
+    /// qui change et à taper Entrée.
+    ///
+    /// Sur l'occurrence d'une trame, le geste porte **sur ce jour** par
+    /// défaut : c'est le cas de tous les jours, et le moins lourd des
+    /// deux — la série se réécrit par sa trame. Sur une case vide, la
+    /// journée habituelle de la personne (`planning::usual_day`, lue sur
+    /// les semaines voisines) est proposée, un seul jour.
+    ///
+    /// Écrite une fois pour les trois chemins qui désignent une case —
+    /// le clic dans la semaine, les flèches, le clic dans le mois : deux
+    /// remplissages finiraient par ne pas remplir la même chose.
+    fn pick_planning_cell(
+        session: &mut Session,
+        who: &str,
+        day: &str,
+        picked: Option<db::PlannedShift>,
+    ) {
+        let form = &mut session.shift_form;
+        form.day = day.to_owned();
+        if !who.trim().is_empty() {
+            form.operator = who.trim().to_owned();
+        }
+        form.usual.clear();
+        session.shift_pick = picked.as_ref().map(|s| s.id);
+        match picked {
+            Some(s) => {
+                form.kind = planning::ShiftKind::parse(&s.kind);
+                form.cadence = planning::Cadence::parse(&s.cadence);
+                form.from = planning::parse_bound(&s.start_time)
+                    .map(planning::typed_hour)
+                    .unwrap_or_default();
+                form.to = planning::parse_bound(&s.end_time)
+                    .map(planning::typed_hour)
+                    .unwrap_or_default();
+                form.pause = match s.pause_minutes {
+                    0 => String::new(),
+                    p => p.to_string(),
+                };
+                form.this_day_only = s.repeat_days > 0 && s.id == s.source_id;
+            }
+            None => {
+                form.this_day_only = false;
+                // Une case vide désignée, c'est un jour : le rythme
+                // revient à « ce jour-là », sans quoi un jour de plus
+                // se poserait toutes les semaines.
+                form.cadence = Some(planning::Cadence::Unique);
+                let usual = Self::usual_day_of(session, who.trim(), day);
+                let form = &mut session.shift_form;
+                match usual.first() {
+                    Some(first) => {
+                        form.kind = Some(first.kind);
+                        form.from = planning::typed_hour(first.start);
+                        form.to = first.end.map(planning::typed_hour).unwrap_or_default();
+                        form.pause = match first.pause {
+                            0 => String::new(),
+                            p => p.to_string(),
+                        };
+                    }
+                    None => {
+                        form.from.clear();
+                        form.to.clear();
+                        form.pause.clear();
+                    }
+                }
+                form.usual = usual;
+            }
+        }
+    }
+
+    /// La journée habituelle de `who`, lue sur les quatre semaines qui
+    /// précèdent `day` et la semaine qui le suit — **une lecture au
+    /// clic**, jamais par image.
+    fn usual_day_of(session: &Session, who: &str, day: &str) -> Vec<planning::Shift> {
+        if who.is_empty() {
+            return Vec::new();
+        }
+        let (Some(from), Some(to), Some(weekday)) = (
+            crate::date::add_days(day, -28),
+            crate::date::add_days(day, 7),
+            crate::date::weekday(day),
+        ) else {
+            return Vec::new();
+        };
+        let rows = session.db.shifts_between(&from, &to).unwrap_or_default();
+        let mut days: Vec<(String, Vec<planning::Shift>)> = Vec::new();
+        for row in rows.iter().filter(|r| r.day != day) {
+            let Some(sh) = planned_shift(row) else {
+                continue;
+            };
+            match days.iter_mut().find(|(d, _)| *d == row.day) {
+                Some((_, v)) => v.push(sh),
+                None => days.push((row.day.clone(), vec![sh])),
+            }
+        }
+        planning::usual_day(&days, who, weekday)
+    }
+
+    /// Poser la journée habituelle proposée sur la case vide désignée :
+    /// **ses deux moitiés d'un geste**, et d'un seul retour arrière.
+    fn planning_place_usual(session: &mut Session) {
+        let form = session.shift_form.clone();
+        let mut ids = Vec::new();
+        let mut who = Vec::new();
+        for sh in &form.usual {
+            let new = db::NewShift {
+                operator: form.operator.trim().to_owned(),
+                day: form.day.clone(),
+                start_time: planning::format_bound(sh.start),
+                end_time: sh.end.map(planning::format_bound).unwrap_or_default(),
+                pause_minutes: i64::from(sh.pause),
+                kind: sh.kind.as_str().to_owned(),
+                cadence: planning::Cadence::Unique.as_str().to_owned(),
+                ..Default::default()
+            };
+            match session.db.add_shift(&new) {
+                Ok(id) => {
+                    ids.push(id);
+                    who.push(new.operator.clone());
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if !ids.is_empty() {
+            session.remember(PlanningUndo::Placed {
+                ids,
+                who: form.operator.trim().to_owned(),
+            });
+        }
+        session.shift_form.usual.clear();
+        session.load_shifts(true);
+    }
+
     /// L'occurrence que la grille a sélectionnée — **le jour autant que
     /// la ligne**.
     ///
@@ -44441,6 +44785,19 @@ impl App {
                 session.shift_pick = None;
                 session.shift_form.this_day_only = false;
                 session.load_shifts(true);
+                // **L'exception reste désignée** : rester jusqu'à 12 h 45
+                // après 12 h 30, c'est presser « +15 min » deux fois, et
+                // le second clic porte sur le jour qu'on vient d'écrire.
+                if !row.cancelled {
+                    let occ = session
+                        .shifts
+                        .iter()
+                        .find(|s| s.id == id && s.day == row.day)
+                        .cloned();
+                    if occ.is_some() {
+                        Self::pick_planning_cell(session, &row.operator, &row.day, occ);
+                    }
+                }
             }
             Err(e) => session.error = Some(e),
         }
@@ -102796,6 +103153,115 @@ mod tests {
 
     /// **Un nom de la grille ouvre sa trame**, sur la semaine affichée,
     /// comme « Trame… » la personne du formulaire : un seul chemin.
+    /// **Le planning se corrige au fil de la journée, sans le retaper.**
+    /// Désigner un poste en remplit les heures et porte le geste sur ce
+    /// jour ; « Fin +15 min » deux fois fait rester jusqu'à 12 h 30 un
+    /// lundi seulement, la trame intacte, et un seul « Annuler » par
+    /// quart d'heure. Une case vide propose la journée habituelle de la
+    /// personne — ses deux moitiés — et la pose d'un geste, ôtée d'un
+    /// seul retour arrière.
+    #[test]
+    fn a_planning_day_is_stretched_or_added_without_retyping() {
+        use crate::planning::{Cadence, ShiftKind};
+        let (mut s, _swept) = scratch_session("planning_quick");
+        let week: Vec<String> = (19..=25).map(|d| format!("2026-10-{d}")).collect();
+        let half = |day: &str, from: &str, to: &str| crate::db::NewShift {
+            operator: "CL".to_owned(),
+            day: day.to_owned(),
+            start_time: from.to_owned(),
+            end_time: to.to_owned(),
+            kind: ShiftKind::Journee.as_str().to_owned(),
+            repeat_days: Cadence::Hebdomadaire.pas(),
+            cadence: Cadence::Hebdomadaire.as_str().to_owned(),
+            ..Default::default()
+        };
+        // Claire, lundi et mardi chaque semaine, journée coupée.
+        for day in ["2026-10-12", "2026-10-13"] {
+            s.db.add_shift(&half(day, "09:00", "12:00")).unwrap();
+            s.db.add_shift(&half(day, "14:00", "19:00")).unwrap();
+        }
+        s.agenda_week = week.clone();
+        s.load_shifts(true);
+        let monday = |s: &super::Session| {
+            let mut v: Vec<(String, String)> = s
+                .shifts
+                .iter()
+                .filter(|x| x.day == "2026-10-19" && x.operator == "CL")
+                .map(|x| (x.start_time.clone(), x.end_time.clone()))
+                .collect();
+            v.sort();
+            v
+        };
+        let occ = s
+            .shifts
+            .iter()
+            .find(|x| x.day == "2026-10-19" && x.start_time == "09:00")
+            .cloned();
+        super::App::pick_planning_cell(&mut s, "CL", "2026-10-19", occ.clone());
+        assert_eq!(
+            (s.shift_form.from.as_str(), s.shift_form.to.as_str()),
+            ("9h", "12h"),
+            "les heures du poste dans les champs"
+        );
+        assert!(s.shift_form.this_day_only, "ce jour seulement, d'office");
+        // Le geste de « Fin +15 min », deux fois.
+        for _ in 0..2 {
+            let picked = super::App::picked_occurrence(&s).expect("le jour reste désigné");
+            let end = crate::planning::parse_bound(&picked.end_time).unwrap();
+            let start = crate::planning::parse_bound(&picked.start_time).unwrap();
+            s.shift_form.to =
+                crate::planning::typed_hour(crate::planning::nudge_end(start, end, 15).unwrap());
+            super::App::planning_edit(&mut s, picked.id);
+            assert!(s.error.is_none(), "{:?}", s.error);
+        }
+        assert_eq!(
+            monday(&s),
+            vec![
+                ("09:00".to_owned(), "12:30".to_owned()),
+                ("14:00".to_owned(), "19:00".to_owned()),
+            ]
+        );
+        // La trame n'a pas bougé : le lundi suivant garde midi.
+        let next = s.db.shifts_between("2026-10-26", "2026-10-26").unwrap();
+        assert!(next.iter().any(|x| x.end_time == "12:00"));
+        // Entrée après avoir tapé une heure : la même écriture.
+        s.shift_form.to = "13h".to_owned();
+        let id = s.shift_pick.unwrap();
+        super::App::planning_edit(&mut s, id);
+        assert!(monday(&s).contains(&("09:00".to_owned(), "13:00".to_owned())));
+        // Trois retours arrière rendent le lundi de la trame.
+        for _ in 0..3 {
+            super::App::planning_undo(&mut s);
+        }
+        assert!(monday(&s).contains(&("09:00".to_owned(), "12:00".to_owned())));
+
+        // Mercredi, case vide : la journée habituelle, ses deux moitiés,
+        // la ligne de la personne cliquée et non celle du menu.
+        s.shift_form.operator = "YS".to_owned();
+        super::App::pick_planning_cell(&mut s, "CL", "2026-10-21", None);
+        assert_eq!(s.shift_form.operator, "CL");
+        assert_eq!(s.shift_pick, None);
+        assert_eq!(s.shift_form.from, "9h");
+        assert_eq!(s.shift_form.usual.len(), 2);
+        assert_eq!(s.shift_form.cadence, Some(Cadence::Unique));
+        super::App::planning_place_usual(&mut s);
+        let wed: Vec<_> = s
+            .shifts
+            .iter()
+            .filter(|x| x.day == "2026-10-21" && x.operator == "CL")
+            .collect();
+        assert_eq!(wed.len(), 2);
+        assert!(wed.iter().all(|x| x.repeat_days == 0), "un seul jour");
+        assert!(
+            s.db.shifts_between("2026-10-28", "2026-10-28")
+                .unwrap()
+                .is_empty(),
+            "pas le mercredi suivant"
+        );
+        super::App::planning_undo(&mut s);
+        assert!(!s.shifts.iter().any(|x| x.day == "2026-10-21"));
+    }
+
     #[test]
     fn a_name_in_the_planning_opens_its_frame_on_the_shown_week() {
         let (mut s, _swept) = scratch_session("frame_by_name");

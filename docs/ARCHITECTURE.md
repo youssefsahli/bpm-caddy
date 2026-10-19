@@ -629,7 +629,21 @@ The one that was missing — « combien de fois un autre poste avait
   base (`supersedes`, `cancelled`) and is written from the planning
   row's « Ce jour seulement »; it had been complete from the schema to
   the undo since 0.175.0 and **unreachable from the screen** until
-  0.185.0, which no test could show because each half worked),
+  0.185.0, which no test could show because each half worked. And
+  **designating a cell fills the form** — `App::pick_planning_cell`,
+  the one door of the week click, the arrow keys and the month click:
+  a shift's hours go into the fields and a pattern's day defaults to
+  « Ce jour seulement », so « I stay until 12 h 30 » is one field and
+  Enter, or « Fin +15 min » twice (`planning::nudge_end`; the
+  exception stays designated for the second click). An empty cell
+  takes its row's person and proposes `planning::usual_day` — the same
+  weekday on the surrounding weeks first, otherwise the most frequent
+  day shape, nothing when nothing worked is read: an invented day is
+  worse than an empty field — put down whole, both halves, as one-day
+  rows and one undo (`PlanningUndo::Placed`). With a shift designated,
+  « Poser » and the rhythm are **not drawn**: the filled fields would
+  have made it write a second pattern over the first. Held by
+  `a_planning_day_is_stretched_or_added_without_retyping`),
   `src/graph.rs` (a card's neighbourhood as points on the unit circle:
   same molecule, same class, named in its interactions — pure, tested,
   no egui, so the view only scales and paints. The **seventh** reading

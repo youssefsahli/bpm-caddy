@@ -808,6 +808,28 @@ personne, sept colonnes de jours. Le total d'un jour passe au rouge dès
 qu'une **plage d'ouverture n'est pas couverte**, y compris partiellement
 (matin couvert, après-midi vide).
 
+## Corriger au fil de la journée
+
+Un clic sur un poste met **ses heures dans les champs** et vise **ce
+jour seulement** : la trame reste intacte. Pour rester jusqu'à 12 h 30
+au lieu de 12 h, remplacer « 12h » par « 12h30 » et taper **Entrée**
+— ou presser « Fin +15 min » deux fois. Le jour reste sélectionné entre
+deux clics.
+
+Une journée coupée se sélectionne moitié par moitié : le premier clic
+prend le matin, le deuxième l'après-midi, le troisième libère la case.
+
+Un clic sur une **case vide** choisit la personne de la ligne et propose
+sa **journée habituelle** — celle du même jour de la semaine, sinon la
+plus fréquente des semaines voisines. « Poser » l'écrit ; une journée
+coupée se pose d'un coup par « Poser 9 h–12 h 30 · 14 h–19 h ». Un jour
+de plus s'ajoute ainsi en deux clics, pour ce jour seulement. Un seul
+« Annuler » le retire.
+
+Un poste sélectionné cache « Poser » et le rythme ; un nouveau clic sur
+la case la libère. Pour corriger toute la série, décocher « Ce jour
+seulement ».
+
 ## Récurrences
 
 Un poste se répète selon une récurrence : jour unique, tous les jours
@@ -868,6 +890,7 @@ approximée : l'écran le signale et ne propose pas de remplacement.
 
 « Ce jour seulement » applique « Modifier » et « Supprimer » à une seule
 occurrence. La trame est conservée, une exception s'applique ce jour-là.
+La case est cochée d'office quand on sélectionne le jour d'une trame.
 
 # Listes de contrôle
 
