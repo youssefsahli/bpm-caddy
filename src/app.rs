@@ -42245,6 +42245,7 @@ impl App {
                     .week_dates(session.agenda_offset)
                     .unwrap_or_default();
                 session.load_shifts(false);
+                App::planning_follow_week(session);
             }
         };
         // **Les trois passent à la ligne ensemble, ou pas du tout.**
@@ -42295,6 +42296,7 @@ impl App {
                             session.agenda_offset = 0;
                             session.agenda_week = session.db.week_dates(0).unwrap_or_default();
                             session.load_shifts(false);
+                            Self::planning_follow_week(session);
                         }
                     }
                 }
@@ -45297,6 +45299,39 @@ impl App {
         });
         if hidden && absent {
             session.planning_notice = Some(tr("planning_hidden_by_leave").to_owned());
+        }
+    }
+
+    /// **La case désignée suit la semaine.** Les flèches ‹ › et
+    /// « Aujourd'hui » changeaient la semaine affichée et laissaient le
+    /// jour du formulaire dans l'ancienne : le cadre disparaissait de
+    /// l'écran, et « Poser » écrivait sur un jour qu'on ne voyait plus —
+    /// seule la date en petit le disait. Le jour passe au même jour de
+    /// la nouvelle semaine, pour la même personne, et la case s'y pose
+    /// comme sous un clic. Au planning-semaine seulement : l'agenda n'a
+    /// pas de case désignée.
+    fn planning_follow_week(session: &mut Session) {
+        if session.agenda_mode != AgendaMode::Planning || session.planning_month {
+            return;
+        }
+        let day = session.shift_form.day.clone();
+        if day.is_empty() || session.agenda_week.contains(&day) {
+            return;
+        }
+        let Some(at) = crate::date::weekday(&day)
+            .and_then(|w| usize::try_from(w - 1).ok())
+            .and_then(|i| session.agenda_week.get(i).cloned())
+        else {
+            return;
+        };
+        session.shift_form.day = at.clone();
+        // Rien de désigné, les champs sont peut-être une frappe en cours
+        // pour « Poser » : le jour bouge, la frappe reste. Un poste
+        // désigné, ils portent ses heures : la case se repose, entière.
+        if session.shift_pick.is_some() {
+            let who = session.shift_form.operator.trim().to_owned();
+            let occ = Self::picked_shift(session);
+            Self::pick_planning_cell(session, &who, &at, occ);
         }
     }
 
@@ -104666,6 +104701,27 @@ mod tests {
         assert!(s.error.is_none(), "{:?}", s.error);
         assert_eq!(s.planning_notice, None, "aucun congé n'est en cause");
         super::App::planning_undo(&mut s);
+
+        // La case désignée suit la semaine : le lundi de Claire désigné,
+        // la semaine suivante désigne son lundi suivant ; rien de
+        // désigné, le jour bouge et la frappe reste.
+        s.agenda_mode = super::AgendaMode::Planning;
+        pick(&mut s, "CL", "2026-10-19");
+        s.agenda_week = (26..=31)
+            .map(|d| format!("2026-10-{d}"))
+            .chain(std::iter::once("2026-11-01".to_owned()))
+            .collect();
+        s.load_shifts(true);
+        super::App::planning_follow_week(&mut s);
+        assert_eq!(s.shift_form.day, "2026-10-26");
+        assert!(s.shift_pick.is_some(), "le lundi suivant est désigné");
+        super::App::free_planning_cell(&mut s);
+        s.shift_form.from = "7h".into();
+        s.agenda_week = (19..=25).map(|d| format!("2026-10-{d}")).collect();
+        s.load_shifts(true);
+        super::App::planning_follow_week(&mut s);
+        assert_eq!(s.shift_form.day, "2026-10-19");
+        assert_eq!(s.shift_form.from, "7h", "la frappe reste");
 
         // L'arrêt maladie du matin, d'un clic : une maladie, pas un congé,
         // et défait sous son nom.

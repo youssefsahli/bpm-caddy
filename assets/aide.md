@@ -836,7 +836,8 @@ décocher « Ce jour seulement ».
 **Ctrl+C** sur une case sélectionnée copie sa journée ; **Ctrl+V** la
 colle sur une case libre — de la même personne ou d'une autre, ce jour
 seulement. Les flèches déplacent la sélection d'une case à l'autre (la
-case sélectionnée est encadrée) : on remplit ainsi une semaine au
+case sélectionnée est encadrée, et suit la semaine quand on change de
+semaine par ‹ ›) : on remplit ainsi une semaine au
 clavier. Une case déjà remplie n'est jamais écrasée. **Suppr** vide la
 case sélectionnée, ce jour seulement — un jour de trame n'a pas lieu,
 la trame reste — et **Ctrl+Z** défait le dernier geste.

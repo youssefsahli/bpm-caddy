@@ -710,7 +710,11 @@ The one that was missing — « combien de fois un autre poste avait
   whole days, which the absence rule turns into a leave that replaces
   the pattern rather than sits beside it. The designated cell is
   framed in both grids, empty or not: it is what the arrows move,
-  Ctrl+V fills and the menu aims at. The right-click menu is one
+  Ctrl+V fills and the menu aims at. It **follows the week**
+  (`planning_follow_week`, on ‹ › and « Aujourd'hui »): left behind,
+  it went off screen and stayed the target of « Poser ». With a shift
+  designated the cell is re-picked on the same weekday; with none, only
+  the day moves — the fields may be a typing in progress. The right-click menu is one
   function for both grids (`App::planning_cell_menu`, applied by
   `planning_cell_act` once the grid is let go). Held by
   `a_planning_day_is_stretched_or_added_without_retyping` and
