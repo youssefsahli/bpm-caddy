@@ -1882,6 +1882,33 @@ quand il est public. Un dossier, un nom de patient n'ont rien à y faire.
 qu'il a écrit n'est effacé, et sa phrase le rouvre — sans elle, il est
 perdu.
 
+# Actualités
+
+La vue **Actualités** (« Aller à… » : « actualites ») est le fil des
+**billets** : ce que chaque compte dit aux autres, le plus récent
+d'abord. Elle montre les billets publics de tous les comptes que ce
+poste connaît — de l'officine et des autres officines du réseau — et
+ceux qu'on a partagés avec le compte ouvert. Ils arrivent avec les
+synchronisations. Sans compte ouvert, le fil public se lit.
+
+**Écrire.** Compte ouvert, « Écrire un billet » : le texte, puis
+**Public** (tout le monde) ou **Partagé** (les comptes cochés), et
+« Publier ». Le jour et l'heure sont ceux de l'écriture. Un de ses
+billets s'efface d'un clic. Jamais un patient : un billet passe par les
+autres officines.
+
+**Masquer** un auteur : ses billets ne paraissent plus au fil ; ce qu'il
+partage avec vous (rendez-vous, notes) reste. **Bloquer** : plus rien de
+lui ne paraît — ni billets, ni partages, ni publics, ni à l'agenda — et
+il n'est plus proposé comme lecteur de ce que vous écrivez. Ce qu'il a
+déjà reçu de vous reste chez lui. Le bas du fil compte les billets
+ainsi tenus à l'écart.
+
+Ces décisions sont **celles du compte**, pas du poste : scellées pour
+lui seul, elles le suivent sur tout poste où il s'ouvre. Elles se
+défont dans la vue **Comptes**, section « Masqués et bloqués » :
+« Rétablir », ou passer de l'un à l'autre.
+
 # Connexions
 
 L'icône à trois nœuds, en bas à droite de la barre d'état, indique le

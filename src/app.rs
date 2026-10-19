@@ -2035,6 +2035,7 @@ fn help_title_for(
         MainView::Officines => "Carte des officines",
         MainView::Messages => "Messagerie",
         MainView::Comptes => "Comptes",
+        MainView::Actualites => "Actualités",
         MainView::Ruptures => "Ruptures",
         MainView::Drugs if graph => "La carte pharmacologique",
         MainView::Drugs if calc => "Calculs",
@@ -3175,6 +3176,9 @@ enum MainView {
     /// n'a pas oublié » et se lit en cochant. Les deux s'impriment, et
     /// les confondre ferait une feuille sans cases.
     Checklists,
+    /// Les actualités : les billets des comptes, le plus récent d'abord.
+    /// Voir [`crate::compte`].
+    Actualites,
     /// Les comptes : une personne, sa phrase, et ce qu'elle range —
     /// privé, partagé avec d'autres comptes, ou public. Voir
     /// [`crate::compte`].
@@ -3220,6 +3224,7 @@ impl MainView {
             MainView::Officines => "officines",
             MainView::Messages => "messages",
             MainView::Comptes => "comptes",
+            MainView::Actualites => "actualites",
         }
     }
 
@@ -3249,6 +3254,7 @@ impl MainView {
             "officines" => Some(MainView::Officines),
             "messages" => Some(MainView::Messages),
             "comptes" => Some(MainView::Comptes),
+            "actualites" => Some(MainView::Actualites),
             _ => None,
         }
     }
@@ -3324,6 +3330,8 @@ enum WorkTab {
     Messages,
     /// Les comptes des personnes.
     Comptes,
+    /// Les billets des comptes.
+    Actualites,
     Search,
     Agenda,
     Carnet,
@@ -7369,6 +7377,7 @@ impl Session {
             MainView::Officines => WorkTab::Officines,
             MainView::Messages => WorkTab::Messages,
             MainView::Comptes => WorkTab::Comptes,
+            MainView::Actualites => WorkTab::Actualites,
             MainView::Script => WorkTab::Script,
             MainView::Caisse | MainView::CaisseHistory => WorkTab::Caisse,
             MainView::Ddi => WorkTab::Ddi,
@@ -7469,6 +7478,11 @@ impl Session {
             }
             WorkTab::Comptes => {
                 self.view = MainView::Comptes;
+                #[cfg(feature = "sync")]
+                self.reload_comptes();
+            }
+            WorkTab::Actualites => {
+                self.view = MainView::Actualites;
                 #[cfg(feature = "sync")]
                 self.reload_comptes();
             }
@@ -7628,6 +7642,7 @@ impl Session {
             WorkTab::Connexions,
             WorkTab::Officines,
             WorkTab::Messages,
+            WorkTab::Actualites,
             WorkTab::Comptes,
             WorkTab::Script,
             WorkTab::Caisse,
@@ -8885,7 +8900,9 @@ impl Session {
         // Les comptes : une version arrivée d'un autre poste ou d'une
         // autre officine. Les tampons de saisie restent.
         #[cfg(feature = "sync")]
-        if self.comptes.open.is_some() || self.view == MainView::Comptes {
+        if self.comptes.open.is_some()
+            || matches!(self.view, MainView::Comptes | MainView::Actualites)
+        {
             self.reload_comptes();
         }
         if let Ok(list) = self.db.patients() {
@@ -10779,6 +10796,7 @@ impl Session {
             WorkTab::Officines => tr("tab_officines").to_owned(),
             WorkTab::Messages => tr("tab_messages").to_owned(),
             WorkTab::Comptes => tr("tab_comptes").to_owned(),
+            WorkTab::Actualites => tr("tab_actualites").to_owned(),
             WorkTab::Script => tr("tab_script").to_owned(),
             WorkTab::Caisse => tr("tab_caisse").to_owned(),
             WorkTab::Drugs => tr("tab_drugs").to_owned(),
@@ -11733,7 +11751,20 @@ impl Session {
             .filter(|(_, p)| !p.nom.trim().is_empty())
             .collect();
         c.people.sort_by_key(|(_, p)| p.nom.to_lowercase());
+        // Les réglages d'abord : ils disent qui ne se lit plus.
+        c.settings = compte::Settings::default();
+        c.settings_seq = 0;
+        if let Some(r) = latest
+            .iter()
+            .map(|(r, _)| r)
+            .find(|r| r.kind == Kind::Reglages && Some(&r.account) == me.as_ref())
+        {
+            c.settings_seq = r.seq;
+            c.settings = compte::settings_of(r).unwrap_or_default();
+        }
         let (mut mine, mut shared, mut public) = (Vec::new(), Vec::new(), Vec::new());
+        let mut posts = Vec::new();
+        c.hidden_posts = 0;
         for (r, _) in &latest {
             if r.kind == Kind::Profil {
                 if Some(&r.account) == me.as_ref() {
@@ -11744,9 +11775,18 @@ impl Session {
                 }
                 continue;
             }
+            let hold = c.settings.hold(&r.account);
             let Some(entry) = compte::entry_of(r) else {
                 continue;
             };
+            // Bloqué : rien de lui. Seuls se comptent les billets qui se
+            // seraient lus — ni effacés, ni scellés pour d'autres.
+            if hold == compte::Hold::Blocked {
+                if r.kind == Kind::Billet {
+                    c.hidden_posts += 1;
+                }
+                continue;
+            }
             let item = AccountItem {
                 account: r.account.clone(),
                 item: r.item.clone(),
@@ -11755,7 +11795,15 @@ impl Session {
                 visibility: compte::visibility_of(r, &entry),
                 entry,
             };
-            if Some(&r.account) == me.as_ref() {
+            if item.kind == Kind::Billet {
+                // **Le fil** : les billets de tous, les siens compris ; ceux
+                // d'un compte masqué se comptent sans se montrer.
+                if hold == compte::Hold::Muted {
+                    c.hidden_posts += 1;
+                } else {
+                    posts.push(item);
+                }
+            } else if Some(&r.account) == me.as_ref() {
                 mine.push(item);
             } else if matches!(r.state, State::Sealed(Some(_))) {
                 shared.push(item);
@@ -11781,6 +11829,23 @@ impl Session {
         c.mine = mine;
         c.shared = shared;
         c.public = public;
+        // Le plus récent d'abord : le jour et l'heure d'écriture, puis la
+        // version.
+        // **Une date à venir ne tient pas la tête du fil** : le jour d'un
+        // billet est celui que son auteur écrit, et un billet daté de 9999
+        // resterait premier pour tous. Au-delà d'aujourd'hui, il se range
+        // au début d'aujourd'hui.
+        let today = self.today.clone();
+        let key = |p: &AccountItem| -> (String, String) {
+            if p.entry.jour > today {
+                (today.clone(), String::new())
+            } else {
+                (p.entry.jour.clone(), p.entry.debut.clone())
+            }
+        };
+        posts.sort_by_key(|p| std::cmp::Reverse((key(p), p.seq)));
+        posts.truncate(COMPTES_MOST_POSTS);
+        c.posts = posts;
     }
 
     /// Le nom qu'un compte porte ici : son profil, sinon son empreinte.
@@ -12132,14 +12197,15 @@ impl Session {
             fin,
             pour: Vec::new(),
         };
+        let readers = self.unblocked(&f.pour);
         let visibility = match f.reach {
             AccountReach::Prive => Visibility::Private,
             AccountReach::Public => Visibility::Public,
-            AccountReach::Partage if f.pour.is_empty() => {
+            AccountReach::Partage if readers.is_empty() => {
                 self.comptes.notice = Some((true, tr("compte_need_reader").to_owned()));
                 return;
             }
-            AccountReach::Partage => Visibility::Shared(f.pour.iter().cloned().collect()),
+            AccountReach::Partage => Visibility::Shared(readers),
         };
         let kind = if f.rdv { Kind::Rdv } else { Kind::Note };
         let Ok(seq) = self.account_next(&id, &item, seen) else {
@@ -12233,7 +12299,14 @@ impl Session {
         let (reach, pour) = match &item.visibility {
             Visibility::Private => (AccountReach::Prive, Default::default()),
             Visibility::Public => (AccountReach::Public, Default::default()),
-            Visibility::Shared(to) => (AccountReach::Partage, to.iter().cloned().collect()),
+            // Un lecteur bloqué depuis n'a plus de case à décocher : il ne
+            // revient pas dans la version suivante.
+            Visibility::Shared(to) => (
+                AccountReach::Partage,
+                self.unblocked(&to.iter().cloned().collect())
+                    .into_iter()
+                    .collect(),
+            ),
         };
         self.comptes.form = AccountForm {
             editing: Some((item.item.clone(), item.seq)),
@@ -12297,6 +12370,171 @@ impl Session {
             Ok(()) => {
                 self.comptes.notice = Some((false, tr("compte_forgotten").to_owned()));
                 self.reload_comptes();
+            }
+            Err(e) => self.comptes.notice = Some((true, e)),
+        }
+    }
+
+    /// Les lecteurs choisis, sans ceux que le compte a bloqués — qui n'ont
+    /// pas de case et ne peuvent donc pas être décochés.
+    #[cfg(feature = "sync")]
+    fn unblocked(&self, pour: &std::collections::BTreeSet<String>) -> Vec<String> {
+        pour.iter()
+            .filter(|a| self.comptes.settings.hold(a) != crate::compte::Hold::Blocked)
+            .cloned()
+            .collect()
+    }
+
+    /// Publier le billet du formulaire : maintenant, pour tout le monde
+    /// ou pour les comptes cochés.
+    #[cfg(feature = "sync")]
+    fn comptes_publish_post(&mut self) {
+        use crate::compte::{self, EntryError, Kind, Visibility};
+        let Some(id) = self.comptes.open.as_ref().map(compte::Account::id) else {
+            return;
+        };
+        let f = self.comptes.post.clone();
+        if f.texte.trim().is_empty() {
+            self.comptes.notice = Some((true, tr("compte_post_empty").to_owned()));
+            return;
+        }
+        let visibility = if f.shared {
+            let readers = self.unblocked(&f.pour);
+            if readers.is_empty() {
+                self.comptes.notice = Some((true, tr("compte_need_reader").to_owned()));
+                return;
+            }
+            Visibility::Shared(readers)
+        } else {
+            Visibility::Public
+        };
+        let (jour, minutes) = self
+            .db
+            .now_local()
+            .unwrap_or_else(|_| (self.today.clone(), 0));
+        let entry = compte::Entry {
+            texte: f.texte.trim().to_owned(),
+            jour,
+            debut: format!("{:02}:{:02}", minutes / 60, minutes % 60),
+            ..compte::Entry::default()
+        };
+        let item = compte::new_item(&mut bpm_sync::OsEntropy);
+        let Ok(seq) = self.account_next(&id, &item, None) else {
+            return;
+        };
+        let c = &self.comptes;
+        let Some(account) = &c.open else {
+            return;
+        };
+        let boxes = |a: &str| -> Option<[u8; 32]> {
+            c.people
+                .iter()
+                .find(|(id, _)| id == a)
+                .and_then(|(_, p)| compte::unhex::<32>(&p.boite))
+        };
+        let written = compte::write_entry(
+            account,
+            (&item, seq),
+            Kind::Billet,
+            &entry,
+            &visibility,
+            &boxes,
+            &mut bpm_sync::OsEntropy,
+        );
+        let outcome = match written {
+            Ok(bytes) => self.keep_one_account_record(bytes),
+            Err(EntryError::NoKey(a)) => Err(trf("compte_no_key", self.account_name(&a))),
+            Err(EntryError::Write(compte::WriteError::TooLong)) => {
+                Err(trf("compte_too_long", compte::MAX_DATA / 1024))
+            }
+            Err(EntryError::Write(_)) => Err(tr("compte_write_failed").to_owned()),
+        };
+        match outcome {
+            Ok(()) => {
+                self.comptes.post = PostForm::default();
+                self.reload_comptes();
+                self.comptes.notice = Some((false, tr("compte_post_done").to_owned()));
+            }
+            Err(e) => self.comptes.notice = Some((true, e)),
+        }
+    }
+
+    /// Effacer un de ses billets, contre la version que le fil montrait.
+    #[cfg(feature = "sync")]
+    fn comptes_delete_post(&mut self, post: &AccountItem) {
+        use crate::compte;
+        let Some(id) = self.comptes.open.as_ref().map(compte::Account::id) else {
+            return;
+        };
+        if post.account != id {
+            return;
+        }
+        let Ok(seq) = self.account_next(&id, &post.item, Some(post.seq)) else {
+            return;
+        };
+        let Some(account) = &self.comptes.open else {
+            return;
+        };
+        let written = compte::write(
+            account,
+            &post.item,
+            seq,
+            compte::Kind::Billet,
+            compte::Content::Deleted,
+            &mut bpm_sync::OsEntropy,
+        )
+        .map_err(|_| tr("compte_write_failed").to_owned())
+        .and_then(|bytes| self.keep_one_account_record(bytes));
+        match written {
+            Ok(()) => {
+                self.reload_comptes();
+                self.comptes.notice = Some((false, tr("compte_post_deleted").to_owned()));
+            }
+            Err(e) => self.comptes.notice = Some((true, e)),
+        }
+    }
+
+    /// Masquer, bloquer ou rétablir un compte : les réglages du compte
+    /// ouvert, scellés pour lui, s'écrivent d'une version de plus.
+    #[cfg(feature = "sync")]
+    fn comptes_hold(&mut self, account: &str, hold: crate::compte::Hold) {
+        use crate::compte::{self, Hold};
+        let Some(id) = self.comptes.open.as_ref().map(compte::Account::id) else {
+            return;
+        };
+        if account == id {
+            return;
+        }
+        let seen = Some(self.comptes.settings_seq);
+        let Ok(seq) = self.account_next(&id, compte::SETTINGS_ITEM, seen) else {
+            return;
+        };
+        let mut settings = self.comptes.settings.clone();
+        settings.set(account, hold);
+        let Some(me) = &self.comptes.open else {
+            return;
+        };
+        let written = compte::write_settings(me, seq, &settings, &mut bpm_sync::OsEntropy)
+            .map_err(|e| match e {
+                compte::WriteError::TooLong => tr("compte_settings_full").to_owned(),
+                _ => tr("compte_write_failed").to_owned(),
+            })
+            .and_then(|bytes| self.keep_one_account_record(bytes));
+        let name = self.account_name(account);
+        match written {
+            Ok(()) => {
+                // Bloqué, il n'est plus lecteur de ce qu'on écrit ensuite.
+                if hold == Hold::Blocked {
+                    self.comptes.form.pour.remove(account);
+                    self.comptes.post.pour.remove(account);
+                }
+                self.reload_comptes();
+                let key = match hold {
+                    Hold::Read => "compte_hold_read",
+                    Hold::Muted => "compte_hold_muted",
+                    Hold::Blocked => "compte_hold_blocked",
+                };
+                self.comptes.notice = Some((false, trf(key, name)));
             }
             Err(e) => self.comptes.notice = Some((true, e)),
         }
@@ -17257,6 +17495,10 @@ fn short_groups(account: &str) -> String {
         .join(" ")
 }
 
+/// Au plus ce nombre de billets au fil : les plus récents.
+#[cfg(feature = "sync")]
+const COMPTES_MOST_POSTS: usize = 200;
+
 /// Au plus ce nombre d'éléments publics d'autres comptes dans la vue, et
 /// autant de partagés : n'importe quel compte peut en sceller pour
 /// celui-ci.
@@ -17309,6 +17551,25 @@ struct Comptes {
     /// « Retirer de ce poste » a été pressé une fois, pour ce compte : le
     /// second clic retire.
     forget_armed: Option<String>,
+    /// Le fil des actualités : les billets que ce compte lit, et combien
+    /// d'autres il ne montre pas (masqués ou bloqués).
+    posts: Vec<AccountItem>,
+    hidden_posts: usize,
+    /// Qui ce compte a masqué ou bloqué, et la version qu'on en a lue.
+    settings: crate::compte::Settings,
+    settings_seq: u64,
+    /// Le billet qu'on écrit.
+    post: PostForm,
+}
+
+/// Un billet en cours d'écriture : son texte, et qui le lira — tout le
+/// monde, ou les comptes cochés.
+#[cfg(feature = "sync")]
+#[derive(Clone, Debug, Default)]
+struct PostForm {
+    texte: String,
+    shared: bool,
+    pour: std::collections::BTreeSet<String>,
 }
 
 #[cfg(feature = "sync")]
@@ -17711,6 +17972,69 @@ fn demo_comptes(db: &Db, today: &str) -> crate::compte::Account {
     ] {
         records.extend(compte::write_entry(a, (item, 1), kind, &entry, &vis, &boxes, e).ok());
     }
+    // Le fil : quelques billets, et un auteur que Claire a masqué.
+    let marc = Account::from_phrase(Phrase::from_entropy([4; 16]));
+    records.extend(
+        compte::write_profile(
+            &marc,
+            1,
+            &Profile {
+                nom: "Marc Dubois".to_owned(),
+                ..Profile::default()
+            },
+            e,
+        )
+        .ok(),
+    );
+    let post = |texte: &str, jour: String, debut: &str| Entry {
+        texte: texte.to_owned(),
+        jour,
+        debut: debut.to_owned(),
+        ..Entry::default()
+    };
+    for (a, item, entry, vis) in [
+        (
+            &amel,
+            "a2",
+            post(
+                "Rupture d'Augmentin 1 g en sachets chez notre grossiste : nous dépannons en comprimés jusqu'à jeudi.",
+                day(0),
+                "08:40",
+            ),
+            Visibility::Public,
+        ),
+        (
+            &julien,
+            "j2",
+            post(
+                "Les nouveaux piluliers hebdomadaires sont arrivés, rangés en réserve 2.",
+                day(0),
+                "10:15",
+            ),
+            Visibility::Shared(vec![claire.id()]),
+        ),
+        (
+            &claire,
+            "c4",
+            post(
+                "Merci à toute l'équipe pour la campagne de vaccination : 140 injections cette semaine.",
+                day(-1),
+                "19:05",
+            ),
+            Visibility::Public,
+        ),
+        (
+            &marc,
+            "m1",
+            post("Promotions de la semaine sur la parapharmacie.", day(0), "09:00"),
+            Visibility::Public,
+        ),
+    ] {
+        records.extend(compte::write_entry(a, (item, 1), Kind::Billet, &entry, &vis, &boxes, e).ok());
+    }
+    let mut settings = compte::Settings::default();
+    settings.set(&marc.id(), compte::Hold::Muted);
+    records.extend(compte::write_settings(&claire, 1, &settings, e).ok());
     let _ = db.keep_account_records(&records);
     if db.kept_accounts().map(|k| k.is_empty()).unwrap_or(true) {
         for (a, label) in [(&claire, "Claire Martin"), (&julien, "Julien Roux")] {
@@ -19628,7 +19952,7 @@ fn goto_rank(mut scored: Vec<(i32, GotoHit)>, limit: usize) -> Vec<GotoHit> {
 /// Une rangée de la boîte « Aller à… » : le libellé, élidé avant la
 /// nature, et la nature en petit à droite.
 /// Les vues permanentes qu'on peut épingler, et leur clé en base.
-fn standing_views() -> [(WorkTab, &'static str); 20] {
+fn standing_views() -> [(WorkTab, &'static str); 21] {
     [
         (WorkTab::Dashboard, "tableau"),
         (WorkTab::Search, "recherche"),
@@ -19647,6 +19971,7 @@ fn standing_views() -> [(WorkTab, &'static str); 20] {
         (WorkTab::Officines, "officines"),
         (WorkTab::Messages, "messages"),
         (WorkTab::Comptes, "comptes"),
+        (WorkTab::Actualites, "actualites"),
         (WorkTab::Script, "console"),
         (WorkTab::Caisse, "caisse"),
         (WorkTab::Finances, "recettes"),
@@ -21467,12 +21792,20 @@ impl App {
                         // collègues. Les phrases sont fixes : la capture ne
                         // change pas d'une fois sur l'autre.
                         #[cfg(feature = "sync")]
-                        Ok(key @ ("comptes" | "comptes_phrase" | "comptes_ouvert")) => {
+                        Ok(
+                            key @ ("comptes" | "comptes_phrase" | "comptes_ouvert" | "actualites"),
+                        ) => {
                             let claire = demo_comptes(&session.db, &session.today);
                             session.view = MainView::Comptes;
                             session.reload_comptes();
                             match key {
                                 "comptes_ouvert" => session.comptes_enter(claire),
+                                // Le fil, Claire ouverte : ses billets, ceux
+                                // des autres, et un auteur masqué compté.
+                                "actualites" => {
+                                    session.comptes_enter(claire);
+                                    session.view = MainView::Actualites;
+                                }
                                 "comptes_phrase" => {
                                     let c = &mut session.comptes;
                                     c.door = ComptesDoor::Creer;
@@ -23895,6 +24228,7 @@ impl App {
                             | MainView::Officines
                             | MainView::Messages
                             | MainView::Comptes
+                            | MainView::Actualites
                             | MainView::Registres
                             | MainView::Finances
                             // Le comptage de caisse ne trie ni le
@@ -25716,6 +26050,10 @@ impl App {
             }
             if session.view == MainView::Comptes {
                 Self::comptes_view(ui, session);
+                return;
+            }
+            if session.view == MainView::Actualites {
+                Self::actualites_view(ui, session);
                 return;
             }
             if session.view == MainView::Script {
@@ -70495,6 +70833,284 @@ impl App {
         ui.label(tr("compte_no_sync"));
     }
 
+    /// **Les actualités** : les billets de tous les comptes que ce poste
+    /// connaît — publics, ou partagés avec le compte ouvert —, le plus
+    /// récent d'abord. Compte ouvert, on y écrit, on efface les siens, et
+    /// l'on masque ou bloque un auteur ; sans compte, le fil public se lit.
+    #[cfg(feature = "sync")]
+    fn actualites_view(ui: &mut egui::Ui, session: &mut Session) {
+        enum Act {
+            Publish,
+            Delete(Box<AccountItem>),
+            Hold(String, crate::compte::Hold),
+            Comptes,
+        }
+        let mut act: Option<Act> = None;
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            ui.add_space(4.0);
+            ui.heading(tr("news_title"));
+        });
+        let small = motif::pt(ui, 11.5);
+        ui.add(
+            egui::Label::new(
+                egui::RichText::new(tr("news_subtitle"))
+                    .size(small)
+                    .color(motif::text_dim()),
+            )
+            .wrap(),
+        );
+        if let Some((error, text)) = &session.comptes.notice {
+            let (ink, mark) = if *error {
+                (motif::alert(), motif::Pict::Warn)
+            } else {
+                (motif::text_dim(), motif::Pict::Check)
+            };
+            ui.horizontal_wrapped(|ui| {
+                motif::badge(ui, text, Some(mark), ink, *error);
+            });
+        }
+        let me = session
+            .comptes
+            .open
+            .as_ref()
+            .map(crate::compte::Account::id);
+        // Ceux qu'on peut choisir comme lecteurs : connus, et pas bloqués.
+        let readers: Vec<(String, String)> = session
+            .comptes
+            .people
+            .iter()
+            .filter(|(a, _)| session.comptes.settings.hold(a) != crate::compte::Hold::Blocked)
+            .map(|(a, _)| (a.clone(), session.account_name(a)))
+            .collect();
+        let posts: Vec<(AccountItem, String)> = session
+            .comptes
+            .posts
+            .iter()
+            .map(|p| (p.clone(), session.account_name(&p.account)))
+            .collect();
+        let hidden = session.comptes.hidden_posts;
+        ui.add_space(4.0);
+        ui.spacing_mut().scroll.floating = false;
+        egui::ScrollArea::vertical()
+            .id_salt("actualites")
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                let c = &mut session.comptes;
+                if me.is_some() {
+                    motif::section(ui, tr("news_write"));
+                    ui.horizontal(|ui| {
+                        ui.add_space(4.0);
+                        let w = chars_wide(ui, 70.0).min(ui.available_width());
+                        motif::area(
+                            ui,
+                            egui::vec2(w, motif::button_height(ui) * 3.0),
+                            egui::TextEdit::multiline(&mut c.post.texte)
+                                .hint_text(motif::hint(tr("news_hint"))),
+                        );
+                    });
+                    ui.horizontal_wrapped(|ui| {
+                        ui.add_space(4.0);
+                        if motif::radio(ui, !c.post.shared, tr("compte_reach_public")).clicked() {
+                            c.post.shared = false;
+                        }
+                        if motif::radio(ui, c.post.shared, tr("compte_reach_shared")).clicked() {
+                            c.post.shared = true;
+                        }
+                        if motif::button_enabled(
+                            ui,
+                            tr("news_publish"),
+                            !c.post.texte.trim().is_empty(),
+                        )
+                        .clicked()
+                        {
+                            act = Some(Act::Publish);
+                        }
+                    });
+                    if c.post.shared {
+                        if readers.is_empty() {
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(tr("compte_nobody"))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                )
+                                .wrap(),
+                            );
+                        }
+                        for (account, line) in &readers {
+                            ui.horizontal(|ui| {
+                                ui.add_space(12.0);
+                                let mut on = c.post.pour.contains(account);
+                                if motif::checkbox(ui, &mut on, line.as_str()).changed() {
+                                    if on {
+                                        c.post.pour.insert(account.clone());
+                                    } else {
+                                        c.post.pour.remove(account);
+                                    }
+                                }
+                            });
+                        }
+                    }
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(tr("compte_no_patient"))
+                                .size(motif::pt(ui, 11.0))
+                                .color(motif::warn()),
+                        )
+                        .wrap(),
+                    );
+                } else {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.add_space(4.0);
+                        ui.label(
+                            egui::RichText::new(tr("news_no_account")).color(motif::text_dim()),
+                        );
+                        if motif::button(ui, tr("news_open_account")).clicked() {
+                            act = Some(Act::Comptes);
+                        }
+                    });
+                }
+                motif::section(ui, &trf("news_feed", posts.len()));
+                if posts.is_empty() {
+                    ui.label(
+                        egui::RichText::new(tr("news_empty"))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                    );
+                }
+                for (post, author) in &posts {
+                    let mine = me.as_deref() == Some(post.account.as_str());
+                    let reach = match &post.visibility {
+                        crate::compte::Visibility::Public => tr("compte_reach_public").to_owned(),
+                        _ => tr("compte_reach_shared").to_owned(),
+                    };
+                    let when = trn(
+                        "compte_when",
+                        &[&db::format_french_date(&post.entry.jour), &post.entry.debut],
+                    );
+                    ui.horizontal_wrapped(|ui| {
+                        ui.add_space(4.0);
+                        ui.label(egui::RichText::new(author.as_str()).strong());
+                        ui.label(
+                            egui::RichText::new(trn("news_meta", &[&when, &reach]))
+                                .size(motif::pt(ui, 11.0))
+                                .color(motif::text_dim()),
+                        );
+                    });
+                    ui.horizontal(|ui| {
+                        ui.add_space(12.0);
+                        ui.add(egui::Label::new(post.entry.texte.as_str()).wrap());
+                    });
+                    ui.horizontal_wrapped(|ui| {
+                        ui.add_space(12.0);
+                        if mine {
+                            if motif::button(ui, tr("news_delete")).clicked() {
+                                act = Some(Act::Delete(Box::new(post.clone())));
+                            }
+                        } else if me.is_some() {
+                            if motif::button(ui, tr("news_mute"))
+                                .on_hover_text(tr("news_mute_tooltip"))
+                                .clicked()
+                            {
+                                act = Some(Act::Hold(
+                                    post.account.clone(),
+                                    crate::compte::Hold::Muted,
+                                ));
+                            }
+                            if motif::button(ui, tr("news_block"))
+                                .on_hover_text(tr("news_block_tooltip"))
+                                .clicked()
+                            {
+                                act = Some(Act::Hold(
+                                    post.account.clone(),
+                                    crate::compte::Hold::Blocked,
+                                ));
+                            }
+                        }
+                    });
+                    motif::separator(ui);
+                }
+                if hidden > 0 {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.add_space(4.0);
+                        ui.label(
+                            egui::RichText::new(trf("news_hidden", hidden))
+                                .size(motif::pt(ui, 11.0))
+                                .color(motif::text_dim()),
+                        );
+                        if motif::button(ui, tr("news_manage")).clicked() {
+                            act = Some(Act::Comptes);
+                        }
+                    });
+                }
+            });
+        match act {
+            Some(Act::Publish) => session.comptes_publish_post(),
+            Some(Act::Delete(post)) => session.comptes_delete_post(&post),
+            Some(Act::Hold(account, hold)) => session.comptes_hold(&account, hold),
+            Some(Act::Comptes) => session.activate_tab(&WorkTab::Comptes),
+            None => {}
+        }
+    }
+
+    #[cfg(not(feature = "sync"))]
+    fn actualites_view(ui: &mut egui::Ui, _session: &mut Session) {
+        ui.label(tr("compte_no_sync"));
+    }
+
+    /// Ceux que le compte ouvert a masqués ou bloqués, et de quoi les
+    /// rétablir — ou passer de l'un à l'autre.
+    #[cfg(feature = "sync")]
+    fn comptes_holds(ui: &mut egui::Ui, session: &mut Session) {
+        use crate::compte::Hold;
+        let s = &session.comptes.settings;
+        let held: Vec<(String, Hold, String)> = s
+            .bloques
+            .iter()
+            .map(|a| (a.clone(), Hold::Blocked))
+            .chain(s.masques.iter().map(|a| (a.clone(), Hold::Muted)))
+            .map(|(a, h)| {
+                let name = session.account_name(&a);
+                (a, h, name)
+            })
+            .collect();
+        motif::section(ui, &trf("compte_holds", held.len()));
+        if held.is_empty() {
+            ui.label(
+                egui::RichText::new(tr("compte_holds_none"))
+                    .size(motif::pt(ui, 11.0))
+                    .color(motif::text_dim()),
+            );
+        }
+        let mut change: Option<(String, Hold)> = None;
+        for (account, hold, name) in &held {
+            ui.horizontal_wrapped(|ui| {
+                ui.add_space(4.0);
+                let state = if *hold == Hold::Blocked {
+                    tr("compte_held_blocked")
+                } else {
+                    tr("compte_held_muted")
+                };
+                ui.label(trn("compte_held_row", &[name, &state]));
+                if motif::button(ui, tr("compte_hold_restore")).clicked() {
+                    change = Some((account.clone(), Hold::Read));
+                }
+                let (other, label) = if *hold == Hold::Blocked {
+                    (Hold::Muted, tr("news_mute"))
+                } else {
+                    (Hold::Blocked, tr("news_block"))
+                };
+                if motif::button(ui, label).clicked() {
+                    change = Some((account.clone(), other));
+                }
+            });
+        }
+        if let Some((account, hold)) = change {
+            session.comptes_hold(&account, hold);
+        }
+    }
+
     /// Les trois portes d'un compte fermé.
     #[cfg(feature = "sync")]
     fn comptes_doors(ui: &mut egui::Ui, session: &mut Session) {
@@ -70705,6 +71321,7 @@ impl App {
             .comptes
             .people
             .iter()
+            .filter(|(a, _)| session.comptes.settings.hold(a) != crate::compte::Hold::Blocked)
             .map(|(a, p)| {
                 let line = if p.officine.trim().is_empty() {
                     trn("compte_named", &[&p.nom, &short_groups(a)])
@@ -70753,6 +71370,7 @@ impl App {
             Self::comptes_form(ui, c, &people, &mut act);
             Self::comptes_profile(ui, c, &mut act);
         }
+        Self::comptes_holds(ui, session);
         if let Some(item) = edit {
             session.comptes_edit_item(&item);
         }
@@ -91599,6 +92217,7 @@ impl eframe::App for App {
                     | MainView::Officines
                     | MainView::Messages
                     | MainView::Comptes
+                    | MainView::Actualites
                     | MainView::Script
                     | MainView::Caisse
                     | MainView::CaisseHistory
@@ -105983,6 +106602,165 @@ mod tests {
             .notice
             .as_ref()
             .is_some_and(|(e, t)| *e && t.contains("n° 3")));
+    }
+
+    /// **Le fil, masquer, bloquer.** Un billet publié paraît au fil de
+    /// son auteur et des autres ; masqué, un auteur n'y paraît plus mais
+    /// ce qu'il partage reste ; bloqué, plus rien de lui — ni billet, ni
+    /// partage, ni place parmi les lecteurs — et rétabli, tout revient. La
+    /// décision suit le compte : elle est scellée pour lui et se relit sur
+    /// une autre base.
+    #[cfg(feature = "sync")]
+    #[test]
+    fn posts_reach_the_feed_and_an_author_is_muted_blocked_and_restored() {
+        use crate::compte::{self, Account, Hold, Kind, Phrase, Visibility};
+        let (mut s, _swept) = scratch_session("actualites");
+        let me = Account::from_phrase(Phrase::from_entropy([11; 16]));
+        let marc = Account::from_phrase(Phrase::from_entropy([12; 16]));
+        let mut records = Vec::new();
+        for (a, nom) in [(&me, "Claire"), (&marc, "Marc")] {
+            let p = compte::Profile {
+                nom: nom.to_owned(),
+                ..compte::Profile::default()
+            };
+            records.push(compte::write_profile(a, 1, &p, &mut bpm_sync::OsEntropy).unwrap());
+        }
+        let boxes = |id: &str| (id == me.id()).then(|| me.box_public());
+        for (item, vis) in [
+            ("m1", Visibility::Public),
+            ("m2", Visibility::Shared(vec![me.id()])),
+        ] {
+            let entry = compte::Entry {
+                texte: format!("billet {item}"),
+                jour: "2026-10-19".to_owned(),
+                debut: "09:00".to_owned(),
+                ..compte::Entry::default()
+            };
+            records.push(
+                compte::write_entry(
+                    &marc,
+                    (item, 1),
+                    Kind::Billet,
+                    &entry,
+                    &vis,
+                    &boxes,
+                    &mut bpm_sync::OsEntropy,
+                )
+                .unwrap(),
+            );
+        }
+        let rdv = compte::Entry {
+            titre: "Réunion".to_owned(),
+            jour: "2026-10-20".to_owned(),
+            ..compte::Entry::default()
+        };
+        records.push(
+            compte::write_entry(
+                &marc,
+                ("r1", 1),
+                Kind::Rdv,
+                &rdv,
+                &Visibility::Shared(vec![me.id()]),
+                &boxes,
+                &mut bpm_sync::OsEntropy,
+            )
+            .unwrap(),
+        );
+        s.db.keep_account_records(&records).unwrap();
+        // Sans compte : le fil public seul.
+        s.reload_comptes();
+        assert_eq!(s.comptes.posts.len(), 1);
+        let words = me.phrase().words().join(" ");
+        s.comptes.words = words.clone();
+        s.comptes.pin1 = "Pharma24".to_owned();
+        s.comptes.pin2 = "Pharma24".to_owned();
+        s.comptes_recover();
+        assert_eq!(s.comptes.posts.len(), 2, "le public et le partagé");
+        // Publier : vide refusé, puis paraît au fil, le plus récent d'abord.
+        s.comptes_publish_post();
+        assert_eq!(s.comptes.posts.len(), 2);
+        s.comptes.post.texte = "Bonjour à tous".to_owned();
+        s.comptes_publish_post();
+        assert_eq!(s.comptes.posts.len(), 3);
+        assert_eq!(s.comptes.posts[0].entry.texte, "Bonjour à tous");
+        assert!(s.comptes.post.texte.is_empty());
+        assert!(s.comptes.mine.is_empty(), "un billet n'est pas un élément");
+        // Masquer Marc : ses billets se comptent sans se montrer, son
+        // rendez-vous partagé reste.
+        s.comptes_hold(&marc.id(), Hold::Muted);
+        assert_eq!(s.comptes.posts.len(), 1);
+        assert_eq!(s.comptes.hidden_posts, 2);
+        assert_eq!(s.account_rdv_on("2026-10-20").len(), 1);
+        // Bloquer : plus rien de lui.
+        s.comptes_hold(&marc.id(), Hold::Blocked);
+        assert_eq!(s.comptes.settings.hold(&marc.id()), Hold::Blocked);
+        assert!(s.comptes.settings.masques.is_empty());
+        assert!(s.comptes.shared.is_empty());
+        assert!(s.account_rdv_on("2026-10-20").is_empty());
+        // La décision suit le compte : une autre base, la phrase.
+        let (mut t, _swept_t) = scratch_session("actualites_ailleurs");
+        t.db.keep_account_records(&s.db.account_record_bytes().unwrap())
+            .unwrap();
+        t.comptes.words = words;
+        t.comptes.pin1 = "Ailleurs9".to_owned();
+        t.comptes.pin2 = "Ailleurs9".to_owned();
+        t.comptes_recover();
+        assert_eq!(t.comptes.settings.hold(&marc.id()), Hold::Blocked);
+        assert_eq!(t.comptes.posts.len(), 1);
+        // Un élément partagé avec Marc avant le blocage, modifié après :
+        // Marc n'en est plus lecteur.
+        s.comptes_hold(&marc.id(), Hold::Read);
+        s.comptes.form.titre = "Inventaire".to_owned();
+        s.comptes.form.reach = super::AccountReach::Partage;
+        s.comptes.form.pour.insert(marc.id());
+        s.comptes_save_item();
+        s.comptes_hold(&marc.id(), Hold::Blocked);
+        let shared = s.comptes.mine[0].clone();
+        s.comptes_edit_item(&shared);
+        assert!(s.comptes.form.pour.is_empty());
+        s.comptes.form.pour.insert(marc.id());
+        s.comptes_save_item();
+        assert!(
+            s.comptes.notice.as_ref().is_some_and(|(e, _)| *e),
+            "plus de lecteur : refusé, pas scellé pour Marc"
+        );
+        // Un billet daté de l'an 9999 ne tient pas la tête du fil.
+        s.comptes_hold(&marc.id(), Hold::Read);
+        let far = compte::Entry {
+            texte: "toujours premier".to_owned(),
+            jour: "9999-12-31".to_owned(),
+            ..compte::Entry::default()
+        };
+        s.db.keep_account_records(&[compte::write_entry(
+            &marc,
+            ("m9", 1),
+            Kind::Billet,
+            &far,
+            &Visibility::Public,
+            &boxes,
+            &mut bpm_sync::OsEntropy,
+        )
+        .unwrap()])
+            .unwrap();
+        s.reload_comptes();
+        assert_ne!(s.comptes.posts[0].entry.texte, "toujours premier");
+        s.comptes_delete_post(
+            &s.comptes
+                .posts
+                .iter()
+                .find(|p| p.account == me.id())
+                .unwrap()
+                .clone(),
+        );
+        // Rétabli : tout revient.
+        s.comptes_hold(&marc.id(), Hold::Read);
+        assert_eq!(s.comptes.posts.len(), 3, "m1, m2, m9 ; le mien effacé");
+        assert_eq!(s.comptes.hidden_posts, 0);
+        assert_eq!(s.comptes.shared.len(), 1);
+        // Celui d'un autre ne s'efface pas d'ici.
+        let theirs = s.comptes.posts[0].clone();
+        s.comptes_delete_post(&theirs);
+        assert_eq!(s.comptes.posts.len(), 3);
     }
 
     /// **Une journée se copie, se colle, se met en congé** — d'un geste

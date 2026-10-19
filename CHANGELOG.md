@@ -24,6 +24,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   other accounts share with it; its appointments also show in the
   agenda's day panel. Never a patient: the view says so where one
   writes.
+- **News feed.** The new « Actualités » view lists the posts of every
+  account the post knows, newest first: public ones, and those shared
+  with the open account. An open account writes posts (public or for
+  chosen accounts) and deletes its own.
+- **Mute or block an account.** From a post: « Masquer » takes the
+  author's posts off the feed (what they share stays); « Bloquer »
+  hides everything of theirs, agenda included, and removes them from
+  the readers one can pick. The choice belongs to the account, sealed
+  for it alone, so it follows the person to every post; it is undone
+  in « Comptes », « Masqués et bloqués ».
 - **Accounts are seeded by the officines' network.** Every record is
   signed by its account, so any officine can keep and pass it without
   reading what is sealed or rewriting anything: records travel between

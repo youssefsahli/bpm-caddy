@@ -52,7 +52,13 @@ pub const MAX_DATA: usize = 4 * 1024;
 /// Le plus long corps qu'une boîte de [`MOST_RECIPIENTS`] destinataires
 /// et de [`MAX_DATA`] octets donne, en hexadécimal, avec sa marge : ce
 /// que [`read`] accepte, et donc tout ce que [`write`] peut rendre.
-const MOST_BODY: usize = 2 * (34 + MOST_RECIPIENTS * 72 + 24 + MAX_DATA + 16) + 1024;
+const MOST_BODY: usize = 2 * (34 + MOST_RECIPIENTS * 72 + 24 + MAX_SETTINGS + 16) + 1024;
+
+/// Au plus ce que portent les réglages d'un compte : des noms de compte
+/// de soixante-quatre caractères, de quoi en écarter quelque deux cents
+/// — une vague de comptes jetables comprise. Ils changent rarement, et
+/// un seul vit à la fois.
+pub const MAX_SETTINGS: usize = 16 * 1024;
 
 /// Au plus ce que le journal d'un réseau garde d'une même officine
 /// (`OPEN_LIMITS`) est un mégaoctet : un compte ne garde au plus que
@@ -287,6 +293,12 @@ pub enum Kind {
     Note,
     /// Un rendez-vous d'agenda.
     Rdv,
+    /// Un billet : ce qu'on dit aux autres, lu au fil des actualités.
+    Billet,
+    /// Les réglages du compte — qui il a masqué, qui il a bloqué : un
+    /// par compte, toujours scellé pour lui seul. Ils le suivent d'un
+    /// poste à l'autre comme le reste.
+    Reglages,
 }
 
 impl Kind {
@@ -295,6 +307,8 @@ impl Kind {
             Kind::Profil => "profil",
             Kind::Note => "note",
             Kind::Rdv => "rdv",
+            Kind::Billet => "billet",
+            Kind::Reglages => "reglages",
         }
     }
 
@@ -303,6 +317,8 @@ impl Kind {
             "profil" => Some(Kind::Profil),
             "note" => Some(Kind::Note),
             "rdv" => Some(Kind::Rdv),
+            "billet" => Some(Kind::Billet),
+            "reglages" => Some(Kind::Reglages),
             _ => None,
         }
     }
@@ -310,6 +326,56 @@ impl Kind {
 
 /// L'élément « profil » : un seul par compte.
 pub const PROFILE_ITEM: &str = "profil";
+
+/// L'élément « réglages » : un seul par compte.
+pub const SETTINGS_ITEM: &str = "reglages";
+
+/// Ce qu'un compte a décidé des autres : ceux dont il ne lit plus les
+/// billets (masqués), et ceux dont il ne lit plus rien (bloqués).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Settings {
+    #[serde(default)]
+    pub masques: Vec<String>,
+    #[serde(default)]
+    pub bloques: Vec<String>,
+}
+
+/// Ce qu'un compte fait de ce qu'un autre écrit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Hold {
+    /// Lu comme tout.
+    Read,
+    /// Ses billets ne paraissent plus au fil ; ce qu'il partage reste.
+    Muted,
+    /// Plus rien de lui : ni billets, ni partages, ni publics, et il
+    /// n'est plus proposé comme lecteur.
+    Blocked,
+}
+
+impl Settings {
+    pub fn hold(&self, account: &str) -> Hold {
+        if self.bloques.iter().any(|a| a == account) {
+            Hold::Blocked
+        } else if self.masques.iter().any(|a| a == account) {
+            Hold::Muted
+        } else {
+            Hold::Read
+        }
+    }
+
+    /// Ranger un compte sous une décision — une seule à la fois.
+    pub fn set(&mut self, account: &str, hold: Hold) {
+        self.masques.retain(|a| a != account);
+        self.bloques.retain(|a| a != account);
+        match hold {
+            Hold::Read => {}
+            Hold::Muted => self.masques.push(account.to_owned()),
+            Hold::Blocked => self.bloques.push(account.to_owned()),
+        }
+        self.masques.sort();
+        self.bloques.sort();
+    }
+}
 
 /// Le profil, public.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -401,15 +467,20 @@ pub fn write(
     content: Content<'_>,
     entropy: &mut dyn Entropy,
 ) -> Result<Vec<u8>, WriteError> {
+    let most = if kind == Kind::Reglages {
+        MAX_SETTINGS
+    } else {
+        MAX_DATA
+    };
     let (v, d) = match content {
         Content::Public(text) => {
-            if text.len() > MAX_DATA {
+            if text.len() > most {
                 return Err(WriteError::TooLong);
             }
             ("public", text.to_owned())
         }
         Content::Sealed(text, others) => {
-            if text.len() > MAX_DATA {
+            if text.len() > most {
                 return Err(WriteError::TooLong);
             }
             let mut to = vec![account.box_public()];
@@ -496,11 +567,15 @@ pub fn read(bytes: &[u8], reader: Option<&Account>) -> Option<Read> {
         return None;
     }
     let kind = Kind::from_key(&body.k)?;
-    // Le profil est public et n'est que le profil.
-    if (kind == Kind::Profil) != (body.i == PROFILE_ITEM) {
+    // Le profil est public et n'est que le profil ; les réglages sont
+    // scellés et ne sont que les réglages.
+    if (kind == Kind::Profil) != (body.i == PROFILE_ITEM)
+        || (kind == Kind::Reglages) != (body.i == SETTINGS_ITEM)
+    {
         return None;
     }
     let state = match body.v.as_str() {
+        "public" if kind == Kind::Reglages => return None,
         "public" => State::Public(body.d),
         "efface" => State::Deleted,
         "scelle" if kind != Kind::Profil => {
@@ -547,9 +622,9 @@ pub fn latest(records: impl IntoIterator<Item = Read>) -> Vec<Read> {
     best.into_values().collect()
 }
 
-/// Ce qu'une officine passe au réseau : de chaque compte, le profil, ses
-/// [`MOST_ITEMS`] éléments vivants les plus récents et autant
-/// d'effacements — les numéros de version suivent l'heure d'écriture
+/// Ce qu'une officine passe au réseau : de chaque compte, le profil et
+/// les réglages, ses [`MOST_ITEMS`] éléments vivants les plus récents,
+/// autant de billets et autant d'effacements — les numéros de version suivent l'heure d'écriture
 /// (`max(dernier + 1, maintenant)`), si bien que le plus grand est le plus
 /// récent. Les effacements comptent à part : ils ne prennent pas la place
 /// d'un élément neuf.
@@ -569,13 +644,18 @@ pub fn to_seed<B>(latest: Vec<(Read, B)>) -> Vec<(Read, B)> {
                 .then(b.seq.cmp(&a.seq))
                 .then(b.name.cmp(&a.name))
         });
-        let (mut live, mut gone) = (0, 0);
+        // Le profil et les réglages partent toujours ; les billets se
+        // comptent à part des notes et des rendez-vous, pour qu'un fil
+        // bavard ne pousse pas l'agenda hors du réseau.
+        let (mut live, mut posts, mut gone) = (0, 0, 0);
         out.extend(items.into_iter().filter(|(r, _)| {
-            if r.kind == Kind::Profil {
+            if matches!(r.kind, Kind::Profil | Kind::Reglages) {
                 return true;
             }
             let count = if r.state == State::Deleted {
                 &mut gone
+            } else if r.kind == Kind::Billet {
+                &mut posts
             } else {
                 &mut live
             };
@@ -597,9 +677,10 @@ pub fn profile_of(r: &Read) -> Option<Profile> {
 /// Le contenu d'une note ou d'un rendez-vous, s'il se lit.
 pub fn entry_of(r: &Read) -> Option<Entry> {
     match (&r.kind, &r.state) {
-        (Kind::Note | Kind::Rdv, State::Public(text) | State::Sealed(Some(text))) => {
-            serde_json::from_str(text).ok()
-        }
+        (
+            Kind::Note | Kind::Rdv | Kind::Billet,
+            State::Public(text) | State::Sealed(Some(text)),
+        ) => serde_json::from_str(text).ok(),
         _ => None,
     }
 }
@@ -675,6 +756,32 @@ pub fn write_profile(
         seq,
         Kind::Profil,
         Content::Public(&text),
+        entropy,
+    )
+}
+
+/// Les réglages que dit un enregistrement, ouverts par leur compte.
+pub fn settings_of(r: &Read) -> Option<Settings> {
+    match (&r.kind, &r.state) {
+        (Kind::Reglages, State::Sealed(Some(text))) => serde_json::from_str(text).ok(),
+        _ => None,
+    }
+}
+
+/// Les réglages, scellés pour le compte seul.
+pub fn write_settings(
+    account: &Account,
+    seq: u64,
+    settings: &Settings,
+    entropy: &mut dyn Entropy,
+) -> Result<Vec<u8>, WriteError> {
+    let text = serde_json::to_string(settings).map_err(|_| WriteError::Seal)?;
+    write(
+        account,
+        SETTINGS_ITEM,
+        seq,
+        Kind::Reglages,
+        Content::Sealed(&text, &[]),
         entropy,
     )
 }
@@ -1063,8 +1170,30 @@ mod tests {
             .unwrap();
             all.push((read(&live, None).unwrap(), ()));
         }
+        // Des réglages anciens, et plus de billets que le plafond : les
+        // réglages partent quand même, et les billets ne prennent pas la
+        // place des notes.
+        let settings = write_settings(&a, 1, &Settings::default(), &mut Counter(4)).unwrap();
+        all.push((read(&settings, None).unwrap(), ()));
+        for i in 0..MOST_ITEMS as u64 + 5 {
+            let post = write(
+                &a,
+                &format!("b{i}"),
+                1000 + i,
+                Kind::Billet,
+                Content::Public("{}"),
+                &mut Counter(5),
+            )
+            .unwrap();
+            all.push((read(&post, None).unwrap(), ()));
+        }
         let seed = to_seed(all);
         assert!(seed.iter().any(|(r, _)| r.kind == Kind::Profil));
+        assert!(seed.iter().any(|(r, _)| r.kind == Kind::Reglages));
+        assert_eq!(
+            seed.iter().filter(|(r, _)| r.kind == Kind::Billet).count(),
+            MOST_ITEMS
+        );
         let live: Vec<u64> = seed
             .iter()
             .filter(|(r, _)| r.kind == Kind::Note && r.state != State::Deleted)
@@ -1151,6 +1280,64 @@ mod tests {
         )
         .unwrap();
         assert!(read(&wrong, None).is_none());
+    }
+
+    /// **Les réglages ne se lisent que de leur compte** : scellés pour lui,
+    /// refusés publics ou sous un autre nom d'élément ; une décision
+    /// remplace l'autre.
+    #[test]
+    fn the_settings_are_sealed_for_their_account_only() {
+        let a = account(1);
+        let b = account(2);
+        let mut s = Settings::default();
+        s.set(&b.id(), Hold::Muted);
+        assert_eq!(s.hold(&b.id()), Hold::Muted);
+        s.set(&b.id(), Hold::Blocked);
+        assert_eq!(s.hold(&b.id()), Hold::Blocked);
+        assert!(s.masques.is_empty(), "une décision à la fois");
+        let bytes = write_settings(&a, 1, &s, &mut Counter(1)).unwrap();
+        assert_eq!(
+            settings_of(&read(&bytes, Some(&a)).unwrap()),
+            Some(s.clone())
+        );
+        assert_eq!(settings_of(&read(&bytes, Some(&b)).unwrap()), None);
+        assert!(!String::from_utf8_lossy(&bytes).contains(&b.id()));
+        let public = write(
+            &a,
+            SETTINGS_ITEM,
+            2,
+            Kind::Reglages,
+            Content::Public("{}"),
+            &mut Counter(2),
+        )
+        .unwrap();
+        assert!(read(&public, None).is_none());
+        let elsewhere = write(
+            &a,
+            "x",
+            2,
+            Kind::Reglages,
+            Content::Sealed("{}", &[]),
+            &mut Counter(2),
+        )
+        .unwrap();
+        assert!(read(&elsewhere, None).is_none());
+        s.set(&b.id(), Hold::Read);
+        assert_eq!(s, Settings::default());
+        // Un billet se lit comme une note.
+        let post = write(
+            &a,
+            "p1",
+            1,
+            Kind::Billet,
+            Content::Public(r#"{"texte":"Bonjour"}"#),
+            &mut Counter(3),
+        )
+        .unwrap();
+        assert_eq!(
+            entry_of(&read(&post, None).unwrap()).unwrap().texte,
+            "Bonjour"
+        );
     }
 
     #[test]

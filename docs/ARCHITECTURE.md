@@ -1470,7 +1470,7 @@ add clicking and typing; it is not the price of entry.
   explorer's axes, the map's lenses, the batch sheet's natures, as the
   register form already did (`richest_form`); it says nothing useful
   about a form, a dialog or a table of records, where what is under the
-  fold is the control you came to use. 72 regions now set
+  fold is the control you came to use. 73 regions now set
   `ui.spacing_mut().scroll.floating = false`, each for a loss seen on a
   capture at 1024x700: the planning's entry row (« Poser »), the
   register's write form (its natures and nothing else — the quantity,
@@ -2347,7 +2347,7 @@ add clicking and typing; it is not the price of entry.
   agenda_filtre|agenda_month|planning|planning_mois|protocols|protocol_open|template|options|about|tables|
   tables_search|regles|mentions|honoraires|forfaits|calc|carnet|vaccins|bio|watch|revue|conciliation|
   vaccine_map|campagne|campagne_rdv|campagne_parametrer|campagne_entretiens|vaccins_grossesse|vaccins_catalogue|ruptures|reseau|versions|postes|postes_seul|postes_telephone|connexions|officines|ordonnance|ordonnance_lignes|rein|grossesse|age|cyp|ddi|ddi_crush|libelles|listes|base|codex|
-  codex_open|en_ligne|dispositifs|dispositif_open|conseil_contention|conseil_nutrition|conseil_protections|couverture|locations|keys|keys_outils|nouveautes|messages|comptes|comptes_phrase|comptes_ouvert|connexions_carte|vitale|
+  codex_open|en_ligne|dispositifs|dispositif_open|conseil_contention|conseil_nutrition|conseil_protections|couverture|locations|keys|keys_outils|nouveautes|messages|comptes|comptes_phrase|comptes_ouvert|actualites|connexions_carte|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|graph_zoom|graph_wide|graph_ordonnance|graph_filtre|registres|stup|
   trame|cascades|cascades_decrire|cascades_boucle|
   stup_catalogue|saisie|ordonnancier|vigilance|destruction|scans|
@@ -2374,6 +2374,9 @@ add clicking and typing; it is not the price of entry.
   drawn. What is already stored is never rewritten: the expected figures
   of past evenings come back with their gaps the day the box is ticked
   again.
+  `actualites` is the news feed with Claire's account open: posts
+  from three colleagues, one of them shared, and Marc's muted and
+  counted at the foot.
   `comptes`, `comptes_phrase` and `comptes_ouvert` are the accounts
   view: closed on two accounts kept on the post, showing the twelve
   words of an account being created, and open on Claire's with what she
@@ -3083,8 +3086,10 @@ signing and box keys the network already uses, under their own domains.
   wrote by hand is just never read.
 - **Seeded by the network.** `Net::publish` seals the latest version of
   each item of the accounts **kept on this post** into every network
-  journal — at most `MOST_ITEMS` live items and as many deletions per
-  account, newest first. What arrived from elsewhere already travels
+  journal — the profile and the settings always, then at most
+  `MOST_ITEMS` live items, as many posts and as many deletions per
+  account, newest first: a talkative feed does not push the agenda or
+  the blocks off the network. What arrived from elsewhere already travels
   in the journal that brought it; resealing it under the officine's
   name spent the one megabyte peers grant each officine
   (`OPEN_LIMITS`), which is also why an item holds 4 KiB at most.
@@ -3106,6 +3111,26 @@ signing and box keys the network already uses, under their own domains.
   Tests stretch lightly (`comptes_stretch`). The open account lives in
   the session only; locking the application closes it, veil included,
   and wipes the buffers that held a phrase or a code.
+- **Posts and the news feed** (`MainView::Actualites`): a `Kind::Billet`
+  is an entry like a note — public, or shared with chosen accounts —
+  dated with the day and the minute it was written (`Db::now_local`),
+  read newest first, at most `COMPTES_MOST_POSTS`. The date is the
+  author's word: one ahead of today sorts at the start of today, so a
+  post dated 9999 does not hold the head of everyone's feed.
+- **Muting and blocking belong to the account**, not the post: a
+  `Kind::Reglages` item (`compte::Settings`), the only one under its
+  name, refused when public, sealed for the account alone — it follows
+  the person, and nobody else learns who they have set aside. Muted:
+  the author's posts leave the feed and are counted at its foot; what
+  they share stays. Blocked: nothing of theirs is read (posts, shares,
+  publics, agenda), and they leave the readers one can pick — also on
+  an item shared with them before, the next version of which no longer
+  seals for them (`unblocked`). The settings hold 16 KiB
+  (`MAX_SETTINGS`), some two hundred accounts set aside. Their
+  records are still kept and passed: setting someone aside is a
+  reading, and the network's job is unchanged. An older version that
+  does not know `billet` or `reglages` refuses those records and does
+  not pass them.
 - **A profile names itself as it likes**, so another account's name
   always carries the start of its fingerprint, and the shared and
   public lists keep the fifty newest.

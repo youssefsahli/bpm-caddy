@@ -1187,6 +1187,13 @@ que les autres officines accordent à chacune ne s'oublie pas. La phrase ne
 quitte jamais le poste, qui la garde scellée sous le code de la
 personne (Argon2id puis AES-256-GCM, table locale `account_keys`).
 
+Les **billets** (vue Actualités) sont des éléments comme les autres,
+publics ou partagés. Ce qu'un compte a **masqué ou bloqué** est un
+élément de plus, scellé pour lui seul : il le suit d'un poste à
+l'autre, et personne d'autre ne sait qui il a écarté. Écarter un
+auteur est une lecture : ses enregistrements sont gardés et passés
+comme avant.
+
 **Jamais un patient** : ce qu'un compte range passe par les autres
 officines, ce que § 8.4 refuse pour des données de santé. L'écran le
 dit là où l'on écrit.
