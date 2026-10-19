@@ -873,7 +873,9 @@ ou une **astreinte** posée un jour de congé reste affichée et comptée :
 le service de nuit ne disparaît jamais du planning.
 
 Sur un jour de congé, Suppr (ou « Retirer ce jour ») retire le congé de
-ce jour : la journée habituelle reparaît.
+ce jour : la journée habituelle reparaît. Un poste posé sur un jour de
+congé est écrit mais caché par le congé, et le planning le signale :
+retirer le congé de ce jour pour le compter.
 
 ## Trame hebdomadaire
 

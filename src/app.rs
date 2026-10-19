@@ -42660,16 +42660,22 @@ impl App {
         // **Les menus montrent ce que « Poser » écrira.** Rien de choisi,
         // c'est une journée, ce jour-là : deux cases vides disaient
         // autre chose — un formulaire à moitié cassé.
-        if session.shift_form.kind.is_none() {
+        // Sur un poste désigné, la nature est la sienne — et vide quand
+        // cette version ne la connaît pas : « Journée » par défaut y
+        // aurait réécrit, au premier ±15, une nature qu'une version plus
+        // récente a posée.
+        if session.shift_form.kind.is_none() && session.shift_pick.is_none() {
             session.shift_form.kind = Some(planning::ShiftKind::Journee);
         }
         // **Le poste désigné est celui de la personne du menu.** Changer
         // « Qui » sous une sélection laissait « Modifier » écrire sur la
         // ligne d'avant, pendant que le cadre passait sur la nouvelle :
         // le menu changé, la case est rendue.
-        if Self::picked_occurrence(session)
-            .is_some_and(|o| o.operator.trim() != session.shift_form.operator.trim())
-        {
+        // La ligne « non attribué » a un opérateur vide, que le menu ne
+        // montre jamais : elle n'est pas un changement de « Qui ».
+        if Self::picked_occurrence(session).is_some_and(|o| {
+            !o.operator.trim().is_empty() && o.operator.trim() != session.shift_form.operator.trim()
+        }) {
             Self::free_planning_cell(session);
         }
         if session.shift_form.cadence.is_none() {
@@ -43082,14 +43088,16 @@ impl App {
             Self::planning_place_usual(session);
             return;
         }
-        if write {
-            Self::planning_write(session);
-        }
         // Le compte de la dernière commande ne survit pas à la
         // suivante : « 12 postes recopiés » resté à l'écran après une
         // suppression se lirait comme le résultat de la suppression.
+        // Effacé **avant** le geste, qui peut avoir le sien à dire — un
+        // poste posé sous un congé.
         if copy_week || undo || write || edit.is_some() || remove.is_some() {
             session.planning_notice = None;
+        }
+        if write {
+            Self::planning_write(session);
         }
         if open_frame {
             Self::open_frame_on_view(session);
@@ -43422,6 +43430,7 @@ impl App {
                 session.shift_form.to.clear();
                 session.shift_form.pause.clear();
                 session.load_shifts(true);
+                Self::note_if_hidden(session, &[id]);
             }
             Err(e) => session.error = Some(e),
         }
@@ -43452,11 +43461,14 @@ impl App {
                 }
             },
         };
-        let kind = form
-            .kind
-            .unwrap_or(planning::ShiftKind::Journee)
-            .as_str()
-            .to_owned();
+        // Une nature que cette version ne lit pas reste celle qui est
+        // rangée : le menu est vide, et rien n'a été choisi à sa place.
+        let stored_kind = Self::picked_occurrence(session).map(|o| o.kind);
+        let kind = match (form.kind, stored_kind) {
+            (Some(k), _) => k.as_str().to_owned(),
+            (None, Some(stored)) => stored,
+            (None, None) => planning::ShiftKind::Journee.as_str().to_owned(),
+        };
         // **Ce jour seulement : on écrit une exception.** La trame
         // reste intacte, une seconde ligne la remplace ce jour-là,
         // et la semaine dit la vérité. C'est l'idée de l'annulation
@@ -44850,7 +44862,14 @@ impl App {
         if missing {
             session.stale("planning_stale");
         }
-        Self::free_planning_cell(session);
+        // La sélection est rendue, et le rythme d'une trame avec — mais
+        // **pas ce qui est tapé** : un retour arrière ne réécrit pas un
+        // champ sous les doigts de qui remplit un autre poste.
+        session.shift_pick = None;
+        session.planning_range = None;
+        session.shift_form.this_day_only = false;
+        session.shift_form.usual.clear();
+        session.shift_form.cadence = Some(planning::Cadence::Unique);
         session.load_shifts(true);
     }
 
@@ -45223,6 +45242,8 @@ impl App {
             }
         }
         let n = ids.len();
+        session.load_shifts(true);
+        Self::note_if_hidden(session, &ids);
         if n > 0 {
             session.remember(PlanningUndo::Placed {
                 ids,
@@ -45230,8 +45251,21 @@ impl App {
                 what,
             });
         }
-        session.load_shifts(true);
         n
+    }
+
+    /// **Un poste écrit sous un congé se dit.** Un congé cache les
+    /// postes travaillés qu'il couvre (`db::shifts_between`), y compris
+    /// celui qu'on vient de poser — quelqu'un rappelé un jour de congé :
+    /// écrit en base et absent de l'écran, sans un mot, ce serait le
+    /// piège qu'on évite partout ailleurs. La phrase dit quoi faire.
+    fn note_if_hidden(session: &mut Session, ids: &[i64]) {
+        if ids
+            .iter()
+            .any(|id| !session.shifts.iter().any(|s| s.id == *id))
+        {
+            session.planning_notice = Some(tr("planning_hidden_by_leave").to_owned());
+        }
     }
 
     /// Rendre la case désignée : plus de poste visé, des champs vides, un
@@ -45297,7 +45331,11 @@ impl App {
             session.planning_notice = Some(tr("planning_paste_occupied").to_owned());
             return;
         }
-        if Self::planning_place_day(session, &who, &day, &shifts, "planning_undo_pasted") > 0 {
+        // « Collé » se tait devant ce qui compte plus : un poste collé
+        // sous un congé, que `planning_place_day` vient de dire.
+        if Self::planning_place_day(session, &who, &day, &shifts, "planning_undo_pasted") > 0
+            && session.planning_notice.is_none()
+        {
             session.planning_notice = Some(trf("planning_pasted", &label));
         }
         let occ = Self::picked_shift(session);
@@ -104503,6 +104541,88 @@ mod tests {
         assert_eq!(
             s.shift_pick, None,
             "la sélection d'une autre personne est rendue"
+        );
+        let frame = |s: &mut super::Session| {
+            let _ = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let rect = ui.max_rect();
+                    super::App::planning_form(ui, s, &config, rect);
+                });
+            });
+        };
+
+        // Un poste sans personne (la ligne « non attribué ») reste
+        // désignable : son opérateur vide n'est pas un « Qui » changé.
+        s.db.add_shift(&crate::db::NewShift {
+            day: "2026-10-22".into(),
+            start_time: "10:00".into(),
+            end_time: "12:00".into(),
+            kind: ShiftKind::Journee.as_str().into(),
+            ..Default::default()
+        })
+        .unwrap();
+        // Et une nature qu'une version plus récente a posée.
+        s.db.add_shift(&crate::db::NewShift {
+            operator: "YS".into(),
+            day: "2026-10-23".into(),
+            start_time: "09:00".into(),
+            end_time: "12:00".into(),
+            kind: "TELETRAVAIL".into(),
+            ..Default::default()
+        })
+        .unwrap();
+        s.load_shifts(true);
+        let orphan = s.shifts.iter().find(|x| x.operator.is_empty()).cloned();
+        s.shift_form.operator = "CL".into();
+        super::App::pick_planning_cell(&mut s, "", "2026-10-22", orphan);
+        frame(&mut s);
+        assert!(
+            s.shift_pick.is_some(),
+            "le poste sans personne reste désigné"
+        );
+
+        // « fin +15 » sur la nature inconnue la garde telle quelle.
+        pick(&mut s, "YS", "2026-10-23");
+        assert_eq!(s.shift_form.kind, None, "le menu ne la nomme pas");
+        frame(&mut s);
+        assert_eq!(s.shift_form.kind, None, "et rien ne la remplace");
+        s.shift_form.to = "12h15".into();
+        let id = s.shift_pick.unwrap();
+        super::App::planning_edit(&mut s, id);
+        let rows = s.db.shifts_between("2026-10-23", "2026-10-23").unwrap();
+        let row = rows.iter().find(|x| x.operator == "YS").unwrap();
+        assert_eq!(
+            (row.end_time.as_str(), row.kind.as_str()),
+            ("12:15", "TELETRAVAIL")
+        );
+
+        // Un retour arrière ne réécrit pas ce qu'on est en train de taper.
+        s.shift_form.from = "8h".into();
+        super::App::planning_undo(&mut s);
+        assert_eq!(s.shift_form.from, "8h");
+        assert_eq!(s.shift_form.cadence, Some(Cadence::Unique));
+
+        // Un poste posé sous un congé est écrit, caché — et cela se dit.
+        s.db.add_shift(&crate::db::NewShift {
+            operator: "MB".into(),
+            day: "2026-10-20".into(),
+            start_time: "09:00".into(),
+            kind: ShiftKind::Conge.as_str().into(),
+            ..Default::default()
+        })
+        .unwrap();
+        s.load_shifts(true);
+        super::App::free_planning_cell(&mut s);
+        s.shift_form.operator = "MB".into();
+        s.shift_form.day = "2026-10-20".into();
+        s.shift_form.kind = Some(ShiftKind::Journee);
+        s.shift_form.from = "14h".into();
+        s.shift_form.to = "19h".into();
+        s.planning_notice = None;
+        super::App::planning_write(&mut s);
+        assert_eq!(
+            s.planning_notice.as_deref(),
+            Some(crate::strings::tr("planning_hidden_by_leave"))
         );
     }
 

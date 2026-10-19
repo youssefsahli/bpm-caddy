@@ -61,9 +61,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   became zero on a single day; changing « Qui » under a selection
   edited the previous person's row. The nature is written (and undone),
   the pause is refused as « Poser » refuses it, and changing « Qui »
-  frees the selection. « Congé ce jour » no longer turns a sick day or
-  a training into leave, and removing a pattern day no longer leaves
-  the pattern's weekly rhythm in the form for the next Enter.
+  frees the selection. A nature this version cannot read (written by a
+  newer one) is kept as it is. « Congé ce jour » no longer turns a sick
+  day or a training into leave, and removing a pattern day no longer
+  leaves the pattern's weekly rhythm in the form for the next Enter;
+  undo releases the selection without erasing what is being typed.
+  A shift posted on a day under a leave is written and hidden by it —
+  the planning now says so, and how to lift the leave for that day.
 - **A leave now replaces the pattern it covers.** A leave written as a
   range (« tous les jours », du 12 au 26) left the person's pattern
   unfolding under it: on leave, they still counted at the counter, in

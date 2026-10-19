@@ -611,7 +611,12 @@ The one that was missing — « combien de fois un autre poste avait
   what a pattern unfolds, to spare the garde; a review saw that an
   officine building its weeks with « Recopier » has one-off days and
   no pattern, and its leaves then hid nothing at all. The exemption is
-  the duty's, not the row's.) The demo's Thursday
+  the duty's, not the row's.) The price is a shift posted on purpose
+  under a leave — someone called in on a day off — which the leave
+  hides too; telling it apart by id fails across posts, whose blocks
+  are not in time order, so the write **says it** instead
+  (`note_if_hidden`, « caché par le congé »), with the gesture that
+  lifts the leave for that day. The demo's Thursday
   training had shown it without anyone seeing: its exception replaced
   the morning only once days were split, and the afternoon gap its
   comment promises never appeared. Held by
