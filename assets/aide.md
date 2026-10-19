@@ -838,7 +838,9 @@ colle sur une case libre — de la même personne ou d'une autre, ce jour
 seulement. Les flèches déplacent la sélection d'une case à l'autre (la
 case sélectionnée est encadrée, et suit la semaine quand on change de
 semaine par ‹ ›) : on remplit ainsi une semaine au
-clavier. Une case déjà remplie n'est jamais écrasée. **Suppr** vide la
+clavier. Une case déjà remplie n'est jamais écrasée. Sur une plage
+tracée par **Maj+clic**, Ctrl+V (ou « Coller … sur la plage ») pose la
+journée sur chaque case libre de la plage, d'un seul geste. **Suppr** vide la
 case sélectionnée, ce jour seulement — un jour de trame n'a pas lieu,
 la trame reste — et **Ctrl+Z** défait le dernier geste.
 

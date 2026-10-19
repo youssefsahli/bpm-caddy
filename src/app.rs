@@ -18047,6 +18047,8 @@ enum CellAction {
     Drop,
     /// Une absence sur toute la plage désignée (Maj+clic).
     LeaveRange(planning::ShiftKind),
+    /// La journée copiée sur chaque case libre de la plage désignée.
+    PasteRange,
 }
 
 /// Les absences que le menu d'une case pose d'un clic : celles qui
@@ -43237,6 +43239,7 @@ impl App {
         paste: Option<&str>,
         range: Option<(&str, &str)>,
     ) -> Option<CellAction> {
+        let paste_range = paste.filter(|_| range.is_some());
         let paste = paste.filter(|_| !has_shifts);
         if !has_shifts && paste.is_none() && range.is_none() {
             return None;
@@ -43251,6 +43254,14 @@ impl App {
             };
             // La plage d'abord : quand elle est là, c'est elle qu'on vient
             // de tracer.
+            if let Some(label) = paste_range {
+                item(
+                    ui,
+                    &trf("planning_paste_range", label),
+                    tr("planning_paste_range_tooltip"),
+                    CellAction::PasteRange,
+                );
+            }
             if let Some((first, last)) = range {
                 for (kind, _, range_key, _) in MENU_ABSENCES {
                     item(
@@ -43321,6 +43332,10 @@ impl App {
             Self::planning_leave_range(session, kind);
             return;
         }
+        if action == CellAction::PasteRange {
+            Self::planning_paste_cell(session);
+            return;
+        }
         session.shift_form.operator = who.to_owned();
         session.shift_form.day = day.to_owned();
         let occ = Self::picked_shift(session);
@@ -43335,6 +43350,7 @@ impl App {
             CellAction::DayOff(kind) => Self::planning_rewrite_day(session, Some(kind)),
             CellAction::Drop => Self::planning_clear_cell(session),
             CellAction::LeaveRange(kind) => Self::planning_leave_range(session, kind),
+            CellAction::PasteRange => Self::planning_paste_cell(session),
         }
     }
 
@@ -44483,10 +44499,8 @@ impl App {
                                 // Le libellé « Coller … » ne s'écrit que
                                 // menu ouvert : la fermeture ne tourne pas
                                 // tant qu'on ne clique pas à droite.
-                                let paste = session
-                                    .planning_clip
-                                    .as_ref()
-                                    .filter(|_| mine.is_empty() && !key.is_empty());
+                                let paste =
+                                    session.planning_clip.as_ref().filter(|_| !key.is_empty());
                                 let in_range = range
                                     .as_ref()
                                     .filter(|(a, b)| {
@@ -45249,26 +45263,46 @@ impl App {
         shifts: &[planning::Shift],
         what: &'static str,
     ) -> usize {
+        Self::planning_place_days(session, who, &[day.to_owned()], shifts, what)
+    }
+
+    /// La même journée sur **plusieurs jours** — le collé sur une plage —,
+    /// et toujours un seul retour arrière pour l'ensemble.
+    fn planning_place_days(
+        session: &mut Session,
+        who: &str,
+        days: &[String],
+        shifts: &[planning::Shift],
+        what: &'static str,
+    ) -> usize {
         let mut ids = Vec::new();
-        for sh in shifts {
-            let new = db::NewShift {
-                operator: who.to_owned(),
-                day: day.to_owned(),
-                start_time: planning::format_bound(sh.start),
-                end_time: sh.end.map(planning::format_bound).unwrap_or_default(),
-                pause_minutes: i64::from(sh.pause),
-                kind: sh.kind.as_str().to_owned(),
-                cadence: planning::Cadence::Unique.as_str().to_owned(),
-                ..Default::default()
-            };
-            match session.db.add_shift(&new) {
-                Ok(id) => ids.push(id),
-                Err(e) => session.error = Some(e),
+        let mut by_day: Vec<(&String, Vec<i64>)> = Vec::new();
+        for day in days {
+            let mut mine = Vec::new();
+            for sh in shifts {
+                let new = db::NewShift {
+                    operator: who.to_owned(),
+                    day: day.clone(),
+                    start_time: planning::format_bound(sh.start),
+                    end_time: sh.end.map(planning::format_bound).unwrap_or_default(),
+                    pause_minutes: i64::from(sh.pause),
+                    kind: sh.kind.as_str().to_owned(),
+                    cadence: planning::Cadence::Unique.as_str().to_owned(),
+                    ..Default::default()
+                };
+                match session.db.add_shift(&new) {
+                    Ok(id) => mine.push(id),
+                    Err(e) => session.error = Some(e),
+                }
             }
+            ids.extend(&mine);
+            by_day.push((day, mine));
         }
         let n = ids.len();
         session.load_shifts(true);
-        Self::note_if_hidden(session, who, day, &ids);
+        for (day, mine) in by_day {
+            Self::note_if_hidden(session, who, day, &mine);
+        }
         if n > 0 {
             session.remember(PlanningUndo::Placed {
                 ids,
@@ -45388,6 +45422,37 @@ impl App {
         let who = session.shift_form.operator.trim().to_owned();
         let day = session.shift_form.day.clone();
         if who.is_empty() || day.is_empty() {
+            return;
+        }
+        // **Une plage tracée (Maj+clic) se remplit d'un coup** : chaque
+        // case libre de la plage reçoit la journée, les cases déjà
+        // remplies sont laissées — la même règle qu'une seule case —, et
+        // le compte des deux est dit.
+        if let Some((first, last)) = Self::planning_range_bounds(session) {
+            let taken = session.db.shifts_between(&first, &last).unwrap_or_default();
+            let mut free = Vec::new();
+            let mut kept = 0;
+            let mut at = first.clone();
+            while at <= last {
+                if taken
+                    .iter()
+                    .any(|s| s.day == at && s.operator.trim() == who)
+                {
+                    kept += 1;
+                } else {
+                    free.push(at.clone());
+                }
+                match crate::date::add_days(&at, 1) {
+                    Some(next) => at = next,
+                    None => break,
+                }
+            }
+            Self::planning_place_days(session, &who, &free, &shifts, "planning_undo_pasted");
+            if session.planning_notice.is_none() {
+                session.planning_notice =
+                    Some(trn("planning_pasted_range", &[&free.len(), &kept, &label]));
+            }
+            session.planning_range = None;
             return;
         }
         if session
@@ -104722,6 +104787,51 @@ mod tests {
         super::App::planning_follow_week(&mut s);
         assert_eq!(s.shift_form.day, "2026-10-19");
         assert_eq!(s.shift_form.from, "7h", "la frappe reste");
+
+        // Coller sur une plage : le lundi de Claire sur YS du 20 au 22,
+        // le 22 déjà rempli et laissé, un seul retour arrière.
+        pick(&mut s, "CL", "2026-10-19");
+        super::App::planning_copy_cell(&mut s).unwrap();
+        s.db.add_shift(&crate::db::NewShift {
+            operator: "YS".into(),
+            day: "2026-10-22".into(),
+            start_time: "14:00".into(),
+            end_time: "18:00".into(),
+            kind: ShiftKind::Journee.as_str().into(),
+            ..Default::default()
+        })
+        .unwrap();
+        s.load_shifts(true);
+        pick(&mut s, "YS", "2026-10-20");
+        s.planning_range = Some("2026-10-22".into());
+        s.planning_notice = None;
+        super::App::planning_paste_cell(&mut s);
+        let days = |s: &super::Session| {
+            (20..=22)
+                .map(|d| cell(s, "YS", &format!("2026-10-{d}")))
+                .collect::<Vec<_>>()
+        };
+        let after = days(&s);
+        let copied = s.planning_clip.as_ref().map_or(0, |(_, d)| d.len());
+        assert_eq!(after[0].len(), copied);
+        assert_eq!(after[1].len(), copied);
+        assert_eq!(
+            after[2],
+            vec![("14:00".to_owned(), ShiftKind::Journee.as_str().to_owned())],
+            "laissé"
+        );
+        assert!(
+            s.planning_notice
+                .as_deref()
+                .is_some_and(|n| n.contains("2 jour")),
+            "{:?}",
+            s.planning_notice
+        );
+        assert_eq!(s.planning_range, None);
+        super::App::planning_undo(&mut s);
+        let back = days(&s);
+        assert!(back[0].is_empty() && back[1].is_empty());
+        assert_eq!(back[2].len(), 1);
 
         // L'arrêt maladie du matin, d'un clic : une maladie, pas un congé,
         // et défait sous son nom.

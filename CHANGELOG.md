@@ -32,7 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only, taken back by one « Annuler ». A cell already filled is never
   pasted over. The copy also lands in the system clipboard as text
   (« CL 19/10/2026 : 9 h–12 h 30 · 14 h–19 h »), and Ctrl+V pastes only
-  while the clipboard still holds it.
+  while the clipboard still holds it. Over a range laid by Maj+click, the
+  paste fills every free cell of the range at once (filled cells are
+  left, and counted), one « Annuler » for all.
 - **Planning: Suppr empties the selected cell**, that day only: a
   pattern's day does not take place (the pattern stays whole), a
   one-day shift is removed; one « Annuler » or Ctrl+Z brings the cell

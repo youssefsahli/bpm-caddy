@@ -708,7 +708,9 @@ The one that was missing — « combien de fois un autre poste avait
   any plain pick clears it), and the menu writes over it the one daily
   leave row the form would (`planning_leave_range`) — with no end, so
   whole days, which the absence rule turns into a leave that replaces
-  the pattern rather than sits beside it. The designated cell is
+  the pattern rather than sits beside it. A paste over a range fills
+  its free cells and leaves the filled ones, counted
+  (`planning_place_days`, one undo for the whole range). The designated cell is
   framed in both grids, empty or not: it is what the arrows move,
   Ctrl+V fills and the menu aims at. It **follows the week**
   (`planning_follow_week`, on ‹ › and « Aujourd'hui »): left behind,
