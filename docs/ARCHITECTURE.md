@@ -677,7 +677,12 @@ The one that was missing — « combien de fois un autre poste avait
   plain pattern days only, and a Monday holding an exception came out
   half leave, half worked — the test now puts the leave on exactly
   that Monday. One undo (`PlanningUndo::Cleared`, the trame's
-  two-sided undo under its own name). The designated cell is
+  two-sided undo under its own name). Maj+click lays a **range** on the
+  designated person's row (`Session::planning_range`, the other end;
+  any plain pick clears it), and the menu writes over it the one daily
+  leave row the form would (`planning_leave_range`) — with no end, so
+  whole days, which the absence rule turns into a leave that replaces
+  the pattern rather than sits beside it. The designated cell is
   framed in both grids, empty or not: it is what the arrows move,
   Ctrl+V fills and the menu aims at. The right-click menu is one
   function for both grids (`App::planning_cell_menu`, applied by

@@ -862,7 +862,9 @@ la date de départ. Elles coïncident pendant des années et divergent
 définitivement après une année de 53 semaines.
 
 Un congé se saisit comme une plage : « tous les jours », du 12 au 26.
-La date de fin est alors obligatoire. Le congé **remplace la trame**
+La date de fin est alors obligatoire. Plus court : un clic sur le 12,
+**Maj+clic** sur le 26 — la plage s'encadre, dans la semaine comme dans
+le mois —, puis clic droit, « Congé du 12/10 au 26/10 ». Le congé **remplace la trame**
 ces jours-là : la personne n'est comptée ni au comptoir ni dans les
 heures. Sans heure de fin, il couvre la journée entière ; avec des
 heures, il remplace ce qu'il contient entièrement — une formation de

@@ -5731,6 +5731,10 @@ struct Session {
     /// si le presse-papiers porte encore ce texte — autre chose copié
     /// entre-temps ne colle pas une journée oubliée.
     planning_clip: Option<(String, Vec<planning::Shift>)>,
+    /// L'autre bout d'une plage de jours, posé par Maj+clic sur la ligne
+    /// de la personne désignée : de `shift_form.day` à ce jour-ci. Ce
+    /// qu'un congé du 12 au 26 demande, d'un clic droit.
+    planning_range: Option<String>,
     /// The team's shifts for the week on screen, patterns unfolded and
     /// exceptions applied.
     shifts: Vec<db::PlannedShift>,
@@ -6929,6 +6933,7 @@ impl Session {
             planning_undo: Vec::new(),
             planning_notice: None,
             planning_clip: None,
+            planning_range: None,
             shifts: Vec::new(),
             shifts_eve: Vec::new(),
             shifts_week: None,
@@ -18040,6 +18045,8 @@ enum CellAction {
     DayOff,
     /// La case est vidée, ce jour seulement (Suppr).
     Drop,
+    /// Un congé sur toute la plage désignée (Maj+clic).
+    LeaveRange,
 }
 
 /// What the planning's own row is holding: one shift being written.
@@ -43179,9 +43186,10 @@ impl App {
         has_shifts: bool,
         worked: bool,
         paste: Option<&str>,
+        range: Option<(&str, &str)>,
     ) -> Option<CellAction> {
         let paste = paste.filter(|_| !has_shifts);
-        if !has_shifts && paste.is_none() {
+        if !has_shifts && paste.is_none() && range.is_none() {
             return None;
         }
         let mut chosen = None;
@@ -43192,6 +43200,22 @@ impl App {
                     ui.close_menu();
                 }
             };
+            // La plage d'abord : quand elle est là, c'est elle qu'on vient
+            // de tracer.
+            if let Some((first, last)) = range {
+                item(
+                    ui,
+                    &trn(
+                        "planning_leave_range",
+                        &[
+                            &db::format_french_date(first),
+                            &db::format_french_date(last),
+                        ],
+                    ),
+                    tr("planning_leave_range_tooltip"),
+                    CellAction::LeaveRange,
+                );
+            }
             if has_shifts {
                 item(
                     ui,
@@ -43238,6 +43262,12 @@ impl App {
         action: CellAction,
     ) {
         session.planning_notice = None;
+        // Le congé sur la plage part de la plage, pas de la case cliquée :
+        // la désigner d'abord effacerait ce qu'on vient de tracer.
+        if action == CellAction::LeaveRange {
+            Self::planning_leave_range(session);
+            return;
+        }
         session.shift_form.operator = who.to_owned();
         session.shift_form.day = day.to_owned();
         let occ = Self::picked_shift(session);
@@ -43251,6 +43281,7 @@ impl App {
             CellAction::Paste => Self::planning_paste_cell(session),
             CellAction::DayOff => Self::planning_rewrite_day(session, true),
             CellAction::Drop => Self::planning_clear_cell(session),
+            CellAction::LeaveRange => Self::planning_leave_range(session),
         }
     }
 
@@ -43531,6 +43562,8 @@ impl App {
         let chosen = session.shift_form.day.clone();
         let mut clicked: Option<String> = None;
         let mut menu: Option<(String, CellAction)> = None;
+        let range = Self::planning_range_bounds(session);
+        let mut range_pick: Option<String> = None;
         motif::inside(ui, rect, |ui| {
             // **Barre pleine.** Huit colonnes de treize caractères ne
             // tiennent pas dans un volet de comptoir, et ce qui sort par
@@ -43732,7 +43765,9 @@ impl App {
                                     // le menu visent. Aujourd'hui, d'un
                                     // trait plus fin, se repère sans lire
                                     // les trente numéros.
-                                    if *date == chosen {
+                                    let ranged =
+                                        range.as_ref().is_some_and(|(a, b)| a <= date && date <= b);
+                                    if *date == chosen || ranged {
                                         ui.painter().rect_stroke(
                                             cell.response.rect,
                                             0.0,
@@ -43754,7 +43789,12 @@ impl App {
                                         .response
                                         .interact(egui::Sense::click())
                                         .on_hover_text(hover);
-                                    if response.clicked() {
+                                    if response.clicked() && ui.input(|i| i.modifiers.shift) {
+                                        // Maj+clic : l'autre bout d'une
+                                        // plage, du jour désigné à
+                                        // celui-ci.
+                                        range_pick = Some(date.clone());
+                                    } else if response.clicked() {
                                         clicked = Some(date.clone());
                                     }
                                     // Le menu de la semaine, sur la
@@ -43773,6 +43813,10 @@ impl App {
                                         !rows.is_empty(),
                                         worked,
                                         session.planning_clip.as_ref().map(|(l, _)| l.as_str()),
+                                        range
+                                            .as_ref()
+                                            .filter(|(a, b)| a <= date && date <= b)
+                                            .map(|(a, b)| (a.as_str(), b.as_str())),
                                     ) {
                                         menu = Some((date.clone(), a));
                                     }
@@ -43814,6 +43858,9 @@ impl App {
         if let Some((day, action)) = menu {
             Self::planning_cell_act(session, ui.ctx(), &who, &day, action);
             *pick_day = Some(day);
+        }
+        if let Some(day) = range_pick {
+            session.planning_range = Some(day);
         }
     }
 
@@ -44069,6 +44116,11 @@ impl App {
         // le menu d'une case : appliquées de même, la grille lâchée.
         let mut free_cell: Option<String> = None;
         let mut cell_action: Option<(String, String, CellAction)> = None;
+        // La plage désignée (Maj+clic), lue une fois pour la grille, et
+        // l'autre bout qu'un Maj+clic vient de poser.
+        let range = Self::planning_range_bounds(session);
+        let anchor_who = session.shift_form.operator.trim().to_owned();
+        let mut range_pick: Option<String> = None;
         // Une deuxième région défilante sans nom dans la même vue peint
         // ses deux bannières rouges en travers de l'écran.
         motif::inside(ui, rect, |ui| {
@@ -44288,9 +44340,13 @@ impl App {
                                 // déplacent, que Ctrl+V remplit et que le
                                 // menu vise. Une case vide sélectionnée
                                 // ne se distinguait de rien.
-                                if !key.is_empty()
-                                    && *date == session.shift_form.day
-                                    && key == session.shift_form.operator.trim()
+                                let ranged = range.as_ref().is_some_and(|(a, b)| {
+                                    !key.is_empty() && key == anchor_who && a <= date && date <= b
+                                });
+                                if ranged
+                                    || (!key.is_empty()
+                                        && *date == session.shift_form.day
+                                        && key == session.shift_form.operator.trim())
                                 {
                                     ui.painter().rect_stroke(
                                         resp.response.rect,
@@ -44367,15 +44423,35 @@ impl App {
                                     .planning_clip
                                     .as_ref()
                                     .filter(|_| mine.is_empty() && !key.is_empty());
+                                let in_range = range
+                                    .as_ref()
+                                    .filter(|(a, b)| {
+                                        !key.is_empty()
+                                            && key == anchor_who
+                                            && a <= date
+                                            && date <= b
+                                    })
+                                    .map(|(a, b)| (a.as_str(), b.as_str()));
                                 if let Some(a) = Self::planning_cell_menu(
                                     &cell,
                                     !mine.is_empty(),
                                     worked,
                                     paste.map(|(label, _)| label.as_str()),
+                                    in_range,
                                 ) {
                                     cell_action = Some((key.to_owned(), date.clone(), a));
                                 }
-                                if cell.clicked() {
+                                // **Maj+clic trace une plage** sur la
+                                // ligne de la personne désignée : du
+                                // jour désigné à celui-ci.
+                                let shift_held = ui.input(|i| i.modifiers.shift);
+                                if cell.clicked()
+                                    && shift_held
+                                    && !key.is_empty()
+                                    && key == anchor_who
+                                {
+                                    range_pick = Some(date.clone());
+                                } else if cell.clicked() {
                                     *pick_day = Some(date.clone());
                                     // Cliquer une case, c'est dire
                                     // « celui-ci » : le formulaire se
@@ -44576,6 +44652,9 @@ impl App {
         if let Some(day) = free_cell {
             session.shift_form.day = day;
             Self::free_planning_cell(session);
+        }
+        if let Some(day) = range_pick {
+            session.planning_range = Some(day);
         }
         if let Some((who, day, action)) = cell_action {
             Self::planning_cell_act(session, ui.ctx(), &who, &day, action);
@@ -44912,6 +44991,7 @@ impl App {
         day: &str,
         picked: Option<db::PlannedShift>,
     ) {
+        session.planning_range = None;
         let form = &mut session.shift_form;
         form.day = day.to_owned();
         if !who.trim().is_empty() {
@@ -45057,6 +45137,7 @@ impl App {
     /// seconde trame sur la première.
     fn free_planning_cell(session: &mut Session) {
         session.shift_pick = None;
+        session.planning_range = None;
         let form = &mut session.shift_form;
         form.from.clear();
         form.to.clear();
@@ -45117,6 +45198,86 @@ impl App {
         }
         let occ = Self::picked_shift(session);
         Self::pick_planning_cell(session, &who, &day, occ);
+    }
+
+    /// La plage désignée, rangée (premier jour, dernier jour), quand un
+    /// Maj+clic en a posé une — pour la personne du formulaire.
+    fn planning_range_bounds(session: &Session) -> Option<(String, String)> {
+        let other = session.planning_range.clone()?;
+        let anchor = session.shift_form.day.clone();
+        if anchor.is_empty() {
+            return None;
+        }
+        Some(if other < anchor {
+            (other, anchor)
+        } else {
+            (anchor, other)
+        })
+    }
+
+    /// **Un congé sur la plage désignée** — une ligne, comme la saisie
+    /// l'écrit : « tous les jours » du premier au dernier, sans heure de
+    /// fin, donc la journée entière (`planning::hidden_by_absence`). Un
+    /// seul jour, c'est un congé de ce jour-là. L'heure de début est la
+    /// plus matinale de la personne sur la plage, à défaut neuf heures :
+    /// une borne à minuit étirerait le plan de journée jusqu'à la nuit.
+    fn planning_leave_range(session: &mut Session) {
+        let Some((first, last)) = Self::planning_range_bounds(session) else {
+            return;
+        };
+        let who = session.shift_form.operator.trim().to_owned();
+        if who.is_empty() {
+            return;
+        }
+        let start = session
+            .db
+            .shifts_between(&first, &last)
+            .unwrap_or_default()
+            .iter()
+            .filter(|s| s.operator.trim() == who)
+            .filter_map(|s| planning::parse_bound(&s.start_time))
+            .min()
+            .unwrap_or(9 * 60)
+            .min(24 * 60 - 1);
+        let rhythm = if first == last {
+            planning::Cadence::Unique
+        } else {
+            planning::Cadence::Quotidien
+        };
+        let row = db::NewShift {
+            operator: who.clone(),
+            day: first.clone(),
+            start_time: planning::format_bound(start),
+            kind: planning::ShiftKind::Conge.as_str().to_owned(),
+            repeat_days: rhythm.pas(),
+            cadence: rhythm.as_str().to_owned(),
+            repeat_until: if first == last {
+                String::new()
+            } else {
+                last.clone()
+            },
+            ..Default::default()
+        };
+        match session.db.add_shift(&row) {
+            Ok(id) => {
+                session.remember(PlanningUndo::Added {
+                    id,
+                    who: who.clone(),
+                });
+                session.planning_notice = Some(trn(
+                    "planning_leave_set",
+                    &[
+                        &who,
+                        &db::format_french_date(&first),
+                        &db::format_french_date(&last),
+                    ],
+                ));
+            }
+            Err(e) => session.error = Some(e),
+        }
+        session.load_shifts(true);
+        let occ = Self::picked_shift(session);
+        Self::pick_planning_cell(session, &who, &first, occ);
     }
 
     /// **Vider la case désignée** (Suppr, « Retirer ce jour ») — ce
@@ -88569,12 +88730,20 @@ fn fuzz_input(raw: &mut egui::RawInput) -> bool {
         } else {
             egui::PointerButton::Primary
         };
+        // Et un sur huit avec Maj : la plage du planning, la sélection
+        // étendue d'une liste. Maj ne quitte ni ne verrouille rien.
+        let modifiers = if next() % 8 == 0 {
+            egui::Modifiers::SHIFT
+        } else {
+            none
+        };
+        raw.modifiers = modifiers;
         for pressed in [true, false] {
             raw.events.push(egui::Event::PointerButton {
                 pos,
                 button,
                 pressed,
-                modifiers: none,
+                modifiers,
             });
         }
     }
@@ -104020,6 +104189,44 @@ mod tests {
         assert_eq!(day(&s, "2026-10-20")[0].kind, ShiftKind::Conge);
         super::App::planning_undo(&mut s);
         assert_eq!(day(&s, "2026-10-19")[0].kind, ShiftKind::Conge);
+
+        // Le même congé, tracé d'un Maj+clic : le 26 désigné, Maj+clic
+        // le 30 — une ligne, journées entières, la trame cachée dessous
+        // et revenue après, un seul retour arrière.
+        let pick = |s: &mut super::Session, d: &str| {
+            s.shift_form.operator = "CL".into();
+            s.shift_form.day = d.into();
+            let occ = super::App::picked_shift(s);
+            super::App::pick_planning_cell(s, "CL", d, occ);
+        };
+        pick(&mut s, "2026-10-30");
+        s.planning_range = Some("2026-10-26".into());
+        assert_eq!(
+            super::App::planning_range_bounds(&s),
+            Some(("2026-10-26".to_owned(), "2026-10-30".to_owned())),
+            "rangée, quel que soit le sens du tracé"
+        );
+        super::App::planning_leave_range(&mut s);
+        assert_eq!(s.planning_range, None, "la plage est consommée");
+        let leave = s.db.shifts_between("2026-10-26", "2026-11-02").unwrap();
+        let kinds = |d: &str| {
+            leave
+                .iter()
+                .filter(|x| x.day == d)
+                .map(|x| (x.kind.clone(), x.start_time.clone()))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            kinds("2026-10-26"),
+            vec![(ShiftKind::Conge.as_str().to_owned(), "09:00".to_owned())]
+        );
+        assert_eq!(kinds("2026-10-30").len(), 1);
+        assert_eq!(kinds("2026-11-02")[0].0, ShiftKind::Journee.as_str());
+        super::App::planning_undo(&mut s);
+        assert_eq!(
+            s.db.shifts_between("2026-10-26", "2026-10-26").unwrap()[0].kind,
+            ShiftKind::Journee.as_str()
+        );
     }
 
     #[test]
