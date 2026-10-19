@@ -178,6 +178,10 @@ pub const TABLES: &[Table] = &[
     // Qui est de l'officine : lu par chaque poste, compagnons compris,
     // pour savoir à qui parler.
     t("sync_posts", Main, Equipe, false, false),
+    // Ce que chaque personne écrit sous son compte : signé et, sauf le
+    // public, scellé pour ses lecteurs — sur le flux de l'équipe, que le
+    // téléphone reçoit. En ajout seul : une version est une ligne de plus.
+    t("account_records", Main, Equipe, true, true),
     t("events", Main, Agenda, false, true),
     t("shifts", Main, Planning, false, true),
     t("caisse_counts", Main, Caisse, true, true),
@@ -231,6 +235,11 @@ pub const LOCAL: &[(File, &str, &str)] = &[
         "l'ancienne place du registre, avant son fichier",
     ),
     (Main, "sync_local", "l'identité et la clé de ce poste"),
+    (
+        Main,
+        "account_keys",
+        "les comptes ouverts sur ce poste, sous le code de chacun",
+    ),
     (Main, "sync_log", "les écritures pas encore parties"),
     (Main, "sync_records", "le journal des postes"),
     (Main, "sync_applied", "ce que ce poste a déjà rangé"),

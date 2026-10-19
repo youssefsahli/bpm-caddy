@@ -1054,6 +1054,28 @@ CREATE TABLE IF NOT EXISTS sync_blocks (
     high INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS sync_mute (mute INTEGER NOT NULL);
+-- Les comptes (`compte.rs`) : ce que chaque personne a écrit, tel quel
+-- — l'enregistrement signé, en hexadécimal, dont le nom est le hachage.
+-- En ajout seul : une version nouvelle est une ligne de plus, la
+-- dernière gagne à la lecture (`compte::latest`). Voyage entre les postes
+-- sur le flux de l'équipe, et entre les officines par le journal du
+-- réseau : chacune le garde et le passe sans pouvoir le réécrire.
+CREATE TABLE IF NOT EXISTS account_records (
+    id      INTEGER PRIMARY KEY,
+    name    TEXT NOT NULL,
+    account TEXT NOT NULL,
+    item    TEXT NOT NULL,
+    seq     INTEGER NOT NULL DEFAULT 0,
+    bytes   TEXT NOT NULL
+);
+-- Les comptes ouverts sur **ce** poste : la phrase, scellée sous le code
+-- de la personne (`compte::lock`). Ne voyage pas : chaque poste reçoit
+-- la phrase une fois, de la personne elle-même.
+CREATE TABLE IF NOT EXISTS account_keys (
+    account TEXT PRIMARY KEY,
+    label   TEXT NOT NULL DEFAULT '',
+    locked  TEXT NOT NULL
+);
 ";
 
 /// The indexes, applied **after** [`MIGRATIONS`] and not with [`SCHEMA`].
@@ -1074,6 +1096,9 @@ CREATE TABLE IF NOT EXISTS sync_mute (mute INTEGER NOT NULL);
 /// The two-column ones are ordered so the equality column comes first,
 /// which is the only order SQLite can seek on.
 const INDEXES: &[&str] = &[
+    // Un enregistrement de compte se cherche par son nom à chaque lecture
+    // du réseau.
+    "CREATE INDEX IF NOT EXISTS idx_account_records_name ON account_records(name)",
     // Le journal des accès se lit par période, jamais en entier.
     "CREATE INDEX IF NOT EXISTS idx_access_at ON access_log(at)",
     // The seeding hot path, and the lookup every other pass makes.
@@ -1734,6 +1759,20 @@ const MIGRATIONS: &[&str] = &[
         at           TEXT NOT NULL DEFAULT '',
         author       TEXT NOT NULL DEFAULT '',
         read_on      TEXT NOT NULL DEFAULT ''
+    )",
+    // Les comptes — voir `SCHEMA`.
+    "CREATE TABLE IF NOT EXISTS account_records (
+        id      INTEGER PRIMARY KEY,
+        name    TEXT NOT NULL,
+        account TEXT NOT NULL,
+        item    TEXT NOT NULL,
+        seq     INTEGER NOT NULL DEFAULT 0,
+        bytes   TEXT NOT NULL
+    )",
+    "CREATE TABLE IF NOT EXISTS account_keys (
+        account TEXT PRIMARY KEY,
+        label   TEXT NOT NULL DEFAULT '',
+        locked  TEXT NOT NULL
     )",
 ];
 
@@ -47822,6 +47861,160 @@ impl Db {
     /// Les enregistrements du réseau, tels que la base les garde.
     pub fn net_records(&self) -> Result<Vec<Vec<u8>>, String> {
         self.net_records_of("")
+    }
+
+    /// Garder des enregistrements de compte — ceux qui ne se lisent pas
+    /// (signature, forme) et ceux qu'on a déjà sont laissés. Rend combien
+    /// étaient nouveaux.
+    ///
+    /// **Ce qu'on a déjà ne se revérifie pas** : chaque lecture du réseau
+    /// présente tout son journal, et une signature vérifiée par
+    /// enregistrement et par synchronisation, dans la transaction qui
+    /// écrit, tenait la base partagée le temps d'un journal entier. Les
+    /// noms connus sont lus une fois ; seuls les nouveaux sont vérifiés,
+    /// avant d'ouvrir la transaction.
+    #[cfg(feature = "sync")]
+    pub fn keep_account_records(&self, records: &[Vec<u8>]) -> Result<usize, String> {
+        let known: std::collections::HashSet<String> = {
+            let mut stmt = self
+                .conn
+                .prepare("SELECT name FROM account_records")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |r| r.get::<_, String>(0))
+                .map_err(|e| e.to_string())?;
+            rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+        };
+        let mut fresh = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for bytes in records {
+            let name = crate::compte::name_of(bytes);
+            if known.contains(&name) || !seen.insert(name) {
+                continue;
+            }
+            if let Some(r) = crate::compte::read(bytes, None) {
+                fresh.push((r, bytes));
+            }
+        }
+        if fresh.is_empty() {
+            return Ok(0);
+        }
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
+        let mut added = 0;
+        for (r, bytes) in fresh {
+            added += tx
+                .execute(
+                    &format!(
+                        "INSERT INTO account_records (id, name, account, item, seq, bytes)
+                         SELECT {next}, ?1, ?2, ?3, ?4, ?5
+                         WHERE NOT EXISTS (SELECT 1 FROM account_records WHERE name = ?1)",
+                        next = next_id("account_records")
+                    ),
+                    rusqlite::params![
+                        r.name,
+                        r.account,
+                        r.item,
+                        i64::try_from(r.seq).unwrap_or(i64::MAX),
+                        crate::compte::hex(bytes.as_slice())
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(added)
+    }
+
+    /// Tous les enregistrements de compte que la base tient, anciennes
+    /// versions comprises.
+    #[cfg(feature = "sync")]
+    pub fn account_record_bytes(&self) -> Result<Vec<Vec<u8>>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT bytes FROM account_records ORDER BY id")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            if let Some(b) = crate::compte::unhex_vec(&row.map_err(|e| e.to_string())?) {
+                out.push(b);
+            }
+        }
+        Ok(out)
+    }
+
+    /// La dernière version de chaque élément de chaque compte, et ses
+    /// octets ; `reader` ouvre ce qui est scellé pour lui.
+    #[cfg(feature = "sync")]
+    pub fn account_latest(
+        &self,
+        reader: Option<&crate::compte::Account>,
+    ) -> Result<Vec<(crate::compte::Read, Vec<u8>)>, String> {
+        let mut bytes_of = std::collections::HashMap::new();
+        let mut reads = Vec::new();
+        for b in self.account_record_bytes()? {
+            if let Some(r) = crate::compte::read(&b, reader) {
+                bytes_of.insert(r.name.clone(), b);
+                reads.push(r);
+            }
+        }
+        Ok(crate::compte::latest(reads)
+            .into_iter()
+            .filter_map(|r| {
+                let b = bytes_of.remove(&r.name)?;
+                Some((r, b))
+            })
+            .collect())
+    }
+
+    /// Les comptes gardés sur ce poste : (compte, nom, phrase scellée).
+    #[cfg(feature = "sync")]
+    pub fn kept_accounts(&self) -> Result<Vec<(String, String, Vec<u8>)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT account, label, locked FROM account_keys ORDER BY label, account")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (a, l, k) = row.map_err(|e| e.to_string())?;
+            if let Some(k) = crate::compte::unhex_vec(&k) {
+                out.push((a, l, k));
+            }
+        }
+        Ok(out)
+    }
+
+    /// Garder un compte sur ce poste, sous un nouveau code s'il y était.
+    #[cfg(feature = "sync")]
+    pub fn keep_account(&self, account: &str, label: &str, locked: &[u8]) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT INTO account_keys (account, label, locked) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(account) DO UPDATE SET label = excluded.label, locked = excluded.locked",
+                rusqlite::params![account, label, crate::compte::hex(locked)],
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
+    /// Retirer un compte de ce poste — ce qu'il a écrit reste, et se
+    /// retrouve avec la phrase.
+    #[cfg(feature = "sync")]
+    pub fn forget_account(&self, account: &str) -> Result<(), String> {
+        self.conn
+            .execute("DELETE FROM account_keys WHERE account = ?1", [account])
+            .map(|_| ())
+            .map_err(|e| e.to_string())
     }
 
     /// Les enregistrements d'un réseau (vide : le principal).

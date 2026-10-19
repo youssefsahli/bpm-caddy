@@ -1823,6 +1823,65 @@ empreinte ; un fichier incomplet ou altéré ne s'enregistre pas. Le nom
 reçu ne détermine pas l'emplacement d'enregistrement. Un fichier pour une autre
 officine demande la même confirmation qu'un patient nommé.
 
+# Comptes
+
+La vue **Comptes** (« Aller à… » : « comptes ») donne à chaque personne
+**son compte** : pas un poste, pas l'officine, une personne. Ce qu'elle
+y range — ses rendez-vous, ses notes — la suit d'un poste à l'autre et
+d'une officine à l'autre.
+
+**Créer un compte.** Un nom (ce que les autres verront), un rôle, un
+RPPS et une officine facultatifs, et un **code** pour ce poste (huit
+caractères au moins, pas seulement des chiffres : la base que toute
+l'équipe ouvre le garde), tapé deux fois. « Tirer la phrase » montre
+**douze mots** : recopiez-les sur papier, dans l'ordre. Ils **sont** le
+compte — personne ne peut les retrouver, et sans eux un code oublié ou
+un poste perdu perd le compte. Le compte n'est créé qu'une fois un des
+mots retapé.
+
+**Ouvrir.** Les comptes gardés sur ce poste se listent ; choisir le
+sien, taper son code, Entrée. Le nom du compte ouvert s'affiche dans la
+barre d'état. Le compte se ferme avec « Fermer le compte », et de
+lui-même quand l'application se verrouille.
+
+**Retrouver par la phrase**, sur un autre poste ou dans une autre
+officine : les douze mots (les accents et les majuscules ne comptent
+pas, quatre lettres suffisent quand elles ne désignent qu'un mot) et un
+code pour ce poste. Un mot mal recopié est désigné par son rang. Ce que
+le compte a écrit revient avec la synchronisation : entre les postes de
+l'officine, et par le réseau des officines, qui le garde et le passe.
+
+**Ranger.** Une note ou un rendez-vous (jour, heures facultatives), et
+qui le lit :
+
+- **Privé** : soi seul ;
+- **Partagé** : les comptes cochés, et soi ;
+- **Public** : tout le monde.
+
+Un clic sur un de ses éléments le remet au formulaire pour le modifier
+ou l'effacer. Modifié entre-temps sur un autre poste, l'élément le dit :
+relisez-le, et « Enregistrer » à nouveau écrit le vôtre par-dessus. Un
+effacement, ou un lecteur retiré, vaut pour la suite : ce qu'un lecteur
+a déjà reçu reste lisible chez lui. « Partagés avec moi » montre ce que d'autres comptes
+partagent avec celui-ci ; « Publics », ce que d'autres ont rendu public.
+Les rendez-vous du compte ouvert paraissent aussi dans le volet du jour
+de l'agenda, à part des entrées de l'officine.
+
+**Le profil est public** dès la création : nom, rôle, RPPS, officine.
+C'est ce qui permet aux autres de partager avec vous ; « Publier le
+profil » en envoie une nouvelle version. Un nom se signe comme on veut :
+les noms des autres comptes portent donc le début de leur empreinte
+(« Claire Martin (85D6 CD04) »), à comparer avant de partager.
+
+**Jamais un patient.** Ce qui est rangé dans un compte passe par les
+autres officines du réseau : scellé quand il est privé ou partagé —
+elles le transportent sans pouvoir le lire ni le réécrire —, en clair
+quand il est public. Un dossier, un nom de patient n'ont rien à y faire.
+
+« Retirer de ce poste » (deux clics) oublie le compte ici ; rien de ce
+qu'il a écrit n'est effacé, et sa phrase le rouvre — sans elle, il est
+perdu.
+
 # Connexions
 
 L'icône à trois nœuds, en bas à droite de la barre d'état, indique le

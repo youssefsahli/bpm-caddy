@@ -467,6 +467,29 @@ impl Net {
                 done.push(key);
             }
         }
+        // **Les comptes** : la dernière version de chaque élément, telle
+        // que son compte l'a signée — l'officine la passe sans la lire, et
+        // ce qui est scellé ne s'ouvre que chez ses lecteurs. **Seulement
+        // ceux qu'on a ouverts sur ce poste** : ce qui arrive d'ailleurs
+        // circule déjà par le journal qui l'a apporté, et le resceller ici
+        // sous le nom de l'officine userait le mégaoctet que les autres lui
+        // accordent. Au plus `compte::MOST_ITEMS` éléments par compte.
+        let here: std::collections::HashSet<String> =
+            db.kept_accounts()?.into_iter().map(|(a, _, _)| a).collect();
+        let latest: Vec<_> = db
+            .account_latest(None)?
+            .into_iter()
+            .filter(|(r, _)| here.contains(&r.account))
+            .collect();
+        for (r, bytes) in crate::compte::to_seed(latest) {
+            let key = format!("acc:{}", r.name);
+            if already.contains(&key) {
+                continue;
+            }
+            if self.seal_one(trousseau, &bytes) {
+                done.push(key);
+            }
+        }
         // **Le relais** (`relay.rs`) : l'officine qui relaie dit où, une
         // fois par valeur — une valeur vide aussi, qui retire l'offre ;
         // celle qui demande à être relayée dit le nom de son groupe de
@@ -627,6 +650,30 @@ impl Net {
         } else {
             self.known()
         };
+        // **Les comptes** (`compte.rs`), des auteurs que ce réseau lit : un
+        // enregistrement de compte porte la signature de son compte, et le
+        // poste qui l'a passé n'y ajoute rien — c'est ainsi que le réseau
+        // les sème. Lus enregistrement par enregistrement, pas par la
+        // lecture du flux : une « correction » d'un autre auteur n'en cache
+        // aucun. Une officine écartée n'en apporte plus. Ce que ce réseau
+        // porte déjà est marqué parti, pour n'y être pas rescellé d'ici.
+        let readers: std::collections::HashSet<DeviceId> = known.iter().copied().collect();
+        let accounts: Vec<Vec<u8>> = self
+            .journal
+            .records()
+            .filter(|r| r.stream() == Stream::Reseau && r.corrects().is_none())
+            .filter(|r| r.author() != me && readers.contains(&r.author()))
+            .filter_map(|r| r.open(trousseau).ok())
+            .filter(|p| p.starts_with(crate::compte::TAG))
+            .collect();
+        if !accounts.is_empty() {
+            db.keep_account_records(&accounts)?;
+            let keys: Vec<String> = accounts
+                .iter()
+                .map(|b| self.done_key(&format!("acc:{}", crate::compte::name_of(b))))
+                .collect();
+            db.mark_published(&keys)?;
+        }
         // **Lu à travers la vue de confiance** : ce que les conversations
         // relaient d'auteurs qu'on n'a pas ajoutés reste au journal — pour
         // qu'on ne le redemande pas à chaque échange —, mais ne corrige
@@ -3893,6 +3940,93 @@ mod tests {
         assert!(a.net_members(&open_id()).unwrap().is_empty());
         set_open(&a, true, "2026-10-17").unwrap();
         assert!(in_open(&a));
+    }
+
+    /// **Un compte se sème par le réseau ouvert** : écrit chez A, passé
+    /// par B, retrouvé chez C avec sa seule phrase — sans que B ni C lisent
+    /// ce qui est scellé, ni que A et C se soient jamais parlé.
+    #[test]
+    fn an_account_is_seeded_by_the_open_network_and_found_again_by_its_phrase() {
+        use crate::compte;
+        let (dir_a, _sa, a) = officine("acc-a");
+        let (dir_b, _sb, b) = officine("acc-b");
+        let (_dir_c, _sc, c) = officine("acc-c");
+        for db in [&a, &b, &c] {
+            join_open(db, "2026-10-19").unwrap();
+        }
+        let claire =
+            compte::Account::from_phrase(compte::Phrase::generate(&mut bpm_sync::OsEntropy));
+        let profile = compte::Profile {
+            nom: "Claire Martin".to_owned(),
+            ..compte::Profile::default()
+        };
+        let note = compte::Entry {
+            titre: "Codes du coffre".to_owned(),
+            ..compte::Entry::default()
+        };
+        let records = vec![
+            compte::write_profile(&claire, 1, &profile, &mut bpm_sync::OsEntropy).unwrap(),
+            compte::write_entry(
+                &claire,
+                ("n1", 1),
+                compte::Kind::Note,
+                &note,
+                &compte::Visibility::Private,
+                &|_| None,
+                &mut bpm_sync::OsEntropy,
+            )
+            .unwrap(),
+        ];
+        assert_eq!(a.keep_account_records(&records).unwrap(), 2);
+        assert_eq!(a.keep_account_records(&records).unwrap(), 0, "une fois");
+        // Ouvert sur un poste de A : c'est A qui le publie.
+        a.keep_account(&claire.id(), "Claire Martin", b"scelle")
+            .unwrap();
+        // A passe à B, B passe à C.
+        for (from, from_dir, to) in [(&a, &dir_a, &b), (&b, &dir_b, &c)] {
+            Net::load_network(from, &open_id())
+                .unwrap()
+                .publish(from, "P")
+                .unwrap();
+            let door = bpm_sync::link::Door::open("127.0.0.1:0").unwrap();
+            let at = door.address().unwrap().to_string();
+            let path = from_dir.join("net.db");
+            let answering = std::thread::spawn(move || {
+                let db = Db::open(&path, "secret").unwrap();
+                let mut link = door.accept(Duration::from_secs(20)).unwrap();
+                answer(&db, &mut link)
+            });
+            dial_open(to, &device_hex(from).unwrap(), &at, "P").expect("jointe");
+            answering.join().unwrap().unwrap();
+            Net::load_network(to, &open_id())
+                .unwrap()
+                .absorb(to)
+                .unwrap();
+        }
+        // B et C gardent le compte, scellé.
+        for db in [&b, &c] {
+            let held = db.account_latest(None).unwrap();
+            assert_eq!(held.len(), 2);
+            assert!(held
+                .iter()
+                .any(|(r, _)| r.state == compte::State::Sealed(None)));
+        }
+        // C, avec la phrase : le profil, et la note ouverte.
+        let again = compte::Account::from_phrase(
+            compte::Phrase::parse(&claire.phrase().words().join(" ")).unwrap(),
+        );
+        let got = c.account_latest(Some(&again)).unwrap();
+        let profile = got.iter().find_map(|(r, _)| compte::profile_of(r)).unwrap();
+        assert_eq!(profile.nom, "Claire Martin");
+        let opened = got.iter().find_map(|(r, _)| compte::entry_of(r)).unwrap();
+        assert_eq!(opened.titre, "Codes du coffre");
+        // Ce que C a reçu ne repart pas de C sous un autre sceau : B le
+        // porte déjà, C l'a marqué porté, et le compte n'est pas ouvert
+        // chez C.
+        let mut nc = Net::load_network(&c, &open_id()).unwrap();
+        let before = nc.journal.len();
+        nc.publish(&c, "P").unwrap();
+        assert_eq!(nc.journal.len(), before);
     }
 
     /// **Une officine écartée n'est plus lue au réseau ouvert**, et ne s'y

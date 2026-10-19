@@ -2034,6 +2034,7 @@ fn help_title_for(
         MainView::Connexions => "Connexions",
         MainView::Officines => "Carte des officines",
         MainView::Messages => "Messagerie",
+        MainView::Comptes => "Comptes",
         MainView::Ruptures => "Ruptures",
         MainView::Drugs if graph => "La carte pharmacologique",
         MainView::Drugs if calc => "Calculs",
@@ -3174,6 +3175,10 @@ enum MainView {
     /// n'a pas oublié » et se lit en cochant. Les deux s'impriment, et
     /// les confondre ferait une feuille sans cases.
     Checklists,
+    /// Les comptes : une personne, sa phrase, et ce qu'elle range —
+    /// privé, partagé avec d'autres comptes, ou public. Voir
+    /// [`crate::compte`].
+    Comptes,
     /// Les récepteurs et cascades : un mécanisme d'action décrit en
     /// texte, dessiné en étages et joué dans le temps — ce qu'une
     /// molécule fait à la chaîne qu'elle touche. Voir
@@ -3214,6 +3219,7 @@ impl MainView {
             MainView::Connexions => "connexions",
             MainView::Officines => "officines",
             MainView::Messages => "messages",
+            MainView::Comptes => "comptes",
         }
     }
 
@@ -3242,6 +3248,7 @@ impl MainView {
             "connexions" => Some(MainView::Connexions),
             "officines" => Some(MainView::Officines),
             "messages" => Some(MainView::Messages),
+            "comptes" => Some(MainView::Comptes),
             _ => None,
         }
     }
@@ -3315,6 +3322,8 @@ enum WorkTab {
     Officines,
     /// La messagerie.
     Messages,
+    /// Les comptes des personnes.
+    Comptes,
     Search,
     Agenda,
     Carnet,
@@ -5876,6 +5885,9 @@ struct Session {
     /// La carte des officines (`repertoire`).
     #[cfg(feature = "sync")]
     carte: Carte,
+    /// Les comptes : celui qui est ouvert, ceux de ce poste.
+    #[cfg(feature = "sync")]
+    comptes: Comptes,
     online_fresh: std::collections::HashMap<crate::versions::Kind, usize>,
     online_fresh_key: Option<(u64, Option<crate::versions::Kind>)>,
     /// The history window, on this card.
@@ -6981,6 +6993,8 @@ impl Session {
             carte_seen_dirty: false,
             #[cfg(feature = "sync")]
             carte: Carte::default(),
+            #[cfg(feature = "sync")]
+            comptes: Comptes::default(),
             online_fresh: std::collections::HashMap::new(),
             online_fresh_key: None,
             versions_open: None,
@@ -7354,6 +7368,7 @@ impl Session {
             MainView::Connexions => WorkTab::Connexions,
             MainView::Officines => WorkTab::Officines,
             MainView::Messages => WorkTab::Messages,
+            MainView::Comptes => WorkTab::Comptes,
             MainView::Script => WorkTab::Script,
             MainView::Caisse | MainView::CaisseHistory => WorkTab::Caisse,
             MainView::Ddi => WorkTab::Ddi,
@@ -7451,6 +7466,11 @@ impl Session {
             WorkTab::Messages => {
                 self.view = MainView::Messages;
                 self.msg.dirty = true;
+            }
+            WorkTab::Comptes => {
+                self.view = MainView::Comptes;
+                #[cfg(feature = "sync")]
+                self.reload_comptes();
             }
             WorkTab::Connexions => {
                 self.view = MainView::Connexions;
@@ -7608,6 +7628,7 @@ impl Session {
             WorkTab::Connexions,
             WorkTab::Officines,
             WorkTab::Messages,
+            WorkTab::Comptes,
             WorkTab::Script,
             WorkTab::Caisse,
         ] {
@@ -8861,6 +8882,12 @@ impl Session {
         self.graph_pair = None;
         self.calc_poso = None;
         self.grid_events_memo = None;
+        // Les comptes : une version arrivée d'un autre poste ou d'une
+        // autre officine. Les tampons de saisie restent.
+        #[cfg(feature = "sync")]
+        if self.comptes.open.is_some() || self.view == MainView::Comptes {
+            self.reload_comptes();
+        }
         if let Ok(list) = self.db.patients() {
             let ddr_before = self.viewing.as_ref().map(|p| p.pregnancy_ddr.clone());
             self.set_patients(list);
@@ -10751,6 +10778,7 @@ impl Session {
             }
             WorkTab::Officines => tr("tab_officines").to_owned(),
             WorkTab::Messages => tr("tab_messages").to_owned(),
+            WorkTab::Comptes => tr("tab_comptes").to_owned(),
             WorkTab::Script => tr("tab_script").to_owned(),
             WorkTab::Caisse => tr("tab_caisse").to_owned(),
             WorkTab::Drugs => tr("tab_drugs").to_owned(),
@@ -11675,6 +11703,619 @@ impl Session {
 
     #[cfg(not(feature = "sync"))]
     fn open_carte(&mut self) {}
+
+    /// Relire ce que les comptes disent : ceux de ce poste et, compte
+    /// ouvert, ses éléments, ceux qu'on partage avec lui, les publics et
+    /// les personnes connues.
+    #[cfg(feature = "sync")]
+    fn reload_comptes(&mut self) {
+        use crate::compte::{self, Kind, State};
+        let c = &mut self.comptes;
+        c.kept = self
+            .db
+            .kept_accounts()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(a, l, _)| (a, l))
+            .collect();
+        if c.pick
+            .as_ref()
+            .is_none_or(|p| !c.kept.iter().any(|(a, _)| a == p))
+        {
+            c.pick = c.kept.first().map(|(a, _)| a.clone());
+        }
+        let latest = self.db.account_latest(c.open.as_ref()).unwrap_or_default();
+        let me = c.open.as_ref().map(compte::Account::id);
+        c.people = latest
+            .iter()
+            .filter(|(r, _)| Some(&r.account) != me.as_ref())
+            .filter_map(|(r, _)| compte::profile_of(r).map(|p| (r.account.clone(), p)))
+            .filter(|(_, p)| !p.nom.trim().is_empty())
+            .collect();
+        c.people.sort_by_key(|(_, p)| p.nom.to_lowercase());
+        let (mut mine, mut shared, mut public) = (Vec::new(), Vec::new(), Vec::new());
+        for (r, _) in &latest {
+            if r.kind == Kind::Profil {
+                if Some(&r.account) == me.as_ref() {
+                    if let Some(p) = compte::profile_of(r) {
+                        c.profile = p;
+                        c.profile_seq = r.seq;
+                    }
+                }
+                continue;
+            }
+            let Some(entry) = compte::entry_of(r) else {
+                continue;
+            };
+            let item = AccountItem {
+                account: r.account.clone(),
+                item: r.item.clone(),
+                kind: r.kind,
+                seq: r.seq,
+                visibility: compte::visibility_of(r, &entry),
+                entry,
+            };
+            if Some(&r.account) == me.as_ref() {
+                mine.push(item);
+            } else if matches!(r.state, State::Sealed(Some(_))) {
+                shared.push(item);
+            } else {
+                public.push(item);
+            }
+        }
+        // Les rendez-vous dans l'ordre du calendrier, les notes ensuite ;
+        // les plus récentes versions d'abord parmi les notes.
+        let order = |a: &AccountItem, b: &AccountItem| {
+            (a.kind != Kind::Rdv)
+                .cmp(&(b.kind != Kind::Rdv))
+                .then((&a.entry.jour, &a.entry.debut).cmp(&(&b.entry.jour, &b.entry.debut)))
+                .then(b.seq.cmp(&a.seq))
+        };
+        mine.sort_by(order);
+        shared.sort_by(order);
+        public.sort_by(order);
+        // Le réseau ouvert porte les publics de toutes les officines : la
+        // vue en garde les plus proches, pas une liste sans fin.
+        public.truncate(COMPTES_MOST_PUBLIC);
+        shared.truncate(COMPTES_MOST_PUBLIC);
+        c.mine = mine;
+        c.shared = shared;
+        c.public = public;
+    }
+
+    /// Le nom qu'un compte porte ici : son profil, sinon son empreinte.
+    #[cfg(feature = "sync")]
+    fn account_name(&self, account: &str) -> String {
+        if let Some(open) = &self.comptes.open {
+            if open.id() == account && !self.comptes.profile.nom.trim().is_empty() {
+                return self.comptes.profile.nom.clone();
+            }
+        }
+        // **Le nom d'un autre porte son empreinte** : un profil se signe du
+        // nom qu'on veut, et deux « Claire Martin » ne se distinguent que
+        // par elle.
+        self.comptes
+            .people
+            .iter()
+            .find(|(a, _)| a == account)
+            .map(|(_, p)| trn("compte_named", &[&p.nom, &short_groups(account)]))
+            .unwrap_or_else(|| trf("compte_unnamed", crate::compte::groups_of(account)))
+    }
+
+    /// Ouvrir un compte : les tampons du profil se remplissent de ce qu'il
+    /// a publié, et la vue se relit.
+    #[cfg(feature = "sync")]
+    fn comptes_enter(&mut self, account: crate::compte::Account) {
+        let c = &mut self.comptes;
+        c.open = Some(account);
+        c.profile = crate::compte::Profile::default();
+        c.profile_seq = 0;
+        c.pin.clear();
+        c.pin1.clear();
+        c.pin2.clear();
+        c.words.clear();
+        c.fresh = None;
+        c.check_word.clear();
+        c.form = AccountForm::default();
+        self.reload_comptes();
+        let c = &mut self.comptes;
+        c.nom.clone_from(&c.profile.nom);
+        c.role.clone_from(&c.profile.role);
+        c.rpps.clone_from(&c.profile.rpps);
+        c.officine.clone_from(&c.profile.officine);
+    }
+
+    /// Ouvrir le compte choisi par son code.
+    #[cfg(feature = "sync")]
+    fn comptes_unlock(&mut self) {
+        let c = &mut self.comptes;
+        let Some(pick) = c.pick.clone() else {
+            return;
+        };
+        let kept = self.db.kept_accounts().unwrap_or_default();
+        let Some((_, _, locked)) = kept.iter().find(|(a, _, _)| *a == pick) else {
+            return;
+        };
+        let opened = crate::compte::unlock(locked, &c.pin)
+            .map(crate::compte::Account::from_phrase)
+            .filter(|a| a.id() == pick);
+        match opened {
+            Some(account) => {
+                self.comptes_enter(account);
+                self.comptes.notice = None;
+            }
+            None => {
+                c.pin.clear();
+                c.notice = Some((true, tr("compte_bad_pin").to_owned()));
+            }
+        }
+    }
+
+    /// Les deux codes tapés, s'ils conviennent ; sinon ce qui ne va pas.
+    #[cfg(feature = "sync")]
+    fn comptes_pin(&self) -> Result<String, &'static str> {
+        let c = &self.comptes;
+        if !crate::compte::pin_ok(&c.pin1) {
+            return Err(tr("compte_pin_short"));
+        }
+        if c.pin1 != c.pin2 {
+            return Err(tr("compte_pin_differ"));
+        }
+        Ok(c.pin1.clone())
+    }
+
+    /// Créer : tirer la phrase et la montrer. Rien n'est écrit avant qu'un
+    /// de ses mots soit retapé.
+    #[cfg(feature = "sync")]
+    fn comptes_draw_phrase(&mut self) {
+        if self.comptes.nom.trim().is_empty() {
+            self.comptes.notice = Some((true, tr("compte_need_name").to_owned()));
+            return;
+        }
+        if let Err(why) = self.comptes_pin() {
+            self.comptes.notice = Some((true, why.to_owned()));
+            return;
+        }
+        let phrase = crate::compte::Phrase::generate(&mut bpm_sync::OsEntropy);
+        let mut pick = [0u8; 1];
+        bpm_sync::Entropy::fill(&mut bpm_sync::OsEntropy, &mut pick);
+        let c = &mut self.comptes;
+        c.check_at = usize::from(pick[0]) % 12;
+        c.check_word.clear();
+        c.fresh = Some(phrase);
+        c.notice = None;
+    }
+
+    /// Créer : le mot retapé est le bon — le compte est gardé sur ce poste
+    /// sous son code, son profil publié, et il s'ouvre.
+    #[cfg(feature = "sync")]
+    fn comptes_confirm_phrase(&mut self) {
+        let c = &self.comptes;
+        let Some(phrase) = c.fresh.clone() else {
+            return;
+        };
+        let asked = phrase.words().get(c.check_at).cloned().unwrap_or_default();
+        if crate::compte::fold(c.check_word.trim()) != crate::compte::fold(&asked) {
+            self.comptes.notice = Some((true, trf("compte_check_wrong", c.check_at + 1)));
+            return;
+        }
+        let Ok(pin) = self.comptes_pin() else {
+            return;
+        };
+        let profile = crate::compte::Profile {
+            nom: c.nom.trim().to_owned(),
+            role: c.role.trim().to_owned(),
+            rpps: c.rpps.trim().to_owned(),
+            officine: c.officine.trim().to_owned(),
+            boite: String::new(),
+        };
+        let account = crate::compte::Account::from_phrase(phrase.clone());
+        let written =
+            crate::compte::lock(&phrase, &pin, comptes_stretch(), &mut bpm_sync::OsEntropy)
+                .ok_or_else(|| tr("compte_write_failed").to_owned())
+                .and_then(|locked| self.db.keep_account(&account.id(), &profile.nom, &locked))
+                .and_then(|()| {
+                    crate::compte::write_profile(
+                        &account,
+                        crate::repertoire::unix_now().max(1),
+                        &profile,
+                        &mut bpm_sync::OsEntropy,
+                    )
+                    .map_err(|_| tr("compte_write_failed").to_owned())
+                })
+                .and_then(|bytes| self.keep_one_account_record(bytes));
+        match written {
+            Ok(_) => {
+                self.comptes_enter(account);
+                self.comptes.notice = Some((false, tr("compte_created").to_owned()));
+            }
+            Err(e) => self.comptes.notice = Some((true, e)),
+        }
+    }
+
+    /// Retrouver un compte par sa phrase, et le garder ici sous un code.
+    #[cfg(feature = "sync")]
+    fn comptes_recover(&mut self) {
+        use crate::compte::PhraseError;
+        let phrase = match crate::compte::Phrase::parse(&self.comptes.words) {
+            Ok(p) => p,
+            Err(e) => {
+                let why = match e {
+                    PhraseError::Count(n) => trf("compte_phrase_count", n),
+                    PhraseError::Unknown(n, w) => trn("compte_phrase_unknown", &[&n, &w]),
+                    PhraseError::Ambiguous(n, w) => trn("compte_phrase_ambiguous", &[&n, &w]),
+                    PhraseError::Checksum => tr("compte_phrase_checksum").to_owned(),
+                };
+                self.comptes.notice = Some((true, why));
+                return;
+            }
+        };
+        let pin = match self.comptes_pin() {
+            Ok(p) => p,
+            Err(why) => {
+                self.comptes.notice = Some((true, why.to_owned()));
+                return;
+            }
+        };
+        let account = crate::compte::Account::from_phrase(phrase.clone());
+        let id = account.id();
+        // Le nom que le compte s'est donné, s'il est déjà arrivé ici.
+        let known = self
+            .db
+            .account_latest(None)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|(r, _)| r.account == id)
+            .find_map(|(r, _)| crate::compte::profile_of(&r));
+        let label = known
+            .as_ref()
+            .map(|p| p.nom.clone())
+            .unwrap_or_else(|| trf("compte_unnamed", account.groups()));
+        let kept = crate::compte::lock(&phrase, &pin, comptes_stretch(), &mut bpm_sync::OsEntropy)
+            .ok_or_else(|| tr("compte_write_failed").to_owned())
+            .and_then(|locked| self.db.keep_account(&id, &label, &locked));
+        match kept {
+            Ok(()) => {
+                self.comptes_enter(account);
+                self.comptes.notice = Some(if known.is_some() {
+                    (false, tr("compte_recovered").to_owned())
+                } else {
+                    (false, tr("compte_recovered_empty").to_owned())
+                });
+            }
+            Err(e) => self.comptes.notice = Some((true, e)),
+        }
+    }
+
+    /// Publier le profil tel que les tampons le disent.
+    #[cfg(feature = "sync")]
+    fn comptes_save_profile(&mut self) {
+        let Some(id) = self.comptes.open.as_ref().map(crate::compte::Account::id) else {
+            return;
+        };
+        if self.comptes.nom.trim().is_empty() {
+            self.comptes.notice = Some((true, tr("compte_need_name").to_owned()));
+            return;
+        }
+        let seen = Some(self.comptes.profile_seq);
+        let Ok(seq) = self.account_next(&id, crate::compte::PROFILE_ITEM, seen) else {
+            return;
+        };
+        let c = &self.comptes;
+        let Some(account) = &c.open else {
+            return;
+        };
+        let profile = crate::compte::Profile {
+            nom: c.nom.trim().to_owned(),
+            role: c.role.trim().to_owned(),
+            rpps: c.rpps.trim().to_owned(),
+            officine: c.officine.trim().to_owned(),
+            boite: String::new(),
+        };
+        let written =
+            crate::compte::write_profile(account, seq, &profile, &mut bpm_sync::OsEntropy)
+                .map_err(|_| tr("compte_write_failed").to_owned())
+                .and_then(|bytes| self.keep_one_account_record(bytes));
+        match written {
+            Ok(_) => {
+                if let Some(locked) = self
+                    .db
+                    .kept_accounts()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .find(|(a, _, _)| *a == id)
+                    .map(|(_, _, l)| l)
+                {
+                    let _ = self.db.keep_account(&id, &profile.nom, &locked);
+                }
+                self.reload_comptes();
+                self.comptes.notice = Some((false, tr("compte_profile_saved").to_owned()));
+            }
+            Err(e) => self.comptes.notice = Some((true, e)),
+        }
+    }
+
+    /// Le numéro de la version suivante : au-dessus de la dernière que la
+    /// base tient, et **jamais sous l'heure** (en secondes) — un poste qui
+    /// vient de retrouver le compte écrit ainsi au-dessus des versions
+    /// d'avant qui arriveront plus tard, et le plus grand numéro est le
+    /// plus récent (`compte::to_seed`). `seen` est la version que l'écran
+    /// montrait : une plus récente écrite ailleurs depuis se dit, comme
+    /// toute écriture partagée, et la suivante l'écrase en connaissance de
+    /// cause.
+    #[cfg(feature = "sync")]
+    fn account_next(&mut self, account: &str, item: &str, seen: Option<u64>) -> Result<u64, ()> {
+        let latest = self.account_seq(account, item);
+        if seen.is_some_and(|seen| seen != latest) {
+            let said = self.stale_note("compte_stale");
+            self.reload_comptes();
+            if let Some((i, s)) = &mut self.comptes.form.editing {
+                if i == item {
+                    *s = latest;
+                }
+            }
+            self.comptes.notice = Some((true, said));
+            return Err(());
+        }
+        Ok((latest + 1).max(crate::repertoire::unix_now()))
+    }
+
+    /// Ranger un enregistrement qu'on vient d'écrire — refusé à la
+    /// relecture, il ne se dit pas enregistré.
+    #[cfg(feature = "sync")]
+    fn keep_one_account_record(&self, bytes: Vec<u8>) -> Result<(), String> {
+        match self.db.keep_account_records(&[bytes])? {
+            0 => Err(tr("compte_write_failed").to_owned()),
+            _ => Ok(()),
+        }
+    }
+
+    /// Le plus haut numéro qu'un élément porte dans la base.
+    #[cfg(feature = "sync")]
+    fn account_seq(&self, account: &str, item: &str) -> u64 {
+        self.db
+            .account_latest(None)
+            .unwrap_or_default()
+            .into_iter()
+            .find(|(r, _)| r.account == account && r.item == item)
+            .map_or(0, |(r, _)| r.seq)
+    }
+
+    /// Enregistrer l'élément du formulaire sous sa visibilité.
+    #[cfg(feature = "sync")]
+    fn comptes_save_item(&mut self) {
+        use crate::compte::{self, EntryError, Kind, Visibility};
+        let Some(id) = self.comptes.open.as_ref().map(compte::Account::id) else {
+            return;
+        };
+        let editing = self.comptes.form.editing.clone();
+        if editing.is_none() && self.comptes.mine.len() >= compte::MOST_ITEMS {
+            self.comptes.notice = Some((true, trf("compte_too_many", compte::MOST_ITEMS)));
+            return;
+        }
+        let (item, seen) = match editing {
+            Some((item, seen)) => (item, Some(seen)),
+            None => (compte::new_item(&mut bpm_sync::OsEntropy), None),
+        };
+        let c = &self.comptes;
+        let f = &c.form;
+        if f.titre.trim().is_empty() {
+            self.comptes.notice = Some((true, tr("compte_need_title").to_owned()));
+            return;
+        }
+        let year = self.year_now();
+        let (jour, debut, fin) = if f.rdv {
+            let Ok(jour) = db::parse_french_date(&f.jour, year, db::YearHint::Future) else {
+                self.comptes.notice = Some((true, tr("compte_need_day").to_owned()));
+                return;
+            };
+            let hour = |t: &str| -> Result<String, ()> {
+                if t.trim().is_empty() {
+                    Ok(String::new())
+                } else {
+                    db::parse_hour(t).ok_or(())
+                }
+            };
+            let (Ok(debut), Ok(fin)) = (hour(&f.debut), hour(&f.fin)) else {
+                self.comptes.notice = Some((true, tr("compte_bad_hour").to_owned()));
+                return;
+            };
+            (jour, debut, fin)
+        } else {
+            (String::new(), String::new(), String::new())
+        };
+        let entry = compte::Entry {
+            titre: f.titre.trim().to_owned(),
+            texte: f.texte.trim_end().to_owned(),
+            jour,
+            debut,
+            fin,
+            pour: Vec::new(),
+        };
+        let visibility = match f.reach {
+            AccountReach::Prive => Visibility::Private,
+            AccountReach::Public => Visibility::Public,
+            AccountReach::Partage if f.pour.is_empty() => {
+                self.comptes.notice = Some((true, tr("compte_need_reader").to_owned()));
+                return;
+            }
+            AccountReach::Partage => Visibility::Shared(f.pour.iter().cloned().collect()),
+        };
+        let kind = if f.rdv { Kind::Rdv } else { Kind::Note };
+        let Ok(seq) = self.account_next(&id, &item, seen) else {
+            return;
+        };
+        let c = &self.comptes;
+        let Some(account) = &c.open else {
+            return;
+        };
+        let boxes = |a: &str| -> Option<[u8; 32]> {
+            c.people
+                .iter()
+                .find(|(id, _)| id == a)
+                .and_then(|(_, p)| compte::unhex::<32>(&p.boite))
+        };
+        let written = compte::write_entry(
+            account,
+            (&item, seq),
+            kind,
+            &entry,
+            &visibility,
+            &boxes,
+            &mut bpm_sync::OsEntropy,
+        );
+        let outcome = match written {
+            Ok(bytes) => self.keep_one_account_record(bytes),
+            Err(EntryError::NoKey(a)) => Err(trf("compte_no_key", self.account_name(&a))),
+            Err(EntryError::Write(compte::WriteError::TooLong)) => {
+                Err(trf("compte_too_long", compte::MAX_DATA / 1024))
+            }
+            Err(EntryError::Write(_)) => Err(tr("compte_write_failed").to_owned()),
+        };
+        match outcome {
+            Ok(_) => {
+                self.comptes.form = AccountForm::default();
+                self.reload_comptes();
+                self.comptes.notice = Some((false, tr("compte_item_saved").to_owned()));
+            }
+            Err(e) => self.comptes.notice = Some((true, e)),
+        }
+    }
+
+    /// Effacer l'élément qu'on modifie : une version vide, qui gagne
+    /// partout où elle arrive.
+    #[cfg(feature = "sync")]
+    fn comptes_delete_item(&mut self) {
+        use crate::compte;
+        let (Some(id), Some((item, seen))) = (
+            self.comptes.open.as_ref().map(compte::Account::id),
+            self.comptes.form.editing.clone(),
+        ) else {
+            return;
+        };
+        let Ok(seq) = self.account_next(&id, &item, Some(seen)) else {
+            return;
+        };
+        let c = &self.comptes;
+        let Some(account) = &c.open else {
+            return;
+        };
+        let item = &item;
+        let kind = c
+            .mine
+            .iter()
+            .find(|i| i.item == *item)
+            .map_or(compte::Kind::Note, |i| i.kind);
+        let written = compte::write(
+            account,
+            item,
+            seq,
+            kind,
+            compte::Content::Deleted,
+            &mut bpm_sync::OsEntropy,
+        )
+        .map_err(|_| tr("compte_write_failed").to_owned())
+        .and_then(|bytes| self.keep_one_account_record(bytes));
+        match written {
+            Ok(_) => {
+                self.comptes.form = AccountForm::default();
+                self.reload_comptes();
+                self.comptes.notice = Some((false, tr("compte_item_deleted").to_owned()));
+            }
+            Err(e) => self.comptes.notice = Some((true, e)),
+        }
+    }
+
+    /// Mettre un de ses éléments dans le formulaire.
+    #[cfg(feature = "sync")]
+    fn comptes_edit_item(&mut self, item: &AccountItem) {
+        use crate::compte::{Kind, Visibility};
+        let (reach, pour) = match &item.visibility {
+            Visibility::Private => (AccountReach::Prive, Default::default()),
+            Visibility::Public => (AccountReach::Public, Default::default()),
+            Visibility::Shared(to) => (AccountReach::Partage, to.iter().cloned().collect()),
+        };
+        self.comptes.form = AccountForm {
+            editing: Some((item.item.clone(), item.seq)),
+            rdv: item.kind == Kind::Rdv,
+            titre: item.entry.titre.clone(),
+            texte: item.entry.texte.clone(),
+            jour: if item.entry.jour.is_empty() {
+                String::new()
+            } else {
+                db::format_french_date(&item.entry.jour)
+            },
+            debut: item.entry.debut.clone(),
+            fin: item.entry.fin.clone(),
+            reach,
+            pour,
+        };
+        self.comptes.notice = None;
+    }
+
+    /// Fermer le compte : rien de lui ne reste en mémoire.
+    #[cfg(feature = "sync")]
+    fn comptes_close(&mut self) {
+        use zeroize::Zeroize;
+        // Les tampons qui ont porté une phrase ou un code sont effacés en
+        // place avant d'être rendus : verrouillé, rien n'en reste à l'écran
+        // ni dans la mémoire qu'ils occupaient.
+        let c = &mut self.comptes;
+        for secret in [
+            &mut c.pin,
+            &mut c.pin1,
+            &mut c.pin2,
+            &mut c.words,
+            &mut c.check_word,
+        ] {
+            secret.zeroize();
+        }
+        let kept = std::mem::take(&mut self.comptes.kept);
+        let pick = self
+            .comptes
+            .open
+            .as_ref()
+            .map(crate::compte::Account::id)
+            .or_else(|| self.comptes.pick.clone());
+        self.comptes = Comptes {
+            kept,
+            pick,
+            ..Comptes::default()
+        };
+        self.reload_comptes();
+    }
+
+    /// Retirer de ce poste le compte choisi — il se retrouve avec sa
+    /// phrase, et ce qu'il a écrit reste.
+    #[cfg(feature = "sync")]
+    fn comptes_forget(&mut self) {
+        self.comptes.forget_armed = None;
+        let Some(pick) = self.comptes.pick.take() else {
+            return;
+        };
+        match self.db.forget_account(&pick) {
+            Ok(()) => {
+                self.comptes.notice = Some((false, tr("compte_forgotten").to_owned()));
+                self.reload_comptes();
+            }
+            Err(e) => self.comptes.notice = Some((true, e)),
+        }
+    }
+
+    /// Les rendez-vous d'un jour que le compte ouvert lit : les siens et
+    /// ceux qu'on partage avec lui — ce que l'agenda montre à part.
+    #[cfg(feature = "sync")]
+    fn account_rdv_on(&self, day: &str) -> Vec<&AccountItem> {
+        let c = &self.comptes;
+        if c.open.is_none() {
+            return Vec::new();
+        }
+        c.mine
+            .iter()
+            .chain(&c.shared)
+            .filter(|i| i.kind == crate::compte::Kind::Rdv && i.entry.jour == day)
+            .collect()
+    }
 
     #[cfg(feature = "sync")]
     fn read_presence(&mut self) {
@@ -16590,6 +17231,132 @@ enum SweepStart {
     NoDirectory,
 }
 
+/// L'étirement du code d'un compte : celui de `compte`, plus léger sous
+/// les tests (un Argon2 de 19 Mio, sans optimisation, prend des secondes).
+/// Le scellé dit le sien : l'un ouvre ce que l'autre a fermé.
+#[cfg(feature = "sync")]
+fn comptes_stretch() -> crate::compte::Stretch {
+    if cfg!(test) {
+        crate::compte::Stretch {
+            memory_kib: 64,
+            passes: 1,
+        }
+    } else {
+        crate::compte::STRETCH
+    }
+}
+
+/// Les deux premiers groupes de l'empreinte d'un compte : assez pour
+/// distinguer deux profils du même nom.
+#[cfg(feature = "sync")]
+fn short_groups(account: &str) -> String {
+    crate::compte::groups_of(account)
+        .split(' ')
+        .take(2)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Au plus ce nombre d'éléments publics d'autres comptes dans la vue, et
+/// autant de partagés : n'importe quel compte peut en sceller pour
+/// celui-ci.
+#[cfg(feature = "sync")]
+const COMPTES_MOST_PUBLIC: usize = 50;
+
+/// **Les comptes** (`compte.rs`) : celui qui est ouvert dans cette
+/// session, ceux que ce poste garde, les tampons des trois portes
+/// (ouvrir, créer, retrouver) et, compte ouvert, ce qu'il lit.
+///
+/// Le compte ouvert ne vit qu'ici, en mémoire : verrouiller l'application
+/// ferme la session, et le compte avec.
+#[cfg(feature = "sync")]
+#[derive(Default)]
+struct Comptes {
+    open: Option<crate::compte::Account>,
+    /// Ce que le compte ouvert a publié de lui-même, et sous quel numéro.
+    profile: crate::compte::Profile,
+    profile_seq: u64,
+    /// Les tampons du profil.
+    nom: String,
+    role: String,
+    rpps: String,
+    officine: String,
+    /// Les comptes gardés sur ce poste : (compte, nom).
+    kept: Vec<(String, String)>,
+    door: ComptesDoor,
+    /// Ouvrir : le compte choisi, et son code.
+    pick: Option<String>,
+    pin: String,
+    /// Créer et retrouver : le code, deux fois.
+    pin1: String,
+    pin2: String,
+    /// Créer : la phrase tirée, montrée jusqu'à ce qu'un de ses mots
+    /// soit retapé — le rang demandé, et ce qui est tapé.
+    fresh: Option<crate::compte::Phrase>,
+    check_at: usize,
+    check_word: String,
+    /// Retrouver : la phrase tapée.
+    words: String,
+    /// Ce que le dernier geste a donné : (erreur, texte).
+    notice: Option<(bool, String)>,
+    /// Ce que le compte lit : les siens, ceux partagés avec lui, ceux que
+    /// d'autres ont rendus publics, et les personnes connues.
+    mine: Vec<AccountItem>,
+    shared: Vec<AccountItem>,
+    public: Vec<AccountItem>,
+    people: Vec<(String, crate::compte::Profile)>,
+    form: AccountForm,
+    /// « Retirer de ce poste » a été pressé une fois, pour ce compte : le
+    /// second clic retire.
+    forget_armed: Option<String>,
+}
+
+#[cfg(feature = "sync")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum ComptesDoor {
+    #[default]
+    Ouvrir,
+    Creer,
+    Retrouver,
+}
+
+/// Un élément lu : une note ou un rendez-vous, et qui le lit.
+#[cfg(feature = "sync")]
+#[derive(Clone, Debug)]
+struct AccountItem {
+    account: String,
+    item: String,
+    kind: crate::compte::Kind,
+    seq: u64,
+    entry: crate::compte::Entry,
+    visibility: crate::compte::Visibility,
+}
+
+/// Qui lira l'élément qu'on écrit.
+#[cfg(feature = "sync")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum AccountReach {
+    #[default]
+    Prive,
+    Partage,
+    Public,
+}
+
+/// Le formulaire d'un élément : neuf, ou la version qu'on modifie.
+#[cfg(feature = "sync")]
+#[derive(Clone, Debug, Default)]
+struct AccountForm {
+    editing: Option<(String, u64)>,
+    rdv: bool,
+    titre: String,
+    texte: String,
+    jour: String,
+    debut: String,
+    fin: String,
+    reach: AccountReach,
+    pour: std::collections::BTreeSet<String>,
+}
+
 /// **La carte des officines** : ce que la base dit de la présence de
 /// celle-ci, ce que l'écran a sous les doigts, ce que le répertoire a
 /// répondu, et les fils en cours. Rien ici ne part tout seul tant que
@@ -16842,6 +17609,117 @@ struct NetSummary {
     open: bool,
     /// L'officine est du réseau ouvert.
     open_joined: bool,
+}
+
+/// Trois comptes et ce qu'ils rangent, pour les captures : Claire (gardée
+/// ici, rendue ouverte), Julien (gardé ici) et Amel, d'une autre officine.
+/// Rien n'est écrit deux fois : chaque enregistrement est nommé par son
+/// contenu, et les phrases sont fixes.
+#[cfg(feature = "sync")]
+fn demo_comptes(db: &Db, today: &str) -> crate::compte::Account {
+    use crate::compte::{self, Account, Entry, Kind, Phrase, Profile, Visibility};
+    let claire = Account::from_phrase(Phrase::from_entropy([1; 16]));
+    let julien = Account::from_phrase(Phrase::from_entropy([2; 16]));
+    let amel = Account::from_phrase(Phrase::from_entropy([3; 16]));
+    // Un aléa fixe : les sceaux, comme les phrases, se rejouent.
+    struct Fixed(u8);
+    impl bpm_sync::Entropy for Fixed {
+        fn fill(&mut self, out: &mut [u8]) {
+            for b in out {
+                self.0 = self.0.wrapping_mul(29).wrapping_add(7);
+                *b = self.0;
+            }
+        }
+    }
+    let e = &mut Fixed(5);
+    let day = |n: i64| crate::date::add_days(today, n).unwrap_or_else(|| today.to_owned());
+    let mut records = Vec::new();
+    for (a, nom, role, officine) in [
+        (
+            &claire,
+            "Claire Martin",
+            "Pharmacienne",
+            "Pharmacie du Centre",
+        ),
+        (&julien, "Julien Roux", "Préparateur", "Pharmacie du Centre"),
+        (&amel, "Amel Haddad", "Pharmacienne", "Pharmacie des Vosges"),
+    ] {
+        let p = Profile {
+            nom: nom.to_owned(),
+            role: role.to_owned(),
+            officine: officine.to_owned(),
+            ..Profile::default()
+        };
+        records.extend(compte::write_profile(a, 1, &p, e).ok());
+    }
+    let boxes = |id: &str| -> Option<[u8; 32]> {
+        [&claire, &julien, &amel]
+            .into_iter()
+            .find(|a| a.id() == id)
+            .map(Account::box_public)
+    };
+    let rdv = |titre: &str, jour: String, debut: &str, fin: &str| Entry {
+        titre: titre.to_owned(),
+        jour,
+        debut: debut.to_owned(),
+        fin: fin.to_owned(),
+        ..Entry::default()
+    };
+    for (a, item, kind, entry, vis) in [
+        (
+            &claire,
+            "c1",
+            Kind::Rdv,
+            rdv("Formation AOD", day(2), "14:00", "16:00"),
+            Visibility::Private,
+        ),
+        (
+            &claire,
+            "c2",
+            Kind::Rdv,
+            rdv("Inventaire des stupéfiants", day(0), "18:30", "19:30"),
+            Visibility::Shared(vec![julien.id()]),
+        ),
+        (
+            &claire,
+            "c3",
+            Kind::Note,
+            Entry {
+                titre: "Relancer le grossiste pour les seringues".to_owned(),
+                texte: "Commande du lundi incomplète.".to_owned(),
+                ..Entry::default()
+            },
+            Visibility::Private,
+        ),
+        (
+            &julien,
+            "j1",
+            Kind::Rdv,
+            rdv("Julien absent l'après-midi", day(1), "13:00", "19:00"),
+            Visibility::Shared(vec![claire.id()]),
+        ),
+        (
+            &amel,
+            "a1",
+            Kind::Note,
+            Entry {
+                titre: "Pharmacie des Vosges de garde dimanche".to_owned(),
+                ..Entry::default()
+            },
+            Visibility::Public,
+        ),
+    ] {
+        records.extend(compte::write_entry(a, (item, 1), kind, &entry, &vis, &boxes, e).ok());
+    }
+    let _ = db.keep_account_records(&records);
+    if db.kept_accounts().map(|k| k.is_empty()).unwrap_or(true) {
+        for (a, label) in [(&claire, "Claire Martin"), (&julien, "Julien Roux")] {
+            if let Some(locked) = compte::lock(a.phrase(), "Pharma24", comptes_stretch(), e) {
+                let _ = db.keep_account(&a.id(), label, &locked);
+            }
+        }
+    }
+    claire
 }
 
 /// Une messagerie de démonstration : une conversation de toute l'équipe,
@@ -18750,7 +19628,7 @@ fn goto_rank(mut scored: Vec<(i32, GotoHit)>, limit: usize) -> Vec<GotoHit> {
 /// Une rangée de la boîte « Aller à… » : le libellé, élidé avant la
 /// nature, et la nature en petit à droite.
 /// Les vues permanentes qu'on peut épingler, et leur clé en base.
-fn standing_views() -> [(WorkTab, &'static str); 19] {
+fn standing_views() -> [(WorkTab, &'static str); 20] {
     [
         (WorkTab::Dashboard, "tableau"),
         (WorkTab::Search, "recherche"),
@@ -18768,6 +19646,7 @@ fn standing_views() -> [(WorkTab, &'static str); 19] {
         (WorkTab::Connexions, "connexions"),
         (WorkTab::Officines, "officines"),
         (WorkTab::Messages, "messages"),
+        (WorkTab::Comptes, "comptes"),
         (WorkTab::Script, "console"),
         (WorkTab::Caisse, "caisse"),
         (WorkTab::Finances, "recettes"),
@@ -20580,6 +21459,33 @@ impl App {
                                 inviting_phone: phone,
                                 ..PostsWindow::default()
                             });
+                        }
+                        // Les comptes : « comptes », les portes fermées sur
+                        // deux comptes gardés ici ; « comptes_phrase », la
+                        // phrase d'un compte qu'on crée ; « comptes_ouvert »,
+                        // un compte ouvert, ses éléments et ceux de deux
+                        // collègues. Les phrases sont fixes : la capture ne
+                        // change pas d'une fois sur l'autre.
+                        #[cfg(feature = "sync")]
+                        Ok(key @ ("comptes" | "comptes_phrase" | "comptes_ouvert")) => {
+                            let claire = demo_comptes(&session.db, &session.today);
+                            session.view = MainView::Comptes;
+                            session.reload_comptes();
+                            match key {
+                                "comptes_ouvert" => session.comptes_enter(claire),
+                                "comptes_phrase" => {
+                                    let c = &mut session.comptes;
+                                    c.door = ComptesDoor::Creer;
+                                    c.nom = "Inès Morel".to_owned();
+                                    c.role = "Étudiante".to_owned();
+                                    c.fresh = Some(crate::compte::Phrase::from_entropy([
+                                        0x5a, 0x13, 0xc7, 0x88, 0x2e, 0xf1, 0x40, 0x9b, 0x66, 0xd2,
+                                        0x07, 0xbe, 0x31, 0x74, 0xe9, 0x0c,
+                                    ]));
+                                    c.check_at = 4;
+                                }
+                                _ => {}
+                            }
                         }
                         // La messagerie, avec une conversation d'équipe
                         // ouverte et un groupe : la liste et le fil ont de
@@ -22988,6 +23894,7 @@ impl App {
                             | MainView::Connexions
                             | MainView::Officines
                             | MainView::Messages
+                            | MainView::Comptes
                             | MainView::Registres
                             | MainView::Finances
                             // Le comptage de caisse ne trie ni le
@@ -24805,6 +25712,10 @@ impl App {
             }
             if session.view == MainView::Messages {
                 Self::messages_view(ui, session, &config);
+                return;
+            }
+            if session.view == MainView::Comptes {
+                Self::comptes_view(ui, session);
                 return;
             }
             if session.view == MainView::Script {
@@ -41179,6 +42090,32 @@ impl App {
                         add_event = true;
                     }
                 });
+            }
+            // **Les rendez-vous du compte ouvert** ce jour-là : les siens et
+            // ceux qu'on partage avec lui. Lus ici, écrits dans la vue des
+            // comptes — ils ne sont pas des entrées de l'agenda de
+            // l'officine, et ne s'en effacent pas.
+            #[cfg(feature = "sync")]
+            {
+                let lines: Vec<String> = session
+                    .account_rdv_on(&day)
+                    .into_iter()
+                    .map(|i| Self::comptes_line(i, &|a| session.account_name(a), false))
+                    .collect();
+                if !lines.is_empty() {
+                    let me = session
+                        .comptes
+                        .open
+                        .as_ref()
+                        .map(|a| session.account_name(&a.id()))
+                        .unwrap_or_default();
+                    ui.add_space(8.0);
+                    motif::section(ui, &trf("compte_agenda", me));
+                    for line in lines {
+                        ui.add(egui::Label::new(line).wrap())
+                            .on_hover_text(tr("compte_agenda_tooltip"));
+                    }
+                }
             }
             // The day's own notes, same journal widget as everywhere.
             ui.add_space(8.0);
@@ -69508,6 +70445,630 @@ impl App {
         ui.label(tr("carte_no_sync"));
     }
 
+    /// **Les comptes** : une personne, sa phrase, et ce qu'elle range —
+    /// privé, partagé ou public. Fermé, la vue montre ses trois portes
+    /// (ouvrir un compte de ce poste, en créer un, en retrouver un par sa
+    /// phrase) ; ouvert, le profil, le formulaire et les trois listes.
+    #[cfg(feature = "sync")]
+    fn comptes_view(ui: &mut egui::Ui, session: &mut Session) {
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            ui.add_space(4.0);
+            ui.heading(tr("compte_title"));
+        });
+        let small = motif::pt(ui, 11.5);
+        ui.add(
+            egui::Label::new(
+                egui::RichText::new(tr("compte_subtitle"))
+                    .size(small)
+                    .color(motif::text_dim()),
+            )
+            .wrap(),
+        );
+        if let Some((error, text)) = &session.comptes.notice {
+            let (ink, mark) = if *error {
+                (motif::alert(), motif::Pict::Warn)
+            } else {
+                (motif::text_dim(), motif::Pict::Check)
+            };
+            ui.horizontal_wrapped(|ui| {
+                motif::badge(ui, text, Some(mark), ink, *error);
+            });
+        }
+        ui.add_space(4.0);
+        // Barre pleine : le bas de la page — les listes — est le sujet.
+        ui.spacing_mut().scroll.floating = false;
+        egui::ScrollArea::vertical()
+            .id_salt("comptes")
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                if session.comptes.open.is_some() {
+                    Self::comptes_open_pane(ui, session);
+                } else {
+                    Self::comptes_doors(ui, session);
+                }
+            });
+    }
+
+    #[cfg(not(feature = "sync"))]
+    fn comptes_view(ui: &mut egui::Ui, _session: &mut Session) {
+        ui.label(tr("compte_no_sync"));
+    }
+
+    /// Les trois portes d'un compte fermé.
+    #[cfg(feature = "sync")]
+    fn comptes_doors(ui: &mut egui::Ui, session: &mut Session) {
+        let c = &mut session.comptes;
+        let mut act: Option<fn(&mut Session)> = None;
+        ui.horizontal_wrapped(|ui| {
+            ui.add_space(4.0);
+            for (door, label) in [
+                (ComptesDoor::Ouvrir, tr("compte_door_open")),
+                (ComptesDoor::Creer, tr("compte_door_create")),
+                (ComptesDoor::Retrouver, tr("compte_door_recover")),
+            ] {
+                if motif::radio(ui, c.door == door, label).clicked() && c.door != door {
+                    c.door = door;
+                    c.notice = None;
+                    c.fresh = None;
+                }
+            }
+        });
+        motif::separator(ui);
+        // Une colonne d'étiquettes pour les trois portes : les champs
+        // commencent au même endroit d'une porte à l'autre.
+        let label_w = Self::comptes_label_width(
+            ui,
+            &[
+                tr("compte_pin"),
+                tr("compte_name"),
+                tr("compte_role"),
+                tr("compte_rpps"),
+                tr("compte_officine"),
+                tr("compte_pin_new"),
+                tr("compte_pin_again"),
+            ],
+        );
+        match c.door {
+            ComptesDoor::Ouvrir if c.kept.is_empty() => {
+                ui.label(egui::RichText::new(tr("compte_none_here")).color(motif::text_dim()));
+            }
+            ComptesDoor::Ouvrir => {
+                for (account, label) in &c.kept {
+                    let text = trn(
+                        "compte_kept_row",
+                        &[label, &crate::compte::groups_of(account)],
+                    );
+                    ui.horizontal(|ui| {
+                        ui.add_space(4.0);
+                        if motif::radio(ui, c.pick.as_ref() == Some(account), text).clicked() {
+                            c.pick = Some(account.clone());
+                        }
+                    });
+                }
+                Self::comptes_row(ui, tr("compte_pin"), label_w, &mut c.pin, 12.0, true);
+                let enter = ui.input(|i| i.key_pressed(egui::Key::Enter)) && !c.pin.is_empty();
+                ui.horizontal_wrapped(|ui| {
+                    ui.add_space(4.0);
+                    if motif::button_enabled(ui, tr("compte_unlock"), !c.pin.is_empty()).clicked()
+                        || enter
+                    {
+                        act = Some(Session::comptes_unlock);
+                    }
+                    // Deux clics : un compte retiré dont la phrase n'a pas
+                    // été recopiée est perdu.
+                    let armed = c.forget_armed.is_some() && c.forget_armed == c.pick;
+                    let label = if armed {
+                        tr("compte_forget_confirm")
+                    } else {
+                        tr("compte_forget")
+                    };
+                    if motif::button(ui, label)
+                        .on_hover_text(tr("compte_forget_tooltip"))
+                        .clicked()
+                    {
+                        if armed {
+                            act = Some(Session::comptes_forget);
+                        } else {
+                            c.forget_armed.clone_from(&c.pick);
+                        }
+                    }
+                });
+            }
+            ComptesDoor::Creer => match c.fresh.clone() {
+                None => {
+                    Self::comptes_row(ui, tr("compte_name"), label_w, &mut c.nom, 28.0, false);
+                    Self::comptes_row(ui, tr("compte_role"), label_w, &mut c.role, 20.0, false);
+                    Self::comptes_row(ui, tr("compte_rpps"), label_w, &mut c.rpps, 12.0, false);
+                    Self::comptes_row(
+                        ui,
+                        tr("compte_officine"),
+                        label_w,
+                        &mut c.officine,
+                        28.0,
+                        false,
+                    );
+                    Self::comptes_row(ui, tr("compte_pin_new"), label_w, &mut c.pin1, 12.0, true);
+                    Self::comptes_row(ui, tr("compte_pin_again"), label_w, &mut c.pin2, 12.0, true);
+                    ui.horizontal_wrapped(|ui| {
+                        ui.add_space(4.0);
+                        if motif::button(ui, tr("compte_create")).clicked() {
+                            act = Some(Session::comptes_draw_phrase);
+                        }
+                    });
+                }
+                Some(phrase) => {
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(tr("compte_phrase_write")).color(motif::warn()),
+                        )
+                        .wrap(),
+                    );
+                    Self::comptes_words(ui, &phrase.words());
+                    let ask = trf("compte_check_ask", c.check_at + 1);
+                    let ask_w = Self::comptes_label_width(ui, &[&ask]);
+                    Self::comptes_row(ui, &ask, ask_w, &mut c.check_word, 16.0, false);
+                    ui.horizontal_wrapped(|ui| {
+                        ui.add_space(4.0);
+                        if motif::button_enabled(
+                            ui,
+                            tr("compte_check_confirm"),
+                            !c.check_word.trim().is_empty(),
+                        )
+                        .clicked()
+                        {
+                            act = Some(Session::comptes_confirm_phrase);
+                        }
+                        if motif::button(ui, tr("compte_cancel")).clicked() {
+                            c.fresh = None;
+                            c.check_word.clear();
+                        }
+                    });
+                }
+            },
+            ComptesDoor::Retrouver => {
+                ui.label(tr("compte_phrase_type"));
+                let w = chars_wide(ui, 60.0).min(ui.available_width());
+                let h = motif::button_height(ui) * 3.0;
+                motif::area(
+                    ui,
+                    egui::vec2(w, h),
+                    egui::TextEdit::multiline(&mut c.words)
+                        .hint_text(motif::hint(tr("compte_phrase_hint"))),
+                );
+                Self::comptes_row(ui, tr("compte_pin_new"), label_w, &mut c.pin1, 12.0, true);
+                Self::comptes_row(ui, tr("compte_pin_again"), label_w, &mut c.pin2, 12.0, true);
+                ui.horizontal_wrapped(|ui| {
+                    ui.add_space(4.0);
+                    if motif::button(ui, tr("compte_recover")).clicked() {
+                        act = Some(Session::comptes_recover);
+                    }
+                });
+            }
+        }
+        ui.add_space(6.0);
+        ui.add(
+            egui::Label::new(
+                egui::RichText::new(tr("compte_how"))
+                    .size(motif::pt(ui, 11.0))
+                    .color(motif::text_dim()),
+            )
+            .wrap(),
+        );
+        if let Some(f) = act {
+            f(session);
+        }
+    }
+
+    /// Les douze mots, numérotés, en colonnes qui tiennent dans la largeur.
+    #[cfg(feature = "sync")]
+    fn comptes_words(ui: &mut egui::Ui, words: &[String]) {
+        let cell = chars_wide(ui, 16.0);
+        let per_row = ((ui.available_width() / cell).floor() as usize).clamp(1, 4);
+        for row in words.chunks(per_row).enumerate() {
+            let (r, chunk) = row;
+            ui.horizontal(|ui| {
+                ui.add_space(4.0);
+                for (i, w) in chunk.iter().enumerate() {
+                    let n = r * per_row + i + 1;
+                    let (rect, _) = ui.allocate_exact_size(
+                        egui::vec2(cell, motif::button_height(ui)),
+                        egui::Sense::hover(),
+                    );
+                    ui.painter().text(
+                        rect.left_center(),
+                        egui::Align2::LEFT_CENTER,
+                        format!("{n:>2}. {w}"),
+                        egui::FontId::monospace(motif::pt(ui, 13.0)),
+                        motif::text(),
+                    );
+                }
+            });
+        }
+    }
+
+    /// Un compte ouvert : qui ; puis, côte à côte quand la vue est large,
+    /// ses listes et le formulaire avec le profil — l'un sous l'autre
+    /// sinon, les listes d'abord : ce qu'on vient lire.
+    #[cfg(feature = "sync")]
+    fn comptes_open_pane(ui: &mut egui::Ui, session: &mut Session) {
+        let mut act: Option<fn(&mut Session)> = None;
+        let mut edit: Option<AccountItem> = None;
+        let id = session
+            .comptes
+            .open
+            .as_ref()
+            .map(crate::compte::Account::id)
+            .unwrap_or_default();
+        let me = session.account_name(&id);
+        let people: Vec<(String, String)> = session
+            .comptes
+            .people
+            .iter()
+            .map(|(a, p)| {
+                let line = if p.officine.trim().is_empty() {
+                    trn("compte_named", &[&p.nom, &short_groups(a)])
+                } else {
+                    trn("compte_person", &[&p.nom, &p.officine, &short_groups(a)])
+                };
+                (a.clone(), line)
+            })
+            .collect();
+        // Les noms de tous ceux que les listes citent : auteurs et lecteurs.
+        let mut names: std::collections::HashMap<String, String> = session
+            .comptes
+            .people
+            .iter()
+            .map(|(a, _)| (a.clone(), session.account_name(a)))
+            .collect();
+        for i in session.comptes.shared.iter().chain(&session.comptes.public) {
+            names
+                .entry(i.account.clone())
+                .or_insert_with(|| session.account_name(&i.account));
+        }
+        ui.horizontal_wrapped(|ui| {
+            ui.add_space(4.0);
+            ui.label(
+                egui::RichText::new(trn(
+                    "compte_open_as",
+                    &[&me, &crate::compte::groups_of(&id)],
+                ))
+                .strong(),
+            );
+            if motif::button(ui, tr("compte_close")).clicked() {
+                act = Some(Session::comptes_close);
+            }
+        });
+        let c = &mut session.comptes;
+        // Deux colonnes quand chacune garde la largeur de son formulaire.
+        let wide = ui.available_width() >= chars_wide(ui, 120.0);
+        if wide {
+            ui.columns(2, |cols| {
+                Self::comptes_lists(&mut cols[0], c, &names, &mut edit);
+                Self::comptes_form(&mut cols[1], c, &people, &mut act);
+                Self::comptes_profile(&mut cols[1], c, &mut act);
+            });
+        } else {
+            Self::comptes_lists(ui, c, &names, &mut edit);
+            Self::comptes_form(ui, c, &people, &mut act);
+            Self::comptes_profile(ui, c, &mut act);
+        }
+        if let Some(item) = edit {
+            session.comptes_edit_item(&item);
+        }
+        if let Some(f) = act {
+            f(session);
+        }
+    }
+
+    /// La largeur de la plus longue de ces étiquettes, dans le texte du
+    /// corps : la colonne où les champs commencent.
+    #[cfg(feature = "sync")]
+    fn comptes_label_width(ui: &egui::Ui, labels: &[&str]) -> f32 {
+        let font = egui::TextStyle::Body.resolve(ui.style());
+        labels
+            .iter()
+            .map(|l| {
+                ui.fonts(|f| {
+                    f.layout_no_wrap((*l).to_owned(), font.clone(), motif::text())
+                        .size()
+                        .x
+                })
+            })
+            .fold(0.0, f32::max)
+            + ui.spacing().item_spacing.x
+    }
+
+    /// Un intitulé dans sa colonne, et son champ.
+    #[cfg(feature = "sync")]
+    fn comptes_row(
+        ui: &mut egui::Ui,
+        label: &str,
+        label_w: f32,
+        text: &mut String,
+        chars: f32,
+        secret: bool,
+    ) -> egui::Response {
+        ui.horizontal(|ui| {
+            ui.add_space(4.0);
+            let (rect, _) = ui.allocate_exact_size(
+                egui::vec2(label_w, motif::button_height(ui)),
+                egui::Sense::hover(),
+            );
+            ui.painter().text(
+                rect.left_center(),
+                egui::Align2::LEFT_CENTER,
+                label,
+                egui::TextStyle::Body.resolve(ui.style()),
+                motif::text(),
+            );
+            let w = chars_wide(ui, chars).min(ui.available_width());
+            motif::field(ui, w, egui::TextEdit::singleline(text).password(secret))
+        })
+        .inner
+    }
+
+    /// Les trois listes : les siens (un clic les met au formulaire), ceux
+    /// qu'on partage avec ce compte, et les publics des autres.
+    #[cfg(feature = "sync")]
+    fn comptes_lists(
+        ui: &mut egui::Ui,
+        c: &Comptes,
+        names: &std::collections::HashMap<String, String>,
+        edit: &mut Option<AccountItem>,
+    ) {
+        for (title, list, editable) in [
+            (tr("compte_list_mine"), &c.mine, true),
+            (tr("compte_list_shared"), &c.shared, false),
+            (tr("compte_list_public"), &c.public, false),
+        ] {
+            motif::section(ui, &trn("compte_list_count", &[&title, &list.len()]));
+            if list.is_empty() {
+                ui.label(
+                    egui::RichText::new(tr("compte_list_empty"))
+                        .size(motif::pt(ui, 11.0))
+                        .color(motif::text_dim()),
+                );
+            }
+            for item in list {
+                let name_of = |a: &str| {
+                    names
+                        .get(a)
+                        .cloned()
+                        .unwrap_or_else(|| trf("compte_unnamed", crate::compte::groups_of(a)))
+                };
+                let line = Self::comptes_line(item, &name_of, editable);
+                let editing = c
+                    .form
+                    .editing
+                    .as_ref()
+                    .is_some_and(|(i, _)| *i == item.item && editable);
+                let text = egui::RichText::new(line);
+                let text = if editing {
+                    text.color(motif::accent())
+                } else {
+                    text
+                };
+                ui.horizontal(|ui| {
+                    ui.add_space(4.0);
+                    let r = ui.add(egui::Label::new(text).truncate().sense(if editable {
+                        egui::Sense::click()
+                    } else {
+                        egui::Sense::hover()
+                    }));
+                    let r = if item.entry.texte.is_empty() {
+                        r
+                    } else {
+                        r.on_hover_text(&item.entry.texte)
+                    };
+                    if editable && r.clicked() {
+                        *edit = Some(item.clone());
+                    }
+                });
+            }
+        }
+    }
+
+    /// Le formulaire d'un élément : sa sorte, son titre, son jour pour un
+    /// rendez-vous, son texte, et qui le lira.
+    #[cfg(feature = "sync")]
+    fn comptes_form(
+        ui: &mut egui::Ui,
+        c: &mut Comptes,
+        people: &[(String, String)],
+        act: &mut Option<fn(&mut Session)>,
+    ) {
+        let f = &mut c.form;
+        motif::section(
+            ui,
+            if f.editing.is_some() {
+                tr("compte_item_edit")
+            } else {
+                tr("compte_item_new")
+            },
+        );
+        ui.horizontal_wrapped(|ui| {
+            ui.add_space(4.0);
+            if motif::radio(ui, !f.rdv, tr("compte_kind_note")).clicked() {
+                f.rdv = false;
+            }
+            if motif::radio(ui, f.rdv, tr("compte_kind_rdv")).clicked() {
+                f.rdv = true;
+            }
+        });
+        let label_w =
+            Self::comptes_label_width(ui, &[tr("compte_item_title"), tr("compte_item_day")]);
+        Self::comptes_row(
+            ui,
+            tr("compte_item_title"),
+            label_w,
+            &mut f.titre,
+            36.0,
+            false,
+        );
+        if f.rdv {
+            ui.horizontal_wrapped(|ui| {
+                ui.add_space(4.0);
+                let (rect, _) = ui.allocate_exact_size(
+                    egui::vec2(label_w, motif::button_height(ui)),
+                    egui::Sense::hover(),
+                );
+                ui.painter().text(
+                    rect.left_center(),
+                    egui::Align2::LEFT_CENTER,
+                    tr("compte_item_day"),
+                    egui::TextStyle::Body.resolve(ui.style()),
+                    motif::text(),
+                );
+                motif::field(
+                    ui,
+                    chars_wide(ui, 11.0),
+                    egui::TextEdit::singleline(&mut f.jour)
+                        .hint_text(motif::hint(tr("compte_day_hint"))),
+                );
+                ui.label(tr("compte_item_from"));
+                motif::field(
+                    ui,
+                    chars_wide(ui, 6.0),
+                    egui::TextEdit::singleline(&mut f.debut),
+                );
+                ui.label(tr("compte_item_to"));
+                motif::field(
+                    ui,
+                    chars_wide(ui, 6.0),
+                    egui::TextEdit::singleline(&mut f.fin),
+                );
+            });
+        }
+        ui.horizontal(|ui| {
+            ui.add_space(4.0);
+            let w = chars_wide(ui, 60.0).min(ui.available_width());
+            motif::area(
+                ui,
+                egui::vec2(w, motif::button_height(ui) * 3.0),
+                egui::TextEdit::multiline(&mut f.texte)
+                    .hint_text(motif::hint(tr("compte_item_text_hint"))),
+            );
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.add_space(4.0);
+            for (reach, label) in [
+                (AccountReach::Prive, tr("compte_reach_private")),
+                (AccountReach::Partage, tr("compte_reach_shared")),
+                (AccountReach::Public, tr("compte_reach_public")),
+            ] {
+                if motif::radio(ui, f.reach == reach, label).clicked() {
+                    f.reach = reach;
+                }
+            }
+        });
+        if f.reach == AccountReach::Partage {
+            if people.is_empty() {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("compte_nobody"))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+            }
+            for (account, line) in people {
+                ui.horizontal(|ui| {
+                    ui.add_space(12.0);
+                    let mut on = f.pour.contains(account);
+                    if motif::checkbox(ui, &mut on, line.as_str()).changed() {
+                        if on {
+                            f.pour.insert(account.clone());
+                        } else {
+                            f.pour.remove(account);
+                        }
+                    }
+                });
+            }
+        }
+        ui.horizontal_wrapped(|ui| {
+            ui.add_space(4.0);
+            if motif::button(ui, tr("compte_item_save")).clicked() {
+                *act = Some(Session::comptes_save_item);
+            }
+            if f.editing.is_some() {
+                if motif::button(ui, tr("compte_item_delete")).clicked() {
+                    *act = Some(Session::comptes_delete_item);
+                }
+                if motif::button(ui, tr("compte_cancel")).clicked() {
+                    *f = AccountForm::default();
+                }
+            }
+        });
+        ui.add(
+            egui::Label::new(
+                egui::RichText::new(tr("compte_no_patient"))
+                    .size(motif::pt(ui, 11.0))
+                    .color(motif::warn()),
+            )
+            .wrap(),
+        );
+    }
+
+    /// Le profil, public : ce que les autres comptes voient.
+    #[cfg(feature = "sync")]
+    fn comptes_profile(ui: &mut egui::Ui, c: &mut Comptes, act: &mut Option<fn(&mut Session)>) {
+        motif::section(ui, tr("compte_profile"));
+        let labels = [
+            tr("compte_name"),
+            tr("compte_role"),
+            tr("compte_rpps"),
+            tr("compte_officine"),
+        ];
+        let label_w = Self::comptes_label_width(ui, &labels);
+        Self::comptes_row(ui, labels[0], label_w, &mut c.nom, 28.0, false);
+        Self::comptes_row(ui, labels[1], label_w, &mut c.role, 20.0, false);
+        Self::comptes_row(ui, labels[2], label_w, &mut c.rpps, 12.0, false);
+        Self::comptes_row(ui, labels[3], label_w, &mut c.officine, 28.0, false);
+        ui.horizontal_wrapped(|ui| {
+            ui.add_space(4.0);
+            if motif::button(ui, tr("compte_profile_save")).clicked() {
+                *act = Some(Session::comptes_save_profile);
+            }
+            ui.label(
+                egui::RichText::new(tr("compte_profile_public"))
+                    .size(motif::pt(ui, 11.0))
+                    .color(motif::text_dim()),
+            );
+        });
+    }
+
+    /// Une rangée de liste : la date d'un rendez-vous, le titre, et qui le
+    /// lit (les siens) ou qui l'a écrit (les autres).
+    #[cfg(feature = "sync")]
+    fn comptes_line(item: &AccountItem, name_of: &dyn Fn(&str) -> String, mine: bool) -> String {
+        use crate::compte::{Kind, Visibility};
+        let when = match item.kind {
+            Kind::Rdv if item.entry.debut.is_empty() => db::format_french_date(&item.entry.jour),
+            Kind::Rdv => trn(
+                "compte_when",
+                &[&db::format_french_date(&item.entry.jour), &item.entry.debut],
+            ),
+            _ => tr("compte_kind_note").to_owned(),
+        };
+        let who = if mine {
+            match &item.visibility {
+                Visibility::Private => tr("compte_reach_private").to_owned(),
+                Visibility::Public => tr("compte_reach_public").to_owned(),
+                // Deux lecteurs se nomment ; au-delà, ils se comptent.
+                Visibility::Shared(to) if to.len() <= 2 => trf(
+                    "compte_shared_with",
+                    to.iter().map(|a| name_of(a)).collect::<Vec<_>>().join(", "),
+                ),
+                Visibility::Shared(to) => trf("compte_shared_n", to.len()),
+            }
+        } else {
+            name_of(&item.account)
+        };
+        trn("compte_line", &[&when, &item.entry.titre, &who])
+    }
+
     /// What the FINESS register says of a declared number, as a word, its
     /// colour and its mark.
     #[cfg(feature = "sync")]
@@ -89759,6 +91320,15 @@ impl eframe::App for App {
                 })
                 .map(|(_, said, d)| (said.clone(), d.clone()));
             let conn_mark = session.conn_mark();
+            // Le compte ouvert dans cette session : son nom, dans la barre.
+            #[cfg(feature = "sync")]
+            let account_mark = session
+                .comptes
+                .open
+                .as_ref()
+                .map(|a| session.account_name(&a.id()));
+            #[cfg(not(feature = "sync"))]
+            let account_mark: Option<String> = None;
             let db_file = self
                 .config
                 .db_path()
@@ -89888,6 +91458,23 @@ impl eframe::App for App {
                         {
                             status_goto = Some(WorkTab::Connexions);
                         }
+                        if let Some(name) = &account_mark {
+                            if ui
+                                .add(
+                                    egui::Label::new(
+                                        egui::RichText::new(trf("compte_status", name))
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::accent()),
+                                    )
+                                    .truncate()
+                                    .sense(egui::Sense::click()),
+                                )
+                                .on_hover_text(tr("compte_status_tooltip"))
+                                .clicked()
+                            {
+                                status_goto = Some(WorkTab::Comptes);
+                            }
+                        }
                         // Who is stamping the notes, so a shared post
                         // never signs an entry with the last shift's
                         // initials without saying so.
@@ -90011,6 +91598,7 @@ impl eframe::App for App {
                     | MainView::Connexions
                     | MainView::Officines
                     | MainView::Messages
+                    | MainView::Comptes
                     | MainView::Script
                     | MainView::Caisse
                     | MainView::CaisseHistory
@@ -93591,6 +95179,12 @@ impl App {
         Self::keep_online_seen(&mut self.layout, session);
         #[cfg(feature = "sync")]
         session.park_jobs();
+        // **Le compte se ferme avec le poste**, même quand la session reste
+        // derrière le voile d'un poste en service : la personne suivante
+        // ne lit pas ce qu'une autre a ouvert — ni une phrase tirée ou
+        // tapée, ni un code, compte ouvert ou non.
+        #[cfg(feature = "sync")]
+        session.comptes_close();
         self.close_team_doc();
         if self.config.bureau.en_service {
             self.veil = Some(Veil::default());
@@ -104210,6 +105804,185 @@ mod tests {
         );
         super::App::planning_undo(&mut s);
         assert!(!s.shifts.iter().any(|x| x.day == "2026-10-21"));
+    }
+
+    /// **Un compte, de bout en bout** : créé (la phrase n'est rien tant
+    /// qu'un de ses mots n'est pas retapé), ouvert par son code, partagé
+    /// avec une collègue, lu à l'agenda, fermé, rouvert — puis retrouvé
+    /// sur une autre base par sa seule phrase, une fois ce qu'il a écrit
+    /// arrivé là.
+    #[cfg(feature = "sync")]
+    #[test]
+    fn an_account_is_created_shared_closed_and_found_again_by_its_phrase() {
+        use crate::compte;
+        let (mut s, _swept) = scratch_session("comptes");
+        // Une collègue, d'ailleurs : son profil est arrivé par le réseau.
+        let amel = compte::Account::from_phrase(compte::Phrase::from_entropy([3; 16]));
+        let amel_profile = compte::Profile {
+            nom: "Amel Haddad".to_owned(),
+            ..compte::Profile::default()
+        };
+        s.db.keep_account_records(&[compte::write_profile(
+            &amel,
+            1,
+            &amel_profile,
+            &mut bpm_sync::OsEntropy,
+        )
+        .unwrap()])
+            .unwrap();
+        s.reload_comptes();
+        assert!(s.comptes.kept.is_empty());
+        // Créer : un nom et deux codes qui conviennent sont demandés.
+        s.comptes.door = super::ComptesDoor::Creer;
+        s.comptes.pin1 = "Pharma24".to_owned();
+        s.comptes.pin2 = "Pharma24".to_owned();
+        s.comptes_draw_phrase();
+        assert!(s.comptes.fresh.is_none(), "sans nom");
+        s.comptes.nom = "Claire Martin".to_owned();
+        s.comptes.pin2 = "Pharma25".to_owned();
+        s.comptes_draw_phrase();
+        assert!(s.comptes.fresh.is_none(), "deux codes");
+        s.comptes.pin2 = "Pharma24".to_owned();
+        s.comptes_draw_phrase();
+        let words = s.comptes.fresh.as_ref().unwrap().words();
+        // Un mauvais mot : rien n'est écrit.
+        s.comptes.check_word = "zzzz".to_owned();
+        s.comptes_confirm_phrase();
+        assert!(s.comptes.open.is_none());
+        assert!(s.db.kept_accounts().unwrap().is_empty());
+        // Le bon, sans accents et en majuscules.
+        s.comptes.check_word = compte::fold(&words[s.comptes.check_at]).to_uppercase();
+        s.comptes_confirm_phrase();
+        let id = s.comptes.open.as_ref().expect("ouvert").id();
+        assert_eq!(s.db.kept_accounts().unwrap().len(), 1);
+        assert_eq!(s.comptes.profile.nom, "Claire Martin");
+        assert_eq!(s.comptes.people.len(), 1, "Amel");
+        // Un rendez-vous partagé avec Amel.
+        s.comptes.form.rdv = true;
+        s.comptes.form.titre = "Formation AOD".to_owned();
+        s.comptes.form.jour = "22/10/2026".to_owned();
+        s.comptes.form.debut = "14h".to_owned();
+        s.comptes.form.reach = super::AccountReach::Partage;
+        s.comptes_save_item();
+        assert!(s.comptes.mine.is_empty(), "sans lecteur choisi : refusé");
+        s.comptes.form.pour.insert(amel.id());
+        s.comptes.form.debut = "25h".to_owned();
+        s.comptes_save_item();
+        assert!(s.comptes.mine.is_empty(), "heure illisible : refusé");
+        s.comptes.form.debut = "14h".to_owned();
+        s.comptes_save_item();
+        assert_eq!(s.comptes.mine.len(), 1);
+        let rdv = s.comptes.mine[0].clone();
+        assert_eq!(rdv.entry.jour, "2026-10-22");
+        assert_eq!(rdv.entry.debut, "14:00");
+        assert_eq!(rdv.visibility, compte::Visibility::Shared(vec![amel.id()]));
+        // Amel l'ouvre ; un autre compte non.
+        let latest = s.db.account_latest(Some(&amel)).unwrap();
+        assert!(latest
+            .iter()
+            .any(|(r, _)| compte::entry_of(r).is_some_and(|e| e.titre == "Formation AOD")));
+        let other = compte::Account::from_phrase(compte::Phrase::from_entropy([9; 16]));
+        let latest = s.db.account_latest(Some(&other)).unwrap();
+        assert!(!latest
+            .iter()
+            .any(|(r, _)| compte::entry_of(r).is_some_and(|e| e.titre == "Formation AOD")));
+        // L'agenda le montre le jour dit, et ce jour-là seulement.
+        assert_eq!(s.account_rdv_on("2026-10-22").len(), 1);
+        assert!(s.account_rdv_on("2026-10-23").is_empty());
+        // Modifié : une version de plus, toujours un seul élément.
+        s.comptes_edit_item(&rdv);
+        s.comptes.form.titre = "Formation AOD (salle 2)".to_owned();
+        s.comptes_save_item();
+        assert_eq!(s.comptes.mine.len(), 1);
+        assert!(s.comptes.mine[0].seq > rdv.seq);
+        assert_eq!(s.comptes.mine[0].entry.titre, "Formation AOD (salle 2)");
+        // **Un autre poste a écrit entre-temps** : l'écran le dit, n'écrit
+        // pas, et le second « Enregistrer » écrit en connaissance de cause.
+        let shown = s.comptes.mine[0].clone();
+        s.comptes_edit_item(&shown);
+        s.comptes.form.titre = "Ma version".to_owned();
+        let elsewhere = {
+            let words = s.comptes.open.as_ref().unwrap().phrase().clone();
+            let same = compte::Account::from_phrase(words);
+            compte::write_entry(
+                &same,
+                (&shown.item, shown.seq + 1),
+                compte::Kind::Rdv,
+                &compte::Entry {
+                    titre: "Leur version".to_owned(),
+                    jour: "2026-10-22".to_owned(),
+                    ..compte::Entry::default()
+                },
+                &compte::Visibility::Private,
+                &|_| None,
+                &mut bpm_sync::OsEntropy,
+            )
+            .unwrap()
+        };
+        s.db.keep_account_records(&[elsewhere]).unwrap();
+        s.comptes_save_item();
+        assert!(s.comptes.notice.as_ref().is_some_and(|(e, _)| *e), "dit");
+        assert_eq!(s.comptes.mine[0].entry.titre, "Leur version", "rien écrit");
+        assert_eq!(s.comptes.form.titre, "Ma version", "la frappe reste");
+        s.comptes_save_item();
+        assert_eq!(s.comptes.mine[0].entry.titre, "Ma version");
+        // Une phrase tapée reste-t-elle après fermeture ? Non.
+        s.comptes.words = "abeille".to_owned();
+        // Fermé : plus rien de lui, ni à l'agenda.
+        s.comptes_close();
+        assert!(s.comptes.words.is_empty() && s.comptes.fresh.is_none());
+        assert!(s.comptes.open.is_none() && s.comptes.mine.is_empty());
+        assert!(s.account_rdv_on("2026-10-22").is_empty());
+        assert_eq!(s.comptes.pick.as_deref(), Some(id.as_str()));
+        // Rouvert : un mauvais code, puis le bon.
+        s.comptes.pin = "mauvais1".to_owned();
+        s.comptes_unlock();
+        assert!(s.comptes.open.is_none());
+        assert!(s.comptes.notice.as_ref().is_some_and(|(e, _)| *e));
+        s.comptes.pin = "Pharma24".to_owned();
+        s.comptes_unlock();
+        assert_eq!(
+            s.comptes.open.as_ref().map(compte::Account::id),
+            Some(id.clone())
+        );
+        assert_eq!(s.comptes.mine.len(), 1);
+        // Effacé : une version vide gagne.
+        let item = s.comptes.mine[0].clone();
+        s.comptes_edit_item(&item);
+        s.comptes_delete_item();
+        assert!(s.comptes.mine.is_empty());
+        // Ailleurs : une autre base, la phrase, et ce qui a voyagé.
+        let (mut t, _swept_t) = scratch_session("comptes_ailleurs");
+        t.comptes.words = words.join(" ");
+        t.comptes.pin1 = "Ailleurs9".to_owned();
+        t.comptes.pin2 = "Ailleurs9".to_owned();
+        t.comptes_recover();
+        assert_eq!(
+            t.comptes.open.as_ref().map(compte::Account::id),
+            Some(id.clone())
+        );
+        assert!(t.comptes.profile.nom.is_empty(), "rien n'est encore arrivé");
+        t.comptes_close();
+        t.db.keep_account_records(&s.db.account_record_bytes().unwrap())
+            .unwrap();
+        t.comptes.pin = "Ailleurs9".to_owned();
+        t.comptes_unlock();
+        assert_eq!(t.comptes.profile.nom, "Claire Martin");
+        assert_eq!(t.comptes.nom, "Claire Martin", "les tampons du profil");
+        // Une phrase mal recopiée dit où.
+        let (mut u, _swept_u) = scratch_session("comptes_faute");
+        let mut wrong = words.clone();
+        wrong[2] = "qwerty".to_owned();
+        u.comptes.words = wrong.join(" ");
+        u.comptes.pin1 = "Ailleurs9".to_owned();
+        u.comptes.pin2 = "Ailleurs9".to_owned();
+        u.comptes_recover();
+        assert!(u.comptes.open.is_none());
+        assert!(u
+            .comptes
+            .notice
+            .as_ref()
+            .is_some_and(|(e, t)| *e && t.contains("n° 3")));
     }
 
     /// **Une journée se copie, se colle, se met en congé** — d'un geste

@@ -23,6 +23,8 @@ pub mod classes;
 pub mod codebar;
 pub mod codex;
 pub mod compression;
+#[cfg(feature = "sync")]
+pub mod compte;
 pub mod conciliation;
 pub mod config;
 pub mod conseils;

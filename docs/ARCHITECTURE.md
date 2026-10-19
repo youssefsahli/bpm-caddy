@@ -287,7 +287,7 @@ The one that was missing — « combien de fois un autre poste avait
   écrit le premier », the most useful number the pane carries and the
   one no other screen says — was absent for two versions for a reason
   worth keeping: every compare-and-set answers `false` in its own place,
-  115 of them, and counting at all but one would be a counter quietly
+  116 of them, and counting at all but one would be a counter quietly
   short, which is worse than one that is not there. It arrived by making those answers
   go through **one** function, `Session::stale` / `stale_note`, the only
   path to a « rechargez » notice (`stale_note_with` when it names what changed); `no_stale_notice_is_written_by_hand`
@@ -1470,7 +1470,7 @@ add clicking and typing; it is not the price of entry.
   explorer's axes, the map's lenses, the batch sheet's natures, as the
   register form already did (`richest_form`); it says nothing useful
   about a form, a dialog or a table of records, where what is under the
-  fold is the control you came to use. 71 regions now set
+  fold is the control you came to use. 72 regions now set
   `ui.spacing_mut().scroll.floating = false`, each for a loss seen on a
   capture at 1024x700: the planning's entry row (« Poser »), the
   register's write form (its natures and nothing else — the quantity,
@@ -2347,7 +2347,7 @@ add clicking and typing; it is not the price of entry.
   agenda_filtre|agenda_month|planning|planning_mois|protocols|protocol_open|template|options|about|tables|
   tables_search|regles|mentions|honoraires|forfaits|calc|carnet|vaccins|bio|watch|revue|conciliation|
   vaccine_map|campagne|campagne_rdv|campagne_parametrer|campagne_entretiens|vaccins_grossesse|vaccins_catalogue|ruptures|reseau|versions|postes|postes_seul|postes_telephone|connexions|officines|ordonnance|ordonnance_lignes|rein|grossesse|age|cyp|ddi|ddi_crush|libelles|listes|base|codex|
-  codex_open|en_ligne|dispositifs|dispositif_open|conseil_contention|conseil_nutrition|conseil_protections|couverture|locations|keys|keys_outils|nouveautes|messages|connexions_carte|vitale|
+  codex_open|en_ligne|dispositifs|dispositif_open|conseil_contention|conseil_nutrition|conseil_protections|couverture|locations|keys|keys_outils|nouveautes|messages|comptes|comptes_phrase|comptes_ouvert|connexions_carte|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|graph_zoom|graph_wide|graph_ordonnance|graph_filtre|registres|stup|
   trame|cascades|cascades_decrire|cascades_boucle|
   stup_catalogue|saisie|ordonnancier|vigilance|destruction|scans|
@@ -2374,6 +2374,11 @@ add clicking and typing; it is not the price of entry.
   drawn. What is already stored is never rewritten: the expected figures
   of past evenings come back with their gaps the day the box is ticked
   again.
+  `comptes`, `comptes_phrase` and `comptes_ouvert` are the accounts
+  view: closed on two accounts kept on the post, showing the twelve
+  words of an account being created, and open on Claire's with what she
+  and two colleagues wrote (`demo_comptes`: fixed phrases and a fixed
+  entropy, so a capture does not change from one run to the next).
   `caisses` is its other page, the month: the demo seeds twenty-four
   evenings, one of them recounted and two with no expected takings,
   because those are the two cases the view has to know how to write.
@@ -3046,6 +3051,67 @@ And the manual goes through the same glyph test as the strings file
 (`every_symbol_the_code_draws_has_a_glyph_in_the_face_that_draws_it`):
 it is text that reaches the screen without being in
 `assets/strings.fr.toml`, and the application ships no font.
+
+## Les comptes (`src/compte.rs`, vue `MainView::Comptes`)
+
+A post has its `Device`, the officine its key on each network; nothing
+said **who** writes. An account is a person's key, kept in twelve words
+of the BIP-39 French list (`bip39`, list only: the reading of a typed
+phrase is ours — accents and case fold away, four letters do when they
+name one word, a wrong word is named by its rank). The phrase's sixteen
+bytes give a seed (`derive_key`), and the seed a `Device`: the same
+signing and box keys the network already uses, under their own domains.
+
+- **One record shape, three readerships.** `TAG ‖ account key ‖
+  signature ‖ JSON body`; the signature covers the body's hash under
+  its domain, and the body must name the key that signed it. Public is
+  plain; shared and private are both a `bpm_sync::boxed` — shared for
+  the chosen accounts and oneself, private for oneself only. The
+  readers are inside the seal (`Entry::pour`), never in the record. The
+  profile is always public, and carries the box key others seal for.
+- **The newest version wins, item by item** (`compte::latest`): highest
+  `seq`, then highest record name, so two posts that wrote the same
+  number without meeting agree. A deletion is an empty version. The
+  next `seq` is `max(latest + 1, now in seconds)` (`account_next`): a
+  post that has just recovered an account writes above the older
+  versions still on their way, and the highest number is the newest —
+  which is what the seed cap sorts on. A write is compare-and-set
+  against the version the screen showed (`compte_stale`).
+- **Stored as written.** `account_records` keeps every record in hex,
+  append-only, and travels between posts on the Equipe stream (the
+  phone receives it). A read verifies every record again; a row a post
+  wrote by hand is just never read.
+- **Seeded by the network.** `Net::publish` seals the latest version of
+  each item of the accounts **kept on this post** into every network
+  journal — at most `MOST_ITEMS` live items and as many deletions per
+  account, newest first. What arrived from elsewhere already travels
+  in the journal that brought it; resealing it under the officine's
+  name spent the one megabyte peers grant each officine
+  (`OPEN_LIMITS`), which is also why an item holds 4 KiB at most.
+  `Net::absorb` keeps account records from **the authors that network
+  reads** (a set-aside officine brings none), record by record rather
+  than through the stream reading, so a « correction » by another
+  author hides none. Known names are read once and only new records
+  verified, outside the write transaction. What a network already
+  carries is marked published there and not resealed. That is how a new
+  post finds an account again from its phrase alone
+  (`an_account_is_seeded_by_the_open_network_and_found_again_by_its_phrase`).
+- **On a post**, the phrase lives sealed under the person's code
+  (`account_keys`, local): eight characters at least, not only digits
+  — the seal sits in a base the whole team opens, where a six-digit
+  code falls in an evening — Argon2id (64 MiB, three passes) into
+  AES-256-GCM, the stretch written in the seal and bound as associated
+  data — raising it later locks nobody out, lowering it by hand opens
+  nothing, and a seal asking for more than 256 MiB is refused unread.
+  Tests stretch lightly (`comptes_stretch`). The open account lives in
+  the session only; locking the application closes it, veil included,
+  and wipes the buffers that held a phrase or a code.
+- **A profile names itself as it likes**, so another account's name
+  always carries the start of its fingerprint, and the shared and
+  public lists keep the fifty newest.
+- **Never a patient**: the view says so where one writes. The agenda's
+  day panel lists the open account's appointments apart from the
+  officine's entries; they are edited in the accounts view.
 
 ## Le poste en service (`src/main.rs`, `tray/`, `[bureau]`)
 

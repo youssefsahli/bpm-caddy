@@ -8,6 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Accounts: one per person, kept in twelve words.** The new
+  « Comptes » view (Ctrl+K « comptes ») creates an account from a name
+  and a code for this post, shows a twelve-word phrase (BIP-39 French
+  list) and creates the account once one of its words is typed back.
+  The account opens on any post with its code, or anywhere with its
+  phrase (accents optional, four letters enough); its name shows in the
+  status bar, and it closes when the application locks.
+- **Accounts: private, shared or public items.** An open account keeps
+  notes and appointments, each private (sealed for itself), shared
+  (sealed for the chosen accounts) or public. Its profile (name, role,
+  RPPS, officine) is public and signed. « Partagés avec moi » lists what
+  other accounts share with it; its appointments also show in the
+  agenda's day panel. Never a patient: the view says so where one
+  writes.
+- **Accounts are seeded by the officines' network.** Every record is
+  signed by its account, so any officine can keep and pass it without
+  reading what is sealed or rewriting anything: records travel between
+  the officine's posts and through every network journal, the open
+  network included. A new post finds an account again from its phrase
+  alone, once a synchronisation has brought its records.
+
 ### Changed
 
 - **Planning: hours adjusted without retyping.** Clicking a shift puts

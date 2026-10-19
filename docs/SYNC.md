@@ -1167,6 +1167,30 @@ l'ouverture de session (`--arriere-plan`). Le détail est dans
   créée sans invitation, donc aucun poste seul ne se met à journaliser
   pour rien (le journal ne se compacte pas, § 8).
 
+### 7.13 Les comptes (2026-10)
+
+Un compte est une **personne** : sa clé tient en douze mots
+(`src/compte.rs`). Ce qu'elle écrit est un enregistrement **signé par
+le compte** — public en clair, partagé ou privé sous `boxed`, pour les
+comptes choisis et pour elle. Ces enregistrements voyagent entre les
+postes (`account_records`, flux Équipe, en ajout seul) et **dans le
+journal de chaque réseau** de l'officine, préfixés `ACC1` : les
+officines les gardent et les passent, réseau ouvert compris, sans
+pouvoir lire ce qui est scellé ni rien réécrire. Un poste ne publie que
+les comptes ouverts chez lui ; ce qui vient d'ailleurs circule par le
+journal qui l'a apporté. Ils sont lus des auteurs que le réseau lit —
+la signature du compte fait foi, pas celle du poste qui les a passés —
+enregistrement par enregistrement, si bien qu'aucune « correction »
+d'un autre ne les cache. La dernière version de chaque élément gagne,
+au plus 200 éléments vivants par compte, 4 Kio chacun : le mégaoctet
+que les autres officines accordent à chacune ne s'oublie pas. La phrase ne
+quitte jamais le poste, qui la garde scellée sous le code de la
+personne (Argon2id puis AES-256-GCM, table locale `account_keys`).
+
+**Jamais un patient** : ce qu'un compte range passe par les autres
+officines, ce que § 8.4 refuse pour des données de santé. L'écran le
+dit là où l'on écrit.
+
 ## 8. Travaux restants
 
 1. **Le journal ne se compacte pas.** Chaque poste garde tout ce qui a
@@ -1191,3 +1215,7 @@ l'ouverture de session (`--arriere-plan`). Le détail est dans
 5. **Le compagnon écrit l'équipe, l'agenda et les fiches**, par les
    chemins du bureau (comparer-et-écrire) ; le planning, il le lit
    seulement. Pas de fichier joint depuis le téléphone.
+6. **Les comptes ne se compactent pas** : chaque version d'un élément
+   reste une ligne d'`account_records`, et un enregistrement reçu par
+   deux postes de l'officine y est rangé deux fois (lu une fois). Le
+   compagnon les reçoit sans encore les montrer.

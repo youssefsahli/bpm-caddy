@@ -98,6 +98,14 @@ str0m = { version = "0.24.1", default-features = false, features = ["rust-crypto
 # Le réseau ouvert au-delà du réseau local : les officines se trouvent par
 # la DHT publique de BitTorrent (`src/dht.rs`) — aucun serveur à tenir.
 mainline = { version = "=8.0.1", default-features = false, features = ["node"], optional = true }
+# **Les comptes** (`src/compte.rs`) : la clé d'une personne se recopie en
+# douze mots de la liste française de BIP-39 (une liste publiée, pensée
+# pour être lue et retapée), et le poste la garde scellée sous un code
+# étiré par Argon2id — un code court ne se devine pas à la vitesse d'un
+# hachage.
+bip39 = { version = "2", default-features = false, features = ["french", "std"], optional = true }
+argon2 = { version = "0.5", optional = true }
+zeroize = { version = "1", features = ["derive"], optional = true }
 
 [features]
 # Le réseau d'officines (voir `src/network.rs`) est livré : il ne
@@ -119,6 +127,9 @@ sync = [
     "dep:base64",
     "dep:str0m",
     "dep:mainline",
+    "dep:bip39",
+    "dep:argon2",
+    "dep:zeroize",
 ]
 # The desktop application: the egui window, Typst printing, the system
 # keyring and file dialogs. Everything else in the library — the base,
