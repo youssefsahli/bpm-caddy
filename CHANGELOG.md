@@ -38,10 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one-day shift is removed; one « Annuler » or Ctrl+Z brings the cell
   back as it was. The selected cell is now framed in the week and month
   grids, empty or not — it is where the arrows, Ctrl+V and Suppr act.
-- **Planning: a pattern's day off in one click.** The right-click menu
-  of a pattern's day offers « Congé ce jour » (both halves become a
-  leave at the same hours, so the hole at the counter carries its
-  reason) and « Retirer ce jour »; the pattern stays whole.
+- **Planning: a day off in one click.** The right-click menu of a
+  filled cell, in the week and in the month, offers « Congé ce jour »
+  (both halves become a leave at the same hours, so the hole at the
+  counter carries its reason) and « Retirer ce jour » (as Suppr); that
+  day only, the pattern stays whole.
 
 ### Fixed
 

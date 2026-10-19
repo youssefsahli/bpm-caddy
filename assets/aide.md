@@ -841,11 +841,14 @@ clavier. Une case déjà remplie n'est jamais écrasée. **Suppr** vide la
 case sélectionnée, ce jour seulement — un jour de trame n'a pas lieu,
 la trame reste — et **Ctrl+Z** défait le dernier geste.
 
-Le **clic droit** sur une case propose les mêmes gestes : « Copier la
-journée », « Coller … ». Sur un jour de trame, il propose aussi
-« Congé ce jour » — la journée devient un congé aux mêmes heures, ce
-qui explique le creux au comptoir — et « Retirer ce jour ». La trame
-reste intacte, et chaque geste se défait d'un seul « Annuler ».
+Le **clic droit** sur une case — dans la semaine de l'équipe comme dans
+le mois d'une personne — propose les mêmes gestes : « Copier la
+journée », « Coller … », et sur une case remplie « Congé ce jour » —
+la journée devient un congé aux mêmes heures, ce qui explique le creux
+au comptoir — et « Retirer ce jour », qui la vide comme Suppr. Les
+deux portent sur ce jour seul, les deux moitiés d'une journée coupée
+ensemble ; la trame reste intacte, et chaque geste se défait d'un seul
+« Annuler ».
 
 ## Récurrences
 

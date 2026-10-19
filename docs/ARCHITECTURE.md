@@ -650,16 +650,22 @@ The one that was missing — « combien de fois un autre poste avait
   `Event::Copy`, and `Event::Paste` only when the system clipboard
   holds text: so the copy writes the day there in clear, and a paste
   acts only on that very text — something copied elsewhere in between
-  never pastes a forgotten day. « Congé ce jour » turns a pattern's
-  day into leave exceptions at the same hours (a leave explains the
-  hole, a cancelled day does not). **Suppr empties the designated
-  cell, that day only**: a pattern's day gets a cancelled exception, an
-  exception is removed *and* replaced by that cancellation (removing it
-  alone would bring the pattern's day back, which is not emptying), a
-  one-day shift is removed — one undo (`PlanningUndo::Cleared`, the
-  trame's two-sided undo under its own name). The designated cell is
+  never pastes a forgotten day. **Suppr empties the designated cell,
+  and « Congé ce jour » turns it into leave at the same hours** (a
+  leave explains the hole, a cancelled day does not) — one function,
+  `App::planning_rewrite_day`, row by row: a pattern's day gets an
+  exception (cancelled, or leave), an exception is removed *and*
+  replaced the same way (removing it alone would bring the pattern's
+  day back, which is neither emptying nor leave), a one-day shift is
+  removed (and replaced by a one-day leave). It began as a leave for
+  plain pattern days only, and a Monday holding an exception came out
+  half leave, half worked — the test now puts the leave on exactly
+  that Monday. One undo (`PlanningUndo::Cleared`, the trame's
+  two-sided undo under its own name). The designated cell is
   framed in both grids, empty or not: it is what the arrows move,
-  Ctrl+V fills and the menu aims at. Held by
+  Ctrl+V fills and the menu aims at. The right-click menu is one
+  function for both grids (`App::planning_cell_menu`, applied by
+  `planning_cell_act` once the grid is let go). Held by
   `a_planning_day_is_stretched_or_added_without_retyping` and
   `a_planning_day_is_copied_pasted_and_given_off`),
   `src/graph.rs` (a card's neighbourhood as points on the unit circle:
