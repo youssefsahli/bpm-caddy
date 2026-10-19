@@ -813,8 +813,9 @@ qu'une **plage d'ouverture n'est pas couverte**, y compris partiellement
 Un clic sur un poste met **ses heures dans les champs** et vise **ce
 jour seulement** : la trame reste intacte. Pour rester jusqu'à 12 h 30
 au lieu de 12 h, remplacer « 12h » par « 12h30 » et taper **Entrée**
-— ou presser « Fin +15 min » deux fois. Le jour reste sélectionné entre
-deux clics.
+— ou presser deux fois « +15 » après « fin ». « début -15 » avance
+l'arrivée d'un quart d'heure. Chaque pression enregistre aussitôt, et
+le jour reste sélectionné entre deux pressions.
 
 Une journée coupée se sélectionne moitié par moitié : le premier clic
 prend le matin, le deuxième l'après-midi, le troisième libère la case.
@@ -827,8 +828,24 @@ de plus s'ajoute ainsi en deux clics, pour ce jour seulement. Un seul
 « Annuler » le retire.
 
 Un poste sélectionné cache « Poser » et le rythme ; un nouveau clic sur
-la case la libère. Pour corriger toute la série, décocher « Ce jour
-seulement ».
+la case, ou **Échap**, la libère. Pour corriger toute la série,
+décocher « Ce jour seulement ».
+
+## Copier une journée
+
+**Ctrl+C** sur une case sélectionnée copie sa journée ; **Ctrl+V** la
+colle sur une case libre — de la même personne ou d'une autre, ce jour
+seulement. Les flèches déplacent la sélection d'une case à l'autre (la
+case sélectionnée est encadrée) : on remplit ainsi une semaine au
+clavier. Une case déjà remplie n'est jamais écrasée. **Suppr** vide la
+case sélectionnée, ce jour seulement — un jour de trame n'a pas lieu,
+la trame reste — et **Ctrl+Z** défait le dernier geste.
+
+Le **clic droit** sur une case propose les mêmes gestes : « Copier la
+journée », « Coller … ». Sur un jour de trame, il propose aussi
+« Congé ce jour » — la journée devient un congé aux mêmes heures, ce
+qui explique le creux au comptoir — et « Retirer ce jour ». La trame
+reste intacte, et chaque geste se défait d'un seul « Annuler ».
 
 ## Récurrences
 

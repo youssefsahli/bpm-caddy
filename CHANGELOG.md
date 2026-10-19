@@ -13,9 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Planning: hours adjusted without retyping.** Clicking a shift puts
   its hours in the fields and aims the gesture at that day only (the
   pattern stays whole): change « 12h » to « 12h30 » and press Enter.
-  « Fin -15 min » / « Fin +15 min » move the end by a quarter of an
-  hour in one click, and the day stays selected for a second click. A
-  split day is picked half by half: a second click takes the afternoon.
+  « début -15 +15 » and « fin -15 +15 » move the arrival or the end by
+  a quarter of an hour in one click, and the day stays selected for a
+  second click. A split day is picked half by half: a second click
+  takes the afternoon. Échap frees the selected cell.
 - **Planning: one more day in one click.** Clicking an empty cell picks
   that row's person (not the one in the menu) and proposes their usual
   day, read on the surrounding weeks — the same weekday first, otherwise
@@ -25,6 +26,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   selected, « Poser » and the rhythm are hidden (with the fields now
   filled, « Poser » would have written a duplicate of the pattern);
   click the cell again to free it.
+- **Planning: copy a day, paste it elsewhere.** Ctrl+C on a selected
+  cell (or « Copier la journée » in its right-click menu) copies its
+  shifts; Ctrl+V or « Coller … » puts them on a free cell, for that day
+  only, taken back by one « Annuler ». A cell already filled is never
+  pasted over. The copy also lands in the system clipboard as text
+  (« CL 19/10/2026 : 9 h–12 h 30 · 14 h–19 h »), and Ctrl+V pastes only
+  while the clipboard still holds it.
+- **Planning: Suppr empties the selected cell**, that day only: a
+  pattern's day does not take place (the pattern stays whole), a
+  one-day shift is removed; one « Annuler » or Ctrl+Z brings the cell
+  back as it was. The selected cell is now framed in the week and month
+  grids, empty or not — it is where the arrows, Ctrl+V and Suppr act.
+- **Planning: a pattern's day off in one click.** The right-click menu
+  of a pattern's day offers « Congé ce jour » (both halves become a
+  leave at the same hours, so the hole at the counter carries its
+  reason) and « Retirer ce jour »; the pattern stays whole.
 
 ### Fixed
 

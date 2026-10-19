@@ -798,6 +798,15 @@ pub fn nudge_end(start: u16, end: u16, delta: i16) -> Option<u16> {
     (moved > start && moved < 48 * 60).then_some(moved)
 }
 
+/// Le début d'un poste avancé ou reculé de `delta` minutes — « j'arrive
+/// à 8 h 30 » —, ou `None` : avant minuit, ou **au-delà de sa fin**, le
+/// poste n'existerait plus. Un poste sans fin écrite se déplace librement
+/// dans la journée.
+pub fn nudge_start(start: u16, end: Option<u16>, delta: i16) -> Option<u16> {
+    let moved = start.checked_add_signed(delta)?;
+    (moved < 24 * 60 && end.is_none_or(|end| moved < end)).then_some(moved)
+}
+
 /// La journée habituelle d'une personne : ce qu'elle fait **d'ordinaire**,
 /// pour la poser d'un clic un jour de plus.
 ///
@@ -1397,6 +1406,18 @@ mod tests {
         assert_eq!(nudge_end(540, 555, -15), None);
         assert_eq!(nudge_end(540, 10, -15), None);
         assert_eq!(nudge_end(1200, 48 * 60 - 10, 15), None);
+    }
+
+    /// **Arriver une demi-heure plus tôt** avance le début ; un début
+    /// qui passerait la fin, ou minuit, ne se pose pas.
+    #[test]
+    fn a_nudged_start_never_crosses_its_end() {
+        assert_eq!(nudge_start(540, Some(720), -15), Some(525));
+        assert_eq!(nudge_start(540, Some(720), 15), Some(555));
+        assert_eq!(nudge_start(705, Some(720), 15), None);
+        assert_eq!(nudge_start(10, Some(720), -15), None);
+        assert_eq!(nudge_start(540, None, 15), Some(555));
+        assert_eq!(nudge_start(24 * 60 - 10, None, 15), None);
     }
 
     /// **Un jour de plus se pose avec la journée ordinaire** : le même

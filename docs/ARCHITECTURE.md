@@ -287,7 +287,7 @@ The one that was missing — « combien de fois un autre poste avait
   écrit le premier », the most useful number the pane carries and the
   one no other screen says — was absent for two versions for a reason
   worth keeping: every compare-and-set answers `false` in its own place,
-  114 of them, and counting at all but one would be a counter quietly
+  115 of them, and counting at all but one would be a counter quietly
   short, which is worse than one that is not there. It arrived by making those answers
   go through **one** function, `Session::stale` / `stale_note`, the only
   path to a « rechargez » notice (`stale_note_with` when it names what changed); `no_stale_notice_is_written_by_hand`
@@ -634,16 +634,34 @@ The one that was missing — « combien de fois un autre poste avait
   the one door of the week click, the arrow keys and the month click:
   a shift's hours go into the fields and a pattern's day defaults to
   « Ce jour seulement », so « I stay until 12 h 30 » is one field and
-  Enter, or « Fin +15 min » twice (`planning::nudge_end`; the
-  exception stays designated for the second click). An empty cell
+  Enter, or « fin +15 » twice (`planning::nudge_end`, and
+  `nudge_start` for the arrival; the exception stays designated for
+  the second click). An empty cell
   takes its row's person and proposes `planning::usual_day` — the same
   weekday on the surrounding weeks first, otherwise the most frequent
   day shape, nothing when nothing worked is read: an invented day is
   worse than an empty field — put down whole, both halves, as one-day
   rows and one undo (`PlanningUndo::Placed`). With a shift designated,
   « Poser » and the rhythm are **not drawn**: the filled fields would
-  have made it write a second pattern over the first. Held by
-  `a_planning_day_is_stretched_or_added_without_retyping`),
+  have made it write a second pattern over the first. A day is
+  **copied and pasted** (Ctrl+C / Ctrl+V on the designated cell, or
+  its right-click menu) onto a free cell only — what is written wins,
+  as in « Recopier ». egui-winit sends no key for Ctrl+C/V, only
+  `Event::Copy`, and `Event::Paste` only when the system clipboard
+  holds text: so the copy writes the day there in clear, and a paste
+  acts only on that very text — something copied elsewhere in between
+  never pastes a forgotten day. « Congé ce jour » turns a pattern's
+  day into leave exceptions at the same hours (a leave explains the
+  hole, a cancelled day does not). **Suppr empties the designated
+  cell, that day only**: a pattern's day gets a cancelled exception, an
+  exception is removed *and* replaced by that cancellation (removing it
+  alone would bring the pattern's day back, which is not emptying), a
+  one-day shift is removed — one undo (`PlanningUndo::Cleared`, the
+  trame's two-sided undo under its own name). The designated cell is
+  framed in both grids, empty or not: it is what the arrows move,
+  Ctrl+V fills and the menu aims at. Held by
+  `a_planning_day_is_stretched_or_added_without_retyping` and
+  `a_planning_day_is_copied_pasted_and_given_off`),
   `src/graph.rs` (a card's neighbourhood as points on the unit circle:
   same molecule, same class, named in its interactions — pure, tested,
   no egui, so the view only scales and paints. The **seventh** reading
@@ -2555,8 +2573,9 @@ add clicking and typing; it is not the price of entry.
   talking to a reader, so `START_VIEW=vitale` exercises the whole path
   (parsing, matching, the picker) with no hardware and nobody's identity
 - `BPM_CADDY_FUZZ=<seed>` — feed random input every frame (pointer walk,
-  clicks, wheel, navigation keys, a few characters; no modifier
-  shortcuts) through `App::raw_input_hook`; `scripts/fuzz.sh` opens every
+  clicks — one in six a right-click, so context menus open too —,
+  wheel, navigation keys, a few characters, and the `Copy` / `Paste`
+  events egui-winit sends for Ctrl+C / Ctrl+V; no modifier shortcuts) through `App::raw_input_hook`; `scripts/fuzz.sh` opens every
   view of `smoke.sh` that way and fails on a panic. Smoke opens a view
   and never uses it: the Explorateur crash (0.316.0 — a table cached
   under the axis read *after* the click, measured for the one read
