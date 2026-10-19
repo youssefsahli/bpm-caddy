@@ -3248,9 +3248,9 @@ pub struct PlannedShift {
     pub note: String,
 }
 
-/// The day's shifts **as they will be lived**: a pattern's worked day
-/// that an absence of the same person covers is dropped
-/// (`planning::hidden_by_absence`).
+/// The day's shifts **as they will be lived**: a worked shift that an
+/// absence of the same person covers is dropped — a garde or an
+/// astreinte never (`planning::hidden_by_absence`).
 ///
 /// A leave is written as a range — one daily row, « du 12 au 26 » —
 /// and it replaces nothing in the base: the pattern goes on unfolding
@@ -3260,12 +3260,9 @@ pub struct PlannedShift {
 /// the coverage, the phone, the usual day — sees the same day. Rows
 /// whose nature or hours this version cannot read are left as they are.
 ///
-/// **Only what a pattern unfolds is hidden.** A shift written for that
-/// very day — a one-off, an exception — was put there on purpose, on
-/// top of the leave: a garde taken the evening of a day off. Hidden, the
-/// officine on duty showed nobody at night, which is the one place
-/// where the planning must not be wrong; drawn, the cell says the leave
-/// *and* the garde, and the hours count.
+/// Rows written as one-offs are hidden like a pattern's: an officine
+/// that builds its weeks with « Recopier » has no pattern at all, and a
+/// leave over its copied days must replace them just the same.
 fn present(rows: Vec<PlannedShift>) -> Vec<PlannedShift> {
     use crate::planning;
     let read = |r: &PlannedShift| {
@@ -3290,8 +3287,7 @@ fn present(rows: Vec<PlannedShift>) -> Vec<PlannedShift> {
             .collect();
         let day: Vec<planning::Shift> = readable.iter().map(|(_, s)| s.clone()).collect();
         for ((i, _), h) in readable.iter().zip(planning::hidden_by_absence(&day)) {
-            let unfolded = rows[*i].repeat_days > 0 && rows[*i].id == rows[*i].source_id;
-            hidden[*i] = h && unfolded;
+            hidden[*i] = h;
         }
         at = end;
     }
@@ -3322,6 +3318,11 @@ pub struct NewShift {
     pub supersedes: i64,
     /// With `supersedes`, says that day simply does not happen.
     pub cancelled: bool,
+    /// The id the row had before it was removed, when it is read back
+    /// to be written again (`shift_family`); 0 for a new row. Never
+    /// written — `add_shift` gives a fresh id —, it is what lets an
+    /// undo point the gestures stacked before it at the row's new id.
+    pub former_id: i64,
 }
 
 /// A planned interview with the patient it belongs to, for the
@@ -54252,24 +54253,30 @@ impl Db {
     pub fn update_shift(
         &self,
         id: i64,
-        (start_time, end_time, pause_minutes): (&str, &str, i64),
-        (expected_start, expected_end, expected_pause): (&str, &str, i64),
+        (start_time, end_time, pause_minutes, kind): (&str, &str, i64, &str),
+        (expected_start, expected_end, expected_pause, expected_kind): (&str, &str, i64, &str),
     ) -> Result<bool, String> {
         // La pause aussi : elle est écrite, elle est donc comparée — une
-        // pause corrigée ailleurs était réécrite avec celle d'avant.
+        // pause corrigée ailleurs était réécrite avec celle d'avant. Et
+        // la nature de même : le formulaire la montre et la laisse
+        // changer, et « Modifier » ne l'écrivait pas — une journée
+        // passée en congé restait une journée, sans un mot.
         let changed = self
             .conn
             .execute(
-                "UPDATE shifts SET start_time = ?1, end_time = ?2, pause_minutes = ?3
-                 WHERE id = ?4 AND start_time = ?5 AND end_time = ?6 AND pause_minutes = ?7",
+                "UPDATE shifts SET start_time = ?1, end_time = ?2, pause_minutes = ?3, kind = ?4
+                 WHERE id = ?5 AND start_time = ?6 AND end_time = ?7 AND pause_minutes = ?8
+                   AND kind = ?9",
                 (
                     start_time,
                     end_time,
                     pause_minutes,
+                    kind,
                     id,
                     expected_start,
                     expected_end,
                     expected_pause,
+                    expected_kind,
                 ),
             )
             .map_err(|e| e.to_string())?;
@@ -54343,7 +54350,7 @@ impl Db {
             .conn
             .prepare(
                 "SELECT operator, day, start_time, end_time, pause_minutes, kind,
-                        repeat_days, repeat_until, note, supersedes, cancelled, cadence
+                        repeat_days, repeat_until, note, supersedes, cancelled, cadence, id
                  FROM shifts WHERE id = ?1 OR supersedes = ?1
                  ORDER BY CASE WHEN id = ?1 THEN 0 ELSE 1 END, day, id",
             )
@@ -54363,6 +54370,7 @@ impl Db {
                     supersedes: r.get(9)?,
                     cancelled: r.get::<_, i64>(10)? != 0,
                     cadence: r.get(11)?,
+                    former_id: r.get(12)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -63469,15 +63477,27 @@ mod tests {
             .unwrap();
         // Quelqu'un d'autre l'a déjà bougé : l'écriture ne passe pas.
         assert!(!db
-            .update_shift(id, ("10:00", "19:00", 90), ("08:00", "19:00", 90))
+            .update_shift(
+                id,
+                ("10:00", "19:00", 90, "JOURNEE"),
+                ("08:00", "19:00", 90, "JOURNEE"),
+            )
             .unwrap());
         // Une pause corrigée ailleurs refuse l'écriture aussi.
         assert!(!db
-            .update_shift(id, ("10:00", "18:30", 60), ("09:00", "19:00", 30))
+            .update_shift(
+                id,
+                ("10:00", "18:30", 60, "JOURNEE"),
+                ("09:00", "19:00", 30, "JOURNEE"),
+            )
             .unwrap());
         // Avec les valeurs que cet écran affichait, elle passe.
         assert!(db
-            .update_shift(id, ("10:00", "18:30", 60), ("09:00", "19:00", 90))
+            .update_shift(
+                id,
+                ("10:00", "18:30", 60, "JOURNEE"),
+                ("09:00", "19:00", 90, "JOURNEE"),
+            )
             .unwrap());
         let after = db.shifts_between("2026-09-07", "2026-09-07").unwrap();
         assert_eq!(after[0].start_time, "10:00");
@@ -63486,7 +63506,11 @@ mod tests {
         // Et une seconde fois avec les anciennes valeurs échoue, ce qui
         // est la moitié utile de la garantie.
         assert!(!db
-            .update_shift(id, ("11:00", "18:30", 60), ("09:00", "19:00", 90))
+            .update_shift(
+                id,
+                ("11:00", "18:30", 60, "JOURNEE"),
+                ("09:00", "19:00", 90, "JOURNEE"),
+            )
             .unwrap());
 
         // Une trame annulée en bloc ne rend plus d'occurrence.

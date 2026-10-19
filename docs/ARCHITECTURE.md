@@ -604,12 +604,14 @@ The one that was missing — « combien de fois un autre poste avait
   no end (the form asks the start, not the end) is the whole day; a
   bounded one hides what it *contains*, and a training of 14 h–17 h
   over an afternoon of 14 h–19 h hides nothing — both stay drawn
-  rather than the module inventing the hours left. And only **what a
-  pattern unfolds** is hidden: a one-off or an exception written for
-  that day was put there on purpose — a garde taken the evening of a
-  day off — and hiding it left the officine on duty with nobody at
-  night. The pure rule says what is covered; `present` hides the
-  covered rows that a pattern unfolded. The demo's Thursday
+  rather than the module inventing the hours left. **A garde or an
+  astreinte is never hidden**: put on a day off, it was put there on
+  purpose — the evening garde after a day off — and hiding it left the
+  officine on duty with nobody at night. (A first version hid only
+  what a pattern unfolds, to spare the garde; a review saw that an
+  officine building its weeks with « Recopier » has one-off days and
+  no pattern, and its leaves then hid nothing at all. The exemption is
+  the duty's, not the row's.) The demo's Thursday
   training had shown it without anyone seeing: its exception replaced
   the morning only once days were split, and the afternoon gap its
   comment promises never appeared. Held by
@@ -682,7 +684,14 @@ The one that was missing — « combien de fois un autre poste avait
   plain pattern days only, and a Monday holding an exception came out
   half leave, half worked — the test now puts the leave on exactly
   that Monday. One undo (`PlanningUndo::Cleared`, the trame's
-  two-sided undo under its own name). Maj+click lays a **range** on the
+  two-sided undo under its own name). **An undo that puts rows back
+  re-points the stack**: re-inserted rows get new ids, and the gestures
+  stacked before (a paste, an edit) named the old ones — undo a cleared
+  cell, then the paste under it, and the second undo found nothing and
+  said nothing. `shift_family` keeps each row's `former_id`,
+  `restore_family` returns old → new, `remap_undo` rewrites the stack
+  (ids, families, the `supersedes` of kept exceptions), and a delete
+  that finds nothing is said through `stale`. Maj+click lays a **range** on the
   designated person's row (`Session::planning_range`, the other end;
   any plain pick clears it), and the menu writes over it the one daily
   leave row the form would (`planning_leave_range`) — with no end, so

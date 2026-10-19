@@ -511,12 +511,17 @@ impl Shift {
 ///   après-midi de 14 h à 19 h ne le contient pas : les deux restent
 ///   affichés, et c'est à qui lit de trancher, plutôt qu'au module
 ///   d'inventer les heures qui restent.
+/// * **Une garde ou une astreinte ne se cache jamais.** Posée sur un
+///   jour de congé, elle est voulue — la garde du soir d'un jour off —,
+///   et la cacher laissait l'officine de garde sans personne la nuit :
+///   la seule erreur que le planning ne doit pas faire.
 ///
 /// `day` porte les postes **d'un seul jour**, toutes personnes mêlées.
 pub fn hidden_by_absence(day: &[Shift]) -> Vec<bool> {
     day.iter()
         .map(|s| {
             s.kind.worked()
+                && !matches!(s.kind, ShiftKind::Garde | ShiftKind::Astreinte)
                 && day.iter().any(|a| {
                     a.kind.is_absence()
                         && a.operator == s.operator
@@ -1468,6 +1473,12 @@ mod tests {
         let training = shift(8, "CL", 840, Some(1020), ShiftKind::Formation);
         assert_eq!(
             hidden_by_absence(&[afternoon.clone(), training]),
+            vec![false, false]
+        );
+        // Une garde sous un congé reste : c'est le service de nuit.
+        let garde = shift(4, "CL", 1200, Some(1560), ShiftKind::Garde);
+        assert_eq!(
+            hidden_by_absence(&[garde, leave(540, None)]),
             vec![false, false]
         );
         // Sans absence, rien de caché.

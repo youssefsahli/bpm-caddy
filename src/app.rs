@@ -18324,6 +18324,9 @@ enum PlanningUndo {
         start: String,
         end: String,
         pause: i64,
+        /// La nature d'avant, et celle que l'écriture a mise.
+        kind: String,
+        now_kind: String,
         /// Ce que l'écriture avait mis — le compare-and-set du retour
         /// arrière porte là-dessus, pas sur ce qu'on croit savoir.
         now_start: String,
@@ -18333,9 +18336,10 @@ enum PlanningUndo {
     /// Une famille supprimée : la ligne rangée **et** ses exceptions.
     /// Les réinsérer donne de nouveaux identifiants, et le
     /// `supersedes` de chaque exception est réécrit avec celui que la
-    /// base vient de rendre. Rien ne pointe vers un poste, donc le
-    /// changement d'identifiant est sans conséquence — mais une
-    /// exception qui nommerait la ligne d'avant serait muette.
+    /// base vient de rendre. **Les gestes empilés avant pointent aussi
+    /// vers des postes** — on l'avait cru sans conséquence, et défaire
+    /// un collé après une case vidée et rendue ne trouvait plus rien :
+    /// `remap_undo` les pointe sur les nouveaux identifiants.
     Deleted { family: Vec<db::NewShift> },
     /// Une semaine recopiée : les postes écrits d'un coup s'enlèvent
     /// d'un coup.
@@ -18370,6 +18374,10 @@ enum PlanningUndo {
         what: &'static str,
     },
 }
+
+/// Ce qu'une famille rendue a donné : la ligne rangée réécrite, s'il y
+/// en avait une, et chaque ancien identifiant avec son nouveau.
+type Restored = (Option<i64>, Vec<(i64, i64)>);
 
 /// What the pending undo would take back, in French.
 fn undo_label(what: &PlanningUndo) -> String {
@@ -42655,6 +42663,15 @@ impl App {
         if session.shift_form.kind.is_none() {
             session.shift_form.kind = Some(planning::ShiftKind::Journee);
         }
+        // **Le poste désigné est celui de la personne du menu.** Changer
+        // « Qui » sous une sélection laissait « Modifier » écrire sur la
+        // ligne d'avant, pendant que le cadre passait sur la nouvelle :
+        // le menu changé, la case est rendue.
+        if Self::picked_occurrence(session)
+            .is_some_and(|o| o.operator.trim() != session.shift_form.operator.trim())
+        {
+            Self::free_planning_cell(session);
+        }
         if session.shift_form.cadence.is_none() {
             session.shift_form.cadence = Some(planning::Cadence::Unique);
         }
@@ -43134,7 +43151,10 @@ impl App {
                 match session.db.delete_shift(source_id, &who) {
                     Ok(true) => {
                         session.remember(PlanningUndo::Deleted { family });
-                        session.shift_pick = None;
+                        // La case rendue, le rythme de la série avec :
+                        // laissé dans le formulaire, Entrée reposait la
+                        // trame qu'on venait de supprimer.
+                        Self::free_planning_cell(session);
                         session.load_shifts(true);
                     }
                     Ok(false) => {
@@ -43417,6 +43437,26 @@ impl App {
             return;
         };
         let to = Self::shift_end(&form.from, &form.to);
+        // **Le champ de pause porte la pause du poste** : la case
+        // désignée l'y a écrite (`pick_planning_cell`), et le vider,
+        // c'est la retirer. Une frappe illisible — « 45 min » — est
+        // refusée, comme à « Poser » : lue comme zéro, elle faisait
+        // gagner trois quarts d'heure au jour et au mois.
+        let pause = match form.pause.trim() {
+            "" => 0,
+            typed => match typed.parse::<i64>() {
+                Ok(p) if p >= 0 => p,
+                _ => {
+                    session.error = Some(tr("planning_bad_pause").to_owned());
+                    return;
+                }
+            },
+        };
+        let kind = form
+            .kind
+            .unwrap_or(planning::ShiftKind::Journee)
+            .as_str()
+            .to_owned();
         // **Ce jour seulement : on écrit une exception.** La trame
         // reste intacte, une seconde ligne la remplace ce jour-là,
         // et la semaine dit la vérité. C'est l'idée de l'annulation
@@ -43429,12 +43469,8 @@ impl App {
                     db::NewShift {
                         start_time: from,
                         end_time: to,
-                        pause_minutes: form.pause.trim().parse().unwrap_or(0),
-                        kind: form
-                            .kind
-                            .unwrap_or(planning::ShiftKind::Journee)
-                            .as_str()
-                            .to_owned(),
+                        pause_minutes: pause,
+                        kind,
                         ..Default::default()
                     },
                 );
@@ -43445,40 +43481,31 @@ impl App {
         // `WHERE` porte les heures que *cet écran* affichait. Deux
         // PC qui déplacent le même poste ne doivent pas voir chacun
         // le sien.
-        let was = session
-            .shifts
-            .iter()
-            .find(|s| s.id == id)
-            .map(|s| (s.start_time.clone(), s.end_time.clone()));
-        if let Some((was_from, was_to)) = was {
-            let was_pause = session
-                .shifts
-                .iter()
-                .find(|s| s.id == id)
-                .map_or(0, |s| s.pause_minutes);
-            // **Le champ de pause porte la pause du poste** : la case
-            // désignée l'y a écrite (`pick_planning_cell`), et le
-            // vider, c'est la retirer. Une frappe illisible garde
-            // celle du poste plutôt que de la mettre à zéro — les
-            // heures du jour et du mois en gagneraient trois quarts
-            // d'heure.
-            let pause = match form.pause.trim() {
-                "" => 0,
-                typed => typed.parse().unwrap_or(was_pause),
-            };
-            match session
-                .db
-                .update_shift(id, (&from, &to, pause), (&was_from, &was_to, was_pause))
-            {
+        let was = session.shifts.iter().find(|s| s.id == id).map(|s| {
+            (
+                s.start_time.clone(),
+                s.end_time.clone(),
+                s.pause_minutes,
+                s.kind.clone(),
+            )
+        });
+        if let Some((was_from, was_to, was_pause, was_kind)) = was {
+            match session.db.update_shift(
+                id,
+                (&from, &to, pause, &kind),
+                (&was_from, &was_to, was_pause, &was_kind),
+            ) {
                 Ok(true) => {
                     session.remember(PlanningUndo::Edited {
                         id,
                         start: was_from.clone(),
                         end: was_to.clone(),
                         pause: was_pause,
+                        kind: was_kind.clone(),
                         now_start: from.clone(),
                         now_end: to.clone(),
                         now_pause: pause,
+                        now_kind: kind.clone(),
                     });
                     session.load_shifts(true);
                 }
@@ -44726,12 +44753,28 @@ impl App {
         let Some(what) = session.planning_undo.pop() else {
             return;
         };
+        // **Une ligne qui n'est plus là se dit.** `delete_shift` répond
+        // `false` quand rien ne correspond — un autre poste l'a ôtée, ou
+        // un identifiant périmé —, et le retour arrière le jetait : le
+        // geste avait l'air défait et ne l'était pas.
+        let mut missing = false;
+        let mut moved: Vec<(i64, i64)> = Vec::new();
+        let mut delete = |session: &mut Session, id: i64, who: &str| -> Result<(), String> {
+            match session.db.delete_shift(id, who) {
+                Ok(true) => Ok(()),
+                Ok(false) => {
+                    missing = true;
+                    Ok(())
+                }
+                Err(e) => Err(e),
+            }
+        };
         let outcome = match what {
-            PlanningUndo::Added { id, who } => session.db.delete_shift(id, &who).map(|_| ()),
+            PlanningUndo::Added { id, who } => delete(session, id, &who),
             PlanningUndo::Copied { ids, who } => {
                 let mut last = Ok(());
                 for (id, w) in ids.iter().zip(&who) {
-                    if let Err(e) = session.db.delete_shift(*id, w) {
+                    if let Err(e) = delete(session, *id, w) {
                         last = Err(e);
                     }
                 }
@@ -44740,7 +44783,7 @@ impl App {
             PlanningUndo::Placed { ids, who, .. } => {
                 let mut last = Ok(());
                 for id in &ids {
-                    if let Err(e) = session.db.delete_shift(*id, &who) {
+                    if let Err(e) = delete(session, *id, &who) {
                         last = Err(e);
                     }
                 }
@@ -44751,22 +44794,32 @@ impl App {
                 start,
                 end,
                 pause,
+                kind,
                 now_start,
                 now_end,
                 now_pause,
+                now_kind,
             } => match session
                 .db
                 // Le compare-and-set porte sur ce que l'écriture avait
                 // mis : si quelqu'un d'autre a bougé le poste depuis,
                 // le retour arrière ne passe pas — et c'est ce qu'on
                 // veut, plutôt qu'écraser son travail.
-                .update_shift(id, (&start, &end, pause), (&now_start, &now_end, now_pause))
-            {
+                .update_shift(
+                    id,
+                    (&start, &end, pause, &kind),
+                    (&now_start, &now_end, now_pause, &now_kind),
+                ) {
                 Ok(true) => Ok(()),
-                Ok(false) => Err(session.stale_note("planning_stale")),
+                Ok(false) => {
+                    missing = true;
+                    Ok(())
+                }
                 Err(e) => Err(e),
             },
-            PlanningUndo::Deleted { family } => Self::restore_family(session, family).map(|_| ()),
+            PlanningUndo::Deleted { family } => {
+                Self::restore_family(session, family).map(|(_, m)| moved.extend(m))
+            }
             // Poser une trame est **un** geste, même quand il a retiré
             // ce qu'il remplaçait : on enlève ce qui a été écrit, puis
             // on rend ce qui avait été retiré. L'ordre compte — rendre
@@ -44777,13 +44830,14 @@ impl App {
             | PlanningUndo::Cleared { added, removed, .. } => {
                 let mut last = Ok(());
                 for (id, who) in &added {
-                    if let Err(e) = session.db.delete_shift(*id, who) {
+                    if let Err(e) = delete(session, *id, who) {
                         last = Err(e);
                     }
                 }
                 for family in removed {
-                    if let Err(e) = Self::restore_family(session, family) {
-                        last = Err(e);
+                    match Self::restore_family(session, family) {
+                        Ok((_, m)) => moved.extend(m),
+                        Err(e) => last = Err(e),
                     }
                 }
                 last
@@ -44792,7 +44846,11 @@ impl App {
         if let Err(e) = outcome {
             session.error = Some(e);
         }
-        session.shift_pick = None;
+        Self::remap_undo(&mut session.planning_undo, &moved);
+        if missing {
+            session.stale("planning_stale");
+        }
+        Self::free_planning_cell(session);
         session.load_shifts(true);
     }
 
@@ -44804,10 +44862,16 @@ impl App {
     /// réinsertion finirait par oublier de réécrire les `supersedes`,
     /// ce qui rendrait la trame et perdrait les absences qui la
     /// corrigeaient.
+    ///
+    /// Rend la ligne rangée réécrite, et **chaque ancien identifiant
+    /// avec le nouveau** : les gestes empilés avant celui qu'on défait
+    /// nomment les lignes par leur identifiant, et une ligne rendue en
+    /// prend un autre. Sans la correspondance, le retour arrière suivant
+    /// cherchait une ligne qui n'existe plus et passait sans rien dire.
     fn restore_family(
         session: &mut Session,
         family: Vec<db::NewShift>,
-    ) -> Result<Option<i64>, String> {
+    ) -> Result<Restored, String> {
         // **La ligne rangée était-elle du voyage ?** Une famille commence
         // par elle quand c'est une trame qu'on a supprimée ; une
         // exception supprimée *seule* est une famille d'une ligne, dont
@@ -44819,6 +44883,7 @@ impl App {
         // défait et ne l'était pas — le pire des deux.
         let had_base = family.first().is_some_and(|f| f.supersedes == 0);
         let mut base: Option<i64> = None;
+        let mut moved: Vec<(i64, i64)> = Vec::new();
         let mut last = Ok(());
         for row in family {
             let mut row = row;
@@ -44837,13 +44902,52 @@ impl App {
                 }
             }
             match session.db.add_shift(&row) {
-                Ok(id) if row.supersedes == 0 => base = Some(id),
-                Ok(_) => {}
+                Ok(id) => {
+                    if row.former_id != 0 {
+                        moved.push((row.former_id, id));
+                    }
+                    if row.supersedes == 0 {
+                        base = Some(id);
+                    }
+                }
                 Err(e) => last = Err(e),
             }
         }
         // La ligne rangée réécrite, pour qui doit pouvoir la défaire.
-        last.map(|()| base)
+        last.map(|()| (base, moved))
+    }
+
+    /// Les gestes encore empilés, pointés sur les nouveaux identifiants
+    /// des lignes qu'un retour arrière vient de rendre : le poste posé,
+    /// les heures réécrites, les jours collés, et les familles gardées
+    /// pour être rendues à leur tour — leurs lignes comme les
+    /// exceptions qui les nomment.
+    fn remap_undo(stack: &mut [PlanningUndo], moved: &[(i64, i64)]) {
+        let to = |id: &mut i64| {
+            if let Some((_, new)) = moved.iter().find(|(old, _)| old == id) {
+                *id = *new;
+            }
+        };
+        let family = |rows: &mut Vec<db::NewShift>| {
+            for row in rows {
+                to(&mut row.former_id);
+                to(&mut row.supersedes);
+            }
+        };
+        for u in stack {
+            match u {
+                PlanningUndo::Added { id, .. } | PlanningUndo::Edited { id, .. } => to(id),
+                PlanningUndo::Copied { ids, .. } | PlanningUndo::Placed { ids, .. } => {
+                    ids.iter_mut().for_each(to);
+                }
+                PlanningUndo::Deleted { family: rows } => family(rows),
+                PlanningUndo::Framed { added, removed }
+                | PlanningUndo::Cleared { added, removed, .. } => {
+                    added.iter_mut().for_each(|(id, _)| to(id));
+                    removed.iter_mut().for_each(family);
+                }
+            }
+        }
     }
 
     /// Write the shown week onto the next one.
@@ -45319,8 +45423,9 @@ impl App {
         let mut added: Vec<(i64, String)> = Vec::new();
         let mut removed: Vec<Vec<db::NewShift>> = Vec::new();
         for occ in &here {
-            // Déjà un congé : rien à réécrire pour en poser un.
-            if off && occ.kind == conge {
+            // Déjà une absence — congé, maladie, formation — : un congé ne
+            // la réécrit pas, il ne fait que prendre ce qu'on travaillait.
+            if off && planning::ShiftKind::parse(&occ.kind).is_none_or(|k| k.is_absence()) {
                 continue;
             }
             let backed = occ.repeat_days > 0 || occ.id != occ.source_id;
@@ -45437,8 +45542,9 @@ impl App {
                     id,
                     who: row.operator.clone(),
                 });
-                session.shift_pick = None;
-                session.shift_form.this_day_only = false;
+                // Un jour annulé rend la case, et le rythme de la trame
+                // avec : Entrée y aurait reposé une seconde trame.
+                Self::free_planning_cell(session);
                 session.load_shifts(true);
                 // **L'exception reste désignée** : rester jusqu'à 12 h 45
                 // après 12 h 30, c'est presser « +15 min » deux fois, et
@@ -46909,8 +47015,8 @@ impl App {
                             past.retain(|r| r.supersedes == 0 || r.day <= cut);
                             past[0].repeat_until = cut.clone();
                             match Self::restore_family(session, past) {
-                                Ok(Some(id)) => added.push((id, who.clone())),
-                                Ok(None) => {}
+                                Ok((Some(id), _)) => added.push((id, who.clone())),
+                                Ok((None, _)) => {}
                                 Err(e) => session.error = Some(e),
                             }
                         }
@@ -104248,6 +104354,155 @@ mod tests {
         assert_eq!(
             s.db.shifts_between("2026-10-26", "2026-10-26").unwrap()[0].kind,
             ShiftKind::Journee.as_str()
+        );
+    }
+
+    /// **Ce qu'une relecture a trouvé**, un cas par défaut :
+    ///
+    /// * défaire une case vidée rend ses lignes sous de nouveaux
+    ///   identifiants — le retour arrière d'avant (le collé) doit les
+    ///   trouver, pas passer à côté en silence ;
+    /// * « Congé ce jour » ne réécrit pas une maladie en congé ;
+    /// * « Modifier » écrit la nature que le menu montre ;
+    /// * une pause illisible est refusée, pas comptée zéro ;
+    /// * un jour retiré rend la case : le rythme de la trame ne reste pas
+    ///   dans le formulaire pour une Entrée ;
+    /// * changer « Qui » sous une sélection la rend.
+    #[test]
+    fn the_planning_gestures_hold_what_a_review_found() {
+        use crate::planning::{Cadence, ShiftKind};
+        let (mut s, _swept) = scratch_session("planning_review");
+        s.db.add_shift(&crate::db::NewShift {
+            operator: "CL".into(),
+            day: "2026-10-12".into(),
+            start_time: "09:00".into(),
+            end_time: "12:00".into(),
+            kind: ShiftKind::Journee.as_str().into(),
+            repeat_days: Cadence::Hebdomadaire.pas(),
+            cadence: Cadence::Hebdomadaire.as_str().into(),
+            ..Default::default()
+        })
+        .unwrap();
+        s.agenda_week = (19..=25).map(|d| format!("2026-10-{d}")).collect();
+        s.load_shifts(true);
+        let pick = |s: &mut super::Session, who: &str, day: &str| {
+            s.shift_form.operator = who.into();
+            s.shift_form.day = day.into();
+            let occ = super::App::picked_shift(s);
+            super::App::pick_planning_cell(s, who, day, occ);
+        };
+        let cell = |s: &super::Session, who: &str, day: &str| -> Vec<(String, String)> {
+            s.shifts
+                .iter()
+                .filter(|x| x.day == day && x.operator == who)
+                .map(|x| (x.start_time.clone(), x.kind.clone()))
+                .collect()
+        };
+
+        // Coller, vider, défaire deux fois : la case revient vide.
+        pick(&mut s, "CL", "2026-10-19");
+        super::App::planning_copy_cell(&mut s).unwrap();
+        pick(&mut s, "YS", "2026-10-21");
+        super::App::planning_paste_cell(&mut s);
+        assert_eq!(cell(&s, "YS", "2026-10-21").len(), 1);
+        super::App::planning_clear_cell(&mut s);
+        assert!(cell(&s, "YS", "2026-10-21").is_empty());
+        super::App::planning_undo(&mut s);
+        assert_eq!(
+            cell(&s, "YS", "2026-10-21").len(),
+            1,
+            "la case vidée revient"
+        );
+        super::App::planning_undo(&mut s);
+        assert!(
+            cell(&s, "YS", "2026-10-21").is_empty(),
+            "le collé se défait encore, sous le nouvel identifiant"
+        );
+        assert!(s.error.is_none(), "{:?}", s.error);
+
+        // Une maladie l'après-midi reste une maladie sous « Congé ce jour ».
+        s.db.add_shift(&crate::db::NewShift {
+            operator: "CL".into(),
+            day: "2026-10-19".into(),
+            start_time: "14:00".into(),
+            end_time: "17:00".into(),
+            kind: ShiftKind::Maladie.as_str().into(),
+            ..Default::default()
+        })
+        .unwrap();
+        s.load_shifts(true);
+        pick(&mut s, "CL", "2026-10-19");
+        super::App::planning_rewrite_day(&mut s, true);
+        let monday = cell(&s, "CL", "2026-10-19");
+        assert!(
+            monday.contains(&("14:00".into(), ShiftKind::Maladie.as_str().into())),
+            "{monday:?}"
+        );
+        assert!(
+            monday.contains(&("09:00".into(), ShiftKind::Conge.as_str().into())),
+            "{monday:?}"
+        );
+        super::App::planning_undo(&mut s);
+
+        // « Modifier » écrit la nature, et la défait.
+        pick(&mut s, "CL", "2026-10-19");
+        let maladie = s
+            .shifts
+            .iter()
+            .find(|x| x.day == "2026-10-19" && x.kind == ShiftKind::Maladie.as_str())
+            .cloned()
+            .unwrap();
+        super::App::pick_planning_cell(&mut s, "CL", "2026-10-19", Some(maladie.clone()));
+        s.shift_form.kind = Some(ShiftKind::Formation);
+        super::App::planning_edit(&mut s, maladie.id);
+        assert!(cell(&s, "CL", "2026-10-19")
+            .contains(&("14:00".into(), ShiftKind::Formation.as_str().into())));
+        super::App::planning_undo(&mut s);
+        assert!(cell(&s, "CL", "2026-10-19")
+            .contains(&("14:00".into(), ShiftKind::Maladie.as_str().into())));
+
+        // Une pause illisible est refusée.
+        pick(&mut s, "CL", "2026-10-19");
+        s.shift_form.pause = "45 min".into();
+        let id = s.shift_pick.unwrap();
+        super::App::planning_edit(&mut s, id);
+        assert!(s.error.take().is_some());
+
+        // « Retirer ce jour » rend la case : plus de rythme hebdomadaire
+        // dans le formulaire.
+        pick(&mut s, "CL", "2026-10-19");
+        assert_eq!(s.shift_form.cadence, Some(Cadence::Hebdomadaire));
+        let occ = super::App::picked_occurrence(&s).unwrap();
+        super::App::write_exception(
+            &mut s,
+            &occ,
+            crate::db::NewShift {
+                start_time: occ.start_time.clone(),
+                kind: occ.kind.clone(),
+                cancelled: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(s.shift_pick, None);
+        assert_eq!(s.shift_form.cadence, Some(Cadence::Unique));
+        assert!(s.shift_form.from.is_empty());
+        super::App::planning_undo(&mut s);
+
+        // Changer « Qui » sous une sélection la rend.
+        pick(&mut s, "CL", "2026-10-19");
+        assert!(s.shift_pick.is_some());
+        s.shift_form.operator = "YS".into();
+        let ctx = egui::Context::default();
+        let config = crate::config::Config::default();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let rect = ui.max_rect();
+                super::App::planning_form(ui, &mut s, &config, rect);
+            });
+        });
+        assert_eq!(
+            s.shift_pick, None,
+            "la sélection d'une autre personne est rendue"
         );
     }
 

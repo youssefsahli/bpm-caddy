@@ -50,14 +50,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Planning: undo never loses its place.** Undoing a removal puts the
+  rows back under new ids, and the gestures stacked before it still
+  named the old ones: paste a day, empty the cell, then undo twice, and
+  the second undo found nothing and said nothing. The stack is now
+  pointed at the new ids, and an undo that finds nothing says so.
+- **Planning: « Modifier » writes what the form shows.** Changing the
+  nature of a selected shift (Journée to Congé) and pressing Enter
+  wrote only the hours; a pause that could not be read (« 45 min »)
+  became zero on a single day; changing « Qui » under a selection
+  edited the previous person's row. The nature is written (and undone),
+  the pause is refused as « Poser » refuses it, and changing « Qui »
+  frees the selection. « Congé ce jour » no longer turns a sick day or
+  a training into leave, and removing a pattern day no longer leaves
+  the pattern's weekly rhythm in the form for the next Enter.
 - **A leave now replaces the pattern it covers.** A leave written as a
   range (« tous les jours », du 12 au 26) left the person's pattern
   unfolding under it: on leave, they still counted at the counter, in
   the day's and the week's hours, and their cell read « Congé » next to
   their usual hours. A leave with no end hour covers the whole day; one
-  with hours hides the pattern shifts it entirely contains. A shift
-  written for that day on purpose — a garde the evening of a day off —
-  stays drawn and counted. Removing the leave
+  with hours hides the shifts it entirely contains. A garde or an
+  astreinte is never hidden — the evening garde of a day off stays
+  drawn and counted. Removing the leave
   for one day brings the pattern back for that day. The demonstration's
   training Thursday now shows the afternoon gap it was written to show.
 
