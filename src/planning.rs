@@ -494,6 +494,41 @@ impl Shift {
     }
 }
 
+/// Les postes travaillés **qu'une absence de la même personne couvre**,
+/// le même jour : `true` à leur rang, à cacher.
+///
+/// Un congé s'écrit comme une plage — « tous les jours, du 12 au 26 »,
+/// une ligne —, et cette ligne ne remplace rien : la trame continue de
+/// se déplier sous elle. Sans cette règle la personne en congé était
+/// comptée au comptoir et dans les heures de la semaine, et la case
+/// disait « Congé · 9 h–19 h » — le planning affirmait les deux.
+///
+/// * **Une absence sans fin est la journée** : la saisie exige l'heure
+///   de début, pas celle de fin, et « congé à partir de 9 h » ne veut
+///   pas dire « congé à 9 h pile ».
+/// * Une absence bornée cache ce qu'elle **contient** — un poste entier
+///   entre son début et sa fin. Une formation de 14 h à 17 h sur un
+///   après-midi de 14 h à 19 h ne le contient pas : les deux restent
+///   affichés, et c'est à qui lit de trancher, plutôt qu'au module
+///   d'inventer les heures qui restent.
+///
+/// `day` porte les postes **d'un seul jour**, toutes personnes mêlées.
+pub fn hidden_by_absence(day: &[Shift]) -> Vec<bool> {
+    day.iter()
+        .map(|s| {
+            s.kind.worked()
+                && day.iter().any(|a| {
+                    a.kind.is_absence()
+                        && a.operator == s.operator
+                        && match a.end {
+                            None => true,
+                            Some(end) => a.start <= s.start && s.end.unwrap_or(s.start) <= end,
+                        }
+                })
+        })
+        .collect()
+}
+
 /// Le total d'un jour pour une personne, ou `None`.
 ///
 /// `None` et non `0` dans tous les cas où le chiffre n'est pas connu :
@@ -1406,6 +1441,47 @@ mod tests {
         assert_eq!(nudge_end(540, 555, -15), None);
         assert_eq!(nudge_end(540, 10, -15), None);
         assert_eq!(nudge_end(1200, 48 * 60 - 10, 15), None);
+    }
+
+    /// **Un congé cache la journée qu'il couvre**, et rien d'autre : ni
+    /// les postes d'un collègue, ni ce qu'une absence bornée ne contient
+    /// pas entièrement.
+    #[test]
+    fn a_leave_hides_the_shifts_it_covers() {
+        let leave = |start, end| shift(9, "CL", start, end, ShiftKind::Conge);
+        let morning = shift(1, "CL", 540, Some(750), ShiftKind::Journee);
+        let afternoon = shift(2, "CL", 840, Some(1140), ShiftKind::Journee);
+        let colleague = shift(3, "YS", 540, Some(1140), ShiftKind::Journee);
+        // Sans fin : la journée entière de la personne, pas celle du
+        // collègue, et pas l'absence elle-même.
+        let day = [
+            morning.clone(),
+            afternoon.clone(),
+            colleague.clone(),
+            leave(540, None),
+        ];
+        assert_eq!(hidden_by_absence(&day), vec![true, true, false, false]);
+        // Bornée de 14 h à 19 h : l'après-midi seul.
+        let day = [morning.clone(), afternoon.clone(), leave(840, Some(1140))];
+        assert_eq!(hidden_by_absence(&day), vec![false, true, false]);
+        // Une formation de 14 h à 17 h ne contient pas 14 h–19 h.
+        let training = shift(8, "CL", 840, Some(1020), ShiftKind::Formation);
+        assert_eq!(
+            hidden_by_absence(&[afternoon.clone(), training]),
+            vec![false, false]
+        );
+        // Sans absence, rien de caché.
+        assert_eq!(hidden_by_absence(&[morning, afternoon]), vec![false, false]);
+        // Le total de la journée cachée n'est plus des heures.
+        let day = [colleague, leave(540, None)];
+        let kept: Vec<Shift> = day
+            .iter()
+            .zip(hidden_by_absence(&day))
+            .filter(|(_, h)| !h)
+            .map(|(s, _)| s.clone())
+            .collect();
+        assert_eq!(day_total(&kept, "CL"), None);
+        assert_eq!(who_is_in(&kept, Slot::new(600, 660)), vec!["YS".to_owned()]);
     }
 
     /// **Arriver une demi-heure plus tôt** avance le début ; un début

@@ -594,6 +594,22 @@ The one that was missing — « combien de fois un autre poste avait
   `a_partial_day_has_no_total` holds its three cases: two closed shifts
   sum, a third with no end erases the total, and an empty day or one
   carrying only a leave is not an uncertainty.
+  **An absence hides the worked shifts it covers** —
+  `planning::hidden_by_absence`, applied once in `db::shifts_between`
+  (`present`) so the grid, the totals, the coverage, the month, the
+  phone and the usual day read the same day. A leave is written as a
+  range, one daily row, and it replaces nothing in the base: the
+  pattern unfolded under it, and Claire on leave counted ten hours and
+  held the counter while her cell said « Congé » too. An absence with
+  no end (the form asks the start, not the end) is the whole day; a
+  bounded one hides what it *contains*, and a training of 14 h–17 h
+  over an afternoon of 14 h–19 h hides nothing — both stay drawn
+  rather than the module inventing the hours left. The demo's Thursday
+  training had shown it without anyone seeing: its exception replaced
+  the morning only once days were split, and the afternoon gap its
+  comment promises never appeared. Held by
+  `a_leave_hides_the_shifts_it_covers` and
+  `a_leave_range_replaces_the_pattern_it_covers`.
   Six rules, one test each: **hours are counted in whole
   minutes** (7 h 35 is 455 — the centimes of the caisse, for the same
   reason), **a shift with no end is not a shift of zero hours** (`None`,

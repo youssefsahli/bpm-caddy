@@ -46,6 +46,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A leave now replaces the pattern it covers.** A leave written as a
+  range (« tous les jours », du 12 au 26) left the person's pattern
+  unfolding under it: on leave, they still counted at the counter, in
+  the day's and the week's hours, and their cell read « Congé » next to
+  their usual hours. A leave with no end hour covers the whole day; one
+  with hours hides the shifts it entirely contains. Removing the leave
+  for one day brings the pattern back for that day. The demonstration's
+  training Thursday now shows the afternoon gap it was written to show.
+
 - **No pause after the unlock.** The first frame of a session rebuilt the
   whole connections summary — the network journal, every signature
   checked again — for the status bar's mark alone; a tenth of a second

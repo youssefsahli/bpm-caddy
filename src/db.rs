@@ -3248,6 +3248,52 @@ pub struct PlannedShift {
     pub note: String,
 }
 
+/// The day's shifts **as they will be lived**: a worked shift that an
+/// absence of the same person covers is dropped
+/// (`planning::hidden_by_absence`).
+///
+/// A leave is written as a range — one daily row, « du 12 au 26 » —
+/// and it replaces nothing in the base: the pattern goes on unfolding
+/// under it. Read raw, the person on leave was counted at the counter
+/// and in the week's hours, and the cell said « Congé » *and* « 9 h–19
+/// h ». Applied here, once, so that every reader — the grid, the totals,
+/// the coverage, the phone, the usual day — sees the same day. Rows
+/// whose nature or hours this version cannot read are left as they are.
+fn present(rows: Vec<PlannedShift>) -> Vec<PlannedShift> {
+    use crate::planning;
+    let read = |r: &PlannedShift| {
+        Some(planning::Shift {
+            id: r.id,
+            operator: r.operator.trim().to_owned(),
+            start: planning::parse_bound(&r.start_time)?,
+            end: planning::parse_bound(&r.end_time),
+            pause: 0,
+            kind: planning::ShiftKind::parse(&r.kind)?,
+        })
+    };
+    let mut hidden = vec![false; rows.len()];
+    let mut at = 0;
+    while at < rows.len() {
+        let end = rows[at..]
+            .iter()
+            .position(|r| r.day != rows[at].day)
+            .map_or(rows.len(), |n| at + n);
+        let readable: Vec<(usize, planning::Shift)> = (at..end)
+            .filter_map(|i| Some((i, read(&rows[i])?)))
+            .collect();
+        let day: Vec<planning::Shift> = readable.iter().map(|(_, s)| s.clone()).collect();
+        for ((i, _), h) in readable.iter().zip(planning::hidden_by_absence(&day)) {
+            hidden[*i] = h;
+        }
+        at = end;
+    }
+    rows.into_iter()
+        .zip(hidden)
+        .filter(|(_, h)| !h)
+        .map(|(r, _)| r)
+        .collect()
+}
+
 /// What it takes to write a shift.
 #[derive(Clone, Debug, Default)]
 pub struct NewShift {
@@ -54155,7 +54201,7 @@ impl Db {
                 .then(a.operator.cmp(&b.operator))
                 .then(a.id.cmp(&b.id))
         });
-        Ok(out)
+        Ok(present(out))
     }
 
     /// Write one shift — a single day, or the pattern a `repeat_days`

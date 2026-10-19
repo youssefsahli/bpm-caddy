@@ -103958,6 +103958,70 @@ mod tests {
         assert!(s.shift_form.from.is_empty());
     }
 
+    /// **Un congé saisi en plage remplace la trame qu'il couvre.** La
+    /// ligne « tous les jours du 19 au 23 » ne touche pas à la trame,
+    /// qui continuait de se déplier dessous : Claire en congé comptait
+    /// dix heures et tenait le comptoir. Lue désormais, la journée est
+    /// un congé — sans heures, sans présence —, et retirer le congé d'un
+    /// jour rend la trame ce jour-là seulement.
+    #[test]
+    fn a_leave_range_replaces_the_pattern_it_covers() {
+        use crate::planning::{Cadence, ShiftKind};
+        let (mut s, _swept) = scratch_session("leave_range");
+        s.db.add_shift(&crate::db::NewShift {
+            operator: "CL".into(),
+            day: "2026-10-12".into(),
+            start_time: "09:00".into(),
+            end_time: "19:00".into(),
+            kind: ShiftKind::Journee.as_str().into(),
+            repeat_days: Cadence::Hebdomadaire.pas(),
+            cadence: Cadence::Hebdomadaire.as_str().into(),
+            ..Default::default()
+        })
+        .unwrap();
+        // Le congé tel que le formulaire l'écrit : une heure de début,
+        // pas de fin, tous les jours jusqu'au 23.
+        s.db.add_shift(&crate::db::NewShift {
+            operator: "CL".into(),
+            day: "2026-10-19".into(),
+            start_time: "09:00".into(),
+            kind: ShiftKind::Conge.as_str().into(),
+            repeat_days: Cadence::Quotidien.pas(),
+            cadence: Cadence::Quotidien.as_str().into(),
+            repeat_until: "2026-10-23".into(),
+            ..Default::default()
+        })
+        .unwrap();
+        s.agenda_week = (19..=25).map(|d| format!("2026-10-{d}")).collect();
+        s.load_shifts(true);
+        let day = |s: &super::Session, d: &str| -> Vec<crate::planning::Shift> {
+            s.shifts
+                .iter()
+                .filter(|x| x.day == d)
+                .filter_map(super::planned_shift)
+                .collect()
+        };
+        let monday = day(&s, "2026-10-19");
+        assert_eq!(monday.len(), 1, "le congé seul : {monday:?}");
+        assert_eq!(monday[0].kind, ShiftKind::Conge);
+        assert_eq!(crate::planning::day_total(&monday, "CL"), None);
+        assert!(crate::planning::who_is_in(&monday, crate::agenda::Slot::new(600, 660)).is_empty());
+        // Le lundi d'après, hors du congé, la trame est là.
+        assert_eq!(
+            s.db.shifts_between("2026-10-26", "2026-10-26").unwrap()[0].kind,
+            ShiftKind::Journee.as_str()
+        );
+        // Retirer le congé du lundi : Claire travaille ce jour-là, et le
+        // congé tient les autres jours.
+        s.shift_form.operator = "CL".into();
+        s.shift_form.day = "2026-10-19".into();
+        super::App::planning_clear_cell(&mut s);
+        assert_eq!(day(&s, "2026-10-19")[0].kind, ShiftKind::Journee);
+        assert_eq!(day(&s, "2026-10-20")[0].kind, ShiftKind::Conge);
+        super::App::planning_undo(&mut s);
+        assert_eq!(day(&s, "2026-10-19")[0].kind, ShiftKind::Conge);
+    }
+
     #[test]
     fn a_name_in_the_planning_opens_its_frame_on_the_shown_week() {
         let (mut s, _swept) = scratch_session("frame_by_name");
