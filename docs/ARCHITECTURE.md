@@ -3115,7 +3115,9 @@ signing and box keys the network already uses, under their own domains.
   same newest version
   (`an_account_keeps_only_the_newest_version_of_each_item`).
 - **Seeded by the network.** `Net::publish` seals the latest version of
-  each item of the accounts **kept on this post** into every network
+  each item of the accounts **of the officine** — kept on any of its
+  posts, phone included: `keep_account` also writes the account (never
+  its phrase) into `account_homes`, which travels — into every network
   journal — the profile, the fiche and the settings always, then at most
   `MOST_ITEMS` live items, as many posts and as many deletions per
   account, newest first: a talkative feed does not push the agenda or

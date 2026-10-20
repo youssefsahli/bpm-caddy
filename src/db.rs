@@ -1076,6 +1076,13 @@ CREATE TABLE IF NOT EXISTS account_keys (
     label   TEXT NOT NULL DEFAULT '',
     locked  TEXT NOT NULL
 );
+-- Les comptes qu'un poste de l'officine garde, téléphone compris — sans
+-- leur phrase. Voyage : le poste qui tient le réseau sème ces comptes-là,
+-- même ouverts ailleurs que chez lui.
+CREATE TABLE IF NOT EXISTS account_homes (
+    id      INTEGER PRIMARY KEY,
+    account TEXT NOT NULL
+);
 ";
 
 /// The indexes, applied **after** [`MIGRATIONS`] and not with [`SCHEMA`].
@@ -1775,6 +1782,10 @@ const MIGRATIONS: &[&str] = &[
         account TEXT PRIMARY KEY,
         label   TEXT NOT NULL DEFAULT '',
         locked  TEXT NOT NULL
+    )",
+    "CREATE TABLE IF NOT EXISTS account_homes (
+        id      INTEGER PRIMARY KEY,
+        account TEXT NOT NULL
     )",
 ];
 
@@ -48152,8 +48163,32 @@ impl Db {
                  ON CONFLICT(account) DO UPDATE SET label = excluded.label, locked = excluded.locked",
                 rusqlite::params![account, label, crate::compte::hex(locked)],
             )
+            .map_err(|e| e.to_string())?;
+        self.conn
+            .execute(
+                &format!(
+                    "INSERT INTO account_homes (id, account) SELECT {next}, ?1
+                     WHERE NOT EXISTS (SELECT 1 FROM account_homes WHERE account = ?1)",
+                    next = next_id("account_homes")
+                ),
+                [account],
+            )
             .map(|_| ())
             .map_err(|e| e.to_string())
+    }
+
+    /// Les comptes de l'officine : ceux qu'un de ses postes garde ou a
+    /// gardés, ici ou ailleurs, téléphone compris. Ce que le réseau sème.
+    #[cfg(feature = "sync")]
+    pub fn officine_accounts(&self) -> Result<std::collections::BTreeSet<String>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT account FROM account_homes UNION SELECT account FROM account_keys")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
     }
 
     /// Retirer un compte de ce poste — ce qu'il a écrit reste, et se

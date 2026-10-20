@@ -1177,7 +1177,9 @@ postes (`account_records`, flux Équipe, en ajout seul) et **dans le
 journal de chaque réseau** de l'officine, préfixés `ACC1` : les
 officines les gardent et les passent, réseau ouvert compris, sans
 pouvoir lire ce qui est scellé ni rien réécrire. Un poste ne publie que
-les comptes ouverts chez lui ; ce qui vient d'ailleurs circule par le
+les comptes de l'officine — ouverts sur l'un de ses postes, téléphone
+compris : la table `account_homes`, qui voyage, en garde la trace sans
+la phrase ; ce qui vient d'ailleurs circule par le
 journal qui l'a apporté. Ils sont lus des auteurs que le réseau lit —
 la signature du compte fait foi, pas celle du poste qui les a passés —
 enregistrement par enregistrement, si bien qu'aucune « correction »
@@ -1213,9 +1215,9 @@ papier, pas sur l'écran d'un téléphone. Ouvert, il lit ce qu'on partage
 avec lui, publie et efface ses billets, masque, bloque et rétablit un
 auteur — par les mêmes règles que le bureau (`compte::feed`,
 `settings_for`, `next_seq`) — et se ferme quand la base se verrouille.
-Ce qu'il écrit voyage vers les postes de l'officine ; vers les autres
-officines, quand un poste de l'officine garde ce compte (un poste ne
-sème que les comptes ouverts chez lui).
+Ce qu'il écrit voyage vers les postes de l'officine, et de là vers les
+autres officines par le poste qui tient le réseau : garder le compte sur
+le téléphone l'inscrit à `account_homes`.
 
 ## 8. Travaux restants
 
@@ -1243,6 +1245,4 @@ sème que les comptes ouverts chez lui).
    seulement. Pas de fichier joint depuis le téléphone.
 6. **Les comptes dans le journal du réseau** : chaque poste ne garde
    que la dernière version de chaque élément, mais le journal d'un
-   réseau garde toutes celles qui y ont été publiées (§ 8.1). Un
-   compte ouvert seulement sur un téléphone n'est semé vers les autres
-   officines qu'une fois gardé par un poste de l'officine.
+   réseau garde toutes celles qui y ont été publiées (§ 8.1).

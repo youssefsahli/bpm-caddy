@@ -182,6 +182,9 @@ pub const TABLES: &[Table] = &[
     // public, scellé pour ses lecteurs — sur le flux de l'équipe, que le
     // téléphone reçoit. En ajout seul : une version est une ligne de plus.
     t("account_records", Main, Equipe, true, true),
+    // Quels comptes un poste de l'officine garde — sans leur phrase : le
+    // poste qui tient le réseau les sème, même ouverts sur un autre.
+    t("account_homes", Main, Equipe, true, true),
     t("events", Main, Agenda, false, true),
     t("shifts", Main, Planning, false, true),
     t("caisse_counts", Main, Caisse, true, true),

@@ -470,12 +470,12 @@ impl Net {
         // **Les comptes** : la dernière version de chaque élément, telle
         // que son compte l'a signée — l'officine la passe sans la lire, et
         // ce qui est scellé ne s'ouvre que chez ses lecteurs. **Seulement
-        // ceux qu'on a ouverts sur ce poste** : ce qui arrive d'ailleurs
-        // circule déjà par le journal qui l'a apporté, et le resceller ici
-        // sous le nom de l'officine userait le mégaoctet que les autres lui
-        // accordent. Au plus `compte::MOST_ITEMS` éléments par compte.
-        let here: std::collections::HashSet<String> =
-            db.kept_accounts()?.into_iter().map(|(a, _, _)| a).collect();
+        // ceux de l'officine** — ouverts sur un de ses postes, téléphone
+        // compris (`account_homes`) : ce qui arrive d'ailleurs circule déjà
+        // par le journal qui l'a apporté, et le resceller ici sous le nom
+        // de l'officine userait le mégaoctet que les autres lui accordent.
+        // Au plus `compte::MOST_ITEMS` éléments par compte.
+        let here = db.officine_accounts()?;
         let latest: Vec<_> = db
             .account_latest(None)?
             .into_iter()
@@ -4027,6 +4027,52 @@ mod tests {
         let before = nc.journal.len();
         nc.publish(&c, "P").unwrap();
         assert_eq!(nc.journal.len(), before);
+    }
+
+    /// **Un compte ouvert sur un autre poste de l'officine se sème aussi** —
+    /// un téléphone, ou un poste qui ne tient pas le réseau : sa trace
+    /// (`account_homes`) voyage sans la phrase, et le poste du réseau le
+    /// publie. Un compte venu d'ailleurs, que nul poste ne garde, ne part pas.
+    #[test]
+    fn an_account_kept_on_another_post_of_the_officine_is_seeded_too() {
+        use crate::compte;
+        let (_dir, _s, a) = officine("acc-home");
+        join_open(&a, "2026-10-20").unwrap();
+        let person =
+            || compte::Account::from_phrase(compte::Phrase::generate(&mut bpm_sync::OsEntropy));
+        let (phone, stranger) = (person(), person());
+        let profile = |nom: &str| compte::Profile {
+            nom: nom.to_owned(),
+            ..compte::Profile::default()
+        };
+        let records = vec![
+            compte::write_profile(&phone, 1, &profile("Julien"), &mut bpm_sync::OsEntropy).unwrap(),
+            compte::write_profile(&stranger, 1, &profile("Inconnu"), &mut bpm_sync::OsEntropy)
+                .unwrap(),
+        ];
+        a.keep_account_records(&records).unwrap();
+        let mut net = Net::load_network(&a, &open_id()).unwrap();
+        net.publish(&a, "P").unwrap();
+        let before = net.journal.len();
+        let published = |net: &Net| {
+            net.journal
+                .records()
+                .filter_map(|r| r.open(net.trousseau.as_ref().unwrap()).ok())
+                .filter(|p| p.starts_with(compte::TAG))
+                .count()
+        };
+        assert_eq!(published(&net), 0, "personne ne garde ces comptes ici");
+        // Ce que le téléphone écrit en gardant le compte, arrivé par les postes.
+        a.conn_exec_for_tests(&format!(
+            "INSERT INTO account_homes (id, account) VALUES ({}, '{}')",
+            crate::db::next_id("account_homes"),
+            phone.id()
+        ))
+        .unwrap();
+        assert!(a.kept_accounts().unwrap().is_empty());
+        net.publish(&a, "P").unwrap();
+        assert_eq!(net.journal.len(), before + 1);
+        assert_eq!(published(&net), 1, "le compte du téléphone, seul");
     }
 
     /// **Une officine écartée n'est plus lue au réseau ouvert**, et ne s'y

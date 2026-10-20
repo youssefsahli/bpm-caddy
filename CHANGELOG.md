@@ -38,8 +38,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   signed by its account, so any officine can keep and pass it without
   reading what is sealed or rewriting anything: records travel between
   the officine's posts and through every network journal, the open
-  network included. A new post finds an account again from its phrase
-  alone, once a synchronisation has brought its records.
+  network included. The post that holds the network seeds every account
+  opened on one of the officine's posts, the phone included. A new post
+  finds an account again from its phrase alone, once a synchronisation
+  has brought its records.
 - **Discreet profile.** An account can publish its box key alone: its
   name, role, RPPS and officine are sealed for the accounts ticked
   under the profile, who see it named and can share with it; everyone
