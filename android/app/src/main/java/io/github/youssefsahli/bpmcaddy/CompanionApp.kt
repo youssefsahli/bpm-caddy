@@ -356,6 +356,13 @@ private fun AgendaScreen(state: AppState, caddy: Caddy) {
             runCatching { caddy.agenda(start, from.plusDays(6).toString()) }.getOrDefault(emptyList())
         }
     }
+    // Les rendez-vous du compte ouvert, à part des entrées de l'officine :
+    // ils ne s'effacent pas d'ici.
+    val rdvs by produceState(emptyList<uniffi.bpm_caddy_mobile.AccountRdv>(), start, state.revision) {
+        value = withContext(Dispatchers.IO) {
+            runCatching { caddy.accountAgenda(start, from.plusDays(6).toString()) }.getOrDefault(emptyList())
+        }
+    }
     var adding by rememberSaveable { mutableStateOf(false) }
     var removing by remember { mutableStateOf<uniffi.bpm_caddy_mobile.AgendaItem?>(null) }
     if (adding) {
@@ -384,10 +391,27 @@ private fun AgendaScreen(state: AppState, caddy: Caddy) {
             }
         }
         HorizontalDivider()
-        if (items.isEmpty()) Hint(T("mobile_agenda_empty"))
+        if (items.isEmpty() && rdvs.isEmpty()) Hint(T("mobile_agenda_empty"))
+        val byDay = items.groupBy { it.day }
+        val rdvByDay = rdvs.groupBy { it.day }
         LazyColumn(Modifier.fillMaxSize()) {
-            items.groupBy { it.day }.toSortedMap().forEach { (day, list) ->
+            (byDay.keys + rdvByDay.keys).toSortedSet().forEach { day ->
+                val list = byDay[day].orEmpty()
                 item(key = "d$day") { DayHeader(dayName(day)) }
+                items(rdvByDay[day].orEmpty(), key = { "a${it.item}" }) { r ->
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+                        val hours = listOf(r.time, r.endTime).filter { it.isNotBlank() }.joinToString("–")
+                        Text(hours, Modifier.width(96.dp), style = MaterialTheme.typography.bodyMedium)
+                        Column(Modifier.weight(1f)) {
+                            Text(r.title)
+                            Text(
+                                r.author.ifBlank { T("mobile_agenda_mine") },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                }
                 items(list.sortedBy { it.time }, key = { "e${it.id}-${it.day}" }) { e ->
                     Row(
                         Modifier.fillMaxWidth()

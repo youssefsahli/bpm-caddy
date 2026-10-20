@@ -1077,11 +1077,13 @@ CREATE TABLE IF NOT EXISTS account_keys (
     locked  TEXT NOT NULL
 );
 -- Les comptes qu'un poste de l'officine garde, téléphone compris — sans
--- leur phrase. Voyage : le poste qui tient le réseau sème ces comptes-là,
--- même ouverts ailleurs que chez lui.
+-- leur phrase, une ligne par poste. Voyage : le poste qui tient le réseau
+-- sème ces comptes-là, même ouverts ailleurs que chez lui ; un compte
+-- retiré de tous les postes cesse de se semer.
 CREATE TABLE IF NOT EXISTS account_homes (
     id      INTEGER PRIMARY KEY,
-    account TEXT NOT NULL
+    account TEXT NOT NULL,
+    post    INTEGER NOT NULL DEFAULT 0
 );
 ";
 
@@ -1785,7 +1787,8 @@ const MIGRATIONS: &[&str] = &[
     )",
     "CREATE TABLE IF NOT EXISTS account_homes (
         id      INTEGER PRIMARY KEY,
-        account TEXT NOT NULL
+        account TEXT NOT NULL,
+        post    INTEGER NOT NULL DEFAULT 0
     )",
 ];
 
@@ -42934,8 +42937,11 @@ impl Db {
         let db = Self { conn, scans, stups };
         db.move_register_beside_the_base()?;
         // A post of a group: its capture follows the schema, which a
-        // migration may just have widened.
-        if db.sync_post().is_some() {
+        // migration may just have widened — and a table added since the
+        // group was formed gets this post's block of numbers, or every
+        // post would number it from 1 and their rows would collide.
+        if let Some(post) = db.sync_post() {
+            db.set_missing_blocks(post)?;
             db.install_capture(false)?;
         }
         Ok(db)
@@ -48157,28 +48163,27 @@ impl Db {
     /// Garder un compte sur ce poste, sous un nouveau code s'il y était.
     #[cfg(feature = "sync")]
     pub fn keep_account(&self, account: &str, label: &str, locked: &[u8]) -> Result<(), String> {
-        self.conn
-            .execute(
-                "INSERT INTO account_keys (account, label, locked) VALUES (?1, ?2, ?3)
-                 ON CONFLICT(account) DO UPDATE SET label = excluded.label, locked = excluded.locked",
-                rusqlite::params![account, label, crate::compte::hex(locked)],
-            )
-            .map_err(|e| e.to_string())?;
-        self.conn
-            .execute(
-                &format!(
-                    "INSERT INTO account_homes (id, account) SELECT {next}, ?1
-                     WHERE NOT EXISTS (SELECT 1 FROM account_homes WHERE account = ?1)",
-                    next = next_id("account_homes")
-                ),
-                [account],
-            )
-            .map(|_| ())
-            .map_err(|e| e.to_string())
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
+        tx.execute(
+            "INSERT INTO account_keys (account, label, locked) VALUES (?1, ?2, ?3)
+             ON CONFLICT(account) DO UPDATE SET label = excluded.label, locked = excluded.locked",
+            rusqlite::params![account, label, crate::compte::hex(locked)],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.execute(
+            &format!(
+                "INSERT INTO account_homes (id, account, post) SELECT {next}, ?1, ?2
+                 WHERE NOT EXISTS (SELECT 1 FROM account_homes WHERE account = ?1 AND post = ?2)",
+                next = next_id("account_homes")
+            ),
+            rusqlite::params![account, self.sync_post().unwrap_or(0)],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())
     }
 
-    /// Les comptes de l'officine : ceux qu'un de ses postes garde ou a
-    /// gardés, ici ou ailleurs, téléphone compris. Ce que le réseau sème.
+    /// Les comptes de l'officine : ceux qu'un de ses postes garde, ici ou
+    /// ailleurs, téléphone compris. Ce que le réseau sème.
     #[cfg(feature = "sync")]
     pub fn officine_accounts(&self) -> Result<std::collections::BTreeSet<String>, String> {
         let mut stmt = self
@@ -48195,10 +48200,16 @@ impl Db {
     /// retrouve avec la phrase.
     #[cfg(feature = "sync")]
     pub fn forget_account(&self, account: &str) -> Result<(), String> {
-        self.conn
-            .execute("DELETE FROM account_keys WHERE account = ?1", [account])
-            .map(|_| ())
-            .map_err(|e| e.to_string())
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM account_keys WHERE account = ?1", [account])
+            .map_err(|e| e.to_string())?;
+        // Ce poste ne le garde plus ; un autre qui le garde a sa ligne.
+        tx.execute(
+            "DELETE FROM account_homes WHERE account = ?1 AND post = ?2",
+            rusqlite::params![account, self.sync_post().unwrap_or(0)],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())
     }
 
     /// Les enregistrements d'un réseau (vide : le principal).
@@ -58293,12 +58304,36 @@ impl Db {
     /// dans chaque bloc est repris : un bloc repris après une réinstallation
     /// ne redonne pas un numéro.
     fn set_blocks(&self, post: i64) -> Result<(), String> {
+        self.blocks(post, false)
+    }
+
+    /// Les blocs des seules tables qui n'en ont pas encore — celles qu'une
+    /// version a ajoutées après que le groupe s'est formé.
+    fn set_missing_blocks(&self, post: i64) -> Result<(), String> {
+        self.blocks(post, true)
+    }
+
+    fn blocks(&self, post: i64, only_missing: bool) -> Result<(), String> {
         use crate::replica::{bounds, File, ROW_BLOCK, TABLES};
+        use rusqlite::OptionalExtension;
         let patient_size: i64 = self
             .setting("sync_patient_block")
             .and_then(|v| v.parse().ok())
             .unwrap_or(crate::replica::patient_block(0));
         for t in TABLES.iter().filter(|t| t.blocked) {
+            // Chaque fichier tient les blocs de ses tables.
+            if only_missing
+                && self
+                    .conn_of(t.file)
+                    .query_row("SELECT 1 FROM sync_blocks WHERE tbl = ?1", [t.name], |_| {
+                        Ok(())
+                    })
+                    .optional()
+                    .map_err(|e| e.to_string())?
+                    .is_some()
+            {
+                continue;
+            }
             let size = if t.name == "patients" && t.file == File::Main {
                 patient_size
             } else {
@@ -61330,6 +61365,39 @@ mod tests {
         let a = Db::open(&dir.join("a.db"), "secret").unwrap();
         let b = Db::open(&dir.join("b.db"), "secret").unwrap();
         (swept, a, b)
+    }
+
+    /// **Une table ajoutée après la formation du groupe a son bloc** : la
+    /// version qui l'ajoute le pose à l'ouverture du poste. Sans lui,
+    /// `next_id` rendait NULL, chaque poste numérotait la table depuis 1 et
+    /// ses lignes se heurtaient à celles des autres — une question de
+    /// conflit au lieu d'une ligne de plus.
+    #[cfg(feature = "sync")]
+    #[test]
+    fn a_table_added_after_the_group_formed_gets_its_block_on_open() {
+        let (swept, a, _b) = two_posts("bloc-tardif");
+        a.found_posts("aa", "Comptoir 1", "2026-09-23").unwrap();
+        // Le groupe d'une version qui ne connaissait pas la table.
+        a.conn_exec_for_tests("DELETE FROM sync_blocks WHERE tbl = 'account_homes'")
+            .unwrap();
+        drop(a);
+        let a = Db::open(&swept.0.join("a.db"), "secret").unwrap();
+        let blocked: i64 = a
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM sync_blocks WHERE tbl = 'account_homes'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(blocked, 1);
+        a.keep_account("compte", "Claire", b"scelle").unwrap();
+        let (lo, hi) = crate::replica::bounds(0, crate::replica::ROW_BLOCK);
+        let id: i64 = a
+            .conn
+            .query_row("SELECT id FROM account_homes", [], |r| r.get(0))
+            .unwrap();
+        assert!((lo..=hi).contains(&id), "{id} hors de {lo}..={hi}");
     }
 
     /// **La purge du journal des accès reste chez ce poste** ; la ligne

@@ -235,6 +235,20 @@ pub struct NewsFeed {
 }
 
 /// Un compte : gardé sur le téléphone, ou connu pour partager avec lui.
+/// Un rendez-vous du compte ouvert : le sien, ou partagé avec lui —
+/// montré dans l'agenda à part des entrées de l'officine, comme au bureau.
+#[derive(uniffi::Record)]
+pub struct AccountRdv {
+    pub item: String,
+    /// ISO.
+    pub day: String,
+    pub time: String,
+    pub end_time: String,
+    pub title: String,
+    /// Qui l'a écrit, nommé comme au fil ; vide : le compte ouvert.
+    pub author: String,
+}
+
 #[derive(uniffi::Record)]
 pub struct AccountInfo {
     pub id: String,
@@ -815,6 +829,39 @@ impl Caddy {
                 })
                 .collect(),
         })
+    }
+
+    /// **Les rendez-vous du compte ouvert**, du jour `from` au jour `to`
+    /// (ISO) : les siens et ceux qu'on partage avec lui, par la règle du
+    /// bureau (`compte::appointments`). Sans compte ouvert, aucun.
+    pub fn account_agenda(&self, from: String, to: String) -> Result<Vec<AccountRdv>> {
+        use bpm_caddy::compte;
+        let Some(account) = self.account() else {
+            return Ok(Vec::new());
+        };
+        let me = account.id();
+        let latest = self.reads(Some(&account))?;
+        let (settings, _) = compte::settings_for(&latest, &me);
+        let named = compte::named(&latest);
+        Ok(compte::appointments(&latest, &me, &settings, (&from, &to))
+            .into_iter()
+            .map(|(r, e)| AccountRdv {
+                author: if r.account == me {
+                    String::new()
+                } else {
+                    name_in(&named, &r.account)
+                },
+                title: if e.titre.trim().is_empty() {
+                    e.texte
+                } else {
+                    e.titre
+                },
+                day: e.jour,
+                time: e.debut,
+                end_time: e.fin,
+                item: r.item,
+            })
+            .collect())
     }
 
     /// Les comptes gardés sur ce téléphone, chacun sous son code.
@@ -1526,6 +1573,24 @@ mod tests {
             records.push(compte::write_profile(a, 1, &p, &mut bpm_sync::OsEntropy).unwrap());
         }
         let to_me = |a: &str| (a == me.id()).then(|| me.box_public());
+        let rdv = compte::Entry {
+            titre: "Réunion".to_owned(),
+            jour: "2026-10-21".to_owned(),
+            debut: "14:00".to_owned(),
+            ..compte::Entry::default()
+        };
+        records.push(
+            compte::write_entry(
+                &marc,
+                ("r1", 1),
+                Kind::Rdv,
+                &rdv,
+                &Visibility::Shared(vec![me.id()]),
+                &to_me,
+                &mut bpm_sync::OsEntropy,
+            )
+            .unwrap(),
+        );
         let e = compte::Entry {
             texte: "pour Claire".to_owned(),
             jour: "2026-10-19".to_owned(),
@@ -1557,6 +1622,15 @@ mod tests {
             .unwrap();
         assert_eq!(opened.id, me.id());
         assert!(opened.name.starts_with("Claire ("));
+        // Le rendez-vous que Marc lui partage, à l'agenda de la semaine.
+        let week = || ("2026-10-19".to_owned(), "2026-10-25".to_owned());
+        let rdvs = c.account_agenda(week().0, week().1).unwrap();
+        assert_eq!(rdvs.len(), 1);
+        assert_eq!(
+            (rdvs[0].title.as_str(), rdvs[0].time.as_str()),
+            ("Réunion", "14:00")
+        );
+        assert!(rdvs[0].author.starts_with("Marc ("));
         // Discret, il se nomme encore à lui-même — et à Marc, son lecteur.
         let fiche = compte::Profile {
             nom: "Claire".to_owned(),
@@ -1623,6 +1697,7 @@ mod tests {
         assert_eq!(c.people().unwrap()[0].hold, "bloquer");
         // Ni lecteur de la fiche : rescellée sans lui, au même geste.
         assert!(!marc_names_me(&c));
+        assert!(c.account_agenda(week().0, week().1).unwrap().is_empty());
         assert!(c.open_account().unwrap().name.starts_with("Claire ("));
         // Bloqué, il n'est plus lecteur de ce qu'on écrit — et un billet
         // pour lui seul ne part pas public pour autant.
@@ -1644,8 +1719,10 @@ mod tests {
         c.hold_author(marc.id(), "lire".into(), 500).unwrap();
         assert_eq!(c.news(today(), 10).unwrap().hidden, 0);
         // Fermé, rouvert par son code ; un mauvais refusé.
+        assert_eq!(c.account_agenda(week().0, week().1).unwrap().len(), 1);
         c.account_close();
         assert!(c.open_account().is_none());
+        assert!(c.account_agenda(week().0, week().1).unwrap().is_empty());
         assert_eq!(c.kept_accounts().unwrap().len(), 1);
         assert!(c.account_unlock(me.id(), "mauvais1".into()).is_err());
         assert!(c.account_unlock(me.id(), "Pharma24".into()).is_ok());

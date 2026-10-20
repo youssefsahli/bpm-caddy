@@ -1022,6 +1022,28 @@ pub fn feed(latest: &[Read], settings: &Settings, today: &str, most: usize) -> F
     out
 }
 
+/// **Les rendez-vous qu'un compte lit**, du jour `from` au jour `to`
+/// compris (ISO) : les siens et ceux qu'on partage avec lui — pas les
+/// publics, ni rien d'un auteur bloqué. Dans l'ordre du calendrier. La
+/// règle de l'agenda du bureau, que le téléphone suit.
+pub fn appointments(
+    latest: &[Read],
+    me: &str,
+    settings: &Settings,
+    (from, to): (&str, &str),
+) -> Vec<(Read, Entry)> {
+    let mut out: Vec<(Read, Entry)> = latest
+        .iter()
+        .filter(|r| r.kind == Kind::Rdv)
+        .filter(|r| r.account == me || matches!(r.state, State::Sealed(Some(_))))
+        .filter(|r| r.account == me || settings.hold(&r.account) != Hold::Blocked)
+        .filter_map(|r| Some((r.clone(), entry_of(r)?)))
+        .filter(|(_, e)| (from..=to).contains(&e.jour.as_str()))
+        .collect();
+    out.sort_by(|(a, x), (b, y)| (&x.jour, &x.debut, &a.item).cmp(&(&y.jour, &y.debut, &b.item)));
+    out
+}
+
 /// La version suivante d'un élément : au-dessus de la dernière, et jamais
 /// sous `now` (en secondes) — le plus grand numéro est le plus récent.
 pub fn next_seq(latest: u64, now: u64) -> u64 {
@@ -1578,6 +1600,86 @@ mod tests {
         // Elle se sème avec les éléments, sous leur plafond.
         let unknown = read(&forged(&a, &body("sondage", "s1", "public")), None).unwrap();
         assert_eq!(to_seed(vec![(unknown, ())]).len(), 1);
+    }
+
+    /// **Les rendez-vous d'un compte** : les siens, publics compris, et
+    /// ceux qu'on lui partage, dans la semaine demandée et dans l'ordre —
+    /// ni les publics des autres, ni ceux d'un auteur bloqué, ni les notes.
+    #[test]
+    fn an_account_reads_its_own_and_shared_appointments_in_order() {
+        let (me, b, c) = (account(1), account(2), account(3));
+        let to_me = |x: &str| (x == me.id()).then(|| me.box_public());
+        let rdv = |jour: &str, debut: &str| Entry {
+            titre: format!("{jour} {debut}"),
+            jour: jour.to_owned(),
+            debut: debut.to_owned(),
+            ..Entry::default()
+        };
+        let write = |who: &Account, item: &str, kind: Kind, e: &Entry, v: &Visibility| {
+            write_entry(who, (item, 1), kind, e, v, &to_me, &mut Counter(7)).unwrap()
+        };
+        let shared = Visibility::Shared(vec![me.id()]);
+        let bytes = [
+            write(
+                &me,
+                "m1",
+                Kind::Rdv,
+                &rdv("2026-10-21", "14:00"),
+                &Visibility::Private,
+            ),
+            write(
+                &me,
+                "m2",
+                Kind::Rdv,
+                &rdv("2026-10-21", "09:00"),
+                &Visibility::Public,
+            ),
+            write(
+                &me,
+                "m3",
+                Kind::Rdv,
+                &rdv("2026-11-02", "09:00"),
+                &Visibility::Private,
+            ),
+            write(
+                &me,
+                "m4",
+                Kind::Note,
+                &rdv("2026-10-21", "08:00"),
+                &Visibility::Private,
+            ),
+            write(&b, "b1", Kind::Rdv, &rdv("2026-10-20", "10:00"), &shared),
+            write(
+                &b,
+                "b2",
+                Kind::Rdv,
+                &rdv("2026-10-20", "11:00"),
+                &Visibility::Public,
+            ),
+            write(&c, "c1", Kind::Rdv, &rdv("2026-10-22", "10:00"), &shared),
+        ];
+        let latest = latest(bytes.iter().filter_map(|b| read(b, Some(&me))));
+        let mut settings = Settings::default();
+        let week = ("2026-10-19", "2026-10-25");
+        let titles = |s: &Settings| -> Vec<String> {
+            appointments(&latest, &me.id(), s, week)
+                .into_iter()
+                .map(|(_, e)| e.titre)
+                .collect()
+        };
+        assert_eq!(
+            titles(&settings),
+            [
+                "2026-10-20 10:00",
+                "2026-10-21 09:00",
+                "2026-10-21 14:00",
+                "2026-10-22 10:00"
+            ]
+        );
+        settings.set(&c.id(), Hold::Muted);
+        assert_eq!(titles(&settings).len(), 4, "masqué : son agenda reste");
+        settings.set(&c.id(), Hold::Blocked);
+        assert_eq!(titles(&settings).len(), 3, "bloqué : plus rien de lui");
     }
 
     /// **La fiche d'un profil discret** : scellée pour les comptes

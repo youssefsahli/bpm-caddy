@@ -4073,6 +4073,19 @@ mod tests {
         net.publish(&a, "P").unwrap();
         assert_eq!(net.journal.len(), before + 1);
         assert_eq!(published(&net), 1, "le compte du téléphone, seul");
+        // Retiré du téléphone : sa version suivante ne part plus d'ici.
+        a.forget_account(&phone.id()).unwrap();
+        assert!(a.officine_accounts().unwrap().is_empty());
+        a.keep_account_records(&[compte::write_profile(
+            &phone,
+            2,
+            &profile("Julien M."),
+            &mut bpm_sync::OsEntropy,
+        )
+        .unwrap()])
+            .unwrap();
+        net.publish(&a, "P").unwrap();
+        assert_eq!(published(&net), 1);
     }
 
     /// **Une officine écartée n'est plus lue au réseau ouvert**, et ne s'y

@@ -12577,6 +12577,21 @@ impl Session {
         let Ok(seq) = self.account_next(&id, compte::SETTINGS_ITEM, seen) else {
             return;
         };
+        // Bloqué, il n'est plus lecteur de sa fiche : rescellée sans lui,
+        // écrite avec les réglages ou pas du tout.
+        let fiche = if hold == Hold::Blocked {
+            match self.comptes_fiche_without(&id, account) {
+                Ok(f) => f,
+                // Une fiche écrite ailleurs depuis, déjà dite.
+                Err(None) => return,
+                Err(Some(e)) => {
+                    self.comptes.notice = Some((true, e));
+                    return;
+                }
+            }
+        } else {
+            None
+        };
         let mut settings = self.comptes.settings.clone();
         settings.set(account, hold);
         let Some(me) = &self.comptes.open else {
@@ -12587,24 +12602,21 @@ impl Session {
                 compte::WriteError::TooLong => tr("compte_settings_full").to_owned(),
                 _ => tr("compte_write_failed").to_owned(),
             })
-            .and_then(|bytes| self.keep_one_account_record(bytes));
+            .and_then(|bytes| {
+                let records: Vec<Vec<u8>> = std::iter::once(bytes).chain(fiche).collect();
+                match self.db.keep_account_records(&records)? == records.len() {
+                    true => Ok(()),
+                    false => Err(tr("compte_write_failed").to_owned()),
+                }
+            });
         let name = self.account_name(account);
         match written {
             Ok(()) => {
-                // Bloqué, il n'est plus lecteur de ce qu'on écrit ensuite —
-                // ni de sa fiche, rescellée sans lui.
+                // Bloqué, il n'est plus lecteur de ce qu'on écrit ensuite.
                 if hold == Hold::Blocked {
                     self.comptes.form.pour.remove(account);
                     self.comptes.post.pour.remove(account);
                     self.comptes.fiche_pour.remove(account);
-                    if let Err(e) = self.comptes_fiche_without(&id, account) {
-                        // `None` : une fiche écrite ailleurs depuis, déjà dite.
-                        if let Some(e) = e {
-                            self.reload_comptes();
-                            self.comptes.notice = Some((true, e));
-                        }
-                        return;
-                    }
                 }
                 self.reload_comptes();
                 let key = match hold {
@@ -12618,19 +12630,23 @@ impl Session {
         }
     }
 
-    /// Resceller la fiche du compte ouvert sans `blocked`, s'il en était
+    /// La fiche du compte ouvert rescellée sans `blocked`, s'il en était
     /// lecteur (`compte::fiche_without`) — la fiche écrite, pas ce que le
-    /// profil affiché tape. `Err(None)` : une version plus récente, déjà
-    /// dite par `account_next`.
+    /// profil affiché tape ; `None` s'il n'en était pas. `Err(None)` : une
+    /// version plus récente, déjà dite par `account_next`.
     #[cfg(feature = "sync")]
-    fn comptes_fiche_without(&mut self, id: &str, blocked: &str) -> Result<(), Option<String>> {
+    fn comptes_fiche_without(
+        &mut self,
+        id: &str,
+        blocked: &str,
+    ) -> Result<Option<Vec<u8>>, Option<String>> {
         let Some(fiche) = self
             .comptes
             .fiche
             .as_ref()
             .and_then(|f| crate::compte::fiche_without(f, blocked))
         else {
-            return Ok(());
+            return Ok(None);
         };
         let seen = Some(self.comptes.fiche_seq);
         let Ok(seq) = self.account_next(id, crate::compte::FICHE_ITEM, seen) else {
@@ -12638,18 +12654,19 @@ impl Session {
         };
         let c = &self.comptes;
         let Some(me) = &c.open else {
-            return Ok(());
+            return Ok(None);
         };
         let boxes = |a: &str| -> Option<[u8; 32]> { c.boxes.get(a).copied() };
-        let bytes =
-            crate::compte::write_fiche(me, seq, Some(&fiche), &boxes, &mut bpm_sync::OsEntropy)
-                .map_err(|e| match e {
+        crate::compte::write_fiche(me, seq, Some(&fiche), &boxes, &mut bpm_sync::OsEntropy)
+            .map(Some)
+            .map_err(|e| {
+                Some(match e {
                     crate::compte::EntryError::NoKey(a) => {
                         trf("compte_no_key", self.account_name(&a))
                     }
                     crate::compte::EntryError::Write(_) => tr("compte_write_failed").to_owned(),
-                })?;
-        Ok(self.keep_one_account_record(bytes)?)
+                })
+            })
     }
 
     /// Les rendez-vous d'un jour que le compte ouvert lit : les siens et

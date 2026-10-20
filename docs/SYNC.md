@@ -507,7 +507,11 @@ plus haut numéro du bloc de ce poste — jamais celui d'un autre, jamais un
 numéro supprimé. Les dossiers ont des blocs de cent mille lisibles (le
 fondateur garde les siens), le reste des blocs d'un million de millions.
 `replica_inserts_draw_from_the_block` lit `db.rs` et refuse un `INSERT`
-qui oublierait son `id`.
+qui oublierait son `id`. Une table qu'une version ajoute après que le
+groupe s'est formé reçoit son bloc à l'ouverture du poste
+(`set_missing_blocks`) : sans lui, chaque poste la numérotait depuis 1 et
+leurs lignes se heurtaient
+(`a_table_added_after_the_group_formed_gets_its_block_on_open`).
 
 **Les numéros d'ordonnancier viennent du logiciel de l'officine** : tapés
 sur chaque délivrance, sur n'importe quel poste, ils voyagent avec la
@@ -1179,7 +1183,7 @@ officines les gardent et les passent, réseau ouvert compris, sans
 pouvoir lire ce qui est scellé ni rien réécrire. Un poste ne publie que
 les comptes de l'officine — ouverts sur l'un de ses postes, téléphone
 compris : la table `account_homes`, qui voyage, en garde la trace sans
-la phrase ; ce qui vient d'ailleurs circule par le
+la phrase, une ligne par poste, effacée quand ce poste retire le compte ; ce qui vient d'ailleurs circule par le
 journal qui l'a apporté. Ils sont lus des auteurs que le réseau lit —
 la signature du compte fait foi, pas celle du poste qui les a passés —
 enregistrement par enregistrement, si bien qu'aucune « correction »
@@ -1215,7 +1219,10 @@ table locale) — il ne s'y crée pas : douze mots se recopient sur
 papier, pas sur l'écran d'un téléphone. Ouvert, il lit ce qu'on partage
 avec lui, publie et efface ses billets, masque, bloque et rétablit un
 auteur — par les mêmes règles que le bureau (`compte::feed`,
-`settings_for`, `next_seq`) — et se ferme quand la base se verrouille.
+`settings_for`, `next_seq`) ; ses rendez-vous et ceux qu'on lui partage
+paraissent à l'agenda du téléphone, à part des entrées de l'officine
+(`Caddy::account_agenda`, `compte::appointments`). Il se ferme quand la
+base se verrouille.
 Ce qu'il écrit voyage vers les postes de l'officine, et de là vers les
 autres officines par le poste qui tient le réseau : garder le compte sur
 le téléphone l'inscrit à `account_homes`.

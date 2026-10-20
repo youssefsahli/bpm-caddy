@@ -1927,7 +1927,9 @@ Sur le **téléphone**, l'onglet Messages porte aussi le fil
 s'y retrouve par ses douze mots, sous un code propre au téléphone (il se
 crée sur un poste) ; ouvert, il lit ce qu'on partage avec lui, publie,
 efface ses billets, et un appui sur le billet d'un autre propose de le
-masquer ou de le bloquer. Il se ferme quand le téléphone se verrouille.
+masquer ou de le bloquer. Ses rendez-vous, et ceux qu'on partage avec
+lui, paraissent à l'agenda du téléphone (« Mon compte » ou le nom de
+leur auteur). Il se ferme quand le téléphone se verrouille.
 
 # Connexions
 

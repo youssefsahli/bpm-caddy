@@ -39,7 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reading what is sealed or rewriting anything: records travel between
   the officine's posts and through every network journal, the open
   network included. The post that holds the network seeds every account
-  opened on one of the officine's posts, the phone included. A new post
+  kept on one of the officine's posts, the phone included, until every
+  post has forgotten it. A new post
   finds an account again from its phrase alone, once a synchronisation
   has brought its records.
 - **Discreet profile.** An account can publish its box key alone: its
@@ -53,7 +54,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   account is found again there from its twelve words, under a code for
   the phone; open, it reads what is shared with it, writes and deletes
   posts, and mutes, blocks or restores an author, by the desktop's
-  rules. It closes when the phone locks.
+  rules; its appointments, and those shared with it, show in the
+  phone's agenda. It closes when the phone locks.
 - **Records from a later version pass through.** An account record of
   a kind this version does not know is kept and passed on, unread,
   instead of being refused: an update no longer has to reach every
@@ -111,6 +113,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Posts: a table added by an update gets its numbers.** A table that a
+  later version adds after the group of posts was formed had no block of
+  ids, so every post numbered it from 1 and the rows of two posts
+  collided (a conflict question instead of one more row). Each post now
+  takes its block for such a table when it opens.
 - **Planning: undo never loses its place.** Undoing a removal puts the
   rows back under new ids, and the gestures stacked before it still
   named the old ones: paste a day, empty the cell, then undo twice, and
