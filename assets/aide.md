@@ -1929,7 +1929,8 @@ crée sur un poste) ; ouvert, il lit ce qu'on partage avec lui, publie,
 efface ses billets, et un appui sur le billet d'un autre propose de le
 masquer ou de le bloquer. Ses rendez-vous, et ceux qu'on partage avec
 lui, paraissent à l'agenda du téléphone (« Mon compte » ou le nom de
-leur auteur). Il se ferme quand le téléphone se verrouille.
+leur auteur) ; « Ajouter » y propose alors « Mon compte », privé ou
+partagé avec des comptes cochés, et un appui long efface un des siens. Il se ferme quand le téléphone se verrouille.
 
 # Connexions
 

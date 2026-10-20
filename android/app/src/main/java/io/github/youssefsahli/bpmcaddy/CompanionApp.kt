@@ -365,8 +365,23 @@ private fun AgendaScreen(state: AppState, caddy: Caddy) {
     }
     var adding by rememberSaveable { mutableStateOf(false) }
     var removing by remember { mutableStateOf<uniffi.bpm_caddy_mobile.AgendaItem?>(null) }
+    var unsaying by remember { mutableStateOf<uniffi.bpm_caddy_mobile.AccountRdv?>(null) }
     if (adding) {
-        EventForm(state) { adding = false }
+        EventForm(state, caddy) { adding = false }
+    }
+    unsaying?.let { r ->
+        AlertDialog(
+            onDismissRequest = { unsaying = null },
+            title = { Text(T("mobile_agenda_delete")) },
+            text = { Text(r.title + " · " + dayName(r.day)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    state.account(true, { it.deletePost(r.item, r.seq, now()); T("compte_item_deleted") })
+                    unsaying = null
+                }) { Text(T("mobile_delete")) }
+            },
+            dismissButton = { TextButton(onClick = { unsaying = null }) { Text(T("mobile_cancel")) } },
+        )
     }
     removing?.let { e ->
         AlertDialog(
@@ -399,7 +414,11 @@ private fun AgendaScreen(state: AppState, caddy: Caddy) {
                 val list = byDay[day].orEmpty()
                 item(key = "d$day") { DayHeader(dayName(day)) }
                 items(rdvByDay[day].orEmpty(), key = { "a${it.item}" }) { r ->
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .combinedClickable(onClick = {}, onLongClick = { if (r.author.isBlank()) unsaying = r })
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                    ) {
                         val hours = listOf(r.time, r.endTime).filter { it.isNotBlank() }.joinToString("–")
                         Text(hours, Modifier.width(96.dp), style = MaterialTheme.typography.bodyMedium)
                         Column(Modifier.weight(1f)) {
@@ -433,7 +452,18 @@ private fun AgendaScreen(state: AppState, caddy: Caddy) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun EventForm(state: AppState, close: () -> Unit) {
+private fun EventForm(state: AppState, caddy: Caddy, close: () -> Unit) {
+    // Un compte ouvert : l'entrée peut aller dans le compte, privée ou
+    // partagée, plutôt qu'à l'agenda de l'officine.
+    val open = remember { caddy.openAccount() }
+    val people by produceState(emptyList<AccountInfo>(), open) {
+        value = if (open == null) emptyList() else withContext(Dispatchers.IO) {
+            runCatching { caddy.people() }.getOrDefault(emptyList())
+        }
+    }
+    var inAccount by rememberSaveable { mutableStateOf(false) }
+    var shared by rememberSaveable { mutableStateOf(false) }
+    var readers by remember { mutableStateOf(setOf<String>()) }
     var day by rememberSaveable { mutableStateOf(displayDate(today())) }
     var from by rememberSaveable { mutableStateOf("") }
     var to by rememberSaveable { mutableStateOf("") }
@@ -455,16 +485,61 @@ private fun EventForm(state: AppState, close: () -> Unit) {
                     title, { title = it }, label = { Text(T("mobile_agenda_title")) }, singleLine = true,
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                 )
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    kinds.forEach { c ->
-                        FilterChip(selected = kind == c.key, onClick = { kind = c.key }, label = { Text(c.label) })
+                if (open != null) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        FilterChip(selected = !inAccount, onClick = { inAccount = false }, label = { Text(T("mobile_agenda_officine")) })
+                        FilterChip(selected = inAccount, onClick = { inAccount = true }, label = { Text(T("mobile_agenda_mine")) })
                     }
+                }
+                if (!inAccount) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        kinds.forEach { c ->
+                            FilterChip(selected = kind == c.key, onClick = { kind = c.key }, label = { Text(c.label) })
+                        }
+                    }
+                } else {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        FilterChip(selected = !shared, onClick = { shared = false }, label = { Text(T("compte_reach_private")) })
+                        FilterChip(selected = shared, onClick = { shared = true }, label = { Text(T("compte_reach_shared")) })
+                    }
+                    if (shared) {
+                        val choosable = people.filter { it.hold != "bloquer" }
+                        if (choosable.isEmpty()) Hint(T("compte_nobody"))
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            choosable.forEach { a ->
+                                FilterChip(
+                                    selected = a.id in readers,
+                                    onClick = { readers = if (a.id in readers) readers - a.id else readers + a.id },
+                                    label = { Text(a.name) },
+                                )
+                            }
+                        }
+                    }
+                    Text(
+                        T("compte_no_patient"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { state.addEvent(day, from, to, title, kind) { ok -> if (ok) close() } },
+                onClick = {
+                    if (!inAccount) {
+                        state.addEvent(day, from, to, title, kind) { ok -> if (ok) close() }
+                    } else {
+                        val to2 = if (shared) readers.toList() else emptyList()
+                        if (shared && to2.isEmpty()) {
+                            state.notice(T("compte_need_reader"))
+                        } else {
+                            state.account(true, {
+                                it.addAccountRdv(day, from, to, title, to2, today(), now())
+                                T("mobile_agenda_account_done")
+                            }) { ok -> if (ok) close() }
+                        }
+                    }
+                },
                 enabled = title.isNotBlank(),
             ) { Text(T("mobile_save")) }
         },

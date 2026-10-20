@@ -55,7 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the phone; open, it reads what is shared with it, writes and deletes
   posts, and mutes, blocks or restores an author, by the desktop's
   rules; its appointments, and those shared with it, show in the
-  phone's agenda. It closes when the phone locks.
+  phone's agenda, where it also adds (private or shared) and deletes its
+  own. It closes when the phone locks.
 - **Records from a later version pass through.** An account record of
   a kind this version does not know is kept and passed on, unread,
   instead of being refused: an update no longer has to reach every

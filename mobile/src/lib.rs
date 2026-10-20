@@ -92,6 +92,39 @@ fn failed(key: &'static str) -> CaddyError {
 
 /// Le nom d'un compte et le début de son empreinte, ou l'empreinte seule
 /// quand il ne se nomme pas ici.
+/// Une entrée d'agenda tapée sur le téléphone : le jour à la française
+/// (`260926`, `2609`, `26/09/2026`, l'année de `today` à défaut), les
+/// heures à la volée (`9h30`), un titre non vide. Rend (jour ISO, début,
+/// fin, titre).
+fn typed_event(
+    day: &str,
+    time: &str,
+    end_time: &str,
+    title: &str,
+    today: &str,
+) -> Result<(String, String, String, String)> {
+    use bpm_caddy::db::{parse_french_date, parse_hour, YearHint};
+    use bpm_caddy::strings::tr;
+    let year = today.get(..4).and_then(|y| y.parse().ok()).unwrap_or(2026);
+    let day = parse_french_date(day, year, YearHint::Future)?;
+    let hour = |text: &str| -> Result<String> {
+        if text.trim().is_empty() {
+            return Ok(String::new());
+        }
+        parse_hour(text).ok_or_else(|| CaddyError::Failed {
+            reason: tr("mobile_agenda_bad_hour").to_owned(),
+        })
+    };
+    let (time, end_time) = (hour(time)?, hour(end_time)?);
+    let title = title.trim();
+    if title.is_empty() {
+        return Err(CaddyError::Failed {
+            reason: tr("mobile_agenda_no_title").to_owned(),
+        });
+    }
+    Ok((day, time, end_time, title.to_owned()))
+}
+
 fn name_in(
     named: &std::collections::BTreeMap<String, bpm_caddy::compte::Profile>,
     account: &str,
@@ -245,8 +278,10 @@ pub struct AccountRdv {
     pub time: String,
     pub end_time: String,
     pub title: String,
-    /// Qui l'a écrit, nommé comme au fil ; vide : le compte ouvert.
+    /// Qui l'a écrit, nommé comme au fil ; vide : le compte ouvert, qui
+    /// l'efface (`delete_post`) contre cette version.
     pub author: String,
+    pub seq: u64,
 }
 
 #[derive(uniffi::Record)]
@@ -724,29 +759,12 @@ impl Caddy {
         category: String,
         today: String,
     ) -> Result<i64> {
-        use bpm_caddy::db::{parse_french_date, parse_hour, EventCategory, YearHint};
-        use bpm_caddy::strings::tr;
-        let year = today.get(..4).and_then(|y| y.parse().ok()).unwrap_or(2026);
-        let day = parse_french_date(&day, year, YearHint::Future)?;
-        let hour = |text: &str| -> Result<String> {
-            if text.trim().is_empty() {
-                return Ok(String::new());
-            }
-            parse_hour(text).ok_or_else(|| CaddyError::Failed {
-                reason: tr("mobile_agenda_bad_hour").to_owned(),
-            })
-        };
-        let (time, end_time) = (hour(&time)?, hour(&end_time)?);
-        let title = title.trim();
-        if title.is_empty() {
-            return Err(CaddyError::Failed {
-                reason: tr("mobile_agenda_no_title").to_owned(),
-            });
-        }
+        use bpm_caddy::db::EventCategory;
+        let (day, time, end_time, title) = typed_event(&day, &time, &end_time, &title, &today)?;
         let category = EventCategory::parse(&category).unwrap_or(EventCategory::Autre);
         Ok(self
             .db()
-            .add_event_span(&day, &time, &end_time, title, category, "", "")?)
+            .add_event_span(&day, &time, &end_time, &title, category, "", "")?)
     }
 
     /// **Retirer une entrée**, seulement si elle porte encore le titre
@@ -860,6 +878,7 @@ impl Caddy {
                 time: e.debut,
                 end_time: e.fin,
                 item: r.item,
+                seq: r.seq,
             })
             .collect())
     }
@@ -992,69 +1011,49 @@ impl Caddy {
         time: String,
         now: u64,
     ) -> Result<()> {
-        use bpm_caddy::compte::{self, EntryError, Hold, Kind, Visibility};
-        let account = self
-            .account()
-            .ok_or_else(|| failed("compte_write_failed"))?;
+        use bpm_caddy::compte::{self, Kind, Visibility};
         if text.trim().is_empty() {
             return Err(failed("compte_post_empty"));
         }
-        let latest = self.reads(Some(&account))?;
-        let (settings, _) = compte::settings_for(&latest, &account.id());
-        let named = compte::named(&latest);
-        // **Partagé reste partagé** : des lecteurs tous bloqués ne font pas
-        // d'un billet scellé un billet public.
-        let visibility = if readers.is_empty() {
-            Visibility::Public
-        } else {
-            let readers: Vec<String> = readers
-                .into_iter()
-                .filter(|a| settings.hold(a) != Hold::Blocked)
-                .collect();
-            if readers.is_empty() {
-                return Err(failed("compte_need_reader"));
-            }
-            Visibility::Shared(readers)
-        };
         let entry = compte::Entry {
             texte: text.trim().to_owned(),
             jour: today,
             debut: time,
             ..compte::Entry::default()
         };
-        // La clé de tout compte qui l'a publiée, nommé ici ou non.
-        let boxes = |a: &str| {
-            latest
-                .iter()
-                .filter(|r| r.account == a)
-                .find_map(compte::profile_of)
-                .and_then(|p| compte::unhex::<32>(&p.boite))
-        };
-        let item = compte::new_item(&mut bpm_sync::OsEntropy);
-        let bytes = compte::write_entry(
-            &account,
-            (&item, compte::next_seq(0, now)),
-            Kind::Billet,
-            &entry,
-            &visibility,
-            &boxes,
-            &mut bpm_sync::OsEntropy,
-        )
-        .map_err(|e| match e {
-            EntryError::NoKey(a) => CaddyError::Failed {
-                reason: bpm_caddy::strings::trf("compte_no_key", name_in(&named, &a)),
-            },
-            EntryError::Write(compte::WriteError::TooLong) => CaddyError::Failed {
-                reason: bpm_caddy::strings::trf("compte_too_long", compte::MAX_DATA / 1024),
-            },
-            EntryError::Write(_) => failed("compte_write_failed"),
-        })?;
-        self.keep_one(bytes)
+        self.write_own(Kind::Billet, entry, readers, Visibility::Public, now)
     }
 
-    /// **Effacer un de ses billets**, contre la version que l'écran
-    /// montrait : changé ailleurs depuis, il ne s'efface pas sans être
-    /// relu.
+    /// **Un rendez-vous dans son compte** : privé, ou partagé avec les
+    /// comptes choisis — jamais public d'ici, comme au bureau où un
+    /// rendez-vous se partage. Le jour et les heures se tapent comme pour
+    /// l'agenda de l'officine. Jamais un patient : l'écran le dit.
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_account_rdv(
+        &self,
+        day: String,
+        time: String,
+        end_time: String,
+        title: String,
+        readers: Vec<String>,
+        today: String,
+        now: u64,
+    ) -> Result<()> {
+        use bpm_caddy::compte::{self, Kind, Visibility};
+        let (day, time, end_time, title) = typed_event(&day, &time, &end_time, &title, &today)?;
+        let entry = compte::Entry {
+            titre: title,
+            jour: day,
+            debut: time,
+            fin: end_time,
+            ..compte::Entry::default()
+        };
+        self.write_own(Kind::Rdv, entry, readers, Visibility::Private, now)
+    }
+
+    /// **Effacer un de ses billets ou de ses rendez-vous**, contre la
+    /// version que l'écran montrait : changé ailleurs depuis, il ne
+    /// s'efface pas sans être relu.
     pub fn delete_post(&self, item: String, shown_seq: u64, now: u64) -> Result<()> {
         use bpm_caddy::compte::{self, Kind};
         let account = self
@@ -1063,7 +1062,11 @@ impl Caddy {
         let latest = self.reads(None)?;
         let current = latest
             .iter()
-            .find(|r| r.account == account.id() && r.item == item && r.kind == Kind::Billet)
+            .find(|r| {
+                r.account == account.id()
+                    && r.item == item
+                    && matches!(r.kind, Kind::Billet | Kind::Rdv)
+            })
             .ok_or_else(|| failed("compte_write_failed"))?;
         if current.seq != shown_seq {
             return Err(failed("compte_stale"));
@@ -1072,7 +1075,7 @@ impl Caddy {
             &account,
             &item,
             compte::next_seq(current.seq, now),
-            Kind::Billet,
+            current.kind,
             compte::Content::Deleted,
             &mut bpm_sync::OsEntropy,
         )
@@ -1373,6 +1376,66 @@ impl Caddy {
 
     /// Ranger un enregistrement qu'on vient d'écrire — refusé à la
     /// relecture, il ne se dit pas enregistré.
+    /// Écrire un élément neuf du compte ouvert, pour `readers`, ou
+    /// `alone` sans lecteur choisi. **Partagé reste partagé** : des
+    /// lecteurs tous bloqués ne le font pas partir public (ni privé).
+    fn write_own(
+        &self,
+        kind: bpm_caddy::compte::Kind,
+        entry: bpm_caddy::compte::Entry,
+        readers: Vec<String>,
+        alone: bpm_caddy::compte::Visibility,
+        now: u64,
+    ) -> Result<()> {
+        use bpm_caddy::compte::{self, EntryError, Hold, Visibility};
+        let account = self
+            .account()
+            .ok_or_else(|| failed("compte_write_failed"))?;
+        let latest = self.reads(Some(&account))?;
+        let (settings, _) = compte::settings_for(&latest, &account.id());
+        let named = compte::named(&latest);
+        let visibility = if readers.is_empty() {
+            alone
+        } else {
+            let readers: Vec<String> = readers
+                .into_iter()
+                .filter(|a| settings.hold(a) != Hold::Blocked)
+                .collect();
+            if readers.is_empty() {
+                return Err(failed("compte_need_reader"));
+            }
+            Visibility::Shared(readers)
+        };
+        // La clé de tout compte qui l'a publiée, nommé ici ou non.
+        let boxes = |a: &str| {
+            latest
+                .iter()
+                .filter(|r| r.account == a)
+                .find_map(compte::profile_of)
+                .and_then(|p| compte::unhex::<32>(&p.boite))
+        };
+        let item = compte::new_item(&mut bpm_sync::OsEntropy);
+        let bytes = compte::write_entry(
+            &account,
+            (&item, compte::next_seq(0, now)),
+            kind,
+            &entry,
+            &visibility,
+            &boxes,
+            &mut bpm_sync::OsEntropy,
+        )
+        .map_err(|e| match e {
+            EntryError::NoKey(a) => CaddyError::Failed {
+                reason: bpm_caddy::strings::trf("compte_no_key", name_in(&named, &a)),
+            },
+            EntryError::Write(compte::WriteError::TooLong) => CaddyError::Failed {
+                reason: bpm_caddy::strings::trf("compte_too_long", compte::MAX_DATA / 1024),
+            },
+            EntryError::Write(_) => failed("compte_write_failed"),
+        })?;
+        self.keep_one(bytes)
+    }
+
     fn keep_one(&self, bytes: Vec<u8>) -> Result<()> {
         match self.db().keep_account_records(&[bytes])? {
             0 => Err(failed("compte_write_failed")),
@@ -1720,9 +1783,81 @@ mod tests {
         assert_eq!(c.news(today(), 10).unwrap().hidden, 0);
         // Fermé, rouvert par son code ; un mauvais refusé.
         assert_eq!(c.account_agenda(week().0, week().1).unwrap().len(), 1);
+        // Un rendez-vous à soi, puis un pour Marc ; le sien s'efface.
+        c.add_account_rdv(
+            "2210".into(),
+            "9h30".into(),
+            "10h".into(),
+            "Pharmacovigilance".into(),
+            vec![],
+            today(),
+            510,
+        )
+        .unwrap();
+        assert!(c
+            .add_account_rdv(
+                "2210".into(),
+                "25h".into(),
+                "".into(),
+                "x".into(),
+                vec![],
+                today(),
+                511
+            )
+            .is_err());
+        c.add_account_rdv(
+            "23/10/2026".into(),
+            "".into(),
+            "".into(),
+            "Inventaire".into(),
+            vec![marc.id()],
+            today(),
+            512,
+        )
+        .unwrap();
+        let rdvs = c.account_agenda(week().0, week().1).unwrap();
+        let shown: Vec<(&str, &str, &str)> = rdvs
+            .iter()
+            .map(|r| (r.day.as_str(), r.time.as_str(), r.title.as_str()))
+            .collect();
+        assert_eq!(
+            shown,
+            [
+                ("2026-10-21", "14:00", "Réunion"),
+                ("2026-10-22", "09:30", "Pharmacovigilance"),
+                ("2026-10-23", "", "Inventaire")
+            ]
+        );
+        assert!(rdvs[1].author.is_empty() && rdvs[1].end_time == "10:00");
+        let private = c.db().account_latest(Some(&marc)).unwrap();
+        assert!(private
+            .iter()
+            .any(|(r, _)| compte::entry_of(r).is_some_and(|e| e.titre == "Inventaire")));
+        assert!(!private
+            .iter()
+            .any(|(r, _)| compte::entry_of(r).is_some_and(|e| e.titre == "Pharmacovigilance")));
+        c.delete_post(rdvs[1].item.clone(), rdvs[1].seq, 520)
+            .unwrap();
+        assert_eq!(c.account_agenda(week().0, week().1).unwrap().len(), 2);
+        assert!(
+            c.delete_post(rdvs[0].item.clone(), rdvs[0].seq, 521)
+                .is_err(),
+            "pas le sien"
+        );
         c.account_close();
         assert!(c.open_account().is_none());
         assert!(c.account_agenda(week().0, week().1).unwrap().is_empty());
+        assert!(c
+            .add_account_rdv(
+                "2210".into(),
+                "9h".into(),
+                "".into(),
+                "x".into(),
+                vec![],
+                today(),
+                600
+            )
+            .is_err());
         assert_eq!(c.kept_accounts().unwrap().len(), 1);
         assert!(c.account_unlock(me.id(), "mauvais1".into()).is_err());
         assert!(c.account_unlock(me.id(), "Pharma24".into()).is_ok());

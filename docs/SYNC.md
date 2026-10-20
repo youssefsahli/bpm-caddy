@@ -1221,7 +1221,8 @@ avec lui, publie et efface ses billets, masque, bloque et rétablit un
 auteur — par les mêmes règles que le bureau (`compte::feed`,
 `settings_for`, `next_seq`) ; ses rendez-vous et ceux qu'on lui partage
 paraissent à l'agenda du téléphone, à part des entrées de l'officine
-(`Caddy::account_agenda`, `compte::appointments`). Il se ferme quand la
+(`Caddy::account_agenda`, `compte::appointments`), et il y en écrit,
+privés ou partagés, jamais publics (`Caddy::add_account_rdv`). Il se ferme quand la
 base se verrouille.
 Ce qu'il écrit voyage vers les postes de l'officine, et de là vers les
 autres officines par le poste qui tient le réseau : garder le compte sur
