@@ -55,8 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the phone; open, it reads what is shared with it, writes and deletes
   posts, and mutes, blocks or restores an author, by the desktop's
   rules; its appointments, and those shared with it, show in the
-  phone's agenda, where it also adds (private or shared) and deletes its
-  own. It closes when the phone locks.
+  phone's agenda, where it also adds (private or shared), edits (same
+  readers) and deletes its own. It closes when the phone locks.
 - **Records from a later version pass through.** An account record of
   a kind this version does not know is kept and passed on, unread,
   instead of being refused: an update no longer has to reach every
@@ -119,6 +119,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ids, so every post numbered it from 1 and the rows of two posts
   collided (a conflict question instead of one more row). Each post now
   takes its block for such a table when it opens.
+- **Accounts: the phone keeps the ceiling too.** The desktop refuses a
+  201st live note or appointment, past which the oldest would quietly
+  stop travelling through the network; the phone wrote on. It now
+  refuses with the same words (`compte::has_room`); posts still count
+  apart.
 - **Planning: undo never loses its place.** Undoing a removal puts the
   rows back under new ids, and the gestures stacked before it still
   named the old ones: paste a day, empty the cell, then undo twice, and

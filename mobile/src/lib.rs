@@ -1051,6 +1051,67 @@ impl Caddy {
         self.write_own(Kind::Rdv, entry, readers, Visibility::Private, now)
     }
 
+    /// **Modifier un de ses rendez-vous** — jour, heures, titre —, contre
+    /// la version que l'écran montrait. Il garde ses lecteurs, moins un
+    /// compte bloqué depuis : ce qui n'a plus de lecteur ne part pas.
+    #[allow(clippy::too_many_arguments)]
+    pub fn edit_account_rdv(
+        &self,
+        item: String,
+        shown_seq: u64,
+        day: String,
+        time: String,
+        end_time: String,
+        title: String,
+        today: String,
+        now: u64,
+    ) -> Result<()> {
+        use bpm_caddy::compte::{self, Hold, Kind, State, Visibility};
+        let account = self
+            .account()
+            .ok_or_else(|| failed("compte_write_failed"))?;
+        let latest = self.reads(Some(&account))?;
+        let current = latest
+            .iter()
+            .find(|r| r.account == account.id() && r.item == item && r.kind == Kind::Rdv)
+            .filter(|r| r.state != State::Deleted)
+            .ok_or_else(|| failed("compte_write_failed"))?;
+        if current.seq != shown_seq {
+            return Err(failed("compte_stale"));
+        }
+        let was = compte::entry_of(current).ok_or_else(|| failed("compte_write_failed"))?;
+        let (day, time, end_time, title) = typed_event(&day, &time, &end_time, &title, &today)?;
+        let entry = compte::Entry {
+            titre: title,
+            jour: day,
+            debut: time,
+            fin: end_time,
+            ..was.clone()
+        };
+        let visibility = match compte::visibility_of(current, &was) {
+            Visibility::Shared(readers) => {
+                let (settings, _) = compte::settings_for(&latest, &account.id());
+                let readers: Vec<String> = readers
+                    .into_iter()
+                    .filter(|a| settings.hold(a) != Hold::Blocked)
+                    .collect();
+                if readers.is_empty() {
+                    return Err(failed("compte_need_reader"));
+                }
+                Visibility::Shared(readers)
+            }
+            other => other,
+        };
+        self.seal(
+            &account,
+            &latest,
+            (&item, compte::next_seq(current.seq, now)),
+            Kind::Rdv,
+            &entry,
+            &visibility,
+        )
+    }
+
     /// **Effacer un de ses billets ou de ses rendez-vous**, contre la
     /// version que l'écran montrait : changé ailleurs depuis, il ne
     /// s'efface pas sans être relu.
@@ -1385,13 +1446,17 @@ impl Caddy {
         alone: bpm_caddy::compte::Visibility,
         now: u64,
     ) -> Result<()> {
-        use bpm_caddy::compte::{self, EntryError, Hold, Visibility};
+        use bpm_caddy::compte::{self, Hold, Visibility};
         let account = self
             .account()
             .ok_or_else(|| failed("compte_write_failed"))?;
         let latest = self.reads(Some(&account))?;
+        if kind != compte::Kind::Billet && !compte::has_room(&latest, &account.id()) {
+            return Err(CaddyError::Failed {
+                reason: bpm_caddy::strings::trf("compte_too_many", compte::MOST_ITEMS),
+            });
+        }
         let (settings, _) = compte::settings_for(&latest, &account.id());
-        let named = compte::named(&latest);
         let visibility = if readers.is_empty() {
             alone
         } else {
@@ -1404,6 +1469,29 @@ impl Caddy {
             }
             Visibility::Shared(readers)
         };
+        let item = compte::new_item(&mut bpm_sync::OsEntropy);
+        self.seal(
+            &account,
+            &latest,
+            (&item, compte::next_seq(0, now)),
+            kind,
+            &entry,
+            &visibility,
+        )
+    }
+
+    /// Sceller un élément pour ses lecteurs et le ranger.
+    fn seal(
+        &self,
+        account: &bpm_caddy::compte::Account,
+        latest: &[bpm_caddy::compte::Read],
+        at: (&str, u64),
+        kind: bpm_caddy::compte::Kind,
+        entry: &bpm_caddy::compte::Entry,
+        visibility: &bpm_caddy::compte::Visibility,
+    ) -> Result<()> {
+        use bpm_caddy::compte::{self, EntryError};
+        let named = compte::named(latest);
         // La clé de tout compte qui l'a publiée, nommé ici ou non.
         let boxes = |a: &str| {
             latest
@@ -1412,13 +1500,12 @@ impl Caddy {
                 .find_map(compte::profile_of)
                 .and_then(|p| compte::unhex::<32>(&p.boite))
         };
-        let item = compte::new_item(&mut bpm_sync::OsEntropy);
         let bytes = compte::write_entry(
-            &account,
-            (&item, compte::next_seq(0, now)),
+            account,
+            at,
             kind,
-            &entry,
-            &visibility,
+            entry,
+            visibility,
             &boxes,
             &mut bpm_sync::OsEntropy,
         )
@@ -1836,6 +1923,37 @@ mod tests {
         assert!(!private
             .iter()
             .any(|(r, _)| compte::entry_of(r).is_some_and(|e| e.titre == "Pharmacovigilance")));
+        // Modifié : Marc le lit toujours, à la nouvelle heure ; contre
+        // une version dépassée, refusé.
+        c.edit_account_rdv(
+            rdvs[2].item.clone(),
+            rdvs[2].seq,
+            "23/10/2026".into(),
+            "14h".into(),
+            "".into(),
+            "Inventaire annuel".into(),
+            today(),
+            513,
+        )
+        .unwrap();
+        assert!(c
+            .edit_account_rdv(
+                rdvs[2].item.clone(),
+                rdvs[2].seq,
+                "2310".into(),
+                "".into(),
+                "".into(),
+                "x".into(),
+                today(),
+                514
+            )
+            .is_err());
+        let private = c.db().account_latest(Some(&marc)).unwrap();
+        assert!(private.iter().any(|(r, _)| {
+            compte::entry_of(r)
+                .is_some_and(|e| e.titre == "Inventaire annuel" && e.debut == "14:00")
+        }));
+        assert_eq!(c.account_agenda(week().0, week().1).unwrap().len(), 3);
         c.delete_post(rdvs[1].item.clone(), rdvs[1].seq, 520)
             .unwrap();
         assert_eq!(c.account_agenda(week().0, week().1).unwrap().len(), 2);
@@ -1844,6 +1962,27 @@ mod tests {
                 .is_err(),
             "pas le sien"
         );
+        // Au plafond, le téléphone refuse comme le bureau ; un billet,
+        // compté à part, passe encore.
+        let mut written = 0;
+        let full = loop {
+            match c.add_account_rdv(
+                "2410".into(),
+                "".into(),
+                "".into(),
+                format!("r{written}"),
+                vec![],
+                today(),
+                530 + written,
+            ) {
+                Ok(()) => written += 1,
+                Err(e) => break e,
+            }
+            assert!(written <= compte::MOST_ITEMS as u64);
+        };
+        assert!(written > 0 && full.to_string().contains("au plus"));
+        c.publish_post("Toujours".into(), vec![], today(), "10:00".into(), 800)
+            .unwrap();
         c.account_close();
         assert!(c.open_account().is_none());
         assert!(c.account_agenda(week().0, week().1).unwrap().is_empty());

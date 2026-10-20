@@ -356,8 +356,8 @@ private fun AgendaScreen(state: AppState, caddy: Caddy) {
             runCatching { caddy.agenda(start, from.plusDays(6).toString()) }.getOrDefault(emptyList())
         }
     }
-    // Les rendez-vous du compte ouvert, à part des entrées de l'officine :
-    // ils ne s'effacent pas d'ici.
+    // Les rendez-vous du compte ouvert, à part des entrées de l'officine ;
+    // un appui long sur un des siens le modifie ou le retire.
     val rdvs by produceState(emptyList<uniffi.bpm_caddy_mobile.AccountRdv>(), start, state.revision) {
         value = withContext(Dispatchers.IO) {
             runCatching { caddy.accountAgenda(start, from.plusDays(6).toString()) }.getOrDefault(emptyList())
@@ -366,8 +366,12 @@ private fun AgendaScreen(state: AppState, caddy: Caddy) {
     var adding by rememberSaveable { mutableStateOf(false) }
     var removing by remember { mutableStateOf<uniffi.bpm_caddy_mobile.AgendaItem?>(null) }
     var unsaying by remember { mutableStateOf<uniffi.bpm_caddy_mobile.AccountRdv?>(null) }
+    var editing by remember { mutableStateOf<uniffi.bpm_caddy_mobile.AccountRdv?>(null) }
     if (adding) {
         EventForm(state, caddy) { adding = false }
+    }
+    editing?.let { r ->
+        EventForm(state, caddy, r, { editing = null; unsaying = r }) { editing = null }
     }
     unsaying?.let { r ->
         AlertDialog(
@@ -416,7 +420,7 @@ private fun AgendaScreen(state: AppState, caddy: Caddy) {
                 items(rdvByDay[day].orEmpty(), key = { "a${it.item}" }) { r ->
                     Row(
                         Modifier.fillMaxWidth()
-                            .combinedClickable(onClick = {}, onLongClick = { if (r.author.isBlank()) unsaying = r })
+                            .combinedClickable(onClick = {}, onLongClick = { if (r.author.isBlank()) editing = r })
                             .padding(horizontal = 12.dp, vertical = 4.dp),
                     ) {
                         val hours = listOf(r.time, r.endTime).filter { it.isNotBlank() }.joinToString("–")
@@ -452,9 +456,16 @@ private fun AgendaScreen(state: AppState, caddy: Caddy) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun EventForm(state: AppState, caddy: Caddy, close: () -> Unit) {
+private fun EventForm(
+    state: AppState,
+    caddy: Caddy,
+    editing: uniffi.bpm_caddy_mobile.AccountRdv? = null,
+    remove: () -> Unit = {},
+    close: () -> Unit,
+) {
     // Un compte ouvert : l'entrée peut aller dans le compte, privée ou
-    // partagée, plutôt qu'à l'agenda de l'officine.
+    // partagée, plutôt qu'à l'agenda de l'officine. `editing` : un de ses
+    // rendez-vous, rouvert avec ses lecteurs.
     val open by produceState<AccountInfo?>(null) {
         value = withContext(Dispatchers.IO) { runCatching { caddy.openAccount() }.getOrNull() }
     }
@@ -463,18 +474,18 @@ private fun EventForm(state: AppState, caddy: Caddy, close: () -> Unit) {
             runCatching { caddy.people() }.getOrDefault(emptyList())
         }
     }
-    var inAccount by rememberSaveable { mutableStateOf(false) }
+    var inAccount by rememberSaveable { mutableStateOf(editing != null) }
     var shared by rememberSaveable { mutableStateOf(false) }
     var readers by rememberSaveable { mutableStateOf(listOf<String>()) }
-    var day by rememberSaveable { mutableStateOf(displayDate(today())) }
-    var from by rememberSaveable { mutableStateOf("") }
-    var to by rememberSaveable { mutableStateOf("") }
-    var title by rememberSaveable { mutableStateOf("") }
+    var day by rememberSaveable { mutableStateOf(displayDate(editing?.day ?: today())) }
+    var from by rememberSaveable { mutableStateOf(editing?.time ?: "") }
+    var to by rememberSaveable { mutableStateOf(editing?.endTime ?: "") }
+    var title by rememberSaveable { mutableStateOf(editing?.title ?: "") }
     val kinds = remember { eventCategories() }
     var kind by rememberSaveable { mutableStateOf(kinds.lastOrNull()?.key ?: "") }
     AlertDialog(
         onDismissRequest = close,
-        title = { Text(T("mobile_agenda_new")) },
+        title = { Text(T(if (editing == null) "mobile_agenda_new" else "mobile_agenda_edit")) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(day, { day = it }, label = { Text(T("mobile_agenda_day")) }, singleLine = true)
@@ -487,7 +498,7 @@ private fun EventForm(state: AppState, caddy: Caddy, close: () -> Unit) {
                     title, { title = it }, label = { Text(T("mobile_agenda_title")) }, singleLine = true,
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                 )
-                if (open != null) {
+                if (open != null && editing == null) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         FilterChip(selected = !inAccount, onClick = { inAccount = false }, label = { Text(T("mobile_agenda_officine")) })
                         FilterChip(selected = inAccount, onClick = { inAccount = true }, label = { Text(T("mobile_agenda_mine")) })
@@ -499,6 +510,13 @@ private fun EventForm(state: AppState, caddy: Caddy, close: () -> Unit) {
                             FilterChip(selected = kind == c.key, onClick = { kind = c.key }, label = { Text(c.label) })
                         }
                     }
+                } else if (editing != null) {
+                    Hint(T("mobile_agenda_same_readers"))
+                    Text(
+                        T("compte_no_patient"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 } else {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         FilterChip(selected = !shared, onClick = { shared = false }, label = { Text(T("compte_reach_private")) })
@@ -528,7 +546,12 @@ private fun EventForm(state: AppState, caddy: Caddy, close: () -> Unit) {
         confirmButton = {
             TextButton(
                 onClick = {
-                    if (!inAccount) {
+                    if (editing != null) {
+                        state.account(true, {
+                            it.editAccountRdv(editing.item, editing.seq, day, from, to, title, today(), now())
+                            T("mobile_agenda_account_done")
+                        }) { ok -> if (ok) close() }
+                    } else if (!inAccount) {
                         state.addEvent(day, from, to, title, kind) { ok -> if (ok) close() }
                     } else {
                         val to2 = if (shared) readers.toList() else emptyList()
@@ -545,7 +568,12 @@ private fun EventForm(state: AppState, caddy: Caddy, close: () -> Unit) {
                 enabled = title.isNotBlank(),
             ) { Text(T("mobile_save")) }
         },
-        dismissButton = { TextButton(onClick = close) { Text(T("mobile_cancel")) } },
+        dismissButton = {
+            Row {
+                if (editing != null) TextButton(onClick = remove) { Text(T("mobile_delete")) }
+                TextButton(onClick = close) { Text(T("mobile_cancel")) }
+            }
+        },
     )
 }
 

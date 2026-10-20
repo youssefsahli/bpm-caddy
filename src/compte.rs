@@ -1044,6 +1044,18 @@ pub fn appointments(
     out
 }
 
+/// La place d'une note ou d'un rendez-vous neuf : au-delà de
+/// [`MOST_ITEMS`] vivants, les plus anciens ne passeraient plus au réseau
+/// ([`to_seed`]). Les billets comptent à part, les effacements non plus.
+pub fn has_room(latest: &[Read], me: &str) -> bool {
+    latest
+        .iter()
+        .filter(|r| r.account == me && matches!(r.kind, Kind::Note | Kind::Rdv))
+        .filter(|r| r.state != State::Deleted)
+        .count()
+        < MOST_ITEMS
+}
+
 /// La version suivante d'un élément : au-dessus de la dernière, et jamais
 /// sous `now` (en secondes) — le plus grand numéro est le plus récent.
 pub fn next_seq(latest: u64, now: u64) -> u64 {
@@ -1600,6 +1612,46 @@ mod tests {
         // Elle se sème avec les éléments, sous leur plafond.
         let unknown = read(&forged(&a, &body("sondage", "s1", "public")), None).unwrap();
         assert_eq!(to_seed(vec![(unknown, ())]).len(), 1);
+    }
+
+    /// Le plafond se compte au téléphone comme au bureau : ses notes et
+    /// rendez-vous vivants, rien d'autre.
+    #[test]
+    fn an_account_full_of_notes_has_no_room_but_its_posts_and_deletions_do_not_count() {
+        let me = account(1);
+        let note = |i: u64, kind: Kind, content: Content| {
+            read(
+                &write(&me, &format!("i{i}"), 1, kind, content, &mut Counter(8)).unwrap(),
+                Some(&me),
+            )
+            .unwrap()
+        };
+        let mut all: Vec<Read> = (0..MOST_ITEMS as u64 - 1)
+            .map(|i| note(i, Kind::Note, Content::Public("{}")))
+            .collect();
+        all.push(note(1000, Kind::Billet, Content::Public("{}")));
+        all.push(note(1001, Kind::Rdv, Content::Deleted));
+        all.push(
+            read(
+                &write(
+                    &account(2),
+                    "x",
+                    1,
+                    Kind::Note,
+                    Content::Public("{}"),
+                    &mut Counter(9),
+                )
+                .unwrap(),
+                None,
+            )
+            .unwrap(),
+        );
+        assert!(
+            has_room(&all, &me.id()),
+            "un billet, un effacement, un autre compte ne comptent pas"
+        );
+        all.push(note(1002, Kind::Rdv, Content::Public("{}")));
+        assert!(!has_room(&all, &me.id()));
     }
 
     /// **Les rendez-vous d'un compte** : les siens, publics compris, et

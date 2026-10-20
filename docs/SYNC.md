@@ -1223,7 +1223,9 @@ auteur — par les mêmes règles que le bureau (`compte::feed`,
 `settings_for`, `next_seq`) ; ses rendez-vous et ceux qu'on lui partage
 paraissent à l'agenda du téléphone, à part des entrées de l'officine
 (`Caddy::account_agenda`, `compte::appointments`), et il y en écrit,
-privés ou partagés, jamais publics (`Caddy::add_account_rdv`). Il se ferme quand la
+privés ou partagés, jamais publics (`Caddy::add_account_rdv`), et
+en modifie un des siens sans en changer les lecteurs
+(`Caddy::edit_account_rdv`). Il se ferme quand la
 base se verrouille.
 Ce qu'il écrit voyage vers les postes de l'officine, et de là vers les
 autres officines par le poste qui tient le réseau : garder le compte sur
