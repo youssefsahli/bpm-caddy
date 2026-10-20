@@ -340,8 +340,9 @@ impl Net {
     /// de leur auteur, ne sont plus redemandées, et la base ne les tient
     /// plus. Sans cela le journal grandissait de chaque version, et au
     /// réseau ouvert une officine se taisait, pour tous, au premier
-    /// mégaoctet de sa vie. Ce que le réseau dit d'autre — les versions des
-    /// fiches, les ruptures — garde son histoire. Rend combien sont partis.
+    /// mégaoctet de sa vie. Ce que le réseau dit d'autre garde son histoire,
+    /// tant que son auteur a de la place (`make_room`). Rend combien sont
+    /// partis.
     fn forget_superseded(&mut self, db: &Db, trousseau: &Trousseau) -> Result<usize, String> {
         let mut latest: std::collections::HashMap<
             (DeviceId, String, String),
@@ -372,10 +373,11 @@ impl Net {
                 }
             }
         }
-        let gone: Vec<Hash> = superseded
+        let mut gone: Vec<Hash> = superseded
             .into_iter()
             .filter(|h| self.journal.forget(h))
             .collect();
+        gone.extend(self.make_room(db, trousseau)?);
         if gone.is_empty() {
             return Ok(0);
         }
@@ -390,6 +392,73 @@ impl Net {
             .collect();
         db.forget_net_records_of(&self.id, &stubs)?;
         Ok(gone.len())
+    }
+
+    /// **Une officine reste entendue** : au réseau ouvert, un membre que
+    /// cette officine lit et qui tient plus des trois quarts de son budget
+    /// (`OPEN_LIMITS`) y voit oublier ses enregistrements les plus anciens,
+    /// jusqu'à la moitié — ce qui peut être encore vrai : une version de
+    /// fiche, une rupture en cours, la dernière valeur d'une propriété.
+    /// Jamais un élément de compte vivant (les versions remplacées sont
+    /// déjà parties), jamais sa clé de boîte, qui ne se dit qu'une fois,
+    /// jamais un message ou un morceau scellés, que cette officine ne peut
+    /// pas lire et passe pour d'autres ; et toujours ses plus récents, pour
+    /// un quart du budget, même quand ses noms oubliés et ce qui est gardé
+    /// en tiennent déjà la moitié. Sans cela, ses ruptures, ses versions et
+    /// ses valeurs remplissaient le budget d'une vie, et tout ce qu'elle
+    /// disait ensuite était refusé. Ce qui est oublié d'un membre lu a été
+    /// lu : la base le garde (`supply_events`, `card_edits`, `net_facts`) ;
+    /// seuls les pairs qui ne l'ont jamais tenu ne le recevront plus d'ici.
+    /// Une officine qu'on ne lit pas (écartée, ou sans place de membre)
+    /// n'y perd rien, et bute comme avant.
+    fn make_room(&mut self, db: &Db, trousseau: &Trousseau) -> Result<Vec<Hash>, String> {
+        if !self.open {
+            return Ok(Vec::new());
+        }
+        let read: std::collections::HashSet<DeviceId> =
+            self.read_members(db)?.into_iter().collect();
+        let full: std::collections::BTreeSet<DeviceId> = self
+            .journal
+            .records()
+            .map(Record::author)
+            .filter(|a| read.contains(a))
+            .filter(|a| {
+                self.journal
+                    .budget_of(a)
+                    .is_some_and(|(held, most)| held > most / 4 * 3)
+            })
+            .collect();
+        let kept = |p: &[u8]| {
+            p.starts_with(crate::compte::TAG)
+                || p.starts_with(crate::messages::BOX_TAG)
+                || serde_json::from_slice::<serde_json::Value>(p)
+                    .is_ok_and(|v| v.get("t").and_then(|t| t.as_str()) == Some("boite"))
+        };
+        let mut gone = Vec::new();
+        for author in full {
+            let mut theirs: Vec<(u64, Hash, usize)> = self
+                .journal
+                .records()
+                .filter(|r| r.author() == author && r.stream() == Stream::Reseau)
+                .filter(|r| r.open(trousseau).is_ok_and(|p| !kept(&p)))
+                .map(|r| (r.lamport(), r.id(), r.encode().len()))
+                .collect();
+            theirs.sort();
+            let mut left: usize = theirs.iter().map(|(_, _, n)| n).sum();
+            for (_, id, size) in theirs {
+                let Some((held, most)) = self.journal.budget_of(&author) else {
+                    break;
+                };
+                if held <= most / 2 || left <= most / 4 {
+                    break;
+                }
+                left -= size;
+                if self.journal.forget(&id) {
+                    gone.push(id);
+                }
+            }
+        }
+        Ok(gone)
     }
 
     /// Sceller un enregistrement du réseau ; un refus (trop gros) est
@@ -1171,6 +1240,12 @@ impl Net {
                 }
             }
         }
+        self.read_members(db)
+    }
+
+    /// Les membres que cette officine lit : ceux du réseau, moins ceux
+    /// qu'elle a écartés.
+    fn read_members(&self, db: &Db) -> Result<Vec<DeviceId>, String> {
         let set_aside = ignored(db);
         Ok(db
             .net_members(&self.id)?
@@ -4217,6 +4292,91 @@ mod tests {
             held_b.iter().all(|h| net_c.journal.has(h)),
             "tout ce que B garde est passé, malgré les trous"
         );
+    }
+
+    /// **Au réseau ouvert, une officine reste entendue** : arrivée au bout
+    /// du budget qu'une autre lui accorde, elle y perd ses enregistrements
+    /// les plus anciens — pas son compte, pas sa clé de boîte —, et ce
+    /// qu'elle dit ensuite est reçu au lieu d'être refusé pour la vie.
+    #[test]
+    fn a_stranger_at_the_end_of_its_budget_loses_its_oldest_records_not_its_voice() {
+        use crate::compte;
+        let (_dir_a, _sa, a) = officine("room-a");
+        let (_dir_b, _sb, b) = officine("room-b");
+        for db in [&a, &b] {
+            join_open(db, "2026-10-20").unwrap();
+        }
+        let claire =
+            compte::Account::from_phrase(compte::Phrase::generate(&mut bpm_sync::OsEntropy));
+        a.keep_account(&claire.id(), "Claire", b"scelle").unwrap();
+        let profile = compte::Profile {
+            nom: "Claire".to_owned(),
+            ..compte::Profile::default()
+        };
+        a.keep_account_records(&[compte::write_profile(
+            &claire,
+            1,
+            &profile,
+            &mut bpm_sync::OsEntropy,
+        )
+        .unwrap()])
+            .unwrap();
+        Net::load_network(&a, &open_id())
+            .unwrap()
+            .publish(&a, "A")
+            .unwrap();
+        for n in 0..40 {
+            a.add_supply_event(&subst(&format!("Produit {n}"), "Autre"))
+                .unwrap();
+        }
+        let mut net_a = Net::load_network(&a, &open_id()).unwrap();
+        net_a.publish(&a, "A").unwrap();
+        let t = net_a.trousseau.clone().unwrap();
+        let mut theirs: Vec<Record> = net_a.journal.records().cloned().collect();
+        theirs.sort_by_key(|r| (r.lamport(), r.id()));
+        let is = |r: &Record, what: &dyn Fn(&[u8]) -> bool| r.open(&t).is_ok_and(|p| what(&p));
+        let rupture = |p: &[u8]| crate::ruptures::decode(p).is_some();
+        let account = |p: &[u8]| p.starts_with(compte::TAG);
+        let boite = |p: &[u8]| {
+            serde_json::from_slice::<serde_json::Value>(p).is_ok_and(|v| v["t"] == "boite")
+        };
+        assert!(theirs.iter().filter(|r| is(r, &rupture)).count() >= 40);
+        let size: usize = theirs.iter().map(|r| r.encode().len()).sum();
+        let mut net_b = Net::load_network(&b, &open_id()).unwrap();
+        net_b.journal.limit_strangers(bpm_sync::Limits {
+            per_author: size / 4 * 3,
+            total: usize::MAX,
+        });
+        for r in &theirs {
+            net_b.journal.insert(r.clone());
+        }
+        let newest = theirs.last().unwrap().id();
+        assert!(!net_b.journal.has(&newest), "le budget est plein");
+        // Une officine que B ne lit pas n'y perd rien.
+        assert_eq!(net_b.forget_superseded(&b, &t).unwrap(), 0);
+        add_open_member(&b, &hex(&net_a.device.id().0), "2026-10-20", false).unwrap();
+        let gone = net_b.forget_superseded(&b, &t).unwrap();
+        assert!(gone > 0);
+        assert_eq!(db_forgotten(&b), gone, "la base les oublie aussi");
+        for r in &theirs {
+            net_b.journal.insert(r.clone());
+        }
+        assert!(
+            net_b.journal.has(&newest),
+            "ce qu'elle dit ensuite est reçu"
+        );
+        let oldest = theirs.iter().find(|r| is(r, &rupture)).unwrap().id();
+        assert!(!net_b.journal.has(&oldest) && net_b.journal.knows(&oldest));
+        for what in [&account as &dyn Fn(&[u8]) -> bool, &boite] {
+            let r = theirs.iter().find(|r| is(r, what)).expect("publié");
+            assert!(net_b.journal.has(&r.id()), "gardé");
+        }
+        let (held, most) = net_b.journal.budget_of(&net_a.device.id()).unwrap();
+        assert!(held <= most);
+    }
+
+    fn db_forgotten(db: &Db) -> usize {
+        db.net_forgotten_of(&open_id()).unwrap().len()
     }
 
     /// **Un compte ouvert sur un autre poste de l'officine se sème aussi** —

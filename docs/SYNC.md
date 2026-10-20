@@ -1219,8 +1219,21 @@ pouvoir l'obtenir : une conversation demande ces trous dans un ordre
 qu'elle tire, et cesse après un tour de refus (`MAX_HASHES`), au lieu
 d'aller jusqu'à la borne des tours.
 La porte d'oubli n'existe que pour le flux Réseau : le journal des postes
-ne l'ouvre pas, et un test lit `postes.rs` pour le vérifier. Les versions
-des fiches et les ruptures gardent leur histoire.
+ne l'ouvre pas, et un test lit `postes.rs` pour le vérifier.
+Les versions des fiches, les ruptures et les valeurs gardent leur
+histoire tant que leur auteur a de la place. Au réseau ouvert, un membre
+lu qui tient plus des trois quarts de son budget chez une autre officine
+y perd ses enregistrements les plus anciens, jusqu'à la moitié — ce qui
+peut être encore vrai : une version de fiche, une rupture en cours
+(`Net::make_room`). Jamais un élément de compte vivant, sa clé de boîte,
+un message ou un morceau scellés pour d'autres, ni ses plus récents pour
+un quart du budget. L'autre les a déjà lus et sa base les garde ; seul un
+pair qui ne les a jamais tenus ne les reçoit plus d'elle, et chacun de
+ces noms lui fait un trou de plus. Une officine qu'on ne lit pas
+(écartée, ou sans place de membre) n'y perd rien et bute comme avant.
+Les noms oubliés comptent encore, et ce qui est gardé aussi : une
+officine très bavarde, ou qui tient beaucoup de comptes, finit par
+buter, plus tard.
 
 Les **billets** (vue Actualités) sont des éléments comme les autres,
 publics ou partagés. Ce qu'un compte a **masqué ou bloqué** est un
@@ -1257,8 +1270,9 @@ le téléphone l'inscrit à `account_homes`.
    ce qui a été écrit depuis la fondation, et le relit en mémoire à
    chaque synchronisation. Une photographie datée, et l'oubli de ce qui
    la précède, viendront quand un groupe en aura besoin. Le journal d'un
-   réseau, lui, oublie les versions remplacées des comptes (§ 7.13). Les
-   versions des fiches, les ruptures et les messages y restent tous.
+   réseau, lui, oublie les versions remplacées des comptes et, au réseau
+   ouvert, les plus anciens enregistrements d'une officine au bout de son
+   budget (§ 7.13) ; leurs noms y restent, et comptent.
 2. **Deux appairages simultanés** sur deux postes différents, hors
    ligne, donneraient le même numéro aux deux arrivants. Appairer un
    poste à la fois. (Deux appairages *successifs* au même poste ne le

@@ -236,6 +236,16 @@ impl Journal {
         self.held_total
     }
 
+    /// What one author holds here, and what its budget allows — `None`
+    /// for an author no limit binds.
+    pub fn budget_of(&self, author: &DeviceId) -> Option<(usize, usize)> {
+        let limits = self.limits.filter(|_| !self.trusts(author))?;
+        Some((
+            self.held.get(author).copied().unwrap_or(0),
+            limits.per_author,
+        ))
+    }
+
     /// Adds a record. Answers whether it was new.
     ///
     /// Takes a [`Record`], which cannot be built unchecked from outside
@@ -364,7 +374,7 @@ impl Journal {
     /// charged the stub instead of the record, and what that budget
     /// refused is asked for again. A head stays a head, so that what it
     /// named stays reachable from here. Which records may go — superseded
-    /// versions — is the caller's to say: a journal cannot open what it
+    /// versions, a stranger's oldest — is the caller's to say: a journal cannot open what it
     /// holds.
     pub fn forget(&mut self, id: &Hash) -> bool {
         if !self.forgetful {

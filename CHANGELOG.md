@@ -136,6 +136,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the round limit and failing. Forgetting
   is opened for the network stream only; the posts' journal (register,
   patients) never forgets, and a test reads `postes.rs` to hold it.
+- **Open network: an officine stays heard past its budget.** Its
+  ruptures, card versions and sourced values still filled, over its
+  whole life, the megabyte the other officines grant it, after which
+  everything it said was refused. A member that an officine reads and
+  that holds more than three quarters of that budget now has its oldest
+  records forgotten there, down to half. That can include what is still
+  true, such as a current card version or a rupture still running. Never
+  forgotten: a live account item, its box key, a sealed message or file
+  chunk passed on for others, or its newest records, a quarter of the
+  budget's worth. What a read member said has already been read and
+  stays in the base; only peers that never held it no longer get it from
+  there. An officine that is not read (set aside, or without a member
+  slot) loses nothing and is refused as before. The forgotten names still
+  count, as do the records that are kept, so an officine that says a
+  great deal, or hosts many accounts, still reaches the end, later.
 - **Accounts: the phone keeps the ceiling too.** The desktop refuses a
   201st live note or appointment, past which the oldest would quietly
   stop travelling through the network; the phone wrote on. It now
