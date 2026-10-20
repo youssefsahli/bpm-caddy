@@ -379,13 +379,13 @@ impl Net {
         if gone.is_empty() {
             return Ok(0);
         }
-        let stubs: Vec<(String, String)> = self
+        let stubs: Vec<[String; 3]> = self
             .journal
             .stubs()
-            .filter(|(h, _)| gone.contains(h))
-            .map(|(h, parents)| {
+            .filter(|(h, _, _)| gone.contains(h))
+            .map(|(h, author, parents)| {
                 let named: String = parents.iter().map(|p| hex(&p.0)).collect();
-                (hex(&h.0), named)
+                [hex(&h.0), hex(&author.0), named]
             })
             .collect();
         db.forget_net_records_of(&self.id, &stubs)?;
@@ -1592,19 +1592,20 @@ fn met(peers: &[Peer]) -> Vec<DeviceId> {
 
 /// Le journal tel que la base le garde, avec ce qui règle son horloge —
 /// et, pour le réseau ouvert, la borne des inconnues. Ce qu'il a oublié
-/// (`forgotten` : nom et parents, en hex) est relu d'abord, pour qu'une
-/// ligne restée en base ne le fasse pas revenir.
+/// (`forgotten` : nom, auteur et parents, en hex) est relu d'abord, pour
+/// qu'une ligne restée en base ne le fasse pas revenir, et compté au
+/// budget de son auteur.
 fn stored_journal(
     me: &Device,
     peers: &[Peer],
     open: bool,
     records: Vec<Vec<u8>>,
-    forgotten: Vec<(String, String)>,
+    forgotten: Vec<[String; 3]>,
 ) -> Journal {
     let mut journal = Journal::new();
     journal.allow_forgetting();
-    for (id, parents) in forgotten {
-        let Some(id) = unhex::<32>(&id) else {
+    for [id, author, parents] in forgotten {
+        let (Some(id), Some(author)) = (unhex::<32>(&id), unhex::<32>(&author)) else {
             continue;
         };
         let parents: Vec<Hash> = parents
@@ -1613,7 +1614,7 @@ fn stored_journal(
             .filter_map(|c| unhex::<32>(std::str::from_utf8(c).ok()?))
             .map(Hash)
             .collect();
-        journal.keep_stub(Hash(id), parents);
+        journal.keep_stub(Hash(id), DeviceId::from_bytes(author), parents);
     }
     if open {
         journal.trust([me.id()]);

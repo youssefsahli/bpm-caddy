@@ -108,9 +108,18 @@ pub struct Journal {
     /// Whether [`Journal::forget`] may forget anything — see
     /// [`Journal::allow_forgetting`]. Off unless asked for.
     forgetful: bool,
-    /// What forgotten records named as parents, by their names: walked
-    /// through like the records were, never asked for, never taken back.
-    stubs: BTreeMap<Hash, Vec<Hash>>,
+    /// What forgotten records named as parents, and who wrote them, by
+    /// their names: walked through like the records were, never asked
+    /// for, never taken back — and counted against their author's
+    /// budget, at their own small size.
+    stubs: BTreeMap<Hash, (DeviceId, Vec<Hash>)>,
+}
+
+/// What a forgotten record still holds here: its name, its author, its
+/// parents. Counted against a stranger's budget — invented parents
+/// included, so that forgetting never makes room for more than it frees.
+fn stub_size(parents: &[Hash]) -> usize {
+    32 * (2 + parents.len())
 }
 
 impl Journal {
@@ -179,11 +188,7 @@ impl Journal {
             let mut at = head;
             let mut step = 0usize;
             let mut next_mark = 1usize;
-            while let Some(parent) = self
-                .records
-                .get(&at)
-                .and_then(|r| r.parents().first().copied())
-            {
+            while let Some(parent) = self.parents_of(&at).and_then(|p| p.first().copied()) {
                 step += 1;
                 at = parent;
                 if !walked.insert(at) {
@@ -319,6 +324,11 @@ impl Journal {
                 *held.entry(r.author()).or_default() += r.encode().len();
             }
         }
+        for (author, parents) in self.stubs.values() {
+            if !self.trusts(author) {
+                *held.entry(*author).or_default() += stub_size(parents);
+            }
+        }
         self.held_total = held
             .iter()
             .filter(|(a, _)| !self.favoured.contains(a))
@@ -336,7 +346,7 @@ impl Journal {
         self.records
             .get(id)
             .map(Record::parents)
-            .or_else(|| self.stubs.get(id).map(Vec::as_slice))
+            .or_else(|| self.stubs.get(id).map(|(_, p)| p.as_slice()))
     }
 
     /// **This journal may forget** what [`Journal::forget`] is given — the
@@ -347,13 +357,15 @@ impl Journal {
         self.forgetful = true;
     }
 
-    /// **Forgets a record of the network stream**, keeping only its name
-    /// and what it named: a peer walking down through it still reaches
-    /// its parents, this post never asks for it again, and a peer that
-    /// gives it back is told it is known. What the record held counts no
-    /// more against its author's budget, and what that budget refused is
-    /// asked for again. Which records may go — superseded versions — is
-    /// the caller's to say: a journal cannot open what it holds.
+    /// **Forgets a record of the network stream**, keeping only its name,
+    /// its author and what it named: a peer walking down through it still
+    /// reaches its parents, this post never asks for it again, and a peer
+    /// that gives it back is told it is known. Its author's budget is
+    /// charged the stub instead of the record, and what that budget
+    /// refused is asked for again. A head stays a head, so that what it
+    /// named stays reachable from here. Which records may go — superseded
+    /// versions — is the caller's to say: a journal cannot open what it
+    /// holds.
     pub fn forget(&mut self, id: &Hash) -> bool {
         if !self.forgetful {
             return false;
@@ -367,36 +379,44 @@ impl Journal {
         };
         let author = record.author();
         if self.limits.is_some() && !self.trusts(&author) {
-            let size = record.encode().len();
+            let freed = record
+                .encode()
+                .len()
+                .saturating_sub(stub_size(record.parents()));
             if let Some(n) = self.held.get_mut(&author) {
-                *n = n.saturating_sub(size);
+                *n = n.saturating_sub(freed);
             }
             if !self.favoured.contains(&author) {
-                self.held_total = self.held_total.saturating_sub(size);
+                self.held_total = self.held_total.saturating_sub(freed);
             }
             self.refused.clear();
         }
-        self.heads.remove(id);
-        self.stubs.insert(*id, record.parents().to_vec());
+        self.stubs.insert(*id, (author, record.parents().to_vec()));
         true
     }
 
-    /// A record forgotten before, as the base keeps it: its name and what
-    /// it named. Only while forgetting is allowed.
-    pub fn keep_stub(&mut self, id: Hash, parents: Vec<Hash>) {
-        if !self.forgetful || self.records.contains_key(&id) {
+    /// A record forgotten before, as the base keeps it: its name, its
+    /// author and what it named — a head while nothing names it. Only
+    /// while forgetting is allowed; set the limits after, so the stub is
+    /// counted.
+    pub fn keep_stub(&mut self, id: Hash, author: DeviceId, parents: Vec<Hash>) {
+        if !self.forgetful || self.knows(&id) {
             return;
         }
         for parent in &parents {
             self.named.insert(*parent);
             self.heads.remove(parent);
         }
-        self.stubs.insert(id, parents);
+        if !self.named.contains(&id) {
+            self.heads.insert(id);
+        }
+        self.stubs.insert(id, (author, parents));
     }
 
-    /// The forgotten records, by name, with what each named.
-    pub fn stubs(&self) -> impl Iterator<Item = (&Hash, &[Hash])> {
-        self.stubs.iter().map(|(h, p)| (h, p.as_slice()))
+    /// The forgotten records, by name, with their author and what each
+    /// named.
+    pub fn stubs(&self) -> impl Iterator<Item = (&Hash, &DeviceId, &[Hash])> {
+        self.stubs.iter().map(|(h, (a, p))| (h, a, p.as_slice()))
     }
 
     /// Writes a fact this post has to say.
@@ -497,7 +517,7 @@ impl Journal {
             if let Some(record) = self.records.get(&h) {
                 found.push(record);
                 walk.extend(record.parents().iter().copied());
-            } else if let Some(parents) = self.stubs.get(&h) {
+            } else if let Some((_, parents)) = self.stubs.get(&h) {
                 // Forgotten, but what it named is still owed.
                 walk.extend(parents.iter().copied());
             }
@@ -1159,16 +1179,34 @@ mod tests {
         );
         assert!(!j.insert(theirs.get(&old).unwrap().clone()), "pas repris");
         assert!(j.knows(&old) && !j.has(&old) && !j.missing().contains(&old));
+        // The stub stays charged: forgetting frees what the record held
+        // beyond its name, author and parents, never more.
+        let size = |h: &Hash| j.get(h).unwrap().encode().len();
+        let stub = stub_size(theirs.get(&old).unwrap().parents());
+        assert_eq!(j.strangers_held(), size(&mid) + size(&new) + stub);
+        let mut recounted = Journal::new();
+        recounted.allow_forgetting();
+        for (h, a, p) in j.stubs() {
+            recounted.keep_stub(*h, *a, p.to_vec());
+        }
+        recounted.trust([me.id()]);
+        recounted.limit_strangers(Limits {
+            per_author: usize::MAX,
+            total: usize::MAX,
+        });
+        recounted.favour([]);
+        assert_eq!(recounted.strangers_held(), stub, "relu, compté aussi");
         // A fresh peer that asks for the newest gets the root below the
         // forgotten one.
         let given: Vec<Hash> = j.since(&[new], &[], 100).iter().map(|r| r.id()).collect();
         assert!(given.contains(&root) && given.contains(&mid) && !given.contains(&old));
         // Kept by the base and read back: still known, still not taken.
-        let stubs: Vec<(Hash, Vec<Hash>)> = j.stubs().map(|(h, p)| (*h, p.to_vec())).collect();
+        let stubs: Vec<(Hash, DeviceId, Vec<Hash>)> =
+            j.stubs().map(|(h, a, p)| (*h, *a, p.to_vec())).collect();
         let mut again = Journal::new();
         again.allow_forgetting();
-        for (h, p) in stubs {
-            again.keep_stub(h, p);
+        for (h, a, p) in stubs {
+            again.keep_stub(h, a, p);
         }
         assert!(!again.insert(theirs.get(&old).unwrap().clone()));
         assert!(again.missing().contains(&root), "ce qu'il nommait reste dû");

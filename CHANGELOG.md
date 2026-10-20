@@ -126,9 +126,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   megabyte there — over its whole life. A busy team went silent, for
   everyone, without a word. Each network journal now keeps only the
   latest version of each item from a given author (a deletion included,
-  since it must travel), and of the others only their name and parents:
-  they no longer count against the budget, are never fetched again, and
-  a peer walking the journal still reaches what they named. Forgetting
+  since it must travel), and of the others only their name, author and
+  parents: the budget is charged only those few hashes (invented parents
+  included, so forgetting never frees more than it drops), the posts that
+  held them never fetch them again, and a peer walking the journal still
+  reaches what they named. A peer that never held one finds its name and
+  cannot get it: a conversation now asks such holes in an order it
+  draws and stops after a round of refusals, instead of running into
+  the round limit and failing. Forgetting
   is opened for the network stream only; the posts' journal (register,
   patients) never forgets, and a test reads `postes.rs` to hold it.
 - **Accounts: the phone keeps the ceiling too.** The desktop refuses a

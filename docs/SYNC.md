@@ -1206,13 +1206,18 @@ passe sans se lire.
 (`Net::forget_superseded`, après chaque publication). De chaque élément
 de compte qu'un même auteur du journal a passé plusieurs fois, il garde
 la dernière version, effacement compris, puisque l'effacement doit
-voyager. Des autres, il ne garde que le nom et les parents
-(`Journal::forget`, table locale `net_forgotten`) : elles ne comptent
-plus au budget de leur auteur, ne se redemandent ni ne se reprennent,
-et un pair qui descend le journal passe à travers elles sans perdre ce
-qu'elles nommaient. Sans cela, au réseau ouvert, une officine se taisait
-pour toutes au premier mégaoctet de sa vie. Un pair qui n'a jamais tenu
-une version oubliée la demande une fois par conversation, sans l'obtenir.
+voyager. Des autres, il ne garde que le nom, l'auteur et les parents
+(`Journal::forget`, table locale `net_forgotten`) : le budget de leur
+auteur n'en compte plus que ces quelques empreintes, parents inventés
+compris (oublier ne libère jamais plus que ce qui s'oublie), elles ne
+se redemandent ni ne se reprennent, et un pair qui descend le journal
+passe à travers elles sans perdre ce qu'elles nommaient. Sans cela, au
+réseau ouvert, une officine se taisait pour toutes au premier mégaoctet
+de sa vie ; elle en tient maintenant plusieurs fois plus de versions.
+Un pair qui n'a jamais tenu une version oubliée en trouve le nom sans
+pouvoir l'obtenir : une conversation demande ces trous dans un ordre
+qu'elle tire, et cesse après un tour de refus (`MAX_HASHES`), au lieu
+d'aller jusqu'à la borne des tours.
 La porte d'oubli n'existe que pour le flux Réseau : le journal des postes
 ne l'ouvre pas, et un test lit `postes.rs` pour le vérifier. Les versions
 des fiches et les ruptures gardent leur histoire.
@@ -1273,6 +1278,9 @@ le téléphone l'inscrit à `account_homes`.
    chemins du bureau (comparer-et-écrire) ; le planning, il le lit
    seulement. Pas de fichier joint depuis le téléphone.
 6. **Les versions oubliées des comptes** ne s'oublient que chez qui les
-   a tenues. Un pair qui n'en a jamais tenu une la redemande à chaque
-   conversation (une empreinte par version), faute d'un mot du protocole
-   pour dire « oublié ».
+   a tenues. Un pair qui n'en a jamais tenu une en garde le nom pour
+   toujours et en redemande une part à chaque conversation, faute d'un
+   mot du protocole pour dire « oublié » ; un vrai trou, mêlé à eux, se
+   comble plus lentement. Et le budget d'une officine au réseau ouvert
+   reste une vie : les empreintes des versions oubliées le remplissent,
+   plusieurs fois moins vite.

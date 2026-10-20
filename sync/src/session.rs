@@ -809,8 +809,18 @@ impl Session {
             .copied()
             .filter(|h| wanted(h) && heads.binary_search(h).is_err())
             .collect();
-        missing.sort();
-        missing.dedup();
+        // **Holes are asked in an order this conversation draws, and no
+        // more once a round's worth went unanswered.** A network journal
+        // forgets replaced versions (`Journal::forget`): a post that never
+        // held one keeps finding its name, and asking every such name in
+        // every conversation cost a round per `MAX_HASHES` of them, until
+        // `MOST_ROUNDS` refused the conversation itself. A real hole is
+        // still asked — in another order, by the next conversation.
+        if self.unavailable.len() >= MAX_HASHES {
+            missing.clear();
+        }
+        let salt = self.hash.unwrap_or_default();
+        missing.sort_by_cached_key(|h| *blake3::keyed_hash(&salt, &h.0).as_bytes());
         let mut need = heads;
         need.extend(missing);
         need.truncate(MAX_HASHES);
@@ -1640,6 +1650,44 @@ mod tests {
         )
         .is_ok());
         assert!(Session::new(&without.device, None, Intent::Join, true, &[]).is_ok());
+    }
+
+    /// **Names nobody can give do not end the conversation**: a journal
+    /// naming more holes than every round together could ask — forgotten
+    /// versions, or a member's invented parents — still syncs, and what
+    /// is really there still crosses.
+    #[test]
+    fn holes_nobody_can_fill_do_not_end_the_conversation() {
+        let t = officine(5);
+        let mut a = Post::new(1, Some(t.clone()));
+        let mut b = Post::new(2, None);
+        pair_posts(&mut a, &mut b);
+        let mut e = OsEntropy;
+        let mut n = 0u32;
+        for i in 0..(MOST_ROUNDS as usize + 2) * MAX_HASHES / crate::seal::MAX_PARENTS + 8 {
+            let parents: Vec<Hash> = (0..crate::seal::MAX_PARENTS)
+                .map(|_| {
+                    n += 1;
+                    Hash(*blake3::hash(&n.to_be_bytes()).as_bytes())
+                })
+                .collect();
+            let r = Record::seal(
+                &b.device,
+                &t,
+                Stream::Registre,
+                format!("trou {i}").as_bytes(),
+                None,
+                parents,
+                1,
+                &mut e,
+            )
+            .unwrap();
+            b.journal.insert(r);
+        }
+        assert!(b.journal.missing().len() > MOST_ROUNDS as usize * MAX_HASHES);
+        a.write(b"12 comprimes");
+        sync_posts(&mut a, &mut b);
+        assert!(b.lines().contains(&b"12 comprimes".to_vec()));
     }
 
     /// A journal larger than one round carries in several, and the cap

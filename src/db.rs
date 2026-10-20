@@ -345,11 +345,13 @@ CREATE TABLE IF NOT EXISTS net_records (
 );
 CREATE TABLE IF NOT EXISTS net_forgotten (
     -- Les enregistrements du réseau oubliés parce qu'une version plus
-    -- récente du même auteur les remplace (`Journal::forget`) : leur nom et
-    -- ce qu'ils nommaient (les noms hex, à la suite), pour ne pas les
-    -- redemander et ne couper aucun chemin.
+    -- récente du même auteur les remplace (`Journal::forget`) : leur nom,
+    -- leur auteur (compté à son budget) et ce qu'ils nommaient (les noms
+    -- hex, à la suite), pour ne pas les redemander et ne couper aucun
+    -- chemin.
     id      TEXT PRIMARY KEY,
     network TEXT NOT NULL DEFAULT '',
+    author  TEXT NOT NULL DEFAULT '',
     parents TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS net_networks (
@@ -1508,6 +1510,7 @@ const MIGRATIONS: &[&str] = &[
     "CREATE TABLE IF NOT EXISTS net_forgotten (
         id      TEXT PRIMARY KEY,
         network TEXT NOT NULL DEFAULT '',
+        author  TEXT NOT NULL DEFAULT '',
         parents TEXT NOT NULL DEFAULT ''
     )",
     "CREATE TABLE IF NOT EXISTS net_networks (
@@ -48271,15 +48274,15 @@ impl Db {
         Ok(added)
     }
 
-    /// Les enregistrements oubliés d'un réseau : leur nom et ce qu'ils
-    /// nommaient, en hex.
-    pub fn net_forgotten_of(&self, network: &str) -> Result<Vec<(String, String)>, String> {
+    /// Les enregistrements oubliés d'un réseau : leur nom, leur auteur et
+    /// ce qu'ils nommaient, en hex.
+    pub fn net_forgotten_of(&self, network: &str) -> Result<Vec<[String; 3]>, String> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, parents FROM net_forgotten WHERE network = ?1")
+            .prepare("SELECT id, author, parents FROM net_forgotten WHERE network = ?1")
             .map_err(|e| e.to_string())?;
         let rows = stmt
-            .query_map([network], |r| Ok((r.get(0)?, r.get(1)?)))
+            .query_map([network], |r| Ok([r.get(0)?, r.get(1)?, r.get(2)?]))
             .map_err(|e| e.to_string())?;
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
     }
@@ -48290,13 +48293,14 @@ impl Db {
     pub fn forget_net_records_of(
         &self,
         network: &str,
-        stubs: &[(String, String)],
+        stubs: &[[String; 3]],
     ) -> Result<(), String> {
         let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
-        for (id, parents) in stubs {
+        for [id, author, parents] in stubs {
             tx.execute(
-                "INSERT OR IGNORE INTO net_forgotten (id, network, parents) VALUES (?1, ?2, ?3)",
-                rusqlite::params![id, network, parents],
+                "INSERT OR IGNORE INTO net_forgotten (id, network, author, parents)
+                 VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![id, network, author, parents],
             )
             .map_err(|e| e.to_string())?;
         }
