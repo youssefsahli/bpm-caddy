@@ -12591,10 +12591,20 @@ impl Session {
         let name = self.account_name(account);
         match written {
             Ok(()) => {
-                // Bloqué, il n'est plus lecteur de ce qu'on écrit ensuite.
+                // Bloqué, il n'est plus lecteur de ce qu'on écrit ensuite —
+                // ni de sa fiche, rescellée sans lui.
                 if hold == Hold::Blocked {
                     self.comptes.form.pour.remove(account);
                     self.comptes.post.pour.remove(account);
+                    self.comptes.fiche_pour.remove(account);
+                    if let Err(e) = self.comptes_fiche_without(&id, account) {
+                        // `None` : une fiche écrite ailleurs depuis, déjà dite.
+                        if let Some(e) = e {
+                            self.reload_comptes();
+                            self.comptes.notice = Some((true, e));
+                        }
+                        return;
+                    }
                 }
                 self.reload_comptes();
                 let key = match hold {
@@ -12606,6 +12616,40 @@ impl Session {
             }
             Err(e) => self.comptes.notice = Some((true, e)),
         }
+    }
+
+    /// Resceller la fiche du compte ouvert sans `blocked`, s'il en était
+    /// lecteur (`compte::fiche_without`) — la fiche écrite, pas ce que le
+    /// profil affiché tape. `Err(None)` : une version plus récente, déjà
+    /// dite par `account_next`.
+    #[cfg(feature = "sync")]
+    fn comptes_fiche_without(&mut self, id: &str, blocked: &str) -> Result<(), Option<String>> {
+        let Some(fiche) = self
+            .comptes
+            .fiche
+            .as_ref()
+            .and_then(|f| crate::compte::fiche_without(f, blocked))
+        else {
+            return Ok(());
+        };
+        let seen = Some(self.comptes.fiche_seq);
+        let Ok(seq) = self.account_next(id, crate::compte::FICHE_ITEM, seen) else {
+            return Err(None);
+        };
+        let c = &self.comptes;
+        let Some(me) = &c.open else {
+            return Ok(());
+        };
+        let boxes = |a: &str| -> Option<[u8; 32]> { c.boxes.get(a).copied() };
+        let bytes =
+            crate::compte::write_fiche(me, seq, Some(&fiche), &boxes, &mut bpm_sync::OsEntropy)
+                .map_err(|e| match e {
+                    crate::compte::EntryError::NoKey(a) => {
+                        trf("compte_no_key", self.account_name(&a))
+                    }
+                    crate::compte::EntryError::Write(_) => tr("compte_write_failed").to_owned(),
+                })?;
+        Ok(self.keep_one_account_record(bytes)?)
     }
 
     /// Les rendez-vous d'un jour que le compte ouvert lit : les siens et
@@ -106824,6 +106868,19 @@ mod tests {
             s.comptes.fiche.as_ref().map(|f| f.pour.clone()),
             Some(vec![julien.id()])
         );
+        // **Bloqué, il n'est plus lecteur de la fiche** : rescellée sans
+        // lui sur-le-champ, sans attendre qu'on enregistre le profil.
+        let before = s.comptes.fiche_seq;
+        s.comptes_hold(&julien.id(), compte::Hold::Blocked);
+        assert!(s.comptes.fiche_seq > before);
+        assert_eq!(
+            s.comptes.fiche.as_ref().map(|f| f.pour.clone()),
+            Some(Vec::new())
+        );
+        assert!(s.comptes.fiche_pour.is_empty());
+        let (julien_reads, _) = name_seen_by(22, &s.db.account_record_bytes().unwrap());
+        assert!(!julien_reads.contains("Claire"), "{julien_reads}");
+        s.comptes_hold(&julien.id(), compte::Hold::Read);
         // Retrouvé ailleurs par sa phrase, le compte discret garde son nom
         // dans la liste du poste.
         {

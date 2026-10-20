@@ -1876,7 +1876,9 @@ change ensuite ; « Publier le profil » en envoie une nouvelle version.
   vous. Le nom, le rôle, le RPPS et l'officine sont scellés pour les
   comptes cochés sous le profil ; eux seuls vous voient nommé et peuvent
   partager avec vous, les autres ne voient que l'empreinte. Ce qui a
-  déjà été publié en clair le reste.
+  déjà été publié en clair le reste. Bloquer un de ces comptes le
+  retire des lecteurs : la fiche est rescellée sans lui sur-le-champ
+  (la version qu'il a déjà reçue reste la sienne).
 
 Un nom se signe comme on veut : les noms des autres comptes portent donc
 le début de leur empreinte (« Claire Martin (85D6 CD04) »), à comparer

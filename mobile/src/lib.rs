@@ -1064,7 +1064,45 @@ impl Caddy {
             compte::WriteError::TooLong => failed("compte_settings_full"),
             _ => failed("compte_write_failed"),
         })?;
-        self.keep_one(bytes)?;
+        let mut records = vec![bytes];
+        // Bloqué, il n'est plus lecteur de la fiche — rescellée sans lui,
+        // avec les réglages, comme au bureau.
+        let fiche = latest
+            .iter()
+            .find(|r| r.account == account.id() && r.item == compte::FICHE_ITEM);
+        if let Some((r, fiche)) = fiche
+            .and_then(|r| Some((r, compte::fiche_of(r)?)))
+            .filter(|_| hold == Hold::Blocked)
+            .and_then(|(r, f)| Some((r, compte::fiche_without(&f, &author)?)))
+        {
+            let boxes = |a: &str| {
+                latest
+                    .iter()
+                    .filter(|r| r.account == a)
+                    .find_map(compte::profile_of)
+                    .and_then(|p| compte::unhex::<32>(&p.boite))
+            };
+            records.push(
+                compte::write_fiche(
+                    &account,
+                    compte::next_seq(r.seq, now),
+                    Some(&fiche),
+                    &boxes,
+                    &mut bpm_sync::OsEntropy,
+                )
+                .map_err(|e| match e {
+                    compte::EntryError::NoKey(a) => bpm_caddy::strings::trf(
+                        "compte_no_key",
+                        name_in(&compte::named(&latest), &a),
+                    )
+                    .into(),
+                    compte::EntryError::Write(_) => failed("compte_write_failed"),
+                })?,
+            );
+        }
+        if self.db().keep_account_records(&records)? != records.len() {
+            return Err(failed("compte_write_failed"));
+        }
         Ok(bpm_caddy::strings::trf(
             key,
             name_in(&compte::named(&latest), &author),
@@ -1519,16 +1557,18 @@ mod tests {
             .unwrap();
         assert_eq!(opened.id, me.id());
         assert!(opened.name.starts_with("Claire ("));
-        // Discret, il se nomme encore à lui-même.
+        // Discret, il se nomme encore à lui-même — et à Marc, son lecteur.
         let fiche = compte::Profile {
             nom: "Claire".to_owned(),
+            pour: vec![marc.id()],
             ..compte::Profile::default()
         };
+        let to_marc = |a: &str| (a == marc.id()).then(|| marc.box_public());
         let bare = compte::Profile::default();
         c.db()
             .keep_account_records(&[
                 compte::write_profile(&me, 2, &bare, &mut bpm_sync::OsEntropy).unwrap(),
-                compte::write_fiche(&me, 2, Some(&fiche), &|_| None, &mut bpm_sync::OsEntropy)
+                compte::write_fiche(&me, 2, Some(&fiche), &to_marc, &mut bpm_sync::OsEntropy)
                     .unwrap(),
             ])
             .unwrap();
@@ -1574,8 +1614,16 @@ mod tests {
         c.hold_author(marc.id(), "masquer".into(), 300).unwrap();
         let feed = c.news(today(), 10).unwrap();
         assert_eq!((feed.posts.len(), feed.hidden), (1, 1));
+        let marc_names_me = |c: &Caddy| {
+            let latest = c.db().account_latest(Some(&marc)).unwrap();
+            latest.iter().any(|(r, _)| compte::fiche_of(r).is_some())
+        };
+        assert!(marc_names_me(&c));
         c.hold_author(marc.id(), "bloquer".into(), 301).unwrap();
         assert_eq!(c.people().unwrap()[0].hold, "bloquer");
+        // Ni lecteur de la fiche : rescellée sans lui, au même geste.
+        assert!(!marc_names_me(&c));
+        assert!(c.open_account().unwrap().name.starts_with("Claire ("));
         // Bloqué, il n'est plus lecteur de ce qu'on écrit — et un billet
         // pour lui seul ne part pas public pour autant.
         assert!(c

@@ -46,7 +46,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   name, role, RPPS and officine are sealed for the accounts ticked
   under the profile, who see it named and can share with it; everyone
   else sees its fingerprint. Chosen at creation or later, and undone by
-  going public again.
+  going public again. Blocking one of those readers reseals the profile
+  without them at once, on the desktop and on the phone.
 - **Accounts and news on the phone.** The companion's Messages tab has
   a second view, « Actualités »: the public posts, newest first. An
   account is found again there from its twelve words, under a code for

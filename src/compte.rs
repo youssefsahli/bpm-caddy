@@ -899,6 +899,22 @@ pub fn write_fiche(
     .map_err(EntryError::Write)
 }
 
+/// **Bloquer un lecteur de sa fiche l'en retire** : la fiche telle
+/// qu'elle est écrite, sans lui, à resceller tout de suite — `None` s'il
+/// n'en était pas lecteur. La version qu'il a déjà reçue reste la sienne ;
+/// la suivante ne s'ouvre plus chez lui.
+pub fn fiche_without(fiche: &Profile, blocked: &str) -> Option<Profile> {
+    fiche.pour.iter().any(|a| a == blocked).then(|| Profile {
+        pour: fiche
+            .pour
+            .iter()
+            .filter(|a| *a != blocked)
+            .cloned()
+            .collect(),
+        ..fiche.clone()
+    })
+}
+
 /// Les réglages que dit un enregistrement, ouverts par leur compte.
 pub fn settings_of(r: &Read) -> Option<Settings> {
     match (&r.kind, &r.state) {

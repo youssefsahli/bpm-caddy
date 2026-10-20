@@ -1189,7 +1189,8 @@ que les autres officines accordent à chacune ne s'oublie pas. La phrase ne
 quitte jamais le poste, qui la garde scellée sous le code de la
 personne (Argon2id puis AES-256-GCM, table locale `account_keys`).
 Un profil **discret** ne publie que la clé de boîte : le nom et le
-reste vont dans une fiche scellée pour les comptes choisis. Chaque
+reste vont dans une fiche scellée pour les comptes choisis — bloquer
+l'un d'eux la rescelle sans lui, au même geste (`compte::fiche_without`). Chaque
 poste ne garde que la dernière version de chaque élément — une version
 plus ancienne arrivée après est laissée, une plus récente retire les
 précédentes, chez lui seulement : la table voyage en ajout seul. Une
