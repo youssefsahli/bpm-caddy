@@ -482,6 +482,50 @@ private fun PlanningScreen(state: AppState, caddy: Caddy) {
 
 @Composable
 private fun MessagesScreen(state: AppState, caddy: Caddy) {
+    // Les conversations de l'équipe, ou le fil des actualités : deux
+    // lectures sous un même onglet, la barre du bas en garde cinq.
+    var news by rememberSaveable { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = !news, onClick = { news = false }, label = { Text(T("mobile_messages_talks")) })
+            FilterChip(selected = news, onClick = { news = true }, label = { Text(T("mobile_news")) })
+        }
+        if (news) NewsScreen(state, caddy) else TalksScreen(state, caddy)
+    }
+}
+
+/** Le fil des actualités, en lecture : les billets publics des comptes. */
+@Composable
+private fun NewsScreen(state: AppState, caddy: Caddy) {
+    val posts by produceState(emptyList(), state.revision) {
+        value = withContext(Dispatchers.IO) {
+            runCatching { caddy.news(LocalDate.now().toString(), 200u) }.getOrDefault(emptyList())
+        }
+    }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(T("mobile_news"), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+            OutlinedButton(onClick = { state.sync() }, enabled = !state.busy) { Text(T("mobile_sync")) }
+        }
+        Hint(T("mobile_news_hint"))
+        if (posts.isEmpty()) Hint(T("mobile_news_empty"))
+        LazyColumn(Modifier.fillMaxSize()) {
+            items(posts) { p ->
+                Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
+                    Row {
+                        Text(p.author, Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                        Text(p.written, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Text(p.text)
+                }
+                HorizontalDivider()
+            }
+        }
+    }
+}
+
+@Composable
+private fun TalksScreen(state: AppState, caddy: Caddy) {
     var open by rememberSaveable { mutableStateOf<Long?>(null) }
     val shown = open
     if (shown != null) {

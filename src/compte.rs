@@ -9,7 +9,9 @@
 //!
 //! * *Public* : le contenu est en clair, signé par le compte. Le profil
 //!   (nom, rôle, RPPS, officine, clé de boîte) l'est toujours — c'est ce
-//!   qui permet à une autre personne de partager avec celle-ci.
+//!   qui permet à une autre personne de partager avec celle-ci. Un profil
+//!   *discret* n'y laisse que la clé de boîte : le reste va dans une
+//!   fiche ([`Kind::Fiche`]) scellée pour les comptes choisis.
 //! * *Partagé* : scellé (`bpm_sync::boxed`) pour les comptes choisis et
 //!   pour soi.
 //! * *Privé* : scellé pour soi seul. Le même sceau, un destinataire.
@@ -29,6 +31,13 @@
 //! monte (`n`), puis le nom de l'enregistrement pour départager deux
 //! postes qui ont écrit le même numéro sans s'être vus. Un effacement est
 //! une version vide.
+//!
+//! **Ce qu'une version plus récente écrit passe par celle-ci.** Une sorte
+//! que ce poste ne connaît pas se garde et se sème sans se lire
+//! ([`Kind::Inconnu`]), un champ de plus dans le corps est laissé : une
+//! version à venir qui veut changer ce qu'une sorte connue veut dire en
+//! prend une neuve, plutôt que de faire refuser ses enregistrements par
+//! les postes qui ne sont pas encore à jour.
 //!
 //! Pur et testé : aucune base, aucune horloge, l'aléa passé.
 
@@ -280,6 +289,16 @@ pub fn groups_of(account: &str) -> String {
         .unwrap_or_default()
 }
 
+/// Les deux premiers groupes de l'empreinte : ce qui suit un nom pour
+/// distinguer deux « Claire Martin ».
+pub fn short_groups(account: &str) -> String {
+    groups_of(account)
+        .split(' ')
+        .take(2)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 // ---------------------------------------------------------------------
 // Ce qu'un compte écrit
 // ---------------------------------------------------------------------
@@ -299,6 +318,16 @@ pub enum Kind {
     /// par compte, toujours scellé pour lui seul. Ils le suivent d'un
     /// poste à l'autre comme le reste.
     Reglages,
+    /// La fiche d'un profil discret : le nom, le rôle, le RPPS et
+    /// l'officine, scellés pour les comptes choisis — le profil public ne
+    /// porte alors que la clé de boîte. Un par compte.
+    Fiche,
+    /// **Une sorte qu'une version plus récente écrit et que celle-ci ne
+    /// connaît pas.** Sa signature tient : l'enregistrement se garde et se
+    /// passe comme les autres, sans se lire ni se montrer — refusé, il
+    /// s'arrêtait à chaque poste pas encore mis à jour, et n'atteignait
+    /// plus ceux qui l'étaient derrière lui.
+    Inconnu,
 }
 
 impl Kind {
@@ -309,6 +338,8 @@ impl Kind {
             Kind::Rdv => "rdv",
             Kind::Billet => "billet",
             Kind::Reglages => "reglages",
+            Kind::Fiche => "fiche",
+            Kind::Inconnu => "",
         }
     }
 
@@ -319,6 +350,7 @@ impl Kind {
             "rdv" => Some(Kind::Rdv),
             "billet" => Some(Kind::Billet),
             "reglages" => Some(Kind::Reglages),
+            "fiche" => Some(Kind::Fiche),
             _ => None,
         }
     }
@@ -329,6 +361,19 @@ pub const PROFILE_ITEM: &str = "profil";
 
 /// L'élément « réglages » : un seul par compte.
 pub const SETTINGS_ITEM: &str = "reglages";
+
+/// L'élément « fiche » : un seul par compte.
+pub const FICHE_ITEM: &str = "fiche";
+
+/// Le nom d'une sorte, tel qu'une version à venir peut l'écrire : court,
+/// en minuscules ASCII.
+fn kind_key_ok(key: &str) -> bool {
+    !key.is_empty()
+        && key.len() <= 32
+        && key
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-')
+}
 
 /// Ce qu'un compte a décidé des autres : ceux dont il ne lit plus les
 /// billets (masqués), et ceux dont il ne lit plus rien (bloqués).
@@ -392,6 +437,10 @@ pub struct Profile {
     /// ce compte.
     #[serde(default)]
     pub boite: String,
+    /// Dans une fiche seulement : les comptes pour qui elle est scellée,
+    /// pour que l'auteur les relise.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pour: Vec<String>,
 }
 
 /// Une note ou un rendez-vous.
@@ -467,6 +516,9 @@ pub fn write(
     content: Content<'_>,
     entropy: &mut dyn Entropy,
 ) -> Result<Vec<u8>, WriteError> {
+    if kind == Kind::Inconnu {
+        return Err(WriteError::Seal);
+    }
     let most = if kind == Kind::Reglages {
         MAX_SETTINGS
     } else {
@@ -548,6 +600,20 @@ pub fn name_of(bytes: &[u8]) -> String {
     blake3::hash(bytes).to_hex().to_string()
 }
 
+/// Ce qu'un enregistrement **dit** de lui — compte, élément, version —
+/// sans en vérifier la signature : de quoi écarter, sans rien calculer,
+/// une version plus ancienne que celle qu'on tient. Rien de ce qui se
+/// garde ne se décide là-dessus : un faux qui se dit ancien n'écarte
+/// que lui-même.
+pub fn peek(bytes: &[u8]) -> Option<(String, String, u64)> {
+    let rest = bytes.strip_prefix(TAG)?;
+    if rest.len() < 96 || rest.len() > 96 + MOST_BODY {
+        return None;
+    }
+    let body: Body = serde_json::from_slice(&rest[96..]).ok()?;
+    Some((body.a, body.i, body.n))
+}
+
 /// Lire un enregistrement — `None` s'il n'est pas d'un compte, s'il est
 /// mal formé, trop long, ou si la signature ne tient pas. `reader` est
 /// le compte ouvert ici, qui essaie d'ouvrir ce qui est scellé.
@@ -566,16 +632,22 @@ pub fn read(bytes: &[u8], reader: Option<&Account>) -> Option<Read> {
     if body.a != hex(&key) || body.i.is_empty() || body.i.len() > 64 {
         return None;
     }
-    let kind = Kind::from_key(&body.k)?;
-    // Le profil est public et n'est que le profil ; les réglages sont
-    // scellés et ne sont que les réglages.
+    let kind = match Kind::from_key(&body.k) {
+        Some(kind) => kind,
+        None if kind_key_ok(&body.k) => Kind::Inconnu,
+        None => return None,
+    };
+    // Le profil est public et n'est que le profil ; les réglages et la
+    // fiche sont scellés et ne sont qu'eux. Une sorte à venir ne prend
+    // aucun de leurs noms.
     if (kind == Kind::Profil) != (body.i == PROFILE_ITEM)
         || (kind == Kind::Reglages) != (body.i == SETTINGS_ITEM)
+        || (kind == Kind::Fiche) != (body.i == FICHE_ITEM)
     {
         return None;
     }
     let state = match body.v.as_str() {
-        "public" if kind == Kind::Reglages => return None,
+        "public" if matches!(kind, Kind::Reglages | Kind::Fiche) => return None,
         "public" => State::Public(body.d),
         "efface" => State::Deleted,
         "scelle" if kind != Kind::Profil => {
@@ -588,6 +660,10 @@ pub fn read(bytes: &[u8], reader: Option<&Account>) -> Option<Read> {
             });
             State::Sealed(opened)
         }
+        // Une sorte à venir peut aussi se lire autrement : gardée, passée,
+        // jamais lue. Une sorte connue garde ses trois formes — ce qu'une
+        // version à venir veut changer d'elle prend une sorte neuve.
+        v if kind == Kind::Inconnu && kind_key_ok(v) => State::Sealed(None),
         _ => return None,
     };
     Some(Read {
@@ -644,12 +720,12 @@ pub fn to_seed<B>(latest: Vec<(Read, B)>) -> Vec<(Read, B)> {
                 .then(b.seq.cmp(&a.seq))
                 .then(b.name.cmp(&a.name))
         });
-        // Le profil et les réglages partent toujours ; les billets se
+        // Le profil, la fiche et les réglages partent toujours ; les billets se
         // comptent à part des notes et des rendez-vous, pour qu'un fil
         // bavard ne pousse pas l'agenda hors du réseau.
         let (mut live, mut posts, mut gone) = (0, 0, 0);
         out.extend(items.into_iter().filter(|(r, _)| {
-            if matches!(r.kind, Kind::Profil | Kind::Reglages) {
+            if matches!(r.kind, Kind::Profil | Kind::Reglages | Kind::Fiche) {
                 return true;
             }
             let count = if r.state == State::Deleted {
@@ -760,6 +836,56 @@ pub fn write_profile(
     )
 }
 
+/// La fiche d'un profil discret, ouverte par un de ses lecteurs.
+pub fn fiche_of(r: &Read) -> Option<Profile> {
+    match (&r.kind, &r.state) {
+        (Kind::Fiche, State::Sealed(Some(text))) => serde_json::from_str(text).ok(),
+        _ => None,
+    }
+}
+
+/// La fiche, scellée pour soi et les comptes de `profile.pour` ; `None`
+/// l'efface (le profil redevient public). Un lecteur sans clé connue est
+/// refusé, comme pour un élément.
+pub fn write_fiche(
+    account: &Account,
+    seq: u64,
+    profile: Option<&Profile>,
+    boxes: &dyn Fn(&str) -> Option<[u8; 32]>,
+    entropy: &mut dyn Entropy,
+) -> Result<Vec<u8>, EntryError> {
+    let Some(profile) = profile else {
+        return write(
+            account,
+            FICHE_ITEM,
+            seq,
+            Kind::Fiche,
+            Content::Deleted,
+            entropy,
+        )
+        .map_err(EntryError::Write);
+    };
+    let mut profile = profile.clone();
+    profile.boite = String::new();
+    profile.pour.retain(|a| *a != account.id());
+    profile.pour.sort();
+    profile.pour.dedup();
+    let mut keys = Vec::new();
+    for a in &profile.pour {
+        keys.push(boxes(a).ok_or_else(|| EntryError::NoKey(a.clone()))?);
+    }
+    let text = serde_json::to_string(&profile).map_err(|_| EntryError::Write(WriteError::Seal))?;
+    write(
+        account,
+        FICHE_ITEM,
+        seq,
+        Kind::Fiche,
+        Content::Sealed(&text, &keys),
+        entropy,
+    )
+    .map_err(EntryError::Write)
+}
+
 /// Les réglages que dit un enregistrement, ouverts par leur compte.
 pub fn settings_of(r: &Read) -> Option<Settings> {
     match (&r.kind, &r.state) {
@@ -784,6 +910,46 @@ pub fn write_settings(
         Content::Sealed(&text, &[]),
         entropy,
     )
+}
+
+/// **Qui se nomme ici** : de chaque compte qui a publié sa clé de boîte,
+/// son profil public — ou, discret, ce que sa fiche dit quand elle
+/// s'ouvre pour le lecteur de `latest`. Un compte sans nom lisible n'y
+/// est pas : on ne partage pas avec une empreinte seule.
+pub fn named(latest: &[Read]) -> std::collections::BTreeMap<String, Profile> {
+    let fiches: std::collections::HashMap<&str, Profile> = latest
+        .iter()
+        .filter_map(|r| fiche_of(r).map(|p| (r.account.as_str(), p)))
+        .collect();
+    latest
+        .iter()
+        .filter_map(|r| profile_of(r).map(|p| (r, p)))
+        .filter(|(_, p)| !p.boite.is_empty())
+        .filter_map(|(r, p)| {
+            let p = match fiches.get(r.account.as_str()) {
+                Some(f) if p.nom.trim().is_empty() => Profile {
+                    boite: p.boite,
+                    ..f.clone()
+                },
+                _ => p,
+            };
+            (!p.nom.trim().is_empty()).then(|| (r.account.clone(), p))
+        })
+        .collect()
+}
+
+/// **L'ordre du fil**, le plus récent d'abord : le jour et l'heure que
+/// le billet porte, puis sa version. Une date à venir ne tient pas la
+/// tête du fil — le jour d'un billet est celui que son auteur écrit, et
+/// un billet daté de 9999 resterait premier pour tous : au-delà de
+/// `today`, il se range au début de ce jour-là.
+pub fn feed_rank(entry: &Entry, seq: u64, today: &str) -> std::cmp::Reverse<(String, String, u64)> {
+    let (jour, debut) = if entry.jour.as_str() > today {
+        (today.to_owned(), String::new())
+    } else {
+        (entry.jour.clone(), entry.debut.clone())
+    };
+    std::cmp::Reverse((jour, debut, seq))
 }
 
 /// Un nom d'élément neuf : tiré au hasard, pour qu'il ne dise rien de
@@ -1280,6 +1446,114 @@ mod tests {
         )
         .unwrap();
         assert!(read(&wrong, None).is_none());
+    }
+
+    /// Un enregistrement au corps choisi, signé comme `write` le signe :
+    /// ce qu'une version à venir écrirait.
+    fn forged(a: &Account, body: &str) -> Vec<u8> {
+        let mut out = TAG.to_vec();
+        out.extend_from_slice(&a.keys.id().0);
+        out.extend_from_slice(&a.keys.sign(&signed(body.as_bytes())));
+        out.extend_from_slice(body.as_bytes());
+        out
+    }
+
+    /// **Ce qu'une version à venir écrit se garde et se passe** : une
+    /// sorte inconnue, ou une forme inconnue d'une sorte inconnue, se lit
+    /// comme un enregistrement fermé — compté, semé, jamais montré ; un
+    /// champ de plus dans le corps ne le fait pas refuser. Ce qui reste
+    /// refusé : une sorte connue sous une forme inconnue, un nom de sorte
+    /// mal formé, une sorte à venir qui prend le nom du profil.
+    #[test]
+    fn what_a_later_version_writes_is_kept_and_passed_unread() {
+        let a = account(1);
+        let id = a.id();
+        let body = |k: &str, i: &str, v: &str| {
+            format!(r#"{{"a":"{id}","i":"{i}","n":5,"k":"{k}","v":"{v}","d":"","x":1}}"#)
+        };
+        for v in ["public", "scelle", "efface", "chiffre2"] {
+            let r = read(&forged(&a, &body("sondage", "s1", v)), Some(&a)).unwrap();
+            assert_eq!(r.kind, Kind::Inconnu, "{v}");
+            assert_eq!(entry_of(&r), None);
+        }
+        let r = read(&forged(&a, &body("sondage", "s1", "chiffre2")), None).unwrap();
+        assert_eq!(r.state, State::Sealed(None));
+        let field = read(&forged(&a, &body("note", "n1", "public")), None).unwrap();
+        assert_eq!(field.kind, Kind::Note, "un champ de plus est laissé");
+        for refused in [
+            body("note", "n1", "chiffre2"),
+            body("Sondage", "s1", "public"),
+            body("sondage", PROFILE_ITEM, "public"),
+            body("sondage", FICHE_ITEM, "scelle"),
+            body("sondage", "s1", "Public"),
+        ] {
+            assert!(read(&forged(&a, &refused), None).is_none(), "{refused}");
+        }
+        // Une sorte inconnue ne s'écrit pas d'ici.
+        assert!(write(
+            &a,
+            "s1",
+            1,
+            Kind::Inconnu,
+            Content::Deleted,
+            &mut Counter(1)
+        )
+        .is_err());
+        // Elle se sème avec les éléments, sous leur plafond.
+        let unknown = read(&forged(&a, &body("sondage", "s1", "public")), None).unwrap();
+        assert_eq!(to_seed(vec![(unknown, ())]).len(), 1);
+    }
+
+    /// **La fiche d'un profil discret** : scellée pour les comptes
+    /// choisis, refusée publique ou sous un autre nom ; un lecteur sans
+    /// clé de boîte la fait refuser ; l'effacer rend le profil public.
+    #[test]
+    fn a_discreet_profile_opens_for_its_chosen_readers_only() {
+        let a = account(1);
+        let b = account(2);
+        let c = account(3);
+        let p = Profile {
+            nom: "Claire Martin".to_owned(),
+            role: "Pharmacienne".to_owned(),
+            pour: vec![b.id(), a.id(), b.id()],
+            ..Profile::default()
+        };
+        let boxes = |x: &str| (x == b.id()).then(|| b.box_public());
+        let bytes = write_fiche(&a, 3, Some(&p), &boxes, &mut Counter(1)).unwrap();
+        assert!(!String::from_utf8_lossy(&bytes).contains("Claire"));
+        let mine = fiche_of(&read(&bytes, Some(&a)).unwrap()).unwrap();
+        assert_eq!(mine.nom, "Claire Martin");
+        assert_eq!(mine.pour, vec![b.id()], "soi retiré, doublons fondus");
+        assert_eq!(
+            fiche_of(&read(&bytes, Some(&b)).unwrap()).unwrap().role,
+            "Pharmacienne"
+        );
+        assert_eq!(fiche_of(&read(&bytes, Some(&c)).unwrap()), None);
+        let to_c = Profile {
+            pour: vec![c.id()],
+            ..p.clone()
+        };
+        assert_eq!(
+            write_fiche(&a, 4, Some(&to_c), &boxes, &mut Counter(2)),
+            Err(EntryError::NoKey(c.id()))
+        );
+        let gone = read(
+            &write_fiche(&a, 5, None, &boxes, &mut Counter(3)).unwrap(),
+            Some(&a),
+        )
+        .unwrap();
+        assert_eq!(gone.state, State::Deleted);
+        assert_eq!(fiche_of(&gone), None);
+        for (item, content) in [
+            (FICHE_ITEM, Content::Public("{}")),
+            ("ailleurs", Content::Sealed("{}", &[])),
+        ] {
+            let bad = write(&a, item, 6, Kind::Fiche, content, &mut Counter(4)).unwrap();
+            assert!(read(&bad, Some(&a)).is_none(), "{item}");
+        }
+        // Une fiche part toujours, comme le profil.
+        let r = read(&bytes, None).unwrap();
+        assert_eq!(to_seed(vec![(r, ())]).len(), 1);
     }
 
     /// **Les réglages ne se lisent que de leur compte** : scellés pour lui,

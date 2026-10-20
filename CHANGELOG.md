@@ -40,9 +40,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the officine's posts and through every network journal, the open
   network included. A new post finds an account again from its phrase
   alone, once a synchronisation has brought its records.
+- **Discreet profile.** An account can publish its box key alone: its
+  name, role, RPPS and officine are sealed for the accounts ticked
+  under the profile, who see it named and can share with it; everyone
+  else sees its fingerprint. Chosen at creation or later, and undone by
+  going public again.
+- **News on the phone.** The companion's Messages tab has a second
+  view, « Actualités »: the public posts, newest first, read-only.
+- **Records from a later version pass through.** An account record of
+  a kind this version does not know is kept and passed on, unread,
+  instead of being refused: an update no longer has to reach every
+  officine before what it writes travels.
 
 ### Changed
 
+- **Accounts keep only the newest version of each item.** An older
+  version arriving later is left out, a newer one removes those it
+  supersedes, and a base that kept every version (or the same record
+  twice, received by two posts) is compacted once.
 - **Planning: hours adjusted without retyping.** Clicking a shift puts
   its hours in the fields and aims the gesture at that day only (the
   pattern stays whole): change « 12h » to « 12h30 » and press Enter.

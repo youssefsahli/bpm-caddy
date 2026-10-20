@@ -3072,6 +3072,22 @@ signing and box keys the network already uses, under their own domains.
   the chosen accounts and oneself, private for oneself only. The
   readers are inside the seal (`Entry::pour`), never in the record. The
   profile is always public, and carries the box key others seal for.
+  A **discreet** profile publishes that key alone; the name, role,
+  RPPS and officine go into a `Kind::Fiche`, the only one under its
+  name, refused when public, sealed for the accounts ticked under the
+  profile (`Profile::pour`) and oneself. `compte::named` is who gets a
+  name here — a public profile, or a fiche that opens for the reader —
+  and only a named account is offered as a reader: one does not share
+  with a bare fingerprint. Both records are written together
+  (`comptes_identity`); going public again deletes the fiche.
+- **What a later version writes passes through this one.** A kind this
+  version does not know is read as `Kind::Inconnu` when its name is
+  well formed (lowercase ASCII, 32 bytes at most): verified, kept,
+  seeded with the live items, never shown — refused, it stopped at the
+  first post not yet updated. A body field this version does not know
+  is left alone. A known kind keeps its three forms: a later version
+  that wants to change what a kind means takes a new one
+  (`what_a_later_version_writes_is_kept_and_passed_unread`).
 - **The newest version wins, item by item** (`compte::latest`): highest
   `seq`, then highest record name, so two posts that wrote the same
   number without meeting agree. A deletion is an empty version. The
@@ -3080,13 +3096,26 @@ signing and box keys the network already uses, under their own domains.
   versions still on their way, and the highest number is the newest —
   which is what the seed cap sorts on. A write is compare-and-set
   against the version the screen showed (`compte_stale`).
-- **Stored as written.** `account_records` keeps every record in hex,
-  append-only, and travels between posts on the Equipe stream (the
-  phone receives it). A read verifies every record again; a row a post
-  wrote by hand is just never read.
+- **Stored as written, newest only.** `account_records` keeps records
+  in hex, append-only, and travels between posts on the Equipe stream
+  (the phone receives it and shows the public posts: `Caddy::news`). A
+  read verifies every record again; a row a post wrote by hand is just
+  never read. `keep_account_records` leaves a version older than the
+  one the base holds for its item — on what the record says of itself
+  (`compte::peek`), without checking its signature: a forgery that
+  claims to be old sets aside only itself — and a newer one removes
+  the versions it supersedes in the same transaction, read from their
+  bytes (`drop_superseded_accounts`). What two posts of the officine
+  each received and passed each other, and what an older base kept of
+  every version, goes in `compact_account_records` (run from
+  `reload_comptes`, and only when the table holds more rows than
+  items). The removal is **this post's own**: the table travels
+  append-only, no deletion is captured, and every post converges on the
+  same newest version
+  (`an_account_keeps_only_the_newest_version_of_each_item`).
 - **Seeded by the network.** `Net::publish` seals the latest version of
   each item of the accounts **kept on this post** into every network
-  journal — the profile and the settings always, then at most
+  journal — the profile, the fiche and the settings always, then at most
   `MOST_ITEMS` live items, as many posts and as many deletions per
   account, newest first: a talkative feed does not push the agenda or
   the blocks off the network. What arrived from elsewhere already travels
@@ -3116,7 +3145,8 @@ signing and box keys the network already uses, under their own domains.
   dated with the day and the minute it was written (`Db::now_local`),
   read newest first, at most `COMPTES_MOST_POSTS`. The date is the
   author's word: one ahead of today sorts at the start of today, so a
-  post dated 9999 does not hold the head of everyone's feed.
+  post dated 9999 does not hold the head of everyone's feed
+  (`compte::feed_rank`, which the phone sorts by too).
 - **Muting and blocking belong to the account**, not the post: a
   `Kind::Reglages` item (`compte::Settings`), the only one under its
   name, refused when public, sealed for the account alone — it follows
@@ -3128,9 +3158,10 @@ signing and box keys the network already uses, under their own domains.
   seals for them (`unblocked`). The settings hold 16 KiB
   (`MAX_SETTINGS`), some two hundred accounts set aside. Their
   records are still kept and passed: setting someone aside is a
-  reading, and the network's job is unchanged. An older version that
-  does not know `billet` or `reglages` refuses those records and does
-  not pass them.
+  reading, and the network's job is unchanged. A version before
+  `Kind::Inconnu` that does not know `billet`, `reglages` or `fiche`
+  refuses those records and does not pass them; from this one on, a
+  new kind passes.
 - **A profile names itself as it likes**, so another account's name
   always carries the start of its fingerprint, and the shared and
   public lists keep the fifty newest.

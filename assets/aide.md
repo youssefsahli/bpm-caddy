@@ -1867,11 +1867,20 @@ partagent avec celui-ci ; « Publics », ce que d'autres ont rendu public.
 Les rendez-vous du compte ouvert paraissent aussi dans le volet du jour
 de l'agenda, à part des entrées de l'officine.
 
-**Le profil est public** dès la création : nom, rôle, RPPS, officine.
-C'est ce qui permet aux autres de partager avec vous ; « Publier le
-profil » en envoie une nouvelle version. Un nom se signe comme on veut :
-les noms des autres comptes portent donc le début de leur empreinte
-(« Claire Martin (85D6 CD04) »), à comparer avant de partager.
+**Le profil**, public ou discret, se choisit à la création et se
+change ensuite ; « Publier le profil » en envoie une nouvelle version.
+
+- **Public** : nom, rôle, RPPS et officine en clair, lus de toute
+  officine du réseau.
+- **Discret** : le réseau ne lit que la clé qui permet de partager avec
+  vous. Le nom, le rôle, le RPPS et l'officine sont scellés pour les
+  comptes cochés sous le profil ; eux seuls vous voient nommé et peuvent
+  partager avec vous, les autres ne voient que l'empreinte. Ce qui a
+  déjà été publié en clair le reste.
+
+Un nom se signe comme on veut : les noms des autres comptes portent donc
+le début de leur empreinte (« Claire Martin (85D6 CD04) »), à comparer
+avant de partager.
 
 **Jamais un patient.** Ce qui est rangé dans un compte passe par les
 autres officines du réseau : scellé quand il est privé ou partagé —
@@ -1907,7 +1916,12 @@ ainsi tenus à l'écart.
 Ces décisions sont **celles du compte**, pas du poste : scellées pour
 lui seul, elles le suivent sur tout poste où il s'ouvre. Elles se
 défont dans la vue **Comptes**, section « Masqués et bloqués » :
-« Rétablir », ou passer de l'un à l'autre.
+« Rétablir », ou passer de l'un à l'autre. Tenir un auteur à l'écart
+est une lecture : ses enregistrements continuent de passer par les
+officines comme ceux de tous, et il lit ce que vous rendez public.
+
+Sur le **téléphone**, l'onglet Messages porte aussi le fil
+(« Actualités ») : les billets publics, en lecture.
 
 # Connexions
 

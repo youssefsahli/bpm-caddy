@@ -1186,6 +1186,13 @@ au plus 200 éléments vivants par compte, 4 Kio chacun : le mégaoctet
 que les autres officines accordent à chacune ne s'oublie pas. La phrase ne
 quitte jamais le poste, qui la garde scellée sous le code de la
 personne (Argon2id puis AES-256-GCM, table locale `account_keys`).
+Un profil **discret** ne publie que la clé de boîte : le nom et le
+reste vont dans une fiche scellée pour les comptes choisis. Chaque
+poste ne garde que la dernière version de chaque élément — une version
+plus ancienne arrivée après est laissée, une plus récente retire les
+précédentes, chez lui seulement : la table voyage en ajout seul. Une
+sorte d'enregistrement qu'une version plus récente écrit se garde et se
+passe sans se lire.
 
 Les **billets** (vue Actualités) sont des éléments comme les autres,
 publics ou partagés. Ce qu'un compte a **masqué ou bloqué** est un
@@ -1197,6 +1204,10 @@ comme avant.
 **Jamais un patient** : ce qu'un compte range passe par les autres
 officines, ce que § 8.4 refuse pour des données de santé. L'écran le
 dit là où l'on écrit.
+
+Le **compagnon** lit le fil public (`Caddy::news`, sous l'onglet
+Messages) ; il n'ouvre pas de compte : ni billet partagé, ni écriture,
+ni masqués ou bloqués, qui sont scellés pour leur compte.
 
 ## 8. Travaux restants
 
@@ -1222,7 +1233,7 @@ dit là où l'on écrit.
 5. **Le compagnon écrit l'équipe, l'agenda et les fiches**, par les
    chemins du bureau (comparer-et-écrire) ; le planning, il le lit
    seulement. Pas de fichier joint depuis le téléphone.
-6. **Les comptes ne se compactent pas** : chaque version d'un élément
-   reste une ligne d'`account_records`, et un enregistrement reçu par
-   deux postes de l'officine y est rangé deux fois (lu une fois). Le
-   compagnon les reçoit sans encore les montrer.
+6. **Les comptes dans le journal du réseau** : chaque poste ne garde
+   que la dernière version de chaque élément, mais le journal d'un
+   réseau garde toutes celles qui y ont été publiées (§ 8.1). Le
+   compagnon lit le fil public sans ouvrir de compte.

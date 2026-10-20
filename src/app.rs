@@ -11742,13 +11742,28 @@ impl Session {
         {
             c.pick = c.kept.first().map(|(a, _)| a.clone());
         }
+        // Ce que deux postes de l'officine ont reçu chacun de leur côté, et
+        // ce qu'une base d'avant gardait de chaque version, se retire ici :
+        // rien ne se relit tant que la table n'a pas plus de lignes que
+        // d'éléments.
+        let _ = self.db.compact_account_records();
         let latest = self.db.account_latest(c.open.as_ref()).unwrap_or_default();
         let me = c.open.as_ref().map(compte::Account::id);
-        c.people = latest
+        c.fiche = None;
+        c.fiche_seq = 0;
+        if let Some(r) = latest
             .iter()
-            .filter(|(r, _)| Some(&r.account) != me.as_ref())
-            .filter_map(|(r, _)| compte::profile_of(r).map(|p| (r.account.clone(), p)))
-            .filter(|(_, p)| !p.nom.trim().is_empty())
+            .map(|(r, _)| r)
+            .find(|r| r.kind == Kind::Fiche && Some(&r.account) == me.as_ref())
+        {
+            c.fiche_seq = r.seq;
+            c.fiche = compte::fiche_of(r);
+        }
+        // Un profil discret se nomme à ceux pour qui sa fiche s'ouvre.
+        let reads: Vec<compte::Read> = latest.iter().map(|(r, _)| r.clone()).collect();
+        c.people = compte::named(&reads)
+            .into_iter()
+            .filter(|(a, _)| Some(a) != me.as_ref())
             .collect();
         c.people.sort_by_key(|(_, p)| p.nom.to_lowercase());
         // Les réglages d'abord : ils disent qui ne se lit plus.
@@ -11769,8 +11784,14 @@ impl Session {
             if r.kind == Kind::Profil {
                 if Some(&r.account) == me.as_ref() {
                     if let Some(p) = compte::profile_of(r) {
-                        c.profile = p;
                         c.profile_seq = r.seq;
+                        c.profile = match &c.fiche {
+                            Some(f) if p.nom.trim().is_empty() => compte::Profile {
+                                boite: p.boite,
+                                ..f.clone()
+                            },
+                            _ => p,
+                        };
                     }
                 }
                 continue;
@@ -11829,21 +11850,10 @@ impl Session {
         c.mine = mine;
         c.shared = shared;
         c.public = public;
-        // Le plus récent d'abord : le jour et l'heure d'écriture, puis la
-        // version.
-        // **Une date à venir ne tient pas la tête du fil** : le jour d'un
-        // billet est celui que son auteur écrit, et un billet daté de 9999
-        // resterait premier pour tous. Au-delà d'aujourd'hui, il se range
-        // au début d'aujourd'hui.
+        // Le plus récent d'abord (`compte::feed_rank`), le téléphone dans
+        // le même ordre.
         let today = self.today.clone();
-        let key = |p: &AccountItem| -> (String, String) {
-            if p.entry.jour > today {
-                (today.clone(), String::new())
-            } else {
-                (p.entry.jour.clone(), p.entry.debut.clone())
-            }
-        };
-        posts.sort_by_key(|p| std::cmp::Reverse((key(p), p.seq)));
+        posts.sort_by_key(|p| compte::feed_rank(&p.entry, p.seq, &today));
         posts.truncate(COMPTES_MOST_POSTS);
         c.posts = posts;
     }
@@ -11875,6 +11885,8 @@ impl Session {
         c.open = Some(account);
         c.profile = crate::compte::Profile::default();
         c.profile_seq = 0;
+        c.fiche = None;
+        c.fiche_seq = 0;
         c.pin.clear();
         c.pin1.clear();
         c.pin2.clear();
@@ -11888,6 +11900,12 @@ impl Session {
         c.role.clone_from(&c.profile.role);
         c.rpps.clone_from(&c.profile.rpps);
         c.officine.clone_from(&c.profile.officine);
+        c.discret = c.fiche.is_some();
+        c.fiche_pour = c
+            .fiche
+            .iter()
+            .flat_map(|f| f.pour.iter().cloned())
+            .collect();
     }
 
     /// Ouvrir le compte choisi par son code.
@@ -11972,7 +11990,7 @@ impl Session {
             role: c.role.trim().to_owned(),
             rpps: c.rpps.trim().to_owned(),
             officine: c.officine.trim().to_owned(),
-            boite: String::new(),
+            ..Default::default()
         };
         let account = crate::compte::Account::from_phrase(phrase.clone());
         let written =
@@ -11980,15 +11998,9 @@ impl Session {
                 .ok_or_else(|| tr("compte_write_failed").to_owned())
                 .and_then(|locked| self.db.keep_account(&account.id(), &profile.nom, &locked))
                 .and_then(|()| {
-                    crate::compte::write_profile(
-                        &account,
-                        crate::repertoire::unix_now().max(1),
-                        &profile,
-                        &mut bpm_sync::OsEntropy,
-                    )
-                    .map_err(|_| tr("compte_write_failed").to_owned())
-                })
-                .and_then(|bytes| self.keep_one_account_record(bytes));
+                    let now = crate::repertoire::unix_now().max(1);
+                    self.comptes_identity(&account, (now, now), &profile, false)
+                });
         match written {
             Ok(_) => {
                 self.comptes_enter(account);
@@ -12062,10 +12074,15 @@ impl Session {
             self.comptes.notice = Some((true, tr("compte_need_name").to_owned()));
             return;
         }
-        let seen = Some(self.comptes.profile_seq);
-        let Ok(seq) = self.account_next(&id, crate::compte::PROFILE_ITEM, seen) else {
+        let (seen, seen_fiche) = (self.comptes.profile_seq, self.comptes.fiche_seq);
+        let Ok(seq) = self.account_next(&id, crate::compte::PROFILE_ITEM, Some(seen)) else {
             return;
         };
+        let Ok(fiche_seq) = self.account_next(&id, crate::compte::FICHE_ITEM, Some(seen_fiche))
+        else {
+            return;
+        };
+        let pour = self.unblocked(&self.comptes.fiche_pour);
         let c = &self.comptes;
         let Some(account) = &c.open else {
             return;
@@ -12075,14 +12092,12 @@ impl Session {
             role: c.role.trim().to_owned(),
             rpps: c.rpps.trim().to_owned(),
             officine: c.officine.trim().to_owned(),
-            boite: String::new(),
+            pour,
+            ..Default::default()
         };
-        let written =
-            crate::compte::write_profile(account, seq, &profile, &mut bpm_sync::OsEntropy)
-                .map_err(|_| tr("compte_write_failed").to_owned())
-                .and_then(|bytes| self.keep_one_account_record(bytes));
+        let written = self.comptes_identity(account, (seq, fiche_seq), &profile, c.fiche.is_some());
         match written {
-            Ok(_) => {
+            Ok(()) => {
                 if let Some(locked) = self
                     .db
                     .kept_accounts()
@@ -12094,9 +12109,82 @@ impl Session {
                     let _ = self.db.keep_account(&id, &profile.nom, &locked);
                 }
                 self.reload_comptes();
-                self.comptes.notice = Some((false, tr("compte_profile_saved").to_owned()));
+                self.comptes.notice = Some((
+                    false,
+                    tr(if self.comptes.discret {
+                        "compte_profile_saved_discret"
+                    } else {
+                        "compte_profile_saved"
+                    })
+                    .to_owned(),
+                ));
             }
             Err(e) => self.comptes.notice = Some((true, e)),
+        }
+    }
+
+    /// **Le profil et sa fiche, ensemble.** Public, le profil porte tout
+    /// et une fiche qui existait s'efface ; discret (`comptes.discret`), il
+    /// ne porte que la clé de boîte — de quoi partager avec ce compte —, et
+    /// la fiche le reste, scellée pour soi et `profile.pour`. Les deux
+    /// s'écrivent ensemble ou pas du tout.
+    #[cfg(feature = "sync")]
+    fn comptes_identity(
+        &self,
+        account: &crate::compte::Account,
+        (seq, fiche_seq): (u64, u64),
+        profile: &crate::compte::Profile,
+        had_fiche: bool,
+    ) -> Result<(), String> {
+        use crate::compte::{self, EntryError};
+        let c = &self.comptes;
+        let boxes = |a: &str| -> Option<[u8; 32]> {
+            c.people
+                .iter()
+                .find(|(id, _)| id == a)
+                .and_then(|(_, p)| compte::unhex::<32>(&p.boite))
+        };
+        let failed = |_| tr("compte_write_failed").to_owned();
+        let mut records = Vec::new();
+        if c.discret {
+            records.push(
+                compte::write_fiche(
+                    account,
+                    fiche_seq,
+                    Some(profile),
+                    &boxes,
+                    &mut bpm_sync::OsEntropy,
+                )
+                .map_err(|e| match e {
+                    EntryError::NoKey(a) => trf("compte_no_key", self.account_name(&a)),
+                    EntryError::Write(_) => tr("compte_write_failed").to_owned(),
+                })?,
+            );
+            let bare = compte::Profile::default();
+            records.push(
+                compte::write_profile(account, seq, &bare, &mut bpm_sync::OsEntropy)
+                    .map_err(failed)?,
+            );
+        } else {
+            let public = compte::Profile {
+                pour: Vec::new(),
+                ..profile.clone()
+            };
+            records.push(
+                compte::write_profile(account, seq, &public, &mut bpm_sync::OsEntropy)
+                    .map_err(failed)?,
+            );
+            if had_fiche {
+                records.push(
+                    compte::write_fiche(account, fiche_seq, None, &boxes, &mut bpm_sync::OsEntropy)
+                        .map_err(|_| tr("compte_write_failed").to_owned())?,
+                );
+            }
+        }
+        if self.db.keep_account_records(&records)? == records.len() {
+            Ok(())
+        } else {
+            Err(tr("compte_write_failed").to_owned())
         }
     }
 
@@ -17488,11 +17576,7 @@ fn comptes_stretch() -> crate::compte::Stretch {
 /// distinguer deux profils du même nom.
 #[cfg(feature = "sync")]
 fn short_groups(account: &str) -> String {
-    crate::compte::groups_of(account)
-        .split(' ')
-        .take(2)
-        .collect::<Vec<_>>()
-        .join(" ")
+    crate::compte::short_groups(account)
 }
 
 /// Au plus ce nombre de billets au fil : les plus récents.
@@ -17523,6 +17607,13 @@ struct Comptes {
     role: String,
     rpps: String,
     officine: String,
+    /// **Un profil discret** : le profil public ne porte que la clé de
+    /// boîte, le reste va dans la fiche, scellée pour les comptes cochés.
+    /// La fiche publiée et sa version ; puis les tampons.
+    fiche: Option<crate::compte::Profile>,
+    fiche_seq: u64,
+    discret: bool,
+    fiche_pour: std::collections::BTreeSet<String>,
     /// Les comptes gardés sur ce poste : (compte, nom).
     kept: Vec<(String, String)>,
     door: ComptesDoor,
@@ -17911,7 +18002,18 @@ fn demo_comptes(db: &Db, today: &str) -> crate::compte::Account {
             officine: officine.to_owned(),
             ..Profile::default()
         };
-        records.extend(compte::write_profile(a, 1, &p, e).ok());
+        // Julien est discret : le réseau ne lit que sa clé, Claire sa fiche.
+        if a.id() == julien.id() {
+            records.extend(compte::write_profile(a, 1, &Profile::default(), e).ok());
+            let fiche = Profile {
+                pour: vec![claire.id()],
+                ..p
+            };
+            let to_claire = |id: &str| (id == claire.id()).then(|| claire.box_public());
+            records.extend(compte::write_fiche(a, 1, Some(&fiche), &to_claire, e).ok());
+        } else {
+            records.extend(compte::write_profile(a, 1, &p, e).ok());
+        }
     }
     let boxes = |id: &str| -> Option<[u8; 32]> {
         [&claire, &julien, &amel]
@@ -71204,6 +71306,7 @@ impl App {
                         28.0,
                         false,
                     );
+                    Self::comptes_discret(ui, c);
                     Self::comptes_row(ui, tr("compte_pin_new"), label_w, &mut c.pin1, 12.0, true);
                     Self::comptes_row(ui, tr("compte_pin_again"), label_w, &mut c.pin2, 12.0, true);
                     ui.horizontal_wrapped(|ui| {
@@ -71363,12 +71466,12 @@ impl App {
             ui.columns(2, |cols| {
                 Self::comptes_lists(&mut cols[0], c, &names, &mut edit);
                 Self::comptes_form(&mut cols[1], c, &people, &mut act);
-                Self::comptes_profile(&mut cols[1], c, &mut act);
+                Self::comptes_profile(&mut cols[1], c, &people, &mut act);
             });
         } else {
             Self::comptes_lists(ui, c, &names, &mut edit);
             Self::comptes_form(ui, c, &people, &mut act);
-            Self::comptes_profile(ui, c, &mut act);
+            Self::comptes_profile(ui, c, &people, &mut act);
         }
         Self::comptes_holds(ui, session);
         if let Some(item) = edit {
@@ -71581,29 +71684,7 @@ impl App {
             }
         });
         if f.reach == AccountReach::Partage {
-            if people.is_empty() {
-                ui.add(
-                    egui::Label::new(
-                        egui::RichText::new(tr("compte_nobody"))
-                            .size(motif::pt(ui, 11.0))
-                            .color(motif::text_dim()),
-                    )
-                    .wrap(),
-                );
-            }
-            for (account, line) in people {
-                ui.horizontal(|ui| {
-                    ui.add_space(12.0);
-                    let mut on = f.pour.contains(account);
-                    if motif::checkbox(ui, &mut on, line.as_str()).changed() {
-                        if on {
-                            f.pour.insert(account.clone());
-                        } else {
-                            f.pour.remove(account);
-                        }
-                    }
-                });
-            }
+            Self::comptes_readers(ui, people, &mut f.pour, tr("compte_nobody"));
         }
         ui.horizontal_wrapped(|ui| {
             ui.add_space(4.0);
@@ -71631,7 +71712,12 @@ impl App {
 
     /// Le profil, public : ce que les autres comptes voient.
     #[cfg(feature = "sync")]
-    fn comptes_profile(ui: &mut egui::Ui, c: &mut Comptes, act: &mut Option<fn(&mut Session)>) {
+    fn comptes_profile(
+        ui: &mut egui::Ui,
+        c: &mut Comptes,
+        people: &[(String, String)],
+        act: &mut Option<fn(&mut Session)>,
+    ) {
         motif::section(ui, tr("compte_profile"));
         let labels = [
             tr("compte_name"),
@@ -71644,17 +71730,75 @@ impl App {
         Self::comptes_row(ui, labels[1], label_w, &mut c.role, 20.0, false);
         Self::comptes_row(ui, labels[2], label_w, &mut c.rpps, 12.0, false);
         Self::comptes_row(ui, labels[3], label_w, &mut c.officine, 28.0, false);
+        Self::comptes_discret(ui, c);
+        if c.discret {
+            Self::comptes_readers(ui, people, &mut c.fiche_pour, tr("compte_discret_nobody"));
+        }
         ui.horizontal_wrapped(|ui| {
             ui.add_space(4.0);
             if motif::button(ui, tr("compte_profile_save")).clicked() {
                 *act = Some(Session::comptes_save_profile);
             }
-            ui.label(
-                egui::RichText::new(tr("compte_profile_public"))
-                    .size(motif::pt(ui, 11.0))
-                    .color(motif::text_dim()),
-            );
         });
+    }
+
+    /// Public ou discret, et ce que chacun laisse voir.
+    #[cfg(feature = "sync")]
+    fn comptes_discret(ui: &mut egui::Ui, c: &mut Comptes) {
+        ui.horizontal_wrapped(|ui| {
+            ui.add_space(4.0);
+            if motif::radio(ui, !c.discret, tr("compte_profile_kind_public")).clicked() {
+                c.discret = false;
+            }
+            if motif::radio(ui, c.discret, tr("compte_profile_kind_discret")).clicked() {
+                c.discret = true;
+            }
+        });
+        ui.add(
+            egui::Label::new(
+                egui::RichText::new(tr(if c.discret {
+                    "compte_profile_discret"
+                } else {
+                    "compte_profile_public"
+                }))
+                .size(motif::pt(ui, 11.0))
+                .color(motif::text_dim()),
+            )
+            .wrap(),
+        );
+    }
+
+    /// Les comptes à cocher : qui lira.
+    #[cfg(feature = "sync")]
+    fn comptes_readers(
+        ui: &mut egui::Ui,
+        people: &[(String, String)],
+        pour: &mut std::collections::BTreeSet<String>,
+        nobody: &str,
+    ) {
+        if people.is_empty() {
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(nobody)
+                        .size(motif::pt(ui, 11.0))
+                        .color(motif::text_dim()),
+                )
+                .wrap(),
+            );
+        }
+        for (account, line) in people {
+            ui.horizontal(|ui| {
+                ui.add_space(12.0);
+                let mut on = pour.contains(account);
+                if motif::checkbox(ui, &mut on, line.as_str()).changed() {
+                    if on {
+                        pour.insert(account.clone());
+                    } else {
+                        pour.remove(account);
+                    }
+                }
+            });
+        }
     }
 
     /// Une rangée de liste : la date d'un rendez-vous, le titre, et qui le
@@ -106602,6 +106746,75 @@ mod tests {
             .notice
             .as_ref()
             .is_some_and(|(e, t)| *e && t.contains("n° 3")));
+    }
+
+    /// **Un profil discret** : le réseau ne lit que la clé de boîte ; le
+    /// collègue coché lit le nom et peut partager, un autre ne voit que
+    /// l'empreinte ; rouvert ailleurs, le compte se relit discret ; rendu
+    /// public, la fiche s'efface et le nom est en clair.
+    #[cfg(feature = "sync")]
+    #[test]
+    fn a_discreet_profile_names_its_account_to_its_chosen_readers_only() {
+        use crate::compte::{self, Account, Phrase};
+        let (mut s, _swept) = scratch_session("discret");
+        let of = |seed: u8| Account::from_phrase(Phrase::from_entropy([seed; 16]));
+        let (me, julien, marc) = (of(21), of(22), of(23));
+        let mut records = Vec::new();
+        for (a, nom) in [(&julien, "Julien"), (&marc, "Marc")] {
+            let p = compte::Profile {
+                nom: nom.to_owned(),
+                ..compte::Profile::default()
+            };
+            records.push(compte::write_profile(a, 1, &p, &mut bpm_sync::OsEntropy).unwrap());
+        }
+        s.db.keep_account_records(&records).unwrap();
+        s.comptes_enter(of(21));
+        s.comptes.nom = "Claire Martin".to_owned();
+        s.comptes.officine = "Pharmacie du Port".to_owned();
+        s.comptes.discret = true;
+        s.comptes.fiche_pour.insert(julien.id());
+        s.comptes_save_profile();
+        assert!(s.comptes.notice.as_ref().is_some_and(|(e, _)| !e));
+        assert_eq!(s.comptes.profile.nom, "Claire Martin", "relu de la fiche");
+        let bytes = s.db.account_record_bytes().unwrap();
+        assert!(bytes
+            .iter()
+            .all(|b| !String::from_utf8_lossy(b).contains("Claire")));
+        // Ce que chacun lit d'elle.
+        let name_seen_by = |seed: u8, bytes: &[Vec<u8>]| {
+            let (mut t, _swept) = scratch_session(&format!("discret-{seed}"));
+            t.db.keep_account_records(bytes).unwrap();
+            t.comptes_enter(of(seed));
+            (t.account_name(&me.id()), t.comptes.people.len())
+        };
+        let (julien_reads, julien_knows) = name_seen_by(22, &bytes);
+        assert!(
+            julien_reads.starts_with("Claire Martin ("),
+            "{julien_reads}"
+        );
+        assert_eq!(
+            julien_knows, 2,
+            "Claire et Marc : il peut partager avec elle"
+        );
+        let (marc_reads, marc_knows) = name_seen_by(23, &bytes);
+        assert!(!marc_reads.contains("Claire"), "{marc_reads}");
+        assert_eq!(marc_knows, 1, "Julien seul");
+        // Rouvert : discret, son lecteur coché.
+        s.comptes_close();
+        s.comptes_enter(of(21));
+        assert!(s.comptes.discret);
+        assert_eq!(s.comptes.nom, "Claire Martin");
+        assert!(s.comptes.fiche_pour.contains(&julien.id()));
+        // Public : le nom en clair, la fiche effacée.
+        s.comptes.discret = false;
+        s.comptes_save_profile();
+        assert!(s.comptes.fiche.is_none());
+        let latest = s.db.account_latest(None).unwrap();
+        assert!(latest
+            .iter()
+            .any(|(r, _)| r.kind == compte::Kind::Fiche && r.state == compte::State::Deleted));
+        let (marc_reads, _) = name_seen_by(23, &s.db.account_record_bytes().unwrap());
+        assert!(marc_reads.starts_with("Claire Martin ("), "{marc_reads}");
     }
 
     /// **Le fil, masquer, bloquer.** Un billet publié paraît au fil de

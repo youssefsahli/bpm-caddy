@@ -1099,6 +1099,8 @@ const INDEXES: &[&str] = &[
     // Un enregistrement de compte se cherche par son nom à chaque lecture
     // du réseau.
     "CREATE INDEX IF NOT EXISTS idx_account_records_name ON account_records(name)",
+    // Et par élément, pour retirer les versions qu'une nouvelle dépasse.
+    "CREATE INDEX IF NOT EXISTS idx_account_records_item ON account_records(account, item)",
     // Le journal des accès se lit par période, jamais en entier.
     "CREATE INDEX IF NOT EXISTS idx_access_at ON access_log(at)",
     // The seeding hot path, and the lookup every other pass makes.
@@ -47873,27 +47875,65 @@ impl Db {
     /// écrit, tenait la base partagée le temps d'un journal entier. Les
     /// noms connus sont lus une fois ; seuls les nouveaux sont vérifiés,
     /// avant d'ouvrir la transaction.
+    ///
+    /// **Et ce qui est dépassé ne se garde pas.** Une version plus ancienne
+    /// que celle que la base tient pour son élément est laissée (sans même
+    /// vérifier sa signature : ce qu'elle dit d'elle suffit à l'écarter) ;
+    /// une plus récente remplace les précédentes, retirées dans la même
+    /// transaction. La table ne grandit plus à chaque version, et ce qui
+    /// est écarté ne revient pas à la lecture suivante du réseau.
     #[cfg(feature = "sync")]
     pub fn keep_account_records(&self, records: &[Vec<u8>]) -> Result<usize, String> {
-        let known: std::collections::HashSet<String> = {
+        use std::collections::{HashMap, HashSet};
+        let mut known: HashSet<String> = HashSet::new();
+        let mut best: HashMap<(String, String), (u64, String)> = HashMap::new();
+        {
             let mut stmt = self
                 .conn
-                .prepare("SELECT name FROM account_records")
+                .prepare("SELECT name, account, item, seq FROM account_records")
                 .map_err(|e| e.to_string())?;
             let rows = stmt
-                .query_map([], |r| r.get::<_, String>(0))
+                .query_map([], |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, String>(2)?,
+                        r.get::<_, i64>(3)?,
+                    ))
+                })
                 .map_err(|e| e.to_string())?;
-            rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
-        };
-        let mut fresh = Vec::new();
-        let mut seen = std::collections::HashSet::new();
+            for row in rows {
+                let (name, account, item, seq) = row.map_err(|e| e.to_string())?;
+                let seq = u64::try_from(seq).unwrap_or(0);
+                let slot = best.entry((account, item)).or_insert((0, String::new()));
+                if (seq, &name) > (slot.0, &slot.1) {
+                    *slot = (seq, name.clone());
+                }
+                known.insert(name);
+            }
+        }
+        // Le plus récent de chaque élément dans ce lot, et seulement s'il
+        // l'est aussi de la base.
+        let mut fresh: HashMap<(String, String), (crate::compte::Read, &Vec<u8>)> = HashMap::new();
         for bytes in records {
             let name = crate::compte::name_of(bytes);
-            if known.contains(&name) || !seen.insert(name) {
+            if known.contains(&name) {
+                continue;
+            }
+            let Some((account, item, seq)) = crate::compte::peek(bytes) else {
+                continue;
+            };
+            let key = (account, item);
+            let above = |at: &(u64, String)| (seq, &name) > (at.0, &at.1);
+            if !best.get(&key).is_none_or(above)
+                || !fresh
+                    .get(&key)
+                    .is_none_or(|(r, _)| above(&(r.seq, r.name.clone())))
+            {
                 continue;
             }
             if let Some(r) = crate::compte::read(bytes, None) {
-                fresh.push((r, bytes));
+                fresh.insert((r.account.clone(), r.item.clone()), (r, bytes));
             }
         }
         if fresh.is_empty() {
@@ -47901,7 +47941,7 @@ impl Db {
         }
         let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let mut added = 0;
-        for (r, bytes) in fresh {
+        for (r, bytes) in fresh.into_values() {
             added += tx
                 .execute(
                     &format!(
@@ -47919,9 +47959,118 @@ impl Db {
                     ],
                 )
                 .map_err(|e| e.to_string())?;
+            Self::drop_superseded_accounts(&tx, &r)?;
         }
         tx.commit().map_err(|e| e.to_string())?;
         Ok(added)
+    }
+
+    /// Retirer d'un élément les versions que `winner` dépasse — lues de
+    /// leurs octets, pas des colonnes qu'un autre poste a écrites.
+    /// **Chez ce poste seulement** : la table voyage en ajout seul, sans
+    /// suppression capturée ; chaque poste retire ce que sa propre base
+    /// tient de plus récent, et tous finissent sur la même dernière
+    /// version.
+    #[cfg(feature = "sync")]
+    fn drop_superseded_accounts(
+        conn: &rusqlite::Connection,
+        winner: &crate::compte::Read,
+    ) -> Result<usize, String> {
+        let rows: Vec<(i64, String)> = {
+            let mut stmt = conn
+                .prepare("SELECT id, bytes FROM account_records WHERE account = ?1 AND item = ?2")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([&winner.account, &winner.item], |r| {
+                    Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+                })
+                .map_err(|e| e.to_string())?;
+            rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+        };
+        let mut gone = 0;
+        for (id, hex) in rows {
+            let read = crate::compte::unhex_vec(&hex).and_then(|b| crate::compte::read(&b, None));
+            let stale = read.is_some_and(|r| {
+                r.account == winner.account
+                    && r.item == winner.item
+                    && crate::compte::newer(winner, &r)
+            });
+            if stale {
+                gone += conn
+                    .execute("DELETE FROM account_records WHERE id = ?1", [id])
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        Ok(gone)
+    }
+
+    /// **Compacter les comptes** : ne garder de chaque élément que sa
+    /// dernière version, une fois — ce qu'une base d'avant gardait de
+    /// chaque version, et ce que deux postes de l'officine ont reçu chacun
+    /// de leur côté et se sont passé. Ce qui ne se lit plus (signature,
+    /// forme) part aussi. Rien à faire, rien de relu : la base dit d'abord
+    /// si elle tient plus de lignes que d'éléments. Rend combien sont
+    /// partis.
+    #[cfg(feature = "sync")]
+    pub fn compact_account_records(&self) -> Result<usize, String> {
+        let crowded: bool = self
+            .conn
+            .query_row(
+                "SELECT COUNT(*) > COUNT(DISTINCT account || ' ' || item) FROM account_records",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if !crowded {
+            return Ok(0);
+        }
+        let rows: Vec<(i64, String)> = {
+            let mut stmt = self
+                .conn
+                .prepare("SELECT id, bytes FROM account_records ORDER BY id")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
+                .map_err(|e| e.to_string())?;
+            rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+        };
+        // Le gagnant de chaque élément, et sa première ligne : deux lignes
+        // aux mêmes octets se départagent par leur numéro, le même choix
+        // sur chaque poste.
+        let mut winners: std::collections::HashMap<(String, String), (crate::compte::Read, i64)> =
+            Default::default();
+        let mut doomed = Vec::new();
+        for (id, hex) in rows {
+            let Some(r) =
+                crate::compte::unhex_vec(&hex).and_then(|b| crate::compte::read(&b, None))
+            else {
+                doomed.push(id);
+                continue;
+            };
+            let key = (r.account.clone(), r.item.clone());
+            match winners.get(&key) {
+                Some((w, _)) if !crate::compte::newer(&r, w) => doomed.push(id),
+                Some((_, old)) => {
+                    doomed.push(*old);
+                    winners.insert(key, (r, id));
+                }
+                None => {
+                    winners.insert(key, (r, id));
+                }
+            }
+        }
+        if doomed.is_empty() {
+            return Ok(0);
+        }
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
+        let mut gone = 0;
+        for id in doomed {
+            gone += tx
+                .execute("DELETE FROM account_records WHERE id = ?1", [id])
+                .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(gone)
     }
 
     /// Tous les enregistrements de compte que la base tient, anciennes
@@ -58972,6 +59121,106 @@ mod tests {
             "une transaction différée dans db.rs"
         );
         assert!(!body.contains(bare), "un BEGIN différé dans db.rs");
+    }
+
+    /// **Un compte ne garde que la dernière version de chaque élément** :
+    /// une nouvelle retire les précédentes, une plus ancienne arrivée
+    /// après est laissée sans revenir à la lecture suivante, et une base
+    /// qui tenait chaque version — ou deux fois la même, reçue par deux
+    /// postes — se compacte sur la même dernière, la première ligne gardée.
+    #[cfg(feature = "sync")]
+    #[test]
+    fn an_account_keeps_only_the_newest_version_of_each_item() {
+        use crate::compte;
+        let dir =
+            std::env::temp_dir().join(format!("bpm-caddy-acc-compact-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("c.db"), "secret").unwrap();
+        let a = compte::Account::from_phrase(compte::Phrase::from_entropy([7; 16]));
+        let note = |seq: u64, titre: &str| {
+            let e = compte::Entry {
+                titre: titre.to_owned(),
+                ..compte::Entry::default()
+            };
+            compte::write_entry(
+                &a,
+                ("n1", seq),
+                compte::Kind::Note,
+                &e,
+                &compte::Visibility::Public,
+                &|_| None,
+                &mut bpm_sync::OsEntropy,
+            )
+            .unwrap()
+        };
+        let rows = || -> i64 {
+            db.conn
+                .query_row("SELECT COUNT(*) FROM account_records", [], |r| r.get(0))
+                .unwrap()
+        };
+        let titles = || -> Vec<String> {
+            db.account_latest(None)
+                .unwrap()
+                .iter()
+                .filter_map(|(r, _)| compte::entry_of(r))
+                .map(|e| e.titre)
+                .collect()
+        };
+        let (v1, v2, v3) = (note(1, "un"), note(2, "deux"), note(3, "trois"));
+        assert_eq!(
+            db.keep_account_records(std::slice::from_ref(&v1)).unwrap(),
+            1
+        );
+        assert_eq!(
+            db.keep_account_records(std::slice::from_ref(&v2)).unwrap(),
+            1
+        );
+        assert_eq!((rows(), titles()), (1, vec!["deux".to_owned()]));
+        assert_eq!(
+            db.keep_account_records(std::slice::from_ref(&v1)).unwrap(),
+            0,
+            "dépassée"
+        );
+        assert_eq!(
+            db.keep_account_records(&[v3.clone(), v1.clone()]).unwrap(),
+            1
+        );
+        assert_eq!((rows(), titles()), (1, vec!["trois".to_owned()]));
+        // Une base d'avant : chaque version, et la dernière deux fois.
+        db.conn.execute("DELETE FROM account_records", []).unwrap();
+        for (id, bytes) in [(10, &v1), (11, &v3), (12, &v2), (13, &v3)] {
+            let r = compte::read(bytes, None).unwrap();
+            db.conn
+                .execute(
+                    "INSERT INTO account_records (id, name, account, item, seq, bytes)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    rusqlite::params![
+                        id,
+                        r.name,
+                        r.account,
+                        r.item,
+                        r.seq as i64,
+                        compte::hex(bytes)
+                    ],
+                )
+                .unwrap();
+        }
+        db.conn
+            .execute(
+                "INSERT INTO account_records (id, name, account, item, seq, bytes)
+                 VALUES (14, 'x', 'y', 'z', 0, 'zz')",
+                [],
+            )
+            .unwrap();
+        assert_eq!(db.compact_account_records().unwrap(), 4);
+        let left: i64 = db
+            .conn
+            .query_row("SELECT id FROM account_records", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!((left, titles()), (11, vec!["trois".to_owned()]));
+        assert_eq!(db.compact_account_records().unwrap(), 0, "rien à refaire");
     }
 
     /// **Semer ce qui l'est déjà ne prend pas le verrou d'écriture** :

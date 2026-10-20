@@ -185,6 +185,17 @@ pub struct ShiftItem {
     pub note: String,
 }
 
+/// Un billet public du fil des actualités.
+#[derive(uniffi::Record)]
+pub struct NewsPost {
+    /// Le nom de son auteur et l'empreinte qui le distingue, ou
+    /// l'empreinte seule quand son profil n'est pas arrivé ou est discret.
+    pub author: String,
+    /// `JJ/MM/AAAA HH:MM`, ou le jour seul.
+    pub written: String,
+    pub text: String,
+}
+
 #[derive(uniffi::Record)]
 pub struct Talk {
     pub id: i64,
@@ -710,6 +721,50 @@ impl Caddy {
             .collect())
     }
 
+    /// **Le fil des actualités, en lecture** : les billets publics des
+    /// comptes, de cette officine et des autres, dans l'ordre du bureau
+    /// (`compte::feed_rank`), au plus `limit`. Le téléphone n'ouvre pas de
+    /// compte : ni billet partagé, ni masqués ni bloqués — ce que chaque
+    /// compte a décidé est scellé pour lui. `today` (ISO) range un billet
+    /// daté de demain.
+    pub fn news(&self, today: String, limit: u32) -> Result<Vec<NewsPost>> {
+        use bpm_caddy::compte::{self, Kind, State};
+        let latest: Vec<compte::Read> = self
+            .db()
+            .account_latest(None)?
+            .into_iter()
+            .map(|(r, _)| r)
+            .collect();
+        let named = compte::named(&latest);
+        let mut posts: Vec<(compte::Read, compte::Entry)> = latest
+            .into_iter()
+            .filter(|r| r.kind == Kind::Billet && matches!(r.state, State::Public(_)))
+            .filter_map(|r| compte::entry_of(&r).map(|e| (r, e)))
+            .collect();
+        posts.sort_by_key(|(r, e)| compte::feed_rank(e, r.seq, &today));
+        posts.truncate(limit as usize);
+        Ok(posts
+            .into_iter()
+            .map(|(r, e)| NewsPost {
+                author: match named.get(&r.account) {
+                    Some(p) => bpm_caddy::strings::trn(
+                        "compte_named",
+                        &[&p.nom, &compte::short_groups(&r.account)],
+                    ),
+                    None => {
+                        bpm_caddy::strings::trf("compte_unnamed", compte::groups_of(&r.account))
+                    }
+                },
+                written: if e.debut.is_empty() {
+                    bpm_caddy::db::format_french_date(&e.jour)
+                } else {
+                    format!("{} {}", bpm_caddy::db::format_french_date(&e.jour), e.debut)
+                },
+                text: e.texte,
+            })
+            .collect())
+    }
+
     /// Les conversations de l'équipe, la plus récente d'abord. Celles
     /// avec d'autres officines passent par le réseau, que le téléphone
     /// n'a pas : elles n'y sont pas.
@@ -1007,6 +1062,69 @@ mod tests {
             .is_err());
         assert!(c.messages(other).is_err());
         assert!(c.mark_read(other, "ab".into()).is_err());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// **Le fil sur le téléphone** : les billets publics seulement, le
+    /// plus récent d'abord, un billet daté de demain rangé à aujourd'hui,
+    /// l'auteur nommé par son profil et son empreinte.
+    #[test]
+    fn the_phone_reads_the_public_feed_newest_first() {
+        use bpm_caddy::compte::{self, Account, Kind, Phrase, Visibility};
+        let d = dir("news");
+        let c = Caddy::open(d.display().to_string(), "k".into()).unwrap();
+        let claire = Account::from_phrase(Phrase::from_entropy([31; 16]));
+        let marc = Account::from_phrase(Phrase::from_entropy([32; 16]));
+        let profile = compte::Profile {
+            nom: "Claire Martin".to_owned(),
+            ..compte::Profile::default()
+        };
+        let mut records =
+            vec![compte::write_profile(&claire, 1, &profile, &mut bpm_sync::OsEntropy).unwrap()];
+        let boxes = |a: &str| (a == claire.id()).then(|| claire.box_public());
+        for (who, item, jour, debut, vis) in [
+            (&claire, "b1", "2026-10-18", "09:00", Visibility::Public),
+            (&claire, "b2", "2026-10-19", "", Visibility::Public),
+            (&marc, "b3", "2099-01-01", "08:00", Visibility::Public),
+            (
+                &marc,
+                "b4",
+                "2026-10-19",
+                "10:00",
+                Visibility::Shared(vec![claire.id()]),
+            ),
+        ] {
+            let e = compte::Entry {
+                texte: item.to_owned(),
+                jour: jour.to_owned(),
+                debut: debut.to_owned(),
+                ..compte::Entry::default()
+            };
+            records.push(
+                compte::write_entry(
+                    who,
+                    (item, 1),
+                    Kind::Billet,
+                    &e,
+                    &vis,
+                    &boxes,
+                    &mut bpm_sync::OsEntropy,
+                )
+                .unwrap(),
+            );
+        }
+        c.db().keep_account_records(&records).unwrap();
+        let news = c.news("2026-10-19".into(), 10).unwrap();
+        let texts: Vec<&str> = news.iter().map(|n| n.text.as_str()).collect();
+        assert_eq!(texts, ["b2", "b3", "b1"], "le partagé n'y est pas");
+        assert!(
+            news[0].author.starts_with("Claire Martin ("),
+            "{}",
+            news[0].author
+        );
+        assert!(!news[1].author.contains("Claire"));
+        assert_eq!(news[2].written, "18/10/2026 09:00");
+        assert_eq!(c.news("2026-10-19".into(), 1).unwrap().len(), 1);
         let _ = std::fs::remove_dir_all(&d);
     }
 
