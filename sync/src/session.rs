@@ -799,7 +799,7 @@ impl Session {
         // Sorted together, a member that wrote records naming invented
         // parents near `0x00…` filled the want with them, ahead of the
         // real heads, round after round.
-        let wanted = |h: &Hash| !journal.has(h) && !self.unavailable.contains(h);
+        let wanted = |h: &Hash| !journal.knows(h) && !self.unavailable.contains(h);
         let mut heads: Vec<Hash> = self.peer_heads.iter().copied().filter(wanted).collect();
         heads.sort();
         heads.dedup();

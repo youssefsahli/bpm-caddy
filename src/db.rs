@@ -343,6 +343,15 @@ CREATE TABLE IF NOT EXISTS net_records (
     -- `net_networks` pour les autres.
     network TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS net_forgotten (
+    -- Les enregistrements du réseau oubliés parce qu'une version plus
+    -- récente du même auteur les remplace (`Journal::forget`) : leur nom et
+    -- ce qu'ils nommaient (les noms hex, à la suite), pour ne pas les
+    -- redemander et ne couper aucun chemin.
+    id      TEXT PRIMARY KEY,
+    network TEXT NOT NULL DEFAULT '',
+    parents TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS net_networks (
     -- Les réseaux d'officines **en plus du principal** (dont la clé reste
     -- dans `settings.net_trousseau`) : leur clé, leur nom, leur dossier
@@ -1496,6 +1505,11 @@ const MIGRATIONS: &[&str] = &[
     "CREATE TABLE IF NOT EXISTS net_published (uid TEXT PRIMARY KEY)",
     // Plusieurs réseaux — voir `SCHEMA`.
     "ALTER TABLE net_records ADD COLUMN network TEXT NOT NULL DEFAULT ''",
+    "CREATE TABLE IF NOT EXISTS net_forgotten (
+        id      TEXT PRIMARY KEY,
+        network TEXT NOT NULL DEFAULT '',
+        parents TEXT NOT NULL DEFAULT ''
+    )",
     "CREATE TABLE IF NOT EXISTS net_networks (
         fingerprint     TEXT PRIMARY KEY,
         secret          TEXT NOT NULL,
@@ -48257,6 +48271,44 @@ impl Db {
         Ok(added)
     }
 
+    /// Les enregistrements oubliés d'un réseau : leur nom et ce qu'ils
+    /// nommaient, en hex.
+    pub fn net_forgotten_of(&self, network: &str) -> Result<Vec<(String, String)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, parents FROM net_forgotten WHERE network = ?1")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([network], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// **Oublier des enregistrements d'un réseau** : garder leur nom et ce
+    /// qu'ils nommaient, effacer leurs octets. Efface aussi ce qu'un autre
+    /// journal de ce processus, lu avant l'oubli, a pu y ranger de nouveau.
+    pub fn forget_net_records_of(
+        &self,
+        network: &str,
+        stubs: &[(String, String)],
+    ) -> Result<(), String> {
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
+        for (id, parents) in stubs {
+            tx.execute(
+                "INSERT OR IGNORE INTO net_forgotten (id, network, parents) VALUES (?1, ?2, ?3)",
+                rusqlite::params![id, network, parents],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        tx.execute(
+            "DELETE FROM net_records WHERE network = ?1
+               AND id IN (SELECT id FROM net_forgotten WHERE network = ?1)",
+            [network],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())
+    }
+
     /// Noter la clé de boîte qu'une officine appairée annonce.
     pub fn set_net_box_key(&self, device: &str, key: &str) -> Result<(), String> {
         self.conn
@@ -48535,6 +48587,7 @@ impl Db {
             "DELETE FROM net_networks WHERE fingerprint = ?1",
             "DELETE FROM net_memberships WHERE network = ?1",
             "DELETE FROM net_records WHERE network = ?1",
+            "DELETE FROM net_forgotten WHERE network = ?1",
             "DELETE FROM net_folders WHERE network = ?1",
         ] {
             tx.execute(sql, [id]).map_err(|e| e.to_string())?;

@@ -105,6 +105,12 @@ pub struct Journal {
     favoured: BTreeSet<DeviceId>,
     /// Records refused for a limit: not asked for again.
     refused: BTreeSet<Hash>,
+    /// Whether [`Journal::forget`] may forget anything — see
+    /// [`Journal::allow_forgetting`]. Off unless asked for.
+    forgetful: bool,
+    /// What forgotten records named as parents, by their names: walked
+    /// through like the records were, never asked for, never taken back.
+    stubs: BTreeMap<Hash, Vec<Hash>>,
 }
 
 impl Journal {
@@ -122,6 +128,11 @@ impl Journal {
 
     pub fn has(&self, id: &Hash) -> bool {
         self.records.contains_key(id)
+    }
+
+    /// Held, or held once and forgotten: nothing to ask a peer for.
+    pub fn knows(&self, id: &Hash) -> bool {
+        self.records.contains_key(id) || self.stubs.contains_key(id)
     }
 
     pub fn get(&self, id: &Hash) -> Option<&Record> {
@@ -198,7 +209,7 @@ impl Journal {
     pub fn missing(&self) -> Vec<Hash> {
         self.named
             .iter()
-            .filter(|h| !self.records.contains_key(h) && !self.refused.contains(h))
+            .filter(|h| !self.knows(h) && !self.refused.contains(h))
             .copied()
             .collect()
     }
@@ -228,7 +239,7 @@ impl Journal {
     /// does not need to be trusted with a second.
     pub fn insert(&mut self, record: Record) -> bool {
         let id = record.id();
-        if self.records.contains_key(&id) {
+        if self.knows(&id) {
             return false;
         }
         let author = record.author();
@@ -320,6 +331,74 @@ impl Journal {
         self.trusted.as_ref().is_none_or(|t| t.contains(author))
     }
 
+    /// What a record names as parents, held or forgotten.
+    fn parents_of(&self, id: &Hash) -> Option<&[Hash]> {
+        self.records
+            .get(id)
+            .map(Record::parents)
+            .or_else(|| self.stubs.get(id).map(Vec::as_slice))
+    }
+
+    /// **This journal may forget** what [`Journal::forget`] is given — the
+    /// officines' network, whose records an author replaces with newer
+    /// versions, and nothing else: a post's own journal (the register,
+    /// the patients) never calls it, and a test reads `postes.rs` for it.
+    pub fn allow_forgetting(&mut self) {
+        self.forgetful = true;
+    }
+
+    /// **Forgets a record of the network stream**, keeping only its name
+    /// and what it named: a peer walking down through it still reaches
+    /// its parents, this post never asks for it again, and a peer that
+    /// gives it back is told it is known. What the record held counts no
+    /// more against its author's budget, and what that budget refused is
+    /// asked for again. Which records may go — superseded versions — is
+    /// the caller's to say: a journal cannot open what it holds.
+    pub fn forget(&mut self, id: &Hash) -> bool {
+        if !self.forgetful {
+            return false;
+        }
+        match self.records.get(id) {
+            Some(r) if r.stream() == Stream::Reseau => {}
+            _ => return false,
+        }
+        let Some(record) = self.records.remove(id) else {
+            return false;
+        };
+        let author = record.author();
+        if self.limits.is_some() && !self.trusts(&author) {
+            let size = record.encode().len();
+            if let Some(n) = self.held.get_mut(&author) {
+                *n = n.saturating_sub(size);
+            }
+            if !self.favoured.contains(&author) {
+                self.held_total = self.held_total.saturating_sub(size);
+            }
+            self.refused.clear();
+        }
+        self.heads.remove(id);
+        self.stubs.insert(*id, record.parents().to_vec());
+        true
+    }
+
+    /// A record forgotten before, as the base keeps it: its name and what
+    /// it named. Only while forgetting is allowed.
+    pub fn keep_stub(&mut self, id: Hash, parents: Vec<Hash>) {
+        if !self.forgetful || self.records.contains_key(&id) {
+            return;
+        }
+        for parent in &parents {
+            self.named.insert(*parent);
+            self.heads.remove(parent);
+        }
+        self.stubs.insert(id, parents);
+    }
+
+    /// The forgotten records, by name, with what each named.
+    pub fn stubs(&self) -> impl Iterator<Item = (&Hash, &[Hash])> {
+        self.stubs.iter().map(|(h, p)| (h, p.as_slice()))
+    }
+
     /// Writes a fact this post has to say.
     ///
     /// `corrects` names the record being corrected, and nothing else:
@@ -397,8 +476,8 @@ impl Journal {
             if !theirs.insert(h) {
                 continue;
             }
-            if let Some(record) = self.records.get(&h) {
-                walk.extend(record.parents().iter().copied());
+            if let Some(parents) = self.parents_of(&h) {
+                walk.extend(parents.iter().copied());
             }
         }
 
@@ -418,6 +497,9 @@ impl Journal {
             if let Some(record) = self.records.get(&h) {
                 found.push(record);
                 walk.extend(record.parents().iter().copied());
+            } else if let Some(parents) = self.stubs.get(&h) {
+                // Forgotten, but what it named is still owed.
+                walk.extend(parents.iter().copied());
             }
         }
         let mut found = causal(found);
@@ -982,7 +1064,9 @@ mod tests {
         assert_eq!(post.journal.len(), Stream::ALL.len());
     }
 
-    /// There is no way to make this post forget. The rule is held by the
+    /// There is no way to make this post forget — but for the one door,
+    /// [`Journal::forget`], shut unless [`Journal::allow_forgetting`] opened
+    /// it, and only for the network stream. The rule is held by the
     /// module's own text, the way the register's is in `db.rs`: a `fn`
     /// that removes a record could be written and every other test would
     /// still pass.
@@ -990,12 +1074,18 @@ mod tests {
     fn a_journal_can_only_ever_be_added_to() {
         let text = include_str!("journal.rs");
         let code = text.split("mod tests").next().unwrap();
+        assert_eq!(code.matches("self.records.remove").count(), 1);
+        let door = code.split("pub fn forget(").nth(1).unwrap();
+        let door = door.split("\n    }\n").next().unwrap();
+        assert!(door.contains("self.records.remove"), "la seule porte");
+        let shut = door.find("if !self.forgetful").unwrap();
+        let network = door.find("Stream::Reseau").unwrap();
+        assert!(shut < network && network < door.find("self.records.remove").unwrap());
         for verb in [
             "fn remove",
             "fn delete",
             "fn clear",
             "fn prune",
-            "self.records.remove",
             "self.records.retain",
         ] {
             assert!(
@@ -1007,7 +1097,6 @@ mod tests {
         // forgetting — so the one place records live is checked apart:
         // the only call on it that changes anything is `insert`.
         for verb in [
-            "remove",
             "retain",
             "clear",
             "pop",
@@ -1024,6 +1113,72 @@ mod tests {
                 "les enregistrements ne se perdent pas : « {verb} »"
             );
         }
+    }
+
+    /// **A forgotten record frees its author's budget and cuts no path**:
+    /// what the budget refused gets in, the forgotten record is neither
+    /// asked for nor taken back, and a peer walking down through it still
+    /// gets what it named. The door is shut by default, and never opens on
+    /// a post's own streams.
+    #[test]
+    fn a_forgotten_record_frees_its_budget_and_cuts_no_path() {
+        let mut e = Counted(81);
+        let (me, stranger) = (Device::generate(&mut e), Device::generate(&mut e));
+        let t = Trousseau::generate(&mut e);
+        let mut theirs = Journal::new();
+        let root = theirs
+            .write(&me, &t, Stream::Reseau, &[1; 200], None, &mut e)
+            .unwrap();
+        let old = theirs
+            .write(&stranger, &t, Stream::Reseau, &[2; 200], None, &mut e)
+            .unwrap();
+        let mid = theirs
+            .write(&stranger, &t, Stream::Reseau, &[3; 200], None, &mut e)
+            .unwrap();
+        let new = theirs
+            .write(&stranger, &t, Stream::Reseau, &[4; 200], None, &mut e)
+            .unwrap();
+        let one = theirs.get(&old).unwrap().encode().len();
+        let mut j = Journal::new();
+        j.trust([me.id()]);
+        j.limit_strangers(Limits {
+            per_author: 2 * one + one / 2,
+            total: 100 * one,
+        });
+        for r in theirs.records() {
+            j.insert(r.clone());
+        }
+        assert!(!j.has(&new), "refusé : le budget est plein");
+        assert!(!j.forget(&old), "porte fermée");
+        j.allow_forgetting();
+        assert!(j.forget(&old));
+        assert!(!j.forget(&old), "une fois");
+        assert!(
+            j.insert(theirs.get(&new).unwrap().clone()),
+            "la place rendue"
+        );
+        assert!(!j.insert(theirs.get(&old).unwrap().clone()), "pas repris");
+        assert!(j.knows(&old) && !j.has(&old) && !j.missing().contains(&old));
+        // A fresh peer that asks for the newest gets the root below the
+        // forgotten one.
+        let given: Vec<Hash> = j.since(&[new], &[], 100).iter().map(|r| r.id()).collect();
+        assert!(given.contains(&root) && given.contains(&mid) && !given.contains(&old));
+        // Kept by the base and read back: still known, still not taken.
+        let stubs: Vec<(Hash, Vec<Hash>)> = j.stubs().map(|(h, p)| (*h, p.to_vec())).collect();
+        let mut again = Journal::new();
+        again.allow_forgetting();
+        for (h, p) in stubs {
+            again.keep_stub(h, p);
+        }
+        assert!(!again.insert(theirs.get(&old).unwrap().clone()));
+        assert!(again.missing().contains(&root), "ce qu'il nommait reste dû");
+        // A post's own stream is never forgotten.
+        let mut post = Journal::new();
+        post.allow_forgetting();
+        let line = post
+            .write(&me, &t, Stream::Registre, b"x", None, &mut e)
+            .unwrap();
+        assert!(!post.forget(&line) && post.has(&line));
     }
 
     /// **A rank from somebody untrusted does not move this post's clock**:

@@ -33,7 +33,9 @@
 //! l'officine qui les a sourcées.
 
 use crate::db::Db;
-use bpm_sync::{Device, DeviceId, Intent, Journal, Meter, Record, Session, Stream, Trousseau};
+use bpm_sync::{
+    Device, DeviceId, Hash, Intent, Journal, Meter, Record, Session, Stream, Trousseau,
+};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -123,7 +125,13 @@ impl Net {
             .map(Trousseau::from_secret);
         let peers = db.net_members("")?;
         let device = Device::from_seed(seed);
-        let journal = stored_journal(&device, &peers, false, db.net_records_of("")?);
+        let journal = stored_journal(
+            &device,
+            &peers,
+            false,
+            db.net_records_of("")?,
+            db.net_forgotten_of("")?,
+        );
         Ok(Self {
             id: String::new(),
             label: String::new(),
@@ -154,7 +162,13 @@ impl Net {
         let device = Device::from_seed(seed);
         let peers = db.net_members(id)?;
         let open = is_open(id);
-        let journal = stored_journal(&device, &peers, open, db.net_records_of(id)?);
+        let journal = stored_journal(
+            &device,
+            &peers,
+            open,
+            db.net_records_of(id)?,
+            db.net_forgotten_of(id)?,
+        );
         Ok(Self {
             id: n.id.clone(),
             label: n.label.clone(),
@@ -314,7 +328,68 @@ impl Net {
         self.keep(db)?;
         let keys: Vec<String> = done.iter().map(|k| self.done_key(k)).collect();
         db.mark_published(&keys)?;
+        self.forget_superseded(db, &trousseau)?;
         outcome.map(|()| done.len())
+    }
+
+    /// **Oublier les versions remplacées des comptes** : de chaque élément
+    /// de compte qu'un même auteur du journal a passé plusieurs fois, ne
+    /// garder que la dernière version (`compte::newer`) — un effacement
+    /// compris, qui doit voyager. Les autres ne gardent que leur nom et
+    /// leurs parents (`Journal::forget`) : elles ne comptent plus au budget
+    /// de leur auteur, ne sont plus redemandées, et la base ne les tient
+    /// plus. Sans cela le journal grandissait de chaque version, et au
+    /// réseau ouvert une officine se taisait, pour tous, au premier
+    /// mégaoctet de sa vie. Ce que le réseau dit d'autre — les versions des
+    /// fiches, les ruptures — garde son histoire. Rend combien sont partis.
+    fn forget_superseded(&mut self, db: &Db, trousseau: &Trousseau) -> Result<usize, String> {
+        let mut latest: std::collections::HashMap<
+            (DeviceId, String, String),
+            (Hash, crate::compte::Read),
+        > = Default::default();
+        let mut superseded = Vec::new();
+        for r in self.journal.records() {
+            if r.stream() != Stream::Reseau || r.corrects().is_some() {
+                continue;
+            }
+            let Some(read) = r
+                .open(trousseau)
+                .ok()
+                .filter(|p| p.starts_with(crate::compte::TAG))
+                .and_then(|p| crate::compte::read(&p, None))
+            else {
+                continue;
+            };
+            let key = (r.author(), read.account.clone(), read.item.clone());
+            match latest.get(&key) {
+                Some((_, kept)) if !crate::compte::newer(&read, kept) => superseded.push(r.id()),
+                Some((old, _)) => {
+                    superseded.push(*old);
+                    latest.insert(key, (r.id(), read));
+                }
+                None => {
+                    latest.insert(key, (r.id(), read));
+                }
+            }
+        }
+        let gone: Vec<Hash> = superseded
+            .into_iter()
+            .filter(|h| self.journal.forget(h))
+            .collect();
+        if gone.is_empty() {
+            return Ok(0);
+        }
+        let stubs: Vec<(String, String)> = self
+            .journal
+            .stubs()
+            .filter(|(h, _)| gone.contains(h))
+            .map(|(h, parents)| {
+                let named: String = parents.iter().map(|p| hex(&p.0)).collect();
+                (hex(&h.0), named)
+            })
+            .collect();
+        db.forget_net_records_of(&self.id, &stubs)?;
+        Ok(gone.len())
     }
 
     /// Sceller un enregistrement du réseau ; un refus (trop gros) est
@@ -1516,9 +1591,30 @@ fn met(peers: &[Peer]) -> Vec<DeviceId> {
 }
 
 /// Le journal tel que la base le garde, avec ce qui règle son horloge —
-/// et, pour le réseau ouvert, la borne des inconnues.
-fn stored_journal(me: &Device, peers: &[Peer], open: bool, records: Vec<Vec<u8>>) -> Journal {
+/// et, pour le réseau ouvert, la borne des inconnues. Ce qu'il a oublié
+/// (`forgotten` : nom et parents, en hex) est relu d'abord, pour qu'une
+/// ligne restée en base ne le fasse pas revenir.
+fn stored_journal(
+    me: &Device,
+    peers: &[Peer],
+    open: bool,
+    records: Vec<Vec<u8>>,
+    forgotten: Vec<(String, String)>,
+) -> Journal {
     let mut journal = Journal::new();
+    journal.allow_forgetting();
+    for (id, parents) in forgotten {
+        let Some(id) = unhex::<32>(&id) else {
+            continue;
+        };
+        let parents: Vec<Hash> = parents
+            .as_bytes()
+            .chunks(64)
+            .filter_map(|c| unhex::<32>(std::str::from_utf8(c).ok()?))
+            .map(Hash)
+            .collect();
+        journal.keep_stub(Hash(id), parents);
+    }
     if open {
         journal.trust([me.id()]);
         journal.limit_strangers(OPEN_LIMITS);
@@ -4027,6 +4123,99 @@ mod tests {
         let before = nc.journal.len();
         nc.publish(&c, "P").unwrap();
         assert_eq!(nc.journal.len(), before);
+    }
+
+    /// **Une version remplacée s'oublie, partout, sans couper le chemin** :
+    /// A publie trois versions d'un profil ; A, puis B qui les a reçues, ne
+    /// gardent que la dernière — en mémoire, en base, et relues — et C,
+    /// qui n'a jamais vu les anciennes, reçoit la dernière de B et ne
+    /// redemande rien qui reste dû.
+    #[test]
+    fn a_superseded_account_version_is_forgotten_everywhere_without_cutting_a_path() {
+        use crate::compte;
+        let (dir_a, _sa, a) = officine("forget-a");
+        let (dir_b, _sb, b) = officine("forget-b");
+        let (_dir_c, _sc, c) = officine("forget-c");
+        for db in [&a, &b, &c] {
+            join_open(db, "2026-10-20").unwrap();
+        }
+        let claire =
+            compte::Account::from_phrase(compte::Phrase::generate(&mut bpm_sync::OsEntropy));
+        a.keep_account(&claire.id(), "Claire", b"scelle").unwrap();
+        let version = |seq: u64| {
+            let p = compte::Profile {
+                nom: format!("Claire v{seq}"),
+                ..compte::Profile::default()
+            };
+            compte::write_profile(&claire, seq, &p, &mut bpm_sync::OsEntropy).unwrap()
+        };
+        let accounts = |db: &Db| {
+            let net = Net::load_network(db, &open_id()).unwrap();
+            let t = net.trousseau.clone().unwrap();
+            let held = net
+                .journal
+                .records()
+                .filter_map(|r| r.open(&t).ok())
+                .filter(|p| p.starts_with(compte::TAG))
+                .count();
+            (held, net.journal.stubs().count())
+        };
+        let pass = |from: &Db, from_dir: &std::path::Path, to: &Db| {
+            Net::load_network(from, &open_id())
+                .unwrap()
+                .publish(from, "P")
+                .unwrap();
+            let door = bpm_sync::link::Door::open("127.0.0.1:0").unwrap();
+            let at = door.address().unwrap().to_string();
+            let path = from_dir.join("net.db");
+            let answering = std::thread::spawn(move || {
+                let db = Db::open(&path, "secret").unwrap();
+                let mut link = door.accept(Duration::from_secs(20)).unwrap();
+                answer(&db, &mut link)
+            });
+            dial_open(to, &device_hex(from).unwrap(), &at, "P").expect("jointe");
+            answering.join().unwrap().unwrap();
+            let mut net = Net::load_network(to, &open_id()).unwrap();
+            net.absorb(to).unwrap();
+            net.publish(to, "P").unwrap();
+        };
+        for seq in 1..=3 {
+            a.keep_account_records(&[version(seq)]).unwrap();
+            pass(&a, &dir_a, &b);
+        }
+        // A et B, relus de leur base : la dernière version, deux oubliées.
+        assert_eq!(accounts(&a), (1, 2));
+        assert_eq!(accounts(&b), (1, 2));
+        let rows = |db: &Db| db.net_records_of(&open_id()).unwrap().len();
+        let before = rows(&b);
+        // Reçues encore d'un journal qui les tenait : pas reprises.
+        pass(&a, &dir_a, &b);
+        assert_eq!(rows(&b), before);
+        // C ne les a jamais vues : il reçoit de B la dernière, et ce qui
+        // la précédait au journal.
+        pass(&b, &dir_b, &c);
+        let name = |db: &Db| {
+            db.account_latest(None)
+                .unwrap()
+                .iter()
+                .find_map(|(r, _)| compte::profile_of(r))
+                .map(|p| p.nom)
+        };
+        assert_eq!(name(&b).as_deref(), Some("Claire v3"));
+        assert_eq!(name(&c).as_deref(), Some("Claire v3"));
+        assert_eq!(accounts(&c).0, 1);
+        let held_b: std::collections::BTreeSet<_> = Net::load_network(&b, &open_id())
+            .unwrap()
+            .journal
+            .records()
+            .filter(|r| r.author() != Net::load_network(&c, &open_id()).unwrap().device.id())
+            .map(|r| r.id())
+            .collect();
+        let net_c = Net::load_network(&c, &open_id()).unwrap();
+        assert!(
+            held_b.iter().all(|h| net_c.journal.has(h)),
+            "tout ce que B garde est passé, malgré les trous"
+        );
     }
 
     /// **Un compte ouvert sur un autre poste de l'officine se sème aussi** —

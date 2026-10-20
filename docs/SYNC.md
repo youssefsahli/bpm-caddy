@@ -1189,8 +1189,8 @@ journal qui l'a apporté. Ils sont lus des auteurs que le réseau lit —
 la signature du compte fait foi, pas celle du poste qui les a passés —
 enregistrement par enregistrement, si bien qu'aucune « correction »
 d'un autre ne les cache. La dernière version de chaque élément gagne,
-au plus 200 éléments vivants par compte, 4 Kio chacun : le mégaoctet
-que les autres officines accordent à chacune ne s'oublie pas. La phrase ne
+au plus 200 éléments vivants par compte, 4 Kio chacun : de quoi tenir
+dans le mégaoctet que les autres officines accordent à chacune. La phrase ne
 quitte jamais le poste, qui la garde scellée sous le code de la
 personne (Argon2id puis AES-256-GCM, table locale `account_keys`).
 Un profil **discret** ne publie que la clé de boîte : le nom et le
@@ -1201,6 +1201,21 @@ plus ancienne arrivée après est laissée, une plus récente retire les
 précédentes, chez lui seulement : la table voyage en ajout seul. Une
 sorte d'enregistrement qu'une version plus récente écrit se garde et se
 passe sans se lire.
+
+**Le journal d'un réseau oublie les versions remplacées**
+(`Net::forget_superseded`, après chaque publication). De chaque élément
+de compte qu'un même auteur du journal a passé plusieurs fois, il garde
+la dernière version, effacement compris, puisque l'effacement doit
+voyager. Des autres, il ne garde que le nom et les parents
+(`Journal::forget`, table locale `net_forgotten`) : elles ne comptent
+plus au budget de leur auteur, ne se redemandent ni ne se reprennent,
+et un pair qui descend le journal passe à travers elles sans perdre ce
+qu'elles nommaient. Sans cela, au réseau ouvert, une officine se taisait
+pour toutes au premier mégaoctet de sa vie. Un pair qui n'a jamais tenu
+une version oubliée la demande une fois par conversation, sans l'obtenir.
+La porte d'oubli n'existe que pour le flux Réseau : le journal des postes
+ne l'ouvre pas, et un test lit `postes.rs` pour le vérifier. Les versions
+des fiches et les ruptures gardent leur histoire.
 
 Les **billets** (vue Actualités) sont des éléments comme les autres,
 publics ou partagés. Ce qu'un compte a **masqué ou bloqué** est un
@@ -1233,10 +1248,12 @@ le téléphone l'inscrit à `account_homes`.
 
 ## 8. Travaux restants
 
-1. **Le journal ne se compacte pas.** Chaque poste garde tout ce qui a
-   été écrit depuis la fondation, et le relit en mémoire à chaque
-   synchronisation. Une photographie datée, et l'oubli de ce qui la
-   précède, viendront quand un groupe en aura besoin.
+1. **Le journal des postes ne se compacte pas.** Chaque poste garde tout
+   ce qui a été écrit depuis la fondation, et le relit en mémoire à
+   chaque synchronisation. Une photographie datée, et l'oubli de ce qui
+   la précède, viendront quand un groupe en aura besoin. Le journal d'un
+   réseau, lui, oublie les versions remplacées des comptes (§ 7.13). Les
+   versions des fiches, les ruptures et les messages y restent tous.
 2. **Deux appairages simultanés** sur deux postes différents, hors
    ligne, donneraient le même numéro aux deux arrivants. Appairer un
    poste à la fois. (Deux appairages *successifs* au même poste ne le
@@ -1255,6 +1272,7 @@ le téléphone l'inscrit à `account_homes`.
 5. **Le compagnon écrit l'équipe, l'agenda et les fiches**, par les
    chemins du bureau (comparer-et-écrire) ; le planning, il le lit
    seulement. Pas de fichier joint depuis le téléphone.
-6. **Les comptes dans le journal du réseau** : chaque poste ne garde
-   que la dernière version de chaque élément, mais le journal d'un
-   réseau garde toutes celles qui y ont été publiées (§ 8.1).
+6. **Les versions oubliées des comptes** ne s'oublient que chez qui les
+   a tenues. Un pair qui n'en a jamais tenu une la redemande à chaque
+   conversation (une empreinte par version), faute d'un mot du protocole
+   pour dire « oublié ».

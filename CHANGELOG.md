@@ -119,6 +119,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ids, so every post numbered it from 1 and the rows of two posts
   collided (a conflict question instead of one more row). Each post now
   takes its block for such a table when it opens.
+- **Network: replaced account versions are forgotten.** Every new
+  version of an account item (a profile, a note, an appointment, a post)
+  stayed in each network journal for good, and on the open network the
+  other officines refuse everything from an officine once it holds a
+  megabyte there — over its whole life. A busy team went silent, for
+  everyone, without a word. Each network journal now keeps only the
+  latest version of each item from a given author (a deletion included,
+  since it must travel), and of the others only their name and parents:
+  they no longer count against the budget, are never fetched again, and
+  a peer walking the journal still reaches what they named. Forgetting
+  is opened for the network stream only; the posts' journal (register,
+  patients) never forgets, and a test reads `postes.rs` to hold it.
 - **Accounts: the phone keeps the ceiling too.** The desktop refuses a
   201st live note or appointment, past which the oldest would quietly
   stop travelling through the network; the phone wrote on. It now

@@ -207,6 +207,11 @@ pub const LOCAL: &[(File, &str, &str)] = &[
         "net_records",
         "le journal du réseau d'officines, par poste",
     ),
+    (
+        Main,
+        "net_forgotten",
+        "ce que le journal du réseau a oublié, par poste",
+    ),
     (Main, "net_peers", "les officines que ce poste compose"),
     (
         Main,

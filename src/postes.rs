@@ -2296,6 +2296,19 @@ pub fn local_address() -> String {
 mod tests {
     use super::*;
 
+    /// **Le journal des postes n'oublie rien** : le registre, les patients,
+    /// chaque écriture depuis la fondation. La seule porte d'oubli du
+    /// journal (`Journal::forget`, versions remplacées du réseau) reste
+    /// fermée ici — ce texte ne l'ouvre ni ne l'appelle.
+    #[test]
+    fn the_posts_journal_never_forgets() {
+        let text = include_str!("postes.rs");
+        let code = text.split("#[cfg(test)]").next().unwrap();
+        for verb in ["allow_forgetting", ".forget(", "keep_stub"] {
+            assert!(!code.contains(verb), "« {verb} »");
+        }
+    }
+
     /// Le code seul suffit quand l'invitation est entendue ; sans elle,
     /// il est dit qu'il manque l'adresse — et non « adresse illisible ».
     #[test]
