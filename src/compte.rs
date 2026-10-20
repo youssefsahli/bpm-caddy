@@ -111,6 +111,19 @@ pub enum PhraseError {
     Checksum,
 }
 
+impl PhraseError {
+    /// Ce qui ne va pas, en français, le mot fautif désigné par son rang.
+    pub fn text(&self) -> String {
+        use crate::strings::{tr, trf, trn};
+        match self {
+            PhraseError::Count(n) => trf("compte_phrase_count", n),
+            PhraseError::Unknown(n, w) => trn("compte_phrase_unknown", &[n, w]),
+            PhraseError::Ambiguous(n, w) => trn("compte_phrase_ambiguous", &[n, w]),
+            PhraseError::Checksum => tr("compte_phrase_checksum").to_owned(),
+        }
+    }
+}
+
 /// Un mot sans ses accents ni ses majuscules : « Élève », « eleve » et
 /// la forme décomposée de la liste se lisent pareil.
 pub fn fold(word: &str) -> String {
@@ -950,6 +963,53 @@ pub fn feed_rank(entry: &Entry, seq: u64, today: &str) -> std::cmp::Reverse<(Str
         (entry.jour.clone(), entry.debut.clone())
     };
     std::cmp::Reverse((jour, debut, seq))
+}
+
+/// Les réglages du compte `me` que `latest` tient, et leur version (0 :
+/// aucun encore).
+pub fn settings_for(latest: &[Read], me: &str) -> (Settings, u64) {
+    latest
+        .iter()
+        .find(|r| r.kind == Kind::Reglages && r.account == me)
+        .map_or((Settings::default(), 0), |r| {
+            (settings_of(r).unwrap_or_default(), r.seq)
+        })
+}
+
+/// Le fil d'un lecteur : les billets qui se lisent, dans l'ordre du fil.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Feed {
+    /// Au plus `most`, le plus récent d'abord.
+    pub posts: Vec<(Read, Entry)>,
+    /// Ceux qu'un auteur masqué ou bloqué aurait montrés — ni effacés, ni
+    /// scellés pour d'autres.
+    pub hidden: usize,
+}
+
+/// **Le fil, sur le bureau et sur le téléphone** : de `latest` (lu par le
+/// compte ouvert, ou par personne), les billets qui s'ouvrent, moins ceux
+/// des auteurs que `settings` tient à l'écart, comptés à part.
+pub fn feed(latest: &[Read], settings: &Settings, today: &str, most: usize) -> Feed {
+    let mut out = Feed::default();
+    for r in latest.iter().filter(|r| r.kind == Kind::Billet) {
+        let Some(entry) = entry_of(r) else {
+            continue;
+        };
+        if settings.hold(&r.account) == Hold::Read {
+            out.posts.push((r.clone(), entry));
+        } else {
+            out.hidden += 1;
+        }
+    }
+    out.posts.sort_by_key(|(r, e)| feed_rank(e, r.seq, today));
+    out.posts.truncate(most);
+    out
+}
+
+/// La version suivante d'un élément : au-dessus de la dernière, et jamais
+/// sous `now` (en secondes) — le plus grand numéro est le plus récent.
+pub fn next_seq(latest: u64, now: u64) -> u64 {
+    latest.saturating_add(1).max(now)
 }
 
 /// Un nom d'élément neuf : tiré au hasard, pour qu'il ne dise rien de

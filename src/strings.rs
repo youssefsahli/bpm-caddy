@@ -412,6 +412,9 @@ mod tests {
             // Le rythme d'une surveillance, écrit comme on le dit.
             include_str!("surveillance.rs"),
             include_str!("tableau.rs"),
+            // Une phrase de compte mal recopiée, dite au bureau comme au
+            // téléphone.
+            include_str!("compte.rs"),
             // Les erreurs des couches du dessous, dites en clair
             // (`plain_error`) : ce fichier-ci nomme leurs phrases.
             include_str!("strings.rs"),

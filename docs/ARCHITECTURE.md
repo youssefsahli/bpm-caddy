@@ -3098,7 +3098,8 @@ signing and box keys the network already uses, under their own domains.
   against the version the screen showed (`compte_stale`).
 - **Stored as written, newest only.** `account_records` keeps records
   in hex, append-only, and travels between posts on the Equipe stream
-  (the phone receives it and shows the public posts: `Caddy::news`). A
+  (the phone receives it, shows the feed and opens an account from its
+  phrase: `Caddy::news`, `account_recover`; see SYNC.md § 7.13). A
   read verifies every record again; a row a post wrote by hand is just
   never read. `keep_account_records` leaves a version older than the
   one the base holds for its item — on what the record says of itself

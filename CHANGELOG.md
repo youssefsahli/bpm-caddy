@@ -45,8 +45,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   under the profile, who see it named and can share with it; everyone
   else sees its fingerprint. Chosen at creation or later, and undone by
   going public again.
-- **News on the phone.** The companion's Messages tab has a second
-  view, « Actualités »: the public posts, newest first, read-only.
+- **Accounts and news on the phone.** The companion's Messages tab has
+  a second view, « Actualités »: the public posts, newest first. An
+  account is found again there from its twelve words, under a code for
+  the phone; open, it reads what is shared with it, writes and deletes
+  posts, and mutes, blocks or restores an author, by the desktop's
+  rules. It closes when the phone locks.
 - **Records from a later version pass through.** An account record of
   a kind this version does not know is kept and passed on, unread,
   instead of being refused: an update no longer has to reach every

@@ -1205,9 +1205,17 @@ comme avant.
 officines, ce que § 8.4 refuse pour des données de santé. L'écran le
 dit là où l'on écrit.
 
-Le **compagnon** lit le fil public (`Caddy::news`, sous l'onglet
-Messages) ; il n'ouvre pas de compte : ni billet partagé, ni écriture,
-ni masqués ou bloqués, qui sont scellés pour leur compte.
+Le **compagnon** porte le fil (`Caddy::news`, sous l'onglet Messages).
+Sans compte, il en lit les billets publics. Un compte s'y retrouve par
+sa phrase, sous un code propre au téléphone (le même sceau qu'un poste,
+table locale) — il ne s'y crée pas : douze mots se recopient sur
+papier, pas sur l'écran d'un téléphone. Ouvert, il lit ce qu'on partage
+avec lui, publie et efface ses billets, masque, bloque et rétablit un
+auteur — par les mêmes règles que le bureau (`compte::feed`,
+`settings_for`, `next_seq`) — et se ferme quand la base se verrouille.
+Ce qu'il écrit voyage vers les postes de l'officine ; vers les autres
+officines, quand un poste de l'officine garde ce compte (un poste ne
+sème que les comptes ouverts chez lui).
 
 ## 8. Travaux restants
 
@@ -1235,5 +1243,6 @@ ni masqués ou bloqués, qui sont scellés pour leur compte.
    seulement. Pas de fichier joint depuis le téléphone.
 6. **Les comptes dans le journal du réseau** : chaque poste ne garde
    que la dernière version de chaque élément, mais le journal d'un
-   réseau garde toutes celles qui y ont été publiées (§ 8.1). Le
-   compagnon lit le fil public sans ouvrir de compte.
+   réseau garde toutes celles qui y ont été publiées (§ 8.1). Un
+   compte ouvert seulement sur un téléphone n'est semé vers les autres
+   officines qu'une fois gardé par un poste de l'officine.

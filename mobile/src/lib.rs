@@ -83,6 +83,28 @@ impl From<String> for CaddyError {
 
 type Result<T> = std::result::Result<T, CaddyError>;
 
+/// Une erreur dite par une clé de `strings.fr.toml`.
+fn failed(key: &'static str) -> CaddyError {
+    CaddyError::Failed {
+        reason: bpm_caddy::strings::tr(key).to_owned(),
+    }
+}
+
+/// Le nom d'un compte et le début de son empreinte, ou l'empreinte seule
+/// quand il ne se nomme pas ici.
+fn name_in(
+    named: &std::collections::BTreeMap<String, bpm_caddy::compte::Profile>,
+    account: &str,
+) -> String {
+    use bpm_caddy::compte;
+    match named.get(account) {
+        Some(p) => {
+            bpm_caddy::strings::trn("compte_named", &[&p.nom, &compte::short_groups(account)])
+        }
+        None => bpm_caddy::strings::trf("compte_unnamed", compte::groups_of(account)),
+    }
+}
+
 /// Un texte de l'interface, lu dans `assets/strings.fr.toml` comme sur
 /// le bureau : l'application Android n'écrit pas ses libellés elle-même.
 /// Une clé inconnue revient telle quelle, pour se voir.
@@ -185,15 +207,42 @@ pub struct ShiftItem {
     pub note: String,
 }
 
-/// Un billet public du fil des actualités.
+/// Un billet du fil des actualités.
 #[derive(uniffi::Record)]
 pub struct NewsPost {
+    /// L'élément et sa version : ce qu'un effacement nomme.
+    pub item: String,
+    pub seq: u64,
+    pub author_id: String,
     /// Le nom de son auteur et l'empreinte qui le distingue, ou
     /// l'empreinte seule quand son profil n'est pas arrivé ou est discret.
     pub author: String,
     /// `JJ/MM/AAAA HH:MM`, ou le jour seul.
     pub written: String,
     pub text: String,
+    /// Du compte ouvert.
+    pub mine: bool,
+    /// Scellé pour des comptes choisis, pas public.
+    pub shared: bool,
+}
+
+/// Le fil, et combien de billets il tient à l'écart.
+#[derive(uniffi::Record)]
+pub struct NewsFeed {
+    pub posts: Vec<NewsPost>,
+    /// Les billets d'auteurs masqués ou bloqués par le compte ouvert.
+    pub hidden: u32,
+}
+
+/// Un compte : gardé sur le téléphone, ou connu pour partager avec lui.
+#[derive(uniffi::Record)]
+pub struct AccountInfo {
+    pub id: String,
+    /// Son nom et son empreinte.
+    pub name: String,
+    /// `lire`, `masquer` ou `bloquer` : ce que le compte ouvert en a
+    /// décidé.
+    pub hold: String,
 }
 
 #[derive(uniffi::Record)]
@@ -279,6 +328,9 @@ pub struct Caddy {
     /// Les fiches, lues une fois et relues après une synchronisation :
     /// la recherche les parcourt à chaque lettre tapée.
     cards: Mutex<Option<Arc<Vec<Drug>>>>,
+    /// Le compte ouvert sur le téléphone : en mémoire seulement, fermé
+    /// avec l'application.
+    account: Mutex<Option<bpm_caddy::compte::Account>>,
 }
 
 #[uniffi::export]
@@ -295,6 +347,7 @@ impl Caddy {
             password,
             db: Mutex::new(db),
             cards: Mutex::new(None),
+            account: Mutex::new(None),
         }))
     }
 
@@ -721,48 +774,301 @@ impl Caddy {
             .collect())
     }
 
-    /// **Le fil des actualités, en lecture** : les billets publics des
-    /// comptes, de cette officine et des autres, dans l'ordre du bureau
-    /// (`compte::feed_rank`), au plus `limit`. Le téléphone n'ouvre pas de
-    /// compte : ni billet partagé, ni masqués ni bloqués — ce que chaque
-    /// compte a décidé est scellé pour lui. `today` (ISO) range un billet
-    /// daté de demain.
-    pub fn news(&self, today: String, limit: u32) -> Result<Vec<NewsPost>> {
-        use bpm_caddy::compte::{self, Kind, State};
-        let latest: Vec<compte::Read> = self
-            .db()
-            .account_latest(None)?
-            .into_iter()
-            .map(|(r, _)| r)
-            .collect();
+    /// **Le fil des actualités**, dans l'ordre du bureau (`compte::feed`),
+    /// au plus `limit` : les billets publics des comptes, de cette officine
+    /// et des autres, et — compte ouvert — ceux qu'on partage avec lui,
+    /// moins ceux des auteurs qu'il a masqués ou bloqués. `today` (ISO)
+    /// range un billet daté de demain.
+    pub fn news(&self, today: String, limit: u32) -> Result<NewsFeed> {
+        use bpm_caddy::compte::{self, State};
+        // Ce que les postes passent garde chaque version qu'ils ont eue
+        // un moment : le téléphone compacte aussi, sans rien relire tant
+        // que la table n'a pas plus de lignes que d'éléments.
+        self.db().compact_account_records()?;
+        let account = self.account();
+        let latest = self.reads(account.as_ref())?;
+        let me = account.as_ref().map(compte::Account::id);
+        let settings = me
+            .as_deref()
+            .map(|me| compte::settings_for(&latest, me).0)
+            .unwrap_or_default();
         let named = compte::named(&latest);
-        let mut posts: Vec<(compte::Read, compte::Entry)> = latest
+        let feed = compte::feed(&latest, &settings, &today, limit as usize);
+        Ok(NewsFeed {
+            hidden: feed.hidden as u32,
+            posts: feed
+                .posts
+                .into_iter()
+                .map(|(r, e)| NewsPost {
+                    author: name_in(&named, &r.account),
+                    written: if e.debut.is_empty() {
+                        bpm_caddy::db::format_french_date(&e.jour)
+                    } else {
+                        format!("{} {}", bpm_caddy::db::format_french_date(&e.jour), e.debut)
+                    },
+                    text: e.texte,
+                    mine: Some(&r.account) == me.as_ref(),
+                    shared: !matches!(r.state, State::Public(_)),
+                    item: r.item,
+                    seq: r.seq,
+                    author_id: r.account,
+                })
+                .collect(),
+        })
+    }
+
+    /// Les comptes gardés sur ce téléphone, chacun sous son code.
+    pub fn kept_accounts(&self) -> Result<Vec<AccountInfo>> {
+        let latest = self.reads(None)?;
+        let named = bpm_caddy::compte::named(&latest);
+        Ok(self
+            .db()
+            .kept_accounts()?
             .into_iter()
-            .filter(|r| r.kind == Kind::Billet && matches!(r.state, State::Public(_)))
-            .filter_map(|r| compte::entry_of(&r).map(|e| (r, e)))
-            .collect();
-        posts.sort_by_key(|(r, e)| compte::feed_rank(e, r.seq, &today));
-        posts.truncate(limit as usize);
-        Ok(posts
-            .into_iter()
-            .map(|(r, e)| NewsPost {
-                author: match named.get(&r.account) {
-                    Some(p) => bpm_caddy::strings::trn(
-                        "compte_named",
-                        &[&p.nom, &compte::short_groups(&r.account)],
-                    ),
-                    None => {
-                        bpm_caddy::strings::trf("compte_unnamed", compte::groups_of(&r.account))
-                    }
-                },
-                written: if e.debut.is_empty() {
-                    bpm_caddy::db::format_french_date(&e.jour)
-                } else {
-                    format!("{} {}", bpm_caddy::db::format_french_date(&e.jour), e.debut)
-                },
-                text: e.texte,
+            .map(|(id, _, _)| AccountInfo {
+                name: name_in(&named, &id),
+                id,
+                hold: "lire".to_owned(),
             })
             .collect())
+    }
+
+    /// Le compte ouvert, s'il y en a un.
+    pub fn open_account(&self) -> Option<AccountInfo> {
+        let account = self.account()?;
+        let id = account.id();
+        // Lu par lui : un compte discret se nomme à lui-même.
+        let latest = self.reads(Some(&account)).unwrap_or_default();
+        Some(AccountInfo {
+            name: name_in(&bpm_caddy::compte::named(&latest), &id),
+            id,
+            hold: "lire".to_owned(),
+        })
+    }
+
+    /// **Ouvrir un compte gardé ici**, par son code.
+    pub fn account_unlock(&self, id: String, pin: String) -> Result<AccountInfo> {
+        let locked = self
+            .db()
+            .kept_accounts()?
+            .into_iter()
+            .find(|(a, _, _)| *a == id)
+            .map(|(_, _, l)| l);
+        let opened = locked
+            .and_then(|l| bpm_caddy::compte::unlock(&l, &pin))
+            .map(bpm_caddy::compte::Account::from_phrase)
+            .filter(|a| a.id() == id)
+            .ok_or_else(|| failed("compte_bad_pin"))?;
+        *self.account.lock().unwrap_or_else(|e| e.into_inner()) = Some(opened);
+        self.open_account()
+            .ok_or_else(|| failed("compte_write_failed"))
+    }
+
+    /// **Retrouver un compte par sa phrase**, sous un code pour ce
+    /// téléphone — la phrase n'y est gardée que scellée sous lui, comme
+    /// sur un poste. Le compte se crée sur un poste : douze mots s'y
+    /// recopient sur papier, pas sur l'écran d'un téléphone.
+    pub fn account_recover(&self, words: String, pin: String) -> Result<AccountInfo> {
+        use bpm_caddy::compte;
+        let phrase =
+            compte::Phrase::parse(&words).map_err(|e| CaddyError::Failed { reason: e.text() })?;
+        if !compte::pin_ok(&pin) {
+            return Err(failed("compte_pin_short"));
+        }
+        let account = compte::Account::from_phrase(phrase.clone());
+        let id = account.id();
+        let latest = self.reads(None)?;
+        let label = compte::named(&latest)
+            .get(&id)
+            .map(|p| p.nom.clone())
+            .unwrap_or_else(|| bpm_caddy::strings::trf("compte_unnamed", account.groups()));
+        let locked = compte::lock(&phrase, &pin, compte::STRETCH, &mut bpm_sync::OsEntropy)
+            .ok_or_else(|| failed("compte_write_failed"))?;
+        self.db().keep_account(&id, &label, &locked)?;
+        *self.account.lock().unwrap_or_else(|e| e.into_inner()) = Some(account);
+        self.open_account()
+            .ok_or_else(|| failed("compte_write_failed"))
+    }
+
+    /// Fermer le compte ouvert.
+    pub fn account_close(&self) {
+        *self.account.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    }
+
+    /// Retirer un compte du téléphone — rien de ce qu'il a écrit n'est
+    /// effacé, et sa phrase le rouvre.
+    pub fn account_forget(&self, id: String) -> Result<()> {
+        if self.account().is_some_and(|a| a.id() == id) {
+            self.account_close();
+        }
+        Ok(self.db().forget_account(&id)?)
+    }
+
+    /// Ceux avec qui le compte ouvert peut partager, et ce qu'il en a
+    /// décidé : les comptes qui se nomment ici, lui excepté. Un compte
+    /// bloqué y reste, pour qu'il se rétablisse ; il n'est pas proposé
+    /// comme lecteur (`publish_post` le retire).
+    pub fn people(&self) -> Result<Vec<AccountInfo>> {
+        use bpm_caddy::compte::{self, Hold};
+        let Some(account) = self.account() else {
+            return Ok(Vec::new());
+        };
+        let latest = self.reads(Some(&account))?;
+        let (settings, _) = compte::settings_for(&latest, &account.id());
+        let mut out: Vec<AccountInfo> = compte::named(&latest)
+            .into_iter()
+            .filter(|(a, _)| *a != account.id())
+            .map(|(a, p)| AccountInfo {
+                name: bpm_caddy::strings::trn("compte_named", &[&p.nom, &compte::short_groups(&a)]),
+                hold: match settings.hold(&a) {
+                    Hold::Read => "lire",
+                    Hold::Muted => "masquer",
+                    Hold::Blocked => "bloquer",
+                }
+                .to_owned(),
+                id: a,
+            })
+            .collect();
+        out.sort_by_key(|p| p.name.to_lowercase());
+        Ok(out)
+    }
+
+    /// **Publier un billet** du compte ouvert : public quand `readers` est
+    /// vide, sinon scellé pour eux et pour lui. `today` (ISO), `time`
+    /// (`HH:MM`) et `now` (secondes) viennent de l'appelant, qui a
+    /// l'horloge. Jamais un patient : l'écran le dit là où l'on écrit.
+    pub fn publish_post(
+        &self,
+        text: String,
+        readers: Vec<String>,
+        today: String,
+        time: String,
+        now: u64,
+    ) -> Result<()> {
+        use bpm_caddy::compte::{self, EntryError, Hold, Kind, Visibility};
+        let account = self
+            .account()
+            .ok_or_else(|| failed("compte_write_failed"))?;
+        if text.trim().is_empty() {
+            return Err(failed("compte_post_empty"));
+        }
+        let latest = self.reads(Some(&account))?;
+        let (settings, _) = compte::settings_for(&latest, &account.id());
+        let named = compte::named(&latest);
+        // **Partagé reste partagé** : des lecteurs tous bloqués ne font pas
+        // d'un billet scellé un billet public.
+        let visibility = if readers.is_empty() {
+            Visibility::Public
+        } else {
+            let readers: Vec<String> = readers
+                .into_iter()
+                .filter(|a| settings.hold(a) != Hold::Blocked)
+                .collect();
+            if readers.is_empty() {
+                return Err(failed("compte_need_reader"));
+            }
+            Visibility::Shared(readers)
+        };
+        let entry = compte::Entry {
+            texte: text.trim().to_owned(),
+            jour: today,
+            debut: time,
+            ..compte::Entry::default()
+        };
+        // La clé de tout compte qui l'a publiée, nommé ici ou non.
+        let boxes = |a: &str| {
+            latest
+                .iter()
+                .filter(|r| r.account == a)
+                .find_map(compte::profile_of)
+                .and_then(|p| compte::unhex::<32>(&p.boite))
+        };
+        let item = compte::new_item(&mut bpm_sync::OsEntropy);
+        let bytes = compte::write_entry(
+            &account,
+            (&item, compte::next_seq(0, now)),
+            Kind::Billet,
+            &entry,
+            &visibility,
+            &boxes,
+            &mut bpm_sync::OsEntropy,
+        )
+        .map_err(|e| match e {
+            EntryError::NoKey(a) => CaddyError::Failed {
+                reason: bpm_caddy::strings::trf("compte_no_key", name_in(&named, &a)),
+            },
+            EntryError::Write(compte::WriteError::TooLong) => CaddyError::Failed {
+                reason: bpm_caddy::strings::trf("compte_too_long", compte::MAX_DATA / 1024),
+            },
+            EntryError::Write(_) => failed("compte_write_failed"),
+        })?;
+        self.keep_one(bytes)
+    }
+
+    /// **Effacer un de ses billets**, contre la version que l'écran
+    /// montrait : changé ailleurs depuis, il ne s'efface pas sans être
+    /// relu.
+    pub fn delete_post(&self, item: String, shown_seq: u64, now: u64) -> Result<()> {
+        use bpm_caddy::compte::{self, Kind};
+        let account = self
+            .account()
+            .ok_or_else(|| failed("compte_write_failed"))?;
+        let latest = self.reads(None)?;
+        let current = latest
+            .iter()
+            .find(|r| r.account == account.id() && r.item == item && r.kind == Kind::Billet)
+            .ok_or_else(|| failed("compte_write_failed"))?;
+        if current.seq != shown_seq {
+            return Err(failed("compte_stale"));
+        }
+        let bytes = compte::write(
+            &account,
+            &item,
+            compte::next_seq(current.seq, now),
+            Kind::Billet,
+            compte::Content::Deleted,
+            &mut bpm_sync::OsEntropy,
+        )
+        .map_err(|_| failed("compte_write_failed"))?;
+        self.keep_one(bytes)
+    }
+
+    /// **Masquer, bloquer ou rétablir un auteur** (`lire`, `masquer`,
+    /// `bloquer`) : les réglages du compte ouvert, scellés pour lui, d'une
+    /// version de plus. Écrits sur la dernière version que la base tient,
+    /// pas sur celle que l'écran montrait : ce geste ne change que cet
+    /// auteur, et une décision prise ailleurs sur un autre reste.
+    pub fn hold_author(&self, author: String, hold: String, now: u64) -> Result<String> {
+        use bpm_caddy::compte::{self, Hold};
+        let account = self
+            .account()
+            .ok_or_else(|| failed("compte_write_failed"))?;
+        if author == account.id() {
+            return Err(failed("compte_write_failed"));
+        }
+        let (hold, key) = match hold.as_str() {
+            "masquer" => (Hold::Muted, "compte_hold_muted"),
+            "bloquer" => (Hold::Blocked, "compte_hold_blocked"),
+            _ => (Hold::Read, "compte_hold_read"),
+        };
+        let latest = self.reads(Some(&account))?;
+        let (mut settings, seq) = compte::settings_for(&latest, &account.id());
+        settings.set(&author, hold);
+        let bytes = compte::write_settings(
+            &account,
+            compte::next_seq(seq, now),
+            &settings,
+            &mut bpm_sync::OsEntropy,
+        )
+        .map_err(|e| match e {
+            compte::WriteError::TooLong => failed("compte_settings_full"),
+            _ => failed("compte_write_failed"),
+        })?;
+        self.keep_one(bytes)?;
+        Ok(bpm_caddy::strings::trf(
+            key,
+            name_in(&compte::named(&latest), &author),
+        ))
     }
 
     /// Les conversations de l'équipe, la plus récente d'abord. Celles
@@ -957,6 +1263,38 @@ impl Caddy {
 }
 
 impl Caddy {
+    /// Le compte ouvert, rouvert de sa phrase pour l'appel : la clé ne
+    /// se copie pas, elle se refait.
+    fn account(&self) -> Option<bpm_caddy::compte::Account> {
+        self.account
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            .map(|a| bpm_caddy::compte::Account::from_phrase(a.phrase().clone()))
+    }
+
+    /// La dernière version de chaque élément de compte, lue par `reader`.
+    fn reads(
+        &self,
+        reader: Option<&bpm_caddy::compte::Account>,
+    ) -> Result<Vec<bpm_caddy::compte::Read>> {
+        Ok(self
+            .db()
+            .account_latest(reader)?
+            .into_iter()
+            .map(|(r, _)| r)
+            .collect())
+    }
+
+    /// Ranger un enregistrement qu'on vient d'écrire — refusé à la
+    /// relecture, il ne se dit pas enregistré.
+    fn keep_one(&self, bytes: Vec<u8>) -> Result<()> {
+        match self.db().keep_account_records(&[bytes])? {
+            0 => Err(failed("compte_write_failed")),
+            _ => Ok(()),
+        }
+    }
+
     fn db(&self) -> std::sync::MutexGuard<'_, Db> {
         // A panic while holding the base leaves it as it was: SQLite's
         // own transactions guard the data, not this lock.
@@ -1114,7 +1452,7 @@ mod tests {
             );
         }
         c.db().keep_account_records(&records).unwrap();
-        let news = c.news("2026-10-19".into(), 10).unwrap();
+        let news = c.news("2026-10-19".into(), 10).unwrap().posts;
         let texts: Vec<&str> = news.iter().map(|n| n.text.as_str()).collect();
         assert_eq!(texts, ["b2", "b3", "b1"], "le partagé n'y est pas");
         assert!(
@@ -1124,7 +1462,148 @@ mod tests {
         );
         assert!(!news[1].author.contains("Claire"));
         assert_eq!(news[2].written, "18/10/2026 09:00");
-        assert_eq!(c.news("2026-10-19".into(), 1).unwrap().len(), 1);
+        assert_eq!(c.news("2026-10-19".into(), 1).unwrap().posts.len(), 1);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// **Un compte sur le téléphone**, de bout en bout : retrouvé par sa
+    /// phrase sous un code, il lit ce qu'on partage avec lui, publie et
+    /// efface un billet (pas sur une version que l'écran ne montrait
+    /// plus), masque puis bloque un auteur, se ferme et se rouvre par son
+    /// code — un mauvais refusé.
+    #[test]
+    fn an_account_opens_on_the_phone_posts_and_sets_an_author_aside() {
+        use bpm_caddy::compte::{self, Account, Kind, Phrase, Visibility};
+        let d = dir("account");
+        let c = Caddy::open(d.display().to_string(), "k".into()).unwrap();
+        let phrase = Phrase::from_entropy([41; 16]);
+        let me = Account::from_phrase(phrase.clone());
+        let marc = Account::from_phrase(Phrase::from_entropy([42; 16]));
+        let mut records = Vec::new();
+        for (a, nom) in [(&me, "Claire"), (&marc, "Marc")] {
+            let p = compte::Profile {
+                nom: nom.to_owned(),
+                ..compte::Profile::default()
+            };
+            records.push(compte::write_profile(a, 1, &p, &mut bpm_sync::OsEntropy).unwrap());
+        }
+        let to_me = |a: &str| (a == me.id()).then(|| me.box_public());
+        let e = compte::Entry {
+            texte: "pour Claire".to_owned(),
+            jour: "2026-10-19".to_owned(),
+            ..compte::Entry::default()
+        };
+        records.push(
+            compte::write_entry(
+                &marc,
+                ("m1", 1),
+                Kind::Billet,
+                &e,
+                &Visibility::Shared(vec![me.id()]),
+                &to_me,
+                &mut bpm_sync::OsEntropy,
+            )
+            .unwrap(),
+        );
+        c.db().keep_account_records(&records).unwrap();
+        let today = || "2026-10-20".to_owned();
+        assert!(c.news(today(), 10).unwrap().posts.is_empty(), "scellé");
+        // Une phrase fautive dit où ; un code court est refusé.
+        let mut words = phrase.words();
+        assert!(c
+            .account_recover("qwerty ".repeat(12), "Pharma24".into())
+            .is_err());
+        assert!(c.account_recover(words.join(" "), "123".into()).is_err());
+        let opened = c
+            .account_recover(words.join(" "), "Pharma24".into())
+            .unwrap();
+        assert_eq!(opened.id, me.id());
+        assert!(opened.name.starts_with("Claire ("));
+        // Discret, il se nomme encore à lui-même.
+        let fiche = compte::Profile {
+            nom: "Claire".to_owned(),
+            ..compte::Profile::default()
+        };
+        let bare = compte::Profile::default();
+        c.db()
+            .keep_account_records(&[
+                compte::write_profile(&me, 2, &bare, &mut bpm_sync::OsEntropy).unwrap(),
+                compte::write_fiche(&me, 2, Some(&fiche), &|_| None, &mut bpm_sync::OsEntropy)
+                    .unwrap(),
+            ])
+            .unwrap();
+        assert!(c.open_account().unwrap().name.starts_with("Claire ("));
+        let feed = c.news(today(), 10).unwrap();
+        assert_eq!(feed.posts.len(), 1);
+        assert!(feed.posts[0].shared && !feed.posts[0].mine);
+        // Publier : public, puis pour Marc.
+        c.publish_post("Bonjour".into(), vec![], today(), "09:30".into(), 100)
+            .unwrap();
+        c.publish_post(
+            "Pour Marc".into(),
+            vec![marc.id()],
+            today(),
+            "09:31".into(),
+            101,
+        )
+        .unwrap();
+        assert!(c
+            .publish_post("  ".into(), vec![], today(), "09:32".into(), 102)
+            .is_err());
+        let feed = c.news(today(), 10).unwrap().posts;
+        let texts: Vec<&str> = feed.iter().map(|p| p.text.as_str()).collect();
+        assert_eq!(texts, ["Pour Marc", "Bonjour", "pour Claire"]);
+        assert!(feed[0].mine && feed[0].shared && !feed[1].shared);
+        // Marc lit celui qui lui est destiné.
+        let marc_reads = c.db().account_latest(Some(&marc)).unwrap();
+        assert!(marc_reads
+            .iter()
+            .any(|(r, _)| compte::entry_of(r).is_some_and(|e| e.texte == "Pour Marc")));
+        // Effacer : pas sur une version que l'écran ne montrait plus.
+        let bonjour = &feed[1];
+        assert!(c
+            .delete_post(bonjour.item.clone(), bonjour.seq + 1, 200)
+            .is_err());
+        c.delete_post(bonjour.item.clone(), bonjour.seq, 200)
+            .unwrap();
+        assert_eq!(c.news(today(), 10).unwrap().posts.len(), 2);
+        // Masquer Marc : son billet se compte sans se montrer.
+        let people = c.people().unwrap();
+        assert_eq!(people.len(), 1);
+        assert_eq!(people[0].hold, "lire");
+        c.hold_author(marc.id(), "masquer".into(), 300).unwrap();
+        let feed = c.news(today(), 10).unwrap();
+        assert_eq!((feed.posts.len(), feed.hidden), (1, 1));
+        c.hold_author(marc.id(), "bloquer".into(), 301).unwrap();
+        assert_eq!(c.people().unwrap()[0].hold, "bloquer");
+        // Bloqué, il n'est plus lecteur de ce qu'on écrit — et un billet
+        // pour lui seul ne part pas public pour autant.
+        assert!(c
+            .publish_post(
+                "Encore".into(),
+                vec![marc.id()],
+                today(),
+                "10:00".into(),
+                400
+            )
+            .is_err());
+        assert!(!c
+            .news(today(), 10)
+            .unwrap()
+            .posts
+            .iter()
+            .any(|p| p.text == "Encore"));
+        c.hold_author(marc.id(), "lire".into(), 500).unwrap();
+        assert_eq!(c.news(today(), 10).unwrap().hidden, 0);
+        // Fermé, rouvert par son code ; un mauvais refusé.
+        c.account_close();
+        assert!(c.open_account().is_none());
+        assert_eq!(c.kept_accounts().unwrap().len(), 1);
+        assert!(c.account_unlock(me.id(), "mauvais1".into()).is_err());
+        assert!(c.account_unlock(me.id(), "Pharma24".into()).is_ok());
+        c.account_forget(me.id()).unwrap();
+        assert!(c.open_account().is_none() && c.kept_accounts().unwrap().is_empty());
+        words.clear();
         let _ = std::fs::remove_dir_all(&d);
     }
 

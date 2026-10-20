@@ -11761,26 +11761,42 @@ impl Session {
         }
         // Un profil discret se nomme à ceux pour qui sa fiche s'ouvre.
         let reads: Vec<compte::Read> = latest.iter().map(|(r, _)| r.clone()).collect();
+        c.boxes = reads
+            .iter()
+            .filter_map(|r| {
+                let p = compte::profile_of(r)?;
+                Some((r.account.clone(), compte::unhex::<32>(&p.boite)?))
+            })
+            .collect();
         c.people = compte::named(&reads)
             .into_iter()
             .filter(|(a, _)| Some(a) != me.as_ref())
             .collect();
         c.people.sort_by_key(|(_, p)| p.nom.to_lowercase());
         // Les réglages d'abord : ils disent qui ne se lit plus.
-        c.settings = compte::Settings::default();
-        c.settings_seq = 0;
-        if let Some(r) = latest
-            .iter()
-            .map(|(r, _)| r)
-            .find(|r| r.kind == Kind::Reglages && Some(&r.account) == me.as_ref())
-        {
-            c.settings_seq = r.seq;
-            c.settings = compte::settings_of(r).unwrap_or_default();
-        }
+        (c.settings, c.settings_seq) = me
+            .as_deref()
+            .map(|me| compte::settings_for(&reads, me))
+            .unwrap_or_default();
         let (mut mine, mut shared, mut public) = (Vec::new(), Vec::new(), Vec::new());
-        let mut posts = Vec::new();
-        c.hidden_posts = 0;
-        for (r, _) in &latest {
+        // **Le fil** (`compte::feed`, que le téléphone lit aussi) : les
+        // billets de tous, les siens compris ; ceux d'un compte masqué ou
+        // bloqué se comptent sans se montrer.
+        let feed = compte::feed(&reads, &c.settings, &self.today, COMPTES_MOST_POSTS);
+        c.hidden_posts = feed.hidden;
+        c.posts = feed
+            .posts
+            .into_iter()
+            .map(|(r, entry)| AccountItem {
+                visibility: compte::visibility_of(&r, &entry),
+                account: r.account,
+                item: r.item,
+                kind: r.kind,
+                seq: r.seq,
+                entry,
+            })
+            .collect();
+        for (r, _) in latest.iter().filter(|(r, _)| r.kind != Kind::Billet) {
             if r.kind == Kind::Profil {
                 if Some(&r.account) == me.as_ref() {
                     if let Some(p) = compte::profile_of(r) {
@@ -11796,16 +11812,11 @@ impl Session {
                 }
                 continue;
             }
-            let hold = c.settings.hold(&r.account);
             let Some(entry) = compte::entry_of(r) else {
                 continue;
             };
-            // Bloqué : rien de lui. Seuls se comptent les billets qui se
-            // seraient lus — ni effacés, ni scellés pour d'autres.
-            if hold == compte::Hold::Blocked {
-                if r.kind == Kind::Billet {
-                    c.hidden_posts += 1;
-                }
+            // Bloqué : rien de lui.
+            if c.settings.hold(&r.account) == compte::Hold::Blocked {
                 continue;
             }
             let item = AccountItem {
@@ -11816,15 +11827,7 @@ impl Session {
                 visibility: compte::visibility_of(r, &entry),
                 entry,
             };
-            if item.kind == Kind::Billet {
-                // **Le fil** : les billets de tous, les siens compris ; ceux
-                // d'un compte masqué se comptent sans se montrer.
-                if hold == compte::Hold::Muted {
-                    c.hidden_posts += 1;
-                } else {
-                    posts.push(item);
-                }
-            } else if Some(&r.account) == me.as_ref() {
+            if Some(&r.account) == me.as_ref() {
                 mine.push(item);
             } else if matches!(r.state, State::Sealed(Some(_))) {
                 shared.push(item);
@@ -11850,12 +11853,6 @@ impl Session {
         c.mine = mine;
         c.shared = shared;
         c.public = public;
-        // Le plus récent d'abord (`compte::feed_rank`), le téléphone dans
-        // le même ordre.
-        let today = self.today.clone();
-        posts.sort_by_key(|p| compte::feed_rank(&p.entry, p.seq, &today));
-        posts.truncate(COMPTES_MOST_POSTS);
-        c.posts = posts;
     }
 
     /// Le nom qu'un compte porte ici : son profil, sinon son empreinte.
@@ -12013,17 +12010,10 @@ impl Session {
     /// Retrouver un compte par sa phrase, et le garder ici sous un code.
     #[cfg(feature = "sync")]
     fn comptes_recover(&mut self) {
-        use crate::compte::PhraseError;
         let phrase = match crate::compte::Phrase::parse(&self.comptes.words) {
             Ok(p) => p,
             Err(e) => {
-                let why = match e {
-                    PhraseError::Count(n) => trf("compte_phrase_count", n),
-                    PhraseError::Unknown(n, w) => trn("compte_phrase_unknown", &[&n, &w]),
-                    PhraseError::Ambiguous(n, w) => trn("compte_phrase_ambiguous", &[&n, &w]),
-                    PhraseError::Checksum => tr("compte_phrase_checksum").to_owned(),
-                };
-                self.comptes.notice = Some((true, why));
+                self.comptes.notice = Some((true, e.text()));
                 return;
             }
         };
@@ -12036,17 +12026,19 @@ impl Session {
         };
         let account = crate::compte::Account::from_phrase(phrase.clone());
         let id = account.id();
-        // Le nom que le compte s'est donné, s'il est déjà arrivé ici.
-        let known = self
+        // Le nom que le compte s'est donné, s'il est déjà arrivé ici — sa
+        // fiche, s'il est discret, s'ouvre pour lui.
+        let reads: Vec<crate::compte::Read> = self
             .db
-            .account_latest(None)
+            .account_latest(Some(&account))
             .unwrap_or_default()
             .into_iter()
-            .filter(|(r, _)| r.account == id)
-            .find_map(|(r, _)| crate::compte::profile_of(&r));
-        let label = known
-            .as_ref()
-            .map(|p| p.nom.clone())
+            .map(|(r, _)| r)
+            .collect();
+        let known = reads.iter().any(|r| r.account == id);
+        let label = crate::compte::named(&reads)
+            .remove(&id)
+            .map(|p| p.nom)
             .unwrap_or_else(|| trf("compte_unnamed", account.groups()));
         let kept = crate::compte::lock(&phrase, &pin, comptes_stretch(), &mut bpm_sync::OsEntropy)
             .ok_or_else(|| tr("compte_write_failed").to_owned())
@@ -12054,7 +12046,7 @@ impl Session {
         match kept {
             Ok(()) => {
                 self.comptes_enter(account);
-                self.comptes.notice = Some(if known.is_some() {
+                self.comptes.notice = Some(if known {
                     (false, tr("compte_recovered").to_owned())
                 } else {
                     (false, tr("compte_recovered_empty").to_owned())
@@ -12138,12 +12130,7 @@ impl Session {
     ) -> Result<(), String> {
         use crate::compte::{self, EntryError};
         let c = &self.comptes;
-        let boxes = |a: &str| -> Option<[u8; 32]> {
-            c.people
-                .iter()
-                .find(|(id, _)| id == a)
-                .and_then(|(_, p)| compte::unhex::<32>(&p.boite))
-        };
+        let boxes = |a: &str| -> Option<[u8; 32]> { c.boxes.get(a).copied() };
         let failed = |_| tr("compte_write_failed").to_owned();
         let mut records = Vec::new();
         if c.discret {
@@ -12210,7 +12197,10 @@ impl Session {
             self.comptes.notice = Some((true, said));
             return Err(());
         }
-        Ok((latest + 1).max(crate::repertoire::unix_now()))
+        Ok(crate::compte::next_seq(
+            latest,
+            crate::repertoire::unix_now(),
+        ))
     }
 
     /// Ranger un enregistrement qu'on vient d'écrire — refusé à la
@@ -12303,12 +12293,7 @@ impl Session {
         let Some(account) = &c.open else {
             return;
         };
-        let boxes = |a: &str| -> Option<[u8; 32]> {
-            c.people
-                .iter()
-                .find(|(id, _)| id == a)
-                .and_then(|(_, p)| compte::unhex::<32>(&p.boite))
-        };
+        let boxes = |a: &str| -> Option<[u8; 32]> { c.boxes.get(a).copied() };
         let written = compte::write_entry(
             account,
             (&item, seq),
@@ -12514,12 +12499,7 @@ impl Session {
         let Some(account) = &c.open else {
             return;
         };
-        let boxes = |a: &str| -> Option<[u8; 32]> {
-            c.people
-                .iter()
-                .find(|(id, _)| id == a)
-                .and_then(|(_, p)| compte::unhex::<32>(&p.boite))
-        };
+        let boxes = |a: &str| -> Option<[u8; 32]> { c.boxes.get(a).copied() };
         let written = compte::write_entry(
             account,
             (&item, seq),
@@ -17638,6 +17618,9 @@ struct Comptes {
     shared: Vec<AccountItem>,
     public: Vec<AccountItem>,
     people: Vec<(String, crate::compte::Profile)>,
+    /// La clé de boîte de chaque compte qui l'a publiée, nommé ici ou
+    /// non : un lecteur choisi qui devient discret reste un lecteur.
+    boxes: std::collections::HashMap<String, [u8; 32]>,
     form: AccountForm,
     /// « Retirer de ce poste » a été pressé une fois, pour ce compte : le
     /// second clic retire.
@@ -71732,7 +71715,18 @@ impl App {
         Self::comptes_row(ui, labels[3], label_w, &mut c.officine, 28.0, false);
         Self::comptes_discret(ui, c);
         if c.discret {
-            Self::comptes_readers(ui, people, &mut c.fiche_pour, tr("compte_discret_nobody"));
+            // Un lecteur coché qui ne se nomme plus ici (devenu discret)
+            // reste à l'écran, pour se décocher.
+            let mut listed = people.to_vec();
+            for a in &c.fiche_pour {
+                if !listed.iter().any(|(id, _)| id == a) {
+                    listed.push((
+                        a.clone(),
+                        trf("compte_unnamed", crate::compte::groups_of(a)),
+                    ));
+                }
+            }
+            Self::comptes_readers(ui, &listed, &mut c.fiche_pour, tr("compte_discret_nobody"));
         }
         ui.horizontal_wrapped(|ui| {
             ui.add_space(4.0);
@@ -106805,6 +106799,43 @@ mod tests {
         assert!(s.comptes.discret);
         assert_eq!(s.comptes.nom, "Claire Martin");
         assert!(s.comptes.fiche_pour.contains(&julien.id()));
+        // **Julien devient discret sans la choisir** : elle ne le nomme
+        // plus, mais il reste son lecteur — à l'écran pour se décocher, et
+        // sa clé toujours connue : enregistrer ne bute pas sur lui.
+        let bare = compte::Profile::default();
+        s.db.keep_account_records(&[compte::write_profile(
+            &julien,
+            2,
+            &bare,
+            &mut bpm_sync::OsEntropy,
+        )
+        .unwrap()])
+            .unwrap();
+        s.reload_comptes();
+        assert!(!s.comptes.people.iter().any(|(a, _)| *a == julien.id()));
+        s.comptes.officine = "Pharmacie du Quai".to_owned();
+        s.comptes_save_profile();
+        assert!(
+            s.comptes.notice.as_ref().is_some_and(|(e, _)| !e),
+            "{:?}",
+            s.comptes.notice
+        );
+        assert_eq!(
+            s.comptes.fiche.as_ref().map(|f| f.pour.clone()),
+            Some(vec![julien.id()])
+        );
+        // Retrouvé ailleurs par sa phrase, le compte discret garde son nom
+        // dans la liste du poste.
+        {
+            let (mut t, _swept) = scratch_session("discret-retrouve");
+            t.db.keep_account_records(&s.db.account_record_bytes().unwrap())
+                .unwrap();
+            t.comptes.words = of(21).phrase().words().join(" ");
+            t.comptes.pin1 = "Ailleurs9".to_owned();
+            t.comptes.pin2 = "Ailleurs9".to_owned();
+            t.comptes_recover();
+            assert_eq!(t.db.kept_accounts().unwrap()[0].1, "Claire Martin");
+        }
         // Public : le nom en clair, la fiche effacée.
         s.comptes.discret = false;
         s.comptes_save_profile();

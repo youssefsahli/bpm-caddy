@@ -113,7 +113,10 @@ l'officine, sur le téléphone de l'équipe.
 >   classe, et leur correction ;
 > - l'agenda de l'officine, en lecture et en écriture ;
 > - le planning de l'équipe ;
-> - la messagerie de l'équipe.
+> - la messagerie de l'équipe ;
+> - le fil des actualités des comptes : les billets publics, et, compte
+>   personnel ouvert, ceux partagés avec lui ; écrire, masquer ou
+>   bloquer un auteur.
 >
 > Aucun serveur : le téléphone parle directement aux postes de
 > l'officine, sur le Wi-Fi ou par Internet quand un poste est rendu
@@ -145,6 +148,15 @@ Réponses à vérifier par l'officine avant de les soumettre :
   document de patient envoyé par l'équipe. Déclarer « informations de
   santé » comme données *traitées sur l'appareil*, non collectées par
   le développeur.
+- **Contenu publié par l'utilisateur** : un compte ouvert sur le
+  téléphone publie des billets, publics ou scellés pour des comptes
+  choisis, que les postes de l'officine passent aux autres officines du
+  réseau — à l'initiative de l'utilisateur, signés par son compte, sans
+  serveur. Le formulaire et la règle du Play Store sur les contenus
+  générés par les utilisateurs demandent de quoi écarter un auteur : «
+  Masquer » et « Bloquer », au fil même. Vérifier au moment de la
+  soumission si ces billets se déclarent en « données partagées »
+  (transfert à l'initiative de l'utilisateur).
 - **Autorisations** : `INTERNET`, `ACCESS_WIFI_STATE`,
   `CHANGE_WIFI_MULTICAST_STATE` (entendre les annonces des postes sur
   le Wi-Fi), `USE_BIOMETRIC` (ouvrir la base).
@@ -170,7 +182,12 @@ exemple).
 > messagerie de l'équipe et ses fichiers joints, qui peuvent concerner
 > des patients) proviennent des postes de l'officine auxquels
 > l'utilisateur a relié son téléphone, et n'en sortent que vers ces
-> mêmes postes, chiffrées de bout en bout. Elles sont conservées sur le
+> mêmes postes, chiffrées de bout en bout. Seule exception : les
+> billets qu'un utilisateur publie depuis son compte personnel, que les
+> postes de l'officine passent, à sa demande, aux autres officines du
+> réseau — en clair s'il les a voulus publics, scellés pour leurs seuls
+> lecteurs sinon. La phrase du compte reste sur le téléphone, scellée
+> sous un code. Les données sont conservées sur le
 > téléphone dans une base chiffrée, dont la clé est protégée par le
 > magasin de clés Android et le verrouillage de l'écran.
 >

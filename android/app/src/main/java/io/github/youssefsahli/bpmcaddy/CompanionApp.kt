@@ -78,7 +78,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.DayOfWeek
 import java.time.LocalDate
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import uniffi.bpm_caddy_mobile.AccountInfo
 import uniffi.bpm_caddy_mobile.Caddy
+import uniffi.bpm_caddy_mobile.NewsFeed
+import uniffi.bpm_caddy_mobile.NewsPost
 import uniffi.bpm_caddy_mobile.displayDate
 import uniffi.bpm_caddy_mobile.eventCategories
 
@@ -494,33 +498,246 @@ private fun MessagesScreen(state: AppState, caddy: Caddy) {
     }
 }
 
-/** Le fil des actualités, en lecture : les billets publics des comptes. */
+/**
+ * **Le fil des actualités** : les billets publics des comptes et, compte
+ * ouvert, ceux qu'on partage avec lui ; écrire, effacer les siens,
+ * masquer ou bloquer un auteur.
+ */
 @Composable
 private fun NewsScreen(state: AppState, caddy: Caddy) {
-    val posts by produceState(emptyList(), state.revision) {
-        value = withContext(Dispatchers.IO) {
-            runCatching { caddy.news(LocalDate.now().toString(), 200u) }.getOrDefault(emptyList())
-        }
+    val open by produceState<AccountInfo?>(null, state.revision) {
+        value = withContext(Dispatchers.IO) { caddy.openAccount() }
     }
-    Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(T("mobile_news"), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-            OutlinedButton(onClick = { state.sync() }, enabled = !state.busy) { Text(T("mobile_sync")) }
-        }
-        Hint(T("mobile_news_hint"))
-        if (posts.isEmpty()) Hint(T("mobile_news_empty"))
-        LazyColumn(Modifier.fillMaxSize()) {
-            items(posts) { p ->
-                Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
-                    Row {
-                        Text(p.author, Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
-                        Text(p.written, style = MaterialTheme.typography.bodySmall)
-                    }
-                    Text(p.text)
+    val feed by produceState<NewsFeed?>(null, state.revision) {
+        value = withContext(Dispatchers.IO) { runCatching { caddy.news(today(), 200u) }.getOrNull() }
+    }
+    val people by produceState(emptyList<AccountInfo>(), state.revision) {
+        value = withContext(Dispatchers.IO) { runCatching { caddy.people() }.getOrDefault(emptyList()) }
+    }
+    var asked by remember { mutableStateOf<NewsPost?>(null) }
+    asked?.let { p ->
+        AlertDialog(
+            onDismissRequest = { asked = null },
+            title = { Text(p.author) },
+            text = { Text(T("mobile_news_hold_hint")) },
+            confirmButton = {
+                TextButton(onClick = {
+                    asked = null
+                    state.account(true, { it.holdAuthor(p.authorId, "masquer", now()) })
+                }) { Text(T("news_mute")) }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = {
+                        asked = null
+                        state.account(true, { it.holdAuthor(p.authorId, "bloquer", now()) })
+                    }) { Text(T("news_block")) }
+                    TextButton(onClick = { asked = null }) { Text(T("mobile_cancel")) }
                 }
-                HorizontalDivider()
+            },
+        )
+    }
+    LazyColumn(Modifier.fillMaxSize()) {
+        item(key = "head") {
+            Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(T("mobile_news"), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                OutlinedButton(onClick = { state.sync() }, enabled = !state.busy) { Text(T("mobile_sync")) }
             }
         }
+        item(key = "account") {
+            val shown = open
+            if (shown == null) AccountDoor(state, caddy) else PostForm(state, shown, people)
+        }
+        val posts = feed?.posts.orEmpty()
+        if (posts.isEmpty()) item(key = "empty") { Hint(T("mobile_news_empty")) }
+        items(posts, key = { "${it.authorId}/${it.item}" }) { p ->
+            Column(
+                Modifier.fillMaxWidth()
+                    .clickable(enabled = open != null && !p.mine) { asked = p }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(p.author, Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                    if (p.shared) {
+                        Text(
+                            T("compte_reach_shared"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
+                    }
+                    Text(p.written, style = MaterialTheme.typography.bodySmall)
+                }
+                Text(p.text)
+                if (p.mine) {
+                    TextButton(onClick = {
+                        state.account(true, { it.deletePost(p.item, p.seq, now()); T("compte_post_deleted") })
+                    }) { Text(T("news_delete")) }
+                }
+            }
+            HorizontalDivider()
+        }
+        val hidden = feed?.hidden ?: 0u
+        if (hidden > 0u) item(key = "hidden") { Hint(T("news_hidden").replace("{}", hidden.toString())) }
+        val held = people.filter { it.hold != "lire" }
+        if (open != null && held.isNotEmpty()) {
+            item(key = "held") { DayHeader(T("compte_holds").replace("{}", held.size.toString())) }
+            items(held, key = { "h${it.id}" }) { a ->
+                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    val word = if (a.hold == "bloquer") T("mobile_news_blocked") else T("mobile_news_muted")
+                    Text("${a.name} · $word", Modifier.weight(1f))
+                    TextButton(onClick = {
+                        state.account(true, { it.holdAuthor(a.id, "lire", now()) })
+                    }) { Text(T("compte_hold_restore")) }
+                }
+            }
+        }
+        if (open != null) {
+            item(key = "close") {
+                Row(Modifier.padding(8.dp)) {
+                    OutlinedButton(onClick = { state.account(false, { it.accountClose(); null }) }) {
+                        Text(T("compte_close"))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Le moment, en secondes : ce qui numérote une version. */
+private fun now(): ULong = (System.currentTimeMillis() / 1000).toULong()
+
+/** Sans compte ouvert : ouvrir un compte gardé ici, ou le retrouver par sa phrase. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AccountDoor(state: AppState, caddy: Caddy) {
+    val kept by produceState(emptyList<AccountInfo>(), state.revision) {
+        value = withContext(Dispatchers.IO) { runCatching { caddy.keptAccounts() }.getOrDefault(emptyList()) }
+    }
+    var recovering by rememberSaveable { mutableStateOf(false) }
+    var pick by rememberSaveable { mutableStateOf<String?>(null) }
+    // Ce qui porte une phrase ou un code ne se sauve pas dans l'état de
+    // l'activité : `remember`, pas `rememberSaveable`.
+    var pin by remember { mutableStateOf("") }
+    var pin2 by remember { mutableStateOf("") }
+    var words by remember { mutableStateOf("") }
+    val secret = Modifier.fillMaxWidth()
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+        Hint(T("mobile_news_hint"))
+        if (!recovering && kept.isNotEmpty()) {
+            val chosen = pick ?: kept.first().id
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                kept.forEach { a ->
+                    FilterChip(selected = a.id == chosen, onClick = { pick = a.id }, label = { Text(a.name) })
+                }
+            }
+            OutlinedTextField(
+                pin, { pin = it }, secret, singleLine = true,
+                label = { Text(T("compte_pin")) },
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = {
+                    val typed = pin
+                    pin = ""
+                    state.account(false, { it.accountUnlock(chosen, typed); null })
+                }) { Text(T("compte_unlock")) }
+                TextButton(onClick = { recovering = true }) { Text(T("compte_recover")) }
+            }
+        } else {
+            OutlinedTextField(
+                words, { words = it }, secret, minLines = 2,
+                label = { Text(T("compte_phrase_type")) },
+                keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password),
+            )
+            Hint(T("compte_phrase_hint"))
+            OutlinedTextField(
+                pin, { pin = it }, secret, singleLine = true,
+                label = { Text(T("compte_pin_new")) },
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            )
+            OutlinedTextField(
+                pin2, { pin2 = it }, secret, singleLine = true,
+                label = { Text(T("compte_pin_again")) },
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = {
+                    if (pin != pin2) {
+                        state.notice(T("compte_pin_differ"))
+                    } else {
+                        val (w, p) = words to pin
+                        state.account(false, { it.accountRecover(w, p); T("compte_recovered") }) { ok ->
+                            if (ok) {
+                                words = ""
+                                pin = ""
+                                pin2 = ""
+                                recovering = false
+                            }
+                        }
+                    }
+                }) { Text(T("compte_recover")) }
+                if (kept.isNotEmpty()) TextButton(onClick = { recovering = false }) { Text(T("mobile_cancel")) }
+            }
+            Hint(T("mobile_news_create_on_desktop"))
+        }
+    }
+}
+
+/** Compte ouvert : qui, et le billet qu'on écrit — public, ou pour les comptes cochés. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PostForm(state: AppState, open: AccountInfo, people: List<AccountInfo>) {
+    var text by rememberSaveable { mutableStateOf("") }
+    var shared by rememberSaveable { mutableStateOf(false) }
+    var readers by remember { mutableStateOf(setOf<String>()) }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+        Text(T("compte_status").replace("{}", open.name), fontWeight = FontWeight.SemiBold)
+        OutlinedTextField(
+            text, { text = it }, Modifier.fillMaxWidth(), minLines = 2,
+            label = { Text(T("news_write")) },
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+        )
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = !shared, onClick = { shared = false }, label = { Text(T("compte_reach_public")) })
+            FilterChip(selected = shared, onClick = { shared = true }, label = { Text(T("compte_reach_shared")) })
+        }
+        if (shared) {
+            val choosable = people.filter { it.hold != "bloquer" }
+            if (choosable.isEmpty()) Hint(T("compte_nobody"))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                choosable.forEach { a ->
+                    FilterChip(
+                        selected = a.id in readers,
+                        onClick = { readers = if (a.id in readers) readers - a.id else readers + a.id },
+                        label = { Text(a.name) },
+                    )
+                }
+            }
+        }
+        Text(
+            T("compte_no_patient"),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+        Button(onClick = {
+            val (t, to) = text to if (shared) readers.toList() else emptyList()
+            if (shared && to.isEmpty()) {
+                state.notice(T("compte_need_reader"))
+                return@Button
+            }
+            val at = java.time.LocalTime.now()
+            val time = "%02d:%02d".format(at.hour, at.minute)
+            state.account(true, { it.publishPost(t, to, today(), time, now()); T("compte_post_done") }) { ok ->
+                if (ok) {
+                    text = ""
+                    readers = emptySet()
+                }
+            }
+        }) { Text(T("news_publish")) }
     }
 }
 

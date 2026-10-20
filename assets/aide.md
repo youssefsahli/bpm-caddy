@@ -1921,7 +1921,11 @@ est une lecture : ses enregistrements continuent de passer par les
 officines comme ceux de tous, et il lit ce que vous rendez public.
 
 Sur le **téléphone**, l'onglet Messages porte aussi le fil
-(« Actualités ») : les billets publics, en lecture.
+(« Actualités »). Sans compte, les billets publics se lisent. Un compte
+s'y retrouve par ses douze mots, sous un code propre au téléphone (il se
+crée sur un poste) ; ouvert, il lit ce qu'on partage avec lui, publie,
+efface ses billets, et un appui sur le billet d'un autre propose de le
+masquer ou de le bloquer. Il se ferme quand le téléphone se verrouille.
 
 # Connexions
 

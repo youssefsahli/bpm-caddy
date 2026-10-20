@@ -293,6 +293,23 @@ class AppState(application: android.app.Application) : androidx.lifecycle.Androi
         }
     }
 
+    /**
+     * **Un geste du compte** (ouvrir, publier, effacer, masquer…) : la
+     * phrase qu'il rend s'affiche, le fil se relit ; ce qui s'écrit part
+     * tout de suite si un poste est là. `then(true)` quand c'est fait.
+     */
+    fun account(writes: Boolean, block: (Caddy) -> String?, then: (Boolean) -> Unit = {}) {
+        val c = caddy ?: return
+        scope.launch {
+            val done = withContext(Dispatchers.IO) { runCatching { block(c) } }
+            done.onFailure { note = said(it) }
+            done.getOrNull()?.let { note = it }
+            revision++
+            then(done.isSuccess)
+            if (done.isSuccess && writes) sync()
+        }
+    }
+
     private fun work(block: () -> String) {
         if (busy) return
         busy = true
