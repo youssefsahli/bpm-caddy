@@ -1790,6 +1790,7 @@ const MIGRATIONS: &[&str] = &[
         account TEXT NOT NULL,
         post    INTEGER NOT NULL DEFAULT 0
     )",
+    "ALTER TABLE account_homes ADD COLUMN post INTEGER NOT NULL DEFAULT 0",
 ];
 
 /// Un paquet à faire : les trois fichiers ouverts par la session, la
@@ -48188,7 +48189,13 @@ impl Db {
     pub fn officine_accounts(&self) -> Result<std::collections::BTreeSet<String>, String> {
         let mut stmt = self
             .conn
-            .prepare("SELECT account FROM account_homes UNION SELECT account FROM account_keys")
+            .prepare(
+                // Un poste retiré ne garde plus rien pour l'officine — ni
+                // un téléphone perdu, revenu sous un autre numéro.
+                "SELECT account FROM account_homes
+                 WHERE post NOT IN (SELECT post FROM sync_posts WHERE left_on <> '')
+                 UNION SELECT account FROM account_keys",
+            )
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([], |r| r.get::<_, String>(0))

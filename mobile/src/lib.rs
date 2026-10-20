@@ -90,8 +90,6 @@ fn failed(key: &'static str) -> CaddyError {
     }
 }
 
-/// Le nom d'un compte et le début de son empreinte, ou l'empreinte seule
-/// quand il ne se nomme pas ici.
 /// Une entrée d'agenda tapée sur le téléphone : le jour à la française
 /// (`260926`, `2609`, `26/09/2026`, l'année de `today` à défaut), les
 /// heures à la volée (`9h30`), un titre non vide. Rend (jour ISO, début,
@@ -125,6 +123,8 @@ fn typed_event(
     Ok((day, time, end_time, title.to_owned()))
 }
 
+/// Le nom d'un compte et le début de son empreinte, ou l'empreinte seule
+/// quand il ne se nomme pas ici.
 fn name_in(
     named: &std::collections::BTreeMap<String, bpm_caddy::compte::Profile>,
     account: &str,
@@ -267,7 +267,6 @@ pub struct NewsFeed {
     pub hidden: u32,
 }
 
-/// Un compte : gardé sur le téléphone, ou connu pour partager avec lui.
 /// Un rendez-vous du compte ouvert : le sien, ou partagé avec lui —
 /// montré dans l'agenda à part des entrées de l'officine, comme au bureau.
 #[derive(uniffi::Record)]
@@ -284,6 +283,7 @@ pub struct AccountRdv {
     pub seq: u64,
 }
 
+/// Un compte : gardé sur le téléphone, ou connu pour partager avec lui.
 #[derive(uniffi::Record)]
 pub struct AccountInfo {
     pub id: String,
@@ -1374,8 +1374,6 @@ impl Caddy {
             .collect())
     }
 
-    /// Ranger un enregistrement qu'on vient d'écrire — refusé à la
-    /// relecture, il ne se dit pas enregistré.
     /// Écrire un élément neuf du compte ouvert, pour `readers`, ou
     /// `alone` sans lecteur choisi. **Partagé reste partagé** : des
     /// lecteurs tous bloqués ne le font pas partir public (ni privé).
@@ -1436,6 +1434,8 @@ impl Caddy {
         self.keep_one(bytes)
     }
 
+    /// Ranger un enregistrement qu'on vient d'écrire — refusé à la
+    /// relecture, il ne se dit pas enregistré.
     fn keep_one(&self, bytes: Vec<u8>) -> Result<()> {
         match self.db().keep_account_records(&[bytes])? {
             0 => Err(failed("compte_write_failed")),

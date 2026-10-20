@@ -455,7 +455,9 @@ private fun AgendaScreen(state: AppState, caddy: Caddy) {
 private fun EventForm(state: AppState, caddy: Caddy, close: () -> Unit) {
     // Un compte ouvert : l'entrée peut aller dans le compte, privée ou
     // partagée, plutôt qu'à l'agenda de l'officine.
-    val open = remember { caddy.openAccount() }
+    val open by produceState<AccountInfo?>(null) {
+        value = withContext(Dispatchers.IO) { runCatching { caddy.openAccount() }.getOrNull() }
+    }
     val people by produceState(emptyList<AccountInfo>(), open) {
         value = if (open == null) emptyList() else withContext(Dispatchers.IO) {
             runCatching { caddy.people() }.getOrDefault(emptyList())
@@ -463,7 +465,7 @@ private fun EventForm(state: AppState, caddy: Caddy, close: () -> Unit) {
     }
     var inAccount by rememberSaveable { mutableStateOf(false) }
     var shared by rememberSaveable { mutableStateOf(false) }
-    var readers by remember { mutableStateOf(setOf<String>()) }
+    var readers by rememberSaveable { mutableStateOf(listOf<String>()) }
     var day by rememberSaveable { mutableStateOf(displayDate(today())) }
     var from by rememberSaveable { mutableStateOf("") }
     var to by rememberSaveable { mutableStateOf("") }

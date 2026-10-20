@@ -1183,7 +1183,8 @@ officines les gardent et les passent, réseau ouvert compris, sans
 pouvoir lire ce qui est scellé ni rien réécrire. Un poste ne publie que
 les comptes de l'officine — ouverts sur l'un de ses postes, téléphone
 compris : la table `account_homes`, qui voyage, en garde la trace sans
-la phrase, une ligne par poste, effacée quand ce poste retire le compte ; ce qui vient d'ailleurs circule par le
+la phrase, une ligne par poste, effacée quand ce poste retire le compte, sans effet
+une fois le poste retiré ; ce qui vient d'ailleurs circule par le
 journal qui l'a apporté. Ils sont lus des auteurs que le réseau lit —
 la signature du compte fait foi, pas celle du poste qui les a passés —
 enregistrement par enregistrement, si bien qu'aucune « correction »

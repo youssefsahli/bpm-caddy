@@ -4076,6 +4076,18 @@ mod tests {
         // Retiré du téléphone : sa version suivante ne part plus d'ici.
         a.forget_account(&phone.id()).unwrap();
         assert!(a.officine_accounts().unwrap().is_empty());
+        // Un poste retiré — un téléphone perdu — ne garde plus rien.
+        a.conn_exec_for_tests(
+            "INSERT INTO sync_posts (post, device, left_on) VALUES (5, 'perdu', '2026-10-20')",
+        )
+        .unwrap();
+        a.conn_exec_for_tests(&format!(
+            "INSERT INTO account_homes (id, account, post) VALUES ({}, '{}', 5)",
+            crate::db::next_id("account_homes"),
+            phone.id()
+        ))
+        .unwrap();
+        assert!(a.officine_accounts().unwrap().is_empty());
         a.keep_account_records(&[compte::write_profile(
             &phone,
             2,
