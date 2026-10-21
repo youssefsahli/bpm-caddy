@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.442.0] - 2026-10-22
+
 ### Added
 
 - **« Tester la connexion »** in Connexions: from a thread, whether the web gets out (port 443), whether the DHT answers (UDP), and each known officine's door, then its web door — written to the connections feed with what it means (a network that lets only the web out, doors filtered, nothing out at all).

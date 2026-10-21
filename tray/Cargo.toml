@@ -1,6 +1,6 @@
 [package]
 name = "bpm-tray"
-version = "0.441.0"
+version = "0.442.0"
 edition = "2021"
 description = "BPM-Caddy sur le bureau : l'icône de la zone de notification et le lancement à l'ouverture de session."
 license-file = "../LICENSE"
