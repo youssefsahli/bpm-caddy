@@ -44768,7 +44768,7 @@ impl Db {
         let mut stmt = self
             .conn
             .prepare(&format!(
-                "{CAISSE_SELECT} WHERE day >= ?1 AND day <= ?2 ORDER BY day, id"
+                "{CAISSE_SELECT} WHERE day >= ?1 AND day <= ?2 ORDER BY day, created_at, id"
             ))
             .map_err(|e| e.to_string())?;
         let rows = stmt

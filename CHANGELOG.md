@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.440.0] - 2026-10-21
+
 ### Added
 
 - **Phone: one day of the planning.** The companion's planning was

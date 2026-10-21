@@ -138,6 +138,12 @@ explorateur, biologie, campagne, registre, pièces, tableau de bord à la
 taille du texte ; chaque vue regardée à 1024x700 et 1280x800, échelles
 1,25 et 1,6, volets larges, base vierge) a passé son smoke dans les
 quatre formes (4daf63c), étiquetée le 17/10.
+La 0.440.0 (comptes — douze mots, éléments privés, partagés ou publics,
+semés par le réseau ; fil des actualités, masquer et bloquer ; le
+téléphone y lit, écrit, et change un jour du planning ; le journal d'un
+réseau oublie les versions remplacées et, au réseau ouvert, les plus
+anciennes d'une officine au bout de son budget ; une synchronisation des
+postes ne repasse plus tout le journal — chaque lot relu, corrigé).
 **Sans serveur, décidé le 16/10** : l'éditeur ne tient aucun serveur ;
 la question « qui tient la passerelle » ne se pose plus (la passerelle
 reste possible, tenue ou choisie par une officine). **À essayer en

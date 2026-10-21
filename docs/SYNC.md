@@ -1290,8 +1290,9 @@ le téléphone l'inscrit à `account_homes`.
    font plus : le premier mot, § 7.8.)
 3. **L'ordre des lignes d'un même jour** se lit encore par numéro dans
    quelques vues ; entre deux postes, le bloc du second passe après celui
-   du premier. Le registre des stupéfiants et l'historique des versions
-   suivent désormais l'heure d'écriture (`created_at`, `card_edits.at`).
+   du premier. Le registre des stupéfiants, l'historique des versions et
+   les comptages de caisse d'un même soir suivent désormais l'heure
+   d'écriture (`created_at`, `card_edits.at`).
 4. **Un relais qui garde** (une boîte chez une autre officine, pour
    échanger sans que les deux bouts soient en ligne en même temps) : pas
    construit, et pas sans décision — l'officine qui garderait, même
@@ -1301,8 +1302,8 @@ le téléphone l'inscrit à `account_homes`.
    NAT-PMP / PCP non plus : UPnP seul.
 5. **Le compagnon écrit l'équipe, l'agenda, les fiches et un jour du
    planning à la fois**, par les chemins du bureau (comparer-et-écrire) ;
-   une trame, une nature (congé, garde), il ne les pose pas. Pas de
-   fichier joint depuis le téléphone.
+   une trame, une nature (congé, garde), il ne les pose pas. Il joint un
+   fichier à un message (`Caddy::send_file`, 5 Mio au plus).
 6. **Les versions oubliées des comptes** ne s'oublient que chez qui les
    a tenues. Un pair qui n'en a jamais tenu une en garde le nom pour
    toujours et en redemande une part à chaque conversation, faute d'un
