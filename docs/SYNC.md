@@ -798,8 +798,13 @@ lui-même — sa ligne à l'arrivée, son nom et ses adresses ensuite ; les
 gestes sur les autres postes (retirer, nommer) voyagent **aussi** sous
 `Officine`, que seuls les postes de bureau scellent. Ce qu'un téléphone
 modifié peut encore écrire : les fiches, l'agenda, le planning et la
-messagerie — ses quatre flux, comme un poste de bureau. L'application
-ne lui propose pas d'écrire le planning ; rien d'autre ne l'en empêche.
+messagerie — ses quatre flux, comme un poste de bureau. Au planning,
+l'application ne lui fait écrire qu'un jour à la fois : d'autres heures
+ou pas là ce jour (`Caddy::edit_shift_day`, `cancel_shift_day`), et un
+jour de plus à ses initiales (`add_shift_day`) — jamais une trame, ni
+une absence (« pas là » sur un congé rendrait la journée qu'il cache). Le
+jour d'une trame y prend une exception, la trame intacte, par la règle
+du bureau (`Db::set_occurrence`, comparer-et-écrire sur le jour montré).
 
 **Il tient tout, il n'ouvre que sa part.** Le journal est un graphe :
 un enregistrement nomme ses parents, de tous les flux. Le compagnon
@@ -1267,9 +1272,15 @@ le téléphone l'inscrit à `account_homes`.
 ## 8. Travaux restants
 
 1. **Le journal des postes ne se compacte pas.** Chaque poste garde tout
-   ce qui a été écrit depuis la fondation, et le relit en mémoire à
-   chaque synchronisation. Une photographie datée, et l'oubli de ce qui
-   la précède, viendront quand un groupe en aura besoin. Le journal d'un
+   ce qui a été écrit depuis la fondation, et le charge en mémoire (le
+   fil du poste une fois, le téléphone à chaque synchronisation). Il n'en
+   rouvre plus que ce qui n'est pas rangé (`Journal::read_unless`), n'en
+   écrit à la base que ce qu'elle n'a pas (`Posts::keep`), et au dossier
+   d'échange ne relit pas le fichier d'un poste qui n'a pas changé ni ne
+   réécrit le sien quand rien n'y est neuf. Une photographie datée, et
+   l'oubli de ce qui la précède, viendront quand un groupe en aura
+   besoin : un nouveau poste rejoue aujourd'hui le journal depuis la
+   photographie de fondation. Le journal d'un
    réseau, lui, oublie les versions remplacées des comptes et, au réseau
    ouvert, les plus anciens enregistrements d'une officine au bout de son
    budget (§ 7.13) ; leurs noms y restent, et comptent.
@@ -1288,9 +1299,10 @@ le téléphone l'inscrit à `account_homes`.
    l'hébergement pour compte de tiers, que le cadre HDS et le RGPD
    encadrent. Le relais construit (§ 7.9) ne garde rien.
    NAT-PMP / PCP non plus : UPnP seul.
-5. **Le compagnon écrit l'équipe, l'agenda et les fiches**, par les
-   chemins du bureau (comparer-et-écrire) ; le planning, il le lit
-   seulement. Pas de fichier joint depuis le téléphone.
+5. **Le compagnon écrit l'équipe, l'agenda, les fiches et un jour du
+   planning à la fois**, par les chemins du bureau (comparer-et-écrire) ;
+   une trame, une nature (congé, garde), il ne les pose pas. Pas de
+   fichier joint depuis le téléphone.
 6. **Les versions oubliées des comptes** ne s'oublient que chez qui les
    a tenues. Un pair qui n'en a jamais tenu une en garde le nom pour
    toujours et en redemande une part à chaque conversation, faute d'un

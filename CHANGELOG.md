@@ -10,6 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Phone: one day of the planning.** The companion's planning was
+  read-only. A long press on a shift now changes it for that day only —
+  other hours (staying until 12:30), or « Pas là ce jour » — and a day of
+  a pattern takes an exception, the pattern untouched, by the desktop's
+  rule (`Db::set_occurrence`, compare-and-set on the day shown, inside
+  one write transaction). « Un jour de plus » adds a one-off worked day
+  under the phone's initials. Patterns and natures (leave, duty) stay
+  on the desktop. The end-of-shift reading (an end before the start is
+  the next morning) is now one function both use.
+
 - **Accounts: one per person, kept in twelve words.** The new
   « Comptes » view (Ctrl+K « comptes ») creates an account from a name
   and a code for this post, shows a twelve-word phrase (BIP-39 French
@@ -113,6 +123,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   day only, the pattern stays whole.
 
 ### Fixed
+
+- **Posts: a synchronisation no longer goes through the whole journal.**
+  Every synchronisation decrypted every record the post had ever held,
+  then offered all of them again to the base (re-encoded, in one write
+  transaction on the shared base), and the exchange folder rewrote this
+  post's whole file and re-read, signature by signature, every other
+  post's — over a gigabyte at the founding post, with its scanned
+  pieces. A post now opens only the records it has not ranged, writes to
+  the base only the records it lacks (all of them again when the base
+  was emptied under it), rewrites its folder file only when it grows,
+  and skips a post's file whose size and date have not changed since it
+  was taken whole.
 
 - **Posts: a table added by an update gets its numbers.** A table that a
   later version adds after the group of posts was formed had no block of

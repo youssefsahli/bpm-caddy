@@ -1756,7 +1756,11 @@ Les pièces scannées restent sur le poste qui les a numérisées.
 Android d'un membre de l'équipe — sur le téléphone, onglet Poste,
 « Scanner le code » lit le code QR affiché, ou saisir le code : il lit les fiches, l'agenda, le
 planning et la messagerie, écrit à l'équipe, ajoute ou retire une
-entrée d'agenda, corrige une fiche. Il ne reçoit jamais la clé des
+entrée d'agenda, corrige une fiche. Au planning, un appui long sur un
+poste le change pour ce jour seul — d'autres heures, ou « Pas là ce
+jour » — sans toucher à la trame, et « Un jour de plus » pose un jour
+travaillé aux initiales du téléphone. Un congé, un arrêt ou une
+formation se modifient sur un poste. Il ne reçoit jamais la clé des
 dossiers, du registre, de la caisse ni des réglages : il transporte ces
 données chiffrées sans pouvoir les lire. Sa base s'ouvre avec le
 verrouillage du téléphone et se referme après cinq minutes hors de

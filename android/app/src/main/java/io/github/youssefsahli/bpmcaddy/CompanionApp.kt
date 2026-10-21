@@ -83,6 +83,7 @@ import uniffi.bpm_caddy_mobile.AccountInfo
 import uniffi.bpm_caddy_mobile.Caddy
 import uniffi.bpm_caddy_mobile.NewsFeed
 import uniffi.bpm_caddy_mobile.NewsPost
+import uniffi.bpm_caddy_mobile.ShiftItem
 import uniffi.bpm_caddy_mobile.displayDate
 import uniffi.bpm_caddy_mobile.eventCategories
 
@@ -577,6 +578,7 @@ private fun EventForm(
     )
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PlanningScreen(state: AppState, caddy: Caddy) {
     var start by rememberSaveable { mutableStateOf(monday(LocalDate.now()).toString()) }
@@ -586,17 +588,32 @@ private fun PlanningScreen(state: AppState, caddy: Caddy) {
             runCatching { caddy.planning(start, from.plusDays(6).toString()) }.getOrDefault(emptyList())
         }
     }
+    // Un appui long sur un poste : ce jour seul, d'autres heures ou pas là.
+    var editing by remember { mutableStateOf<ShiftItem?>(null) }
+    var adding by rememberSaveable { mutableStateOf(false) }
+    if (adding) ShiftForm(state, null) { adding = false }
+    editing?.let { s -> ShiftForm(state, s) { editing = null } }
     Column(Modifier.fillMaxSize()) {
-        WeekBar(from, move = { step ->
+        WeekBar(from, { step ->
             start = if (step == 0L) monday(LocalDate.now()).toString() else from.plusWeeks(step).toString()
-        })
+        }) {
+            OutlinedButton(onClick = { adding = true }, contentPadding = PaddingValues(horizontal = 12.dp)) {
+                Text(T("mobile_planning_add"))
+            }
+        }
         HorizontalDivider()
         if (shifts.isEmpty()) Hint(T("mobile_planning_empty"))
         LazyColumn(Modifier.fillMaxSize()) {
             shifts.groupBy { it.day }.toSortedMap().forEach { (day, list) ->
                 item(key = "d$day") { DayHeader(dayName(day)) }
                 items(list.sortedWith(compareBy({ it.startTime }, { it.operator }))) { s ->
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 3.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .combinedClickable(onClick = {}, onLongClick = {
+                                if (s.absence) state.notice(T("mobile_planning_absence")) else editing = s
+                            })
+                            .padding(horizontal = 12.dp, vertical = 3.dp),
+                    ) {
                         Text(s.operator, Modifier.width(56.dp), fontWeight = FontWeight.SemiBold)
                         val hours = listOf(s.startTime, s.endTime).filter { it.isNotBlank() }.joinToString("–")
                         Text(hours, Modifier.width(110.dp))
@@ -609,6 +626,73 @@ private fun PlanningScreen(state: AppState, caddy: Caddy) {
             }
         }
     }
+}
+
+/**
+ * **Un jour du planning** : `editing`, un poste montré, rouvert pour ce
+ * jour seul — d'autres heures, ou pas là ; sinon un jour de plus, aux
+ * initiales du téléphone.
+ */
+@Composable
+private fun ShiftForm(state: AppState, editing: ShiftItem?, close: () -> Unit) {
+    var day by rememberSaveable { mutableStateOf(displayDate(editing?.day ?: today())) }
+    var from by rememberSaveable { mutableStateOf(editing?.startTime ?: "") }
+    var to by rememberSaveable { mutableStateOf(editing?.endTyped ?: "") }
+    var pause by rememberSaveable {
+        mutableStateOf(editing?.pauseMinutes?.takeIf { it > 0 }?.toString() ?: "")
+    }
+    val who = state.settings.initials
+    AlertDialog(
+        onDismissRequest = close,
+        title = {
+            Text(
+                if (editing == null) T("mobile_planning_add")
+                else editing.operator + " · " + dayName(editing.day),
+            )
+        },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                if (editing == null) {
+                    OutlinedTextField(day, { day = it }, label = { Text(T("mobile_agenda_day")) }, singleLine = true)
+                    if (who.isBlank()) Hint(T("mobile_planning_who"))
+                }
+                Row {
+                    OutlinedTextField(from, { from = it }, Modifier.weight(1f), label = { Text(T("mobile_agenda_from")) }, singleLine = true)
+                    Spacer(Modifier.width(8.dp))
+                    OutlinedTextField(to, { to = it }, Modifier.weight(1f), label = { Text(T("mobile_agenda_to")) }, singleLine = true)
+                }
+                OutlinedTextField(
+                    pause, { pause = it }, label = { Text(T("mobile_planning_pause")) }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+                if (editing?.repeats == true) Hint(T("mobile_planning_this_day"))
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (editing != null) {
+                        state.planning({ it.editShiftDay(editing, from, to, pause) }) { ok -> if (ok) close() }
+                    } else {
+                        state.planning({ it.addShiftDay(who, day, from, to, pause, today()); true }) { ok ->
+                            if (ok) close()
+                        }
+                    }
+                },
+                enabled = from.isNotBlank() && (editing != null || who.isNotBlank()),
+            ) { Text(T("mobile_save")) }
+        },
+        dismissButton = {
+            Row {
+                if (editing != null) {
+                    TextButton(onClick = {
+                        state.planning({ it.cancelShiftDay(editing) }) { ok -> if (ok) close() }
+                    }) { Text(T("mobile_planning_off")) }
+                }
+                TextButton(onClick = close) { Text(T("mobile_cancel")) }
+            }
+        },
+    )
 }
 
 // ---------------------------------------------------------------- Messages

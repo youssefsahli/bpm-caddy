@@ -23,7 +23,9 @@
 
 use crate::db::{Applied, Db};
 use crate::replica::Flux;
-use bpm_sync::{Device, DeviceId, Intent, Journal, Meter, Record, Session, Stream, Trousseau};
+use bpm_sync::{
+    Device, DeviceId, Hash, Intent, Journal, Meter, Record, Session, Stream, Trousseau,
+};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -139,6 +141,17 @@ pub struct Posts {
     device: Device,
     trousseau: Option<Trousseau>,
     journal: Journal,
+    /// What the base already holds of the journal: [`Posts::keep`]
+    /// writes only the rest. The journal of a founding post, with its
+    /// pieces, passes the gigabyte, and it was encoded again and offered
+    /// whole to the base after every seal and every exchange.
+    kept: std::sync::Mutex<std::collections::BTreeSet<Hash>>,
+    /// The other posts' folder files this journal took whole: their size
+    /// and date. Seeded from the base at loading (`FOLDER_SEEN`, written
+    /// after `keep`, so a fresh journal holds what they carried) and kept
+    /// **here**, not read back: a file another instance took would not be
+    /// in this journal, and this one would not relay it.
+    folder_seen: std::collections::BTreeMap<String, (u64, u64)>,
 }
 
 /// Le plus gros enregistrement qu'un fichier d'échange porte : celui que
@@ -148,11 +161,71 @@ pub struct Posts {
 /// et que la mémoire, elle, l'est.
 const MOST_RECORD_BYTES: usize = 256 * 1024;
 
+/// Les fichiers des autres postes au dossier d'échange, lus entiers la
+/// dernière fois : leur taille et leur date (`sync_local`).
+const FOLDER_SEEN: &str = "folder_seen";
+
+/// Ce poste sans son journal ([`Posts::identity`]).
+pub struct Identity {
+    device: Device,
+    trousseau: Option<Trousseau>,
+}
+
+impl Identity {
+    pub fn in_group(&self) -> bool {
+        self.trousseau.is_some()
+    }
+
+    /// L'identité de ce poste, en hexadécimal — ce que `sync_posts` porte.
+    pub fn device_hex(&self) -> String {
+        hex(&self.device.id().0)
+    }
+
+    /// L'empreinte de ce poste, en cinq groupes.
+    pub fn groups(&self) -> String {
+        self.device.id().fingerprint().groups()
+    }
+
+    /// Le nom du groupe, en cinq groupes.
+    pub fn group_groups(&self) -> Option<String> {
+        self.trousseau.as_ref().map(|t| t.name().groups())
+    }
+}
+
 impl Posts {
     /// Lire l'identité de ce poste, la clé des postes s'il en a une, et
     /// le journal. L'identité est tirée au hasard la première fois, **dans
     /// la base chiffrée**.
     pub fn load(db: &Db) -> Result<Self, String> {
+        let Identity { device, trousseau } = Self::identity(db)?;
+        let mut journal = Journal::new();
+        for bytes in db.sync_records()? {
+            if let Ok(record) = Record::decode(&bytes) {
+                journal.insert(record);
+            }
+        }
+        let kept = journal.records().map(Record::id).collect();
+        let folder_seen = db
+            .sync_local(FOLDER_SEEN)
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default();
+        let mut posts = Self {
+            device,
+            trousseau,
+            journal,
+            kept: std::sync::Mutex::new(kept),
+            folder_seen,
+        };
+        posts.trust_known(db);
+        Ok(posts)
+    }
+
+    /// **Qui est ce poste, sans son journal** : son identité et la clé des
+    /// postes s'il en a une — ce qu'un écran montre. Lire le journal, c'est
+    /// décoder et vérifier chaque enregistrement de sa vie ; le téléphone
+    /// le faisait à chaque rafraîchissement de son onglet Poste. Pas de quoi
+    /// écrire : une écriture a besoin du journal, que [`Posts::load`] lit.
+    pub fn identity(db: &Db) -> Result<Identity, String> {
         let seed = match db.sync_local("device") {
             Some(s) => s,
             None => {
@@ -168,19 +241,10 @@ impl Posts {
             .sync_local("trousseau")
             .and_then(|t| unhex_vec(&t))
             .and_then(|b| Trousseau::decode(&b));
-        let mut journal = Journal::new();
-        for bytes in db.sync_records()? {
-            if let Ok(record) = Record::decode(&bytes) {
-                journal.insert(record);
-            }
-        }
-        let mut posts = Self {
+        Ok(Identity {
             device: Device::from_seed(seed),
             trousseau,
-            journal,
-        };
-        posts.trust_known(db);
-        Ok(posts)
+        })
     }
 
     /// **Seuls les postes du groupe règlent l'horloge** — la règle que le
@@ -386,12 +450,28 @@ impl Posts {
     }
 
     fn keep(&self, db: &Db) -> Result<usize, String> {
-        let all: Vec<(String, Vec<u8>)> = self
+        let mut kept = self
+            .kept
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // A base emptied under this post (it left the group, or joined
+        // again) holds less than it is remembered to, or is no longer this
+        // post's — its identity was drawn again: everything again.
+        if db.sync_record_count()? < kept.len()
+            || db.sync_local("device").as_deref() != Some(hex(&self.device.seed()).as_str())
+        {
+            kept.clear();
+        }
+        let new: Vec<&Record> = self
             .journal
             .records()
-            .map(|r| (hex(&r.id().0), r.encode()))
+            .filter(|r| !kept.contains(&r.id()))
             .collect();
-        db.keep_sync_records(&all)
+        let rows: Vec<(String, Vec<u8>)> =
+            new.iter().map(|r| (hex(&r.id().0), r.encode())).collect();
+        let added = db.keep_sync_records(&rows)?;
+        kept.extend(new.iter().map(|r| r.id()));
+        Ok(added)
     }
 
     /// Ranger dans la base ce que les autres postes ont écrit, **dans
@@ -424,9 +504,14 @@ impl Posts {
         } else {
             &self.journal
         };
+        // **Ce qui est rangé ne se rouvre pas** : un poste ne déchiffre
+        // plus, à chaque synchronisation, chaque enregistrement de sa vie.
+        let applied = db.sync_applied_all()?;
         for s in STREAMS.into_iter().filter(|s| trousseau.opens(*s)) {
             let Some(flux) = flux_of(s) else { continue };
-            let reading = journal.read(trousseau, s);
+            let reading = journal.read_unless(std::slice::from_ref(trousseau), s, |h| {
+                applied.contains(&hex(&h.0))
+            });
             report.unopened += reading.unopened.len();
             facts.extend(reading.facts.into_iter().map(|f| (flux, f)));
         }
@@ -434,6 +519,8 @@ impl Posts {
         let strict = trousseau.is_whole();
         for (flux, f) in facts {
             let id = hex(&f.id.0);
+            // Read again one by one: what another thread of this post
+            // ranged since the set was read is not ranged twice.
             if db.sync_applied(&id) {
                 continue;
             }
@@ -515,21 +602,40 @@ impl Posts {
         self.trust_known(db);
         let me = self.device.id();
         let known = self.known(db);
-        let mine: Vec<u8> = self
+        let target = folder.join(self.folder_file());
+        // **Réécrit seulement quand il grandit** : ce poste n'ôte rien de
+        // ce qu'il a écrit, et son fichier — plus d'un gigaoctet chez le
+        // poste fondateur, avec ses pièces — repartait entier à chaque
+        // passage.
+        let size: usize = self
             .journal
             .records()
             .filter(|r| r.author() == me)
-            .flat_map(|r| {
-                let bytes = r.encode();
-                let mut framed = (bytes.len() as u32).to_be_bytes().to_vec();
-                framed.extend(bytes);
-                framed
-            })
-            .collect();
-        let target = folder.join(self.folder_file());
-        let part = folder.join(format!("{}.part", self.folder_file()));
-        std::fs::write(&part, &mine).map_err(|e| e.to_string())?;
-        std::fs::rename(&part, &target).map_err(|e| e.to_string())?;
+            .map(|r| 4 + r.encoded_len())
+            .sum();
+        let written = std::fs::metadata(&target).map(|m| m.len()).ok();
+        if written != u64::try_from(size).ok() {
+            let mine: Vec<u8> = self
+                .journal
+                .records()
+                .filter(|r| r.author() == me)
+                .flat_map(|r| {
+                    let bytes = r.encode();
+                    let mut framed = (bytes.len() as u32).to_be_bytes().to_vec();
+                    framed.extend(bytes);
+                    framed
+                })
+                .collect();
+            let part = folder.join(format!("{}.part", self.folder_file()));
+            std::fs::write(&part, &mine).map_err(|e| e.to_string())?;
+            std::fs::rename(&part, &target).map_err(|e| e.to_string())?;
+        }
+        // **Le fichier d'un autre poste qui n'a pas changé ne se relit
+        // pas** — sa taille et sa date, retenues quand tout ce qu'il
+        // portait a été pris ou était déjà là. Un enregistrement écarté
+        // (d'un auteur pas encore connu) le fait relire au passage suivant.
+        let seen = std::mem::take(&mut self.folder_seen);
+        let mut now_seen = std::collections::BTreeMap::new();
         let mut added = 0;
         for entry in std::fs::read_dir(folder)
             .map_err(|e| e.to_string())?
@@ -539,6 +645,20 @@ impl Posts {
             if path == target || path.extension().and_then(|e| e.to_str()) != Some("bpmposte") {
                 continue;
             }
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let stamp = entry.metadata().ok().map(|m| {
+                let at = m
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map_or(0, |d| d.as_secs());
+                (m.len(), at)
+            });
+            if let Some(stamp) = stamp.filter(|s| seen.get(&name) == Some(s)) {
+                now_seen.insert(name, stamp);
+                continue;
+            }
+            let mut whole = true;
             // **Lu enregistrement par enregistrement**, jamais entier :
             // n'importe qui peut écrire dans un partage, et un fichier de
             // plusieurs gigaoctets emportait la mémoire du poste — d'où une
@@ -578,16 +698,29 @@ impl Posts {
                     } else {
                         known.contains(&record.author())
                     };
-                    if !self.journal.has(&record.id()) && ours && self.journal.insert(record) {
+                    if !ours {
+                        whole = false;
+                    } else if self.journal.insert(record) {
                         added += 1;
                     }
+                } else {
+                    whole = false;
                 }
+            }
+            if let (true, Some(stamp)) = (whole, stamp) {
+                now_seen.insert(name, stamp);
             }
         }
         // Rien de neuf, rien à réécrire : tout le journal repartait dans une
         // transaction sur la base partagée, à chaque minute.
         if added > 0 {
             self.keep(db)?;
+        }
+        // Après `keep` : un fichier n'est retenu lu qu'une fois rangé.
+        let seen = serde_json::to_string(&now_seen).map_err(|e| e.to_string())?;
+        self.folder_seen = now_seen;
+        if db.sync_local(FOLDER_SEEN).as_deref() != Some(seen.as_str()) {
+            db.set_sync_local(FOLDER_SEEN, &seen)?;
         }
         Ok(added)
     }
@@ -2616,6 +2749,15 @@ mod tests {
             })
             .unwrap();
         assert_eq!(phone, "0611");
+        // Rien de neuf : le fichier de A ne se relit pas, celui de B ne se
+        // réécrit pas.
+        let own = folder.join(pb.folder_file());
+        let before = std::fs::metadata(&own).unwrap().modified().unwrap();
+        assert!(b
+            .sync_local(FOLDER_SEEN)
+            .is_some_and(|s| s.contains(&pa.folder_file())));
+        assert_eq!(pb.exchange_folder(&b, &folder).unwrap(), 0);
+        assert_eq!(std::fs::metadata(&own).unwrap().modified().unwrap(), before);
         for entry in std::fs::read_dir(&folder).unwrap().flatten() {
             let bytes = std::fs::read(entry.path()).unwrap();
             let text = String::from_utf8_lossy(&bytes);
@@ -2641,6 +2783,8 @@ mod tests {
             device: Device::from_seed([9; 32]),
             trousseau: pa.trousseau.clone(),
             journal: Journal::new(),
+            kept: Default::default(),
+            folder_seen: Default::default(),
         };
         let key = rogue.trousseau.clone().unwrap();
         rogue
@@ -3167,6 +3311,37 @@ mod tests {
         let t = pa.trousseau.clone().unwrap();
         let share = t.share(&COMPANION);
         assert!(!pa.journal.read(&share, Stream::Equipe).facts.is_empty());
+    }
+
+    /// **Le journal se range et se lit par ce qui est nouveau** : la base
+    /// ne reçoit que les enregistrements qu'elle n'a pas — tous de
+    /// nouveau quand on l'a vidée sous le poste —, et ce qui est rangé ne
+    /// se rouvre pas.
+    #[test]
+    fn the_journal_is_kept_and_read_by_what_is_new() {
+        let (_dir, _s, a) = post("kept");
+        let mut pa = Posts::load(&a).unwrap();
+        pa.found(&a, "Comptoir 1", "2026-09-26").unwrap();
+        let held = a.sync_record_count().unwrap();
+        assert_eq!(held, pa.journal.len());
+        assert_eq!(pa.keep(&a).unwrap(), 0, "rien de nouveau");
+        for r in pa.journal.records() {
+            assert_eq!(r.encoded_len(), r.encode().len());
+        }
+        a.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        assert!(pa.publish(&a, "2026-09-26").unwrap() >= 1);
+        assert_eq!(a.sync_record_count().unwrap(), pa.journal.len());
+        assert!(pa.journal.len() > held);
+        let t = pa.trousseau.clone().unwrap();
+        let ring = std::slice::from_ref(&t);
+        assert!(!pa.journal.read(&t, Stream::Dossiers).facts.is_empty());
+        assert!(pa
+            .journal
+            .read_unless(ring, Stream::Dossiers, |_| true)
+            .facts
+            .is_empty());
+        a.leave_posts().unwrap();
+        assert_eq!(pa.keep(&a).unwrap(), pa.journal.len());
     }
 
     /// **La clé des postes n'ouvre pas le réseau d'officines, et

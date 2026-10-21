@@ -54848,6 +54848,75 @@ impl Db {
         Ok(changed == 1)
     }
 
+    /// **One day of the planning, and only that day**: new hours, or
+    /// `None` — the day does not happen. What a screen that edits a day
+    /// at a time writes (the companion), by the desktop's rules:
+    ///
+    /// * a day of a pattern takes an exception naming the stored row,
+    ///   the pattern untouched — never the series;
+    /// * a day that already is an exception is rewritten, or cancelled,
+    ///   in its own row: a second exception for one day would leave the
+    ///   reading to whichever row sorts last;
+    /// * a one-off is rewritten, or removed.
+    ///
+    /// Compare-and-set on the whole occurrence the screen showed — row,
+    /// pattern, person, hours, pause, nature —, read again inside the
+    /// write transaction. `false`: the day changed, reload.
+    pub fn set_occurrence(
+        &self,
+        shown: &PlannedShift,
+        now: Option<(&str, &str, i64)>,
+    ) -> Result<bool, String> {
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
+        let same = |s: &PlannedShift| {
+            s.id == shown.id
+                && s.source_id == shown.source_id
+                && s.operator == shown.operator
+                && s.start_time == shown.start_time
+                && s.end_time == shown.end_time
+                && s.pause_minutes == shown.pause_minutes
+                && s.kind == shown.kind
+        };
+        if !self
+            .shifts_between(&shown.day, &shown.day)?
+            .iter()
+            .any(|s| s.day == shown.day && same(s))
+        {
+            return Ok(false);
+        }
+        let pattern =
+            shown.id == shown.source_id && stored_step(&shown.cadence, shown.repeat_days) > 0;
+        if pattern {
+            let (start, end, pause) = now.unwrap_or((&shown.start_time, "", 0));
+            self.add_shift(&NewShift {
+                operator: shown.operator.clone(),
+                day: shown.day.clone(),
+                start_time: start.to_owned(),
+                end_time: end.to_owned(),
+                pause_minutes: pause,
+                kind: shown.kind.clone(),
+                supersedes: shown.source_id,
+                cancelled: now.is_none(),
+                ..Default::default()
+            })?;
+        } else {
+            match now {
+                Some((start, end, pause)) => tx.execute(
+                    "UPDATE shifts SET start_time = ?1, end_time = ?2, pause_minutes = ?3
+                     WHERE id = ?4",
+                    (start, end, pause, shown.id),
+                ),
+                None if shown.id != shown.source_id => {
+                    tx.execute("UPDATE shifts SET cancelled = 1 WHERE id = ?1", [shown.id])
+                }
+                None => tx.execute("DELETE FROM shifts WHERE id = ?1", [shown.id]),
+            }
+            .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+
     /// The days of one month (ISO), Monday-aligned grid included: the
     /// returned vector always starts on a Monday and ends on a Sunday.
     pub fn month_grid(&self, offset_months: i64) -> Result<Vec<String>, String> {
@@ -55956,6 +56025,31 @@ pub fn parse_hour(text: &str) -> Option<String> {
         return None;
     }
     Some(format!("{h:02}:{m:02}"))
+}
+
+/// The stored end of a shift, from what was typed in both fields.
+///
+/// Empty when no end was written — **et cela ne vaut pas zéro
+/// heure**. Otherwise `HH:MM`, and a end earlier than the start is
+/// the next morning rather than a mistake: a garde is typed
+/// « 20 h » → « 2 h » and stored « 26:00 », one interval, filed
+/// under the day it begins.
+pub fn shift_end(from: &str, to: &str) -> String {
+    let Some(end) = parse_hour(to)
+        .as_deref()
+        .and_then(crate::planning::parse_bound)
+    else {
+        return String::new();
+    };
+    let start = parse_hour(from)
+        .as_deref()
+        .and_then(crate::planning::parse_bound)
+        .unwrap_or(0);
+    crate::planning::format_bound(if end <= start && start > 0 {
+        end.saturating_add(24 * 60)
+    } else {
+        end
+    })
 }
 
 /// Days since 1970-01-01 for a civil date, and back — Howard Hinnant's
@@ -58695,6 +58789,30 @@ impl Db {
                 Ok(())
             })
             .is_ok()
+    }
+
+    /// How many records of the posts' journal the base holds.
+    pub fn sync_record_count(&self) -> Result<usize, String> {
+        self.conn
+            .query_row("SELECT COUNT(*) FROM sync_records", [], |r| {
+                r.get::<_, i64>(0)
+            })
+            .map(|n| usize::try_from(n).unwrap_or(0))
+            .map_err(|e| e.to_string())
+    }
+
+    /// Every record this post has ranged, in one reading.
+    pub fn sync_applied_all(&self) -> Result<std::collections::HashSet<String>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id FROM sync_applied")
+            .map_err(|e| e.to_string())?;
+        let ids = stmt
+            .query_map([], |r| r.get::<_, String>(0))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<_, _>>()
+            .map_err(|e| e.to_string());
+        ids
     }
 
     /// Marquer rangé un enregistrement qui n'a rien à ranger — écrit par
@@ -64058,6 +64176,96 @@ mod tests {
         // `assert_ne!` passerait ou non selon ce qu'il y a d'autre dans
         // la base — un test qui dépend de cela ne prouve rien.
         assert_eq!(db.shift_family(base).unwrap().len(), 3);
+    }
+
+    /// **Un jour, et seulement ce jour** (`set_occurrence`, ce que le
+    /// compagnon écrit) : le jour d'une trame prend une exception, un
+    /// jour déjà contredit est réécrit dans sa propre ligne, un poste d'un
+    /// jour est réécrit ou ôté — et rien de ce qui a bougé depuis
+    /// l'écran n'est écrasé.
+    #[test]
+    fn one_day_of_the_planning_changes_and_only_that_day() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-shifts-day-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("shifts.db"), "secret").unwrap();
+        db.add_shift(&NewShift {
+            operator: "CL".to_owned(),
+            day: "2026-09-01".to_owned(),
+            start_time: "09:00".to_owned(),
+            end_time: "12:00".to_owned(),
+            kind: "JOURNEE".to_owned(),
+            repeat_days: 7,
+            ..Default::default()
+        })
+        .unwrap();
+        let day = |d: &str| db.shifts_between(d, d).unwrap();
+        let ends = || -> Vec<(String, String)> {
+            db.shifts_between("2026-09-01", "2026-09-22")
+                .unwrap()
+                .into_iter()
+                .map(|s| (s.day, s.end_time))
+                .collect()
+        };
+        // Elle reste jusqu'à 12 h 30 le 8 : les autres mardis ne bougent pas.
+        let shown = day("2026-09-08").remove(0);
+        assert!(db
+            .set_occurrence(&shown, Some(("09:00", "12:30", 0)))
+            .unwrap());
+        assert_eq!(
+            ends(),
+            [
+                ("2026-09-01".to_owned(), "12:00".to_owned()),
+                ("2026-09-08".to_owned(), "12:30".to_owned()),
+                ("2026-09-15".to_owned(), "12:00".to_owned()),
+                ("2026-09-22".to_owned(), "12:00".to_owned()),
+            ]
+        );
+        // L'écran qui montrait encore 12 h ne réécrit rien.
+        assert!(!db
+            .set_occurrence(&shown, Some(("09:00", "13:00", 0)))
+            .unwrap());
+        // Réécrit encore : la même exception, pas une seconde.
+        let rows = |db: &Db| -> i64 {
+            db.conn
+                .query_row("SELECT COUNT(*) FROM shifts", [], |r| r.get(0))
+                .unwrap()
+        };
+        let before = rows(&db);
+        let shown = day("2026-09-08").remove(0);
+        assert!(db
+            .set_occurrence(&shown, Some(("09:00", "13:00", 30)))
+            .unwrap());
+        assert_eq!(rows(&db), before);
+        let now = day("2026-09-08").remove(0);
+        assert_eq!((now.end_time.as_str(), now.pause_minutes), ("13:00", 30));
+        // Absente ce jour-là, puis le 15 : deux jours vides, la trame reste.
+        assert!(db.set_occurrence(&now, None).unwrap());
+        let shown = day("2026-09-15").remove(0);
+        assert!(db.set_occurrence(&shown, None).unwrap());
+        assert!(day("2026-09-08").is_empty() && day("2026-09-15").is_empty());
+        assert_eq!(day("2026-09-22").len(), 1);
+        // Un samedi de plus, d'un jour : réécrit, puis ôté.
+        db.add_shift(&NewShift {
+            operator: "CL".to_owned(),
+            day: "2026-09-19".to_owned(),
+            start_time: "09:00".to_owned(),
+            end_time: "12:00".to_owned(),
+            kind: "JOURNEE".to_owned(),
+            cadence: crate::planning::Cadence::Unique.as_str().to_owned(),
+            ..Default::default()
+        })
+        .unwrap();
+        let shown = day("2026-09-19").remove(0);
+        assert!(db
+            .set_occurrence(&shown, Some(("08:30", "12:00", 0)))
+            .unwrap());
+        let shown = day("2026-09-19").remove(0);
+        assert_eq!(shown.start_time, "08:30");
+        assert!(db.set_occurrence(&shown, None).unwrap());
+        assert!(day("2026-09-19").is_empty());
+        assert_eq!(day("2026-09-22").len(), 1, "la trame est intacte");
     }
 
     /// **Deux PC ne déplacent pas le même poste chacun de son côté.**

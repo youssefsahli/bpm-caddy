@@ -207,6 +207,22 @@ class AppState(application: android.app.Application) : androidx.lifecycle.Androi
         }
     }
 
+    /**
+     * Écrire au planning — un jour changé, ôté ou ajouté ; `then(true)`
+     * quand c'est écrit. `false` du pont : le jour a changé ailleurs, relu.
+     */
+    fun planning(write: (Caddy) -> Boolean, then: (Boolean) -> Unit = {}) {
+        val c = caddy ?: return
+        scope.launch {
+            val done = withContext(Dispatchers.IO) { runCatching { write(c) } }
+            done.onFailure { note = said(it) }
+            if (done.getOrNull() == false) note = T("planning_stale")
+            revision++
+            then(done.getOrNull() == true)
+            if (done.getOrNull() == true) sync()
+        }
+    }
+
     /** Retirer une entrée, si elle dit encore ce que l'écran montrait. */
     fun deleteEvent(id: Long, shownTitle: String) {
         val c = caddy ?: return

@@ -123,6 +123,26 @@ fn typed_event(
     Ok((day, time, end_time, title.to_owned()))
 }
 
+/// Les heures d'un poste tapées au téléphone : le début requis, la fin
+/// facultative (`db::shift_end`, le lendemain quand elle est plus tôt), la
+/// pause en minutes.
+fn typed_shift(start: &str, end: &str, pause: &str) -> Result<(String, String, i64)> {
+    let start_time =
+        bpm_caddy::db::parse_hour(start).ok_or_else(|| failed("planning_needs_an_hour"))?;
+    if !end.trim().is_empty() && bpm_caddy::db::parse_hour(end).is_none() {
+        return Err(failed("mobile_agenda_bad_hour"));
+    }
+    let pause = match pause.trim() {
+        "" => 0,
+        typed => typed
+            .parse::<i64>()
+            .ok()
+            .filter(|p| *p >= 0)
+            .ok_or_else(|| failed("planning_bad_pause"))?,
+    };
+    Ok((start_time, bpm_caddy::db::shift_end(start, end), pause))
+}
+
 /// Le nom d'un compte et le début de son empreinte, ou l'empreinte seule
 /// quand il ne se nomme pas ici.
 fn name_in(
@@ -230,14 +250,29 @@ pub struct AgendaItem {
     pub category: String,
 }
 
-#[derive(uniffi::Record)]
+#[derive(uniffi::Record, Clone)]
 pub struct ShiftItem {
+    /// La ligne rangée qu'on voit, et celle de la trame : ce que
+    /// [`Caddy::edit_shift_day`] renvoie pour nommer ce jour.
+    pub id: i64,
+    pub source_id: i64,
     pub day: String,
     pub operator: String,
     pub start_time: String,
     pub end_time: String,
+    pub pause_minutes: i64,
     pub kind: String,
+    /// La nature telle que la base la range ; `kind` est son libellé.
+    pub kind_key: String,
     pub note: String,
+    /// Un jour d'une trame : le changer ne change que ce jour.
+    pub repeats: bool,
+    /// La fin telle qu'on la tape (« 2h » pour une garde rangée « 26:00 ») :
+    /// ce que le formulaire reprend, et que la lecture des heures relit.
+    pub end_typed: String,
+    /// Un congé, un arrêt, une formation : pas d'heures à changer au
+    /// téléphone — « pas là ce jour » y rendrait la journée qu'il cache.
+    pub absence: bool,
 }
 
 /// Un billet du fil des actualités.
@@ -402,7 +437,7 @@ impl Caddy {
 
     pub fn status(&self) -> Result<Status> {
         let db = self.db();
-        let posts = Posts::load(&db)?;
+        let posts = Posts::identity(&db)?;
         let me = posts.device_hex();
         let list = if posts.in_group() {
             db.sync_posts()?
@@ -792,18 +827,84 @@ impl Caddy {
             .shifts_between(&from, &to)?
             .into_iter()
             .map(|s| ShiftItem {
+                end_typed: bpm_caddy::planning::parse_bound(&s.end_time)
+                    .map(bpm_caddy::planning::typed_hour)
+                    .unwrap_or_default(),
+                id: s.id,
+                source_id: s.source_id,
+                repeats: s.id != s.source_id || s.repeat_days > 0,
                 day: s.day,
                 operator: s.operator,
                 start_time: s.start_time,
                 end_time: s.end_time,
+                pause_minutes: s.pause_minutes,
                 // The label the desktop shows, not the key it stores; a
                 // kind a later version adds reads as written.
                 kind: bpm_caddy::planning::ShiftKind::parse(&s.kind)
                     .map(|k| k.label().to_owned())
-                    .unwrap_or(s.kind),
+                    .unwrap_or_else(|| s.kind.clone()),
+                absence: bpm_caddy::planning::ShiftKind::parse(&s.kind)
+                    .is_some_and(bpm_caddy::planning::ShiftKind::is_absence),
+                kind_key: s.kind,
                 note: s.note,
             })
             .collect())
+    }
+
+    /// **Ce jour, et seulement ce jour** : d'autres heures pour un poste
+    /// du planning — rester jusqu'à 12 h 30, arriver à 8 h 30. Le jour
+    /// d'une trame prend une exception et la trame ne bouge pas, comme au
+    /// bureau (`Db::set_occurrence`). Les heures se tapent à la volée
+    /// (`9h30`) ; une fin plus tôt que le début est le lendemain matin ;
+    /// la pause en minutes, vide : aucune. `false` : le jour a changé
+    /// ailleurs depuis l'écran, à relire.
+    pub fn edit_shift_day(
+        &self,
+        shown: ShiftItem,
+        start_time: String,
+        end_time: String,
+        pause: String,
+    ) -> Result<bool> {
+        let (start, end, pause) = typed_shift(&start_time, &end_time, &pause)?;
+        self.set_shift_day(&shown, Some((&start, &end, pause)))
+    }
+
+    /// **Pas là ce jour** : le jour d'une trame n'a pas lieu, la trame
+    /// reste ; un poste d'un jour est ôté. `false` : à relire.
+    pub fn cancel_shift_day(&self, shown: ShiftItem) -> Result<bool> {
+        self.set_shift_day(&shown, None)
+    }
+
+    /// **Un jour de plus** : un poste d'un seul jour pour `operator`
+    /// (ses initiales), une journée travaillée. Le jour tapé à la
+    /// française, `today` donne l'année d'un jour tapé sans elle.
+    pub fn add_shift_day(
+        &self,
+        operator: String,
+        day: String,
+        start_time: String,
+        end_time: String,
+        pause: String,
+        today: String,
+    ) -> Result<i64> {
+        use bpm_caddy::db::{parse_french_date, YearHint};
+        let operator = initials(&operator);
+        if operator.trim().is_empty() {
+            return Err(failed("mobile_planning_who"));
+        }
+        let year = today.get(..4).and_then(|y| y.parse().ok()).unwrap_or(2026);
+        let day = parse_french_date(&day, year, YearHint::Future)?;
+        let (start, end, pause) = typed_shift(&start_time, &end_time, &pause)?;
+        Ok(self.db().add_shift(&bpm_caddy::db::NewShift {
+            operator,
+            day,
+            start_time: start,
+            end_time: end,
+            pause_minutes: pause,
+            kind: bpm_caddy::planning::ShiftKind::Journee.as_str().to_owned(),
+            cadence: bpm_caddy::planning::Cadence::Unique.as_str().to_owned(),
+            ..Default::default()
+        })?)
     }
 
     /// **Le fil des actualités**, dans l'ordre du bureau (`compte::feed`),
@@ -1412,6 +1513,33 @@ impl Caddy {
 }
 
 impl Caddy {
+    /// Ce jour tel que le téléphone l'a montré, retrouvé dans la base
+    /// (le rythme de sa trame), puis écrit en compare-and-set.
+    fn set_shift_day(&self, shown: &ShiftItem, now: Option<(&str, &str, i64)>) -> Result<bool> {
+        if bpm_caddy::planning::ShiftKind::parse(&shown.kind_key)
+            .is_some_and(bpm_caddy::planning::ShiftKind::is_absence)
+        {
+            return Err(failed("mobile_planning_absence"));
+        }
+        let db = self.db();
+        let Some(stored) = db
+            .shifts_between(&shown.day, &shown.day)?
+            .into_iter()
+            .find(|s| s.id == shown.id && s.source_id == shown.source_id)
+        else {
+            return Ok(false);
+        };
+        let shown = bpm_caddy::db::PlannedShift {
+            operator: shown.operator.clone(),
+            start_time: shown.start_time.clone(),
+            end_time: shown.end_time.clone(),
+            pause_minutes: shown.pause_minutes,
+            kind: shown.kind_key.clone(),
+            ..stored
+        };
+        Ok(db.set_occurrence(&shown, now)?)
+    }
+
     /// Le compte ouvert, rouvert de sa phrase pour l'appel : la clé ne
     /// se copie pas, elle se refait.
     fn account(&self) -> Option<bpm_caddy::compte::Account> {
@@ -2102,6 +2230,112 @@ mod tests {
         assert!(!c.delete_event(id, "Autre titre".into()).unwrap());
         assert!(c.delete_event(id, "Formation vaccination".into()).unwrap());
         assert_eq!(event_categories().len(), 5);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// **One day from the phone**: a day more, typed the counter's way; a
+    /// day of a pattern changed or emptied alone; nothing written over a
+    /// day that moved since the phone showed it.
+    #[test]
+    fn the_phone_changes_one_day_of_the_planning_and_only_that_day() {
+        let d = dir("planning");
+        let c = Caddy::open(d.display().to_string(), "k".into()).unwrap();
+        c.db()
+            .add_shift(&bpm_caddy::db::NewShift {
+                operator: "CL".into(),
+                day: "2026-09-29".into(),
+                start_time: "09:00".into(),
+                end_time: "12:00".into(),
+                kind: "JOURNEE".into(),
+                repeat_days: 7,
+                ..Default::default()
+            })
+            .unwrap();
+        let week = |from: &str, to: &str| c.planning(from.into(), to.into()).unwrap();
+        let shown = week("2026-10-06", "2026-10-06").remove(0);
+        assert!(shown.repeats);
+        assert!(c
+            .edit_shift_day(shown.clone(), "9".into(), "12h30".into(), "".into())
+            .unwrap());
+        assert_eq!(week("2026-10-06", "2026-10-06")[0].end_time, "12:30");
+        assert_eq!(week("2026-10-13", "2026-10-13")[0].end_time, "12:00");
+        // Ce que le téléphone montrait n'est plus : rien n'est écrit.
+        assert!(!c
+            .edit_shift_day(shown, "9".into(), "13".into(), "".into())
+            .unwrap());
+        assert!(c
+            .edit_shift_day(
+                week("2026-10-06", "2026-10-06").remove(0),
+                "9".into(),
+                "13".into(),
+                "45 min".into()
+            )
+            .is_err());
+        let shown = week("2026-10-13", "2026-10-13").remove(0);
+        assert!(c.cancel_shift_day(shown).unwrap());
+        assert!(week("2026-10-13", "2026-10-13").is_empty());
+        assert_eq!(week("2026-10-20", "2026-10-20").len(), 1);
+        // Un samedi de plus.
+        assert!(c
+            .add_shift_day(
+                "".into(),
+                "0310".into(),
+                "9".into(),
+                "12".into(),
+                "".into(),
+                "2026-09-26".into()
+            )
+            .is_err());
+        c.add_shift_day(
+            "cl".into(),
+            "0310".into(),
+            "9".into(),
+            "12".into(),
+            "".into(),
+            "2026-09-26".into(),
+        )
+        .unwrap();
+        let saturday = week("2026-10-03", "2026-10-03").remove(0);
+        assert_eq!(
+            (saturday.operator.as_str(), saturday.repeats),
+            ("CL", false)
+        );
+        assert!(c.cancel_shift_day(saturday).unwrap());
+        assert!(week("2026-10-03", "2026-10-03").is_empty());
+        // Une garde finit le lendemain : sa fin se reprend comme on la tape.
+        c.add_shift_day(
+            "CL".into(),
+            "0410".into(),
+            "20".into(),
+            "2".into(),
+            "".into(),
+            "2026-09-26".into(),
+        )
+        .unwrap();
+        let garde = week("2026-10-04", "2026-10-04").remove(0);
+        assert_eq!(
+            (garde.end_time.as_str(), garde.end_typed.as_str()),
+            ("26:00", "2h")
+        );
+        let end = garde.end_typed.clone();
+        assert!(c
+            .edit_shift_day(garde, "20".into(), end, "30".into())
+            .unwrap());
+        assert_eq!(week("2026-10-04", "2026-10-04")[0].end_time, "26:00");
+        // Un congé ne se change pas au téléphone.
+        c.db()
+            .add_shift(&bpm_caddy::db::NewShift {
+                operator: "AB".into(),
+                day: "2026-10-05".into(),
+                start_time: "09:00".into(),
+                kind: bpm_caddy::planning::ShiftKind::Conge.as_str().into(),
+                cadence: bpm_caddy::planning::Cadence::Unique.as_str().into(),
+                ..Default::default()
+            })
+            .unwrap();
+        let off = week("2026-10-05", "2026-10-05").remove(0);
+        assert!(off.absence);
+        assert!(c.cancel_shift_day(off).is_err());
         let _ = std::fs::remove_dir_all(&d);
     }
 

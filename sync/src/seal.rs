@@ -350,6 +350,20 @@ impl Record {
         w.finish()
     }
 
+    /// How many bytes [`Record::encode`] gives, without writing them.
+    pub fn encoded_len(&self) -> usize {
+        1 + 32
+            + 8
+            + 4
+            + 32 * self.parents.len()
+            + 1
+            + if self.corrects.is_some() { 32 } else { 0 }
+            + 24
+            + 4
+            + self.sealed.len()
+            + 64
+    }
+
     /// Reads a record off a link — and **checks it before returning
     /// it**, so that a `Record` in hand is one whose name matches its
     /// content and whose signature its author made. There is no way to

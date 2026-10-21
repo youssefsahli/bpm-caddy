@@ -573,6 +573,21 @@ impl Journal {
     /// Newest first, so the ordinary record costs one attempt. A record
     /// no key in the ring opens is still **named** rather than skipped.
     pub fn read_with(&self, keyring: &[Trousseau], stream: Stream) -> Reading {
+        self.read_unless(keyring, stream, |_| false)
+    }
+
+    /// The same, **without opening what the reader already took**: a
+    /// record `done` names is left out of the facts, unopened and
+    /// uncounted — a post that has ranged its journal does not decrypt
+    /// every record of its life again at each synchronisation.
+    /// Corrections are found as before, over every record, so a
+    /// corrected record that was not taken is still hidden.
+    pub fn read_unless(
+        &self,
+        keyring: &[Trousseau],
+        stream: Stream,
+        done: impl Fn(&Hash) -> bool,
+    ) -> Reading {
         let of_stream: Vec<&Record> = self
             .ordered()
             .into_iter()
@@ -608,7 +623,7 @@ impl Journal {
 
         let mut reading = Reading::default();
         for record in of_stream {
-            if corrected.contains(&record.id()) {
+            if corrected.contains(&record.id()) || done(&record.id()) {
                 continue;
             }
             let payload = match keyring.iter().find_map(|key| record.open(key).ok()) {

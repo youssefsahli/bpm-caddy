@@ -17296,7 +17296,7 @@ struct PostsSummary {
 #[cfg(feature = "sync")]
 impl PostsSummary {
     fn read(db: &Db) -> Result<Self, String> {
-        let posts = crate::postes::Posts::load(db)?;
+        let posts = crate::postes::Posts::identity(db)?;
         Ok(Self {
             in_group: posts.in_group(),
             groups: posts.groups(),
@@ -17304,7 +17304,7 @@ impl PostsSummary {
             post: db.sync_post(),
             reference: db.sync_reference(),
             posts: db.sync_posts()?,
-            records: posts.record_count(),
+            records: db.sync_record_count()?,
             conflicts: db.sync_conflicts()?,
         })
     }
@@ -44049,29 +44049,10 @@ impl App {
         Ok(until)
     }
 
-    /// The stored end of a shift, from what was typed in both fields.
-    ///
-    /// Empty when no end was written — **et cela ne vaut pas zéro
-    /// heure**. Otherwise `HH:MM`, and a end earlier than the start is
-    /// the next morning rather than a mistake: a garde is typed
-    /// « 20 h » → « 2 h » and stored « 26:00 », one interval, filed
-    /// under the day it begins.
+    /// The stored end of a shift, from what was typed in both fields:
+    /// [`db::shift_end`], the one rule the companion writes by too.
     fn shift_end(from: &str, to: &str) -> String {
-        let Some(end) = db::parse_hour(to)
-            .as_deref()
-            .and_then(planning::parse_bound)
-        else {
-            return String::new();
-        };
-        let start = db::parse_hour(from)
-            .as_deref()
-            .and_then(planning::parse_bound)
-            .unwrap_or(0);
-        planning::format_bound(if end <= start && start > 0 {
-            end.saturating_add(24 * 60)
-        } else {
-            end
-        })
+        db::shift_end(from, to)
     }
 
     /// The planning's own row: write a shift, or remove the one that is
