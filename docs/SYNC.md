@@ -703,7 +703,7 @@ sous l'identité annoncée. Une synchronisation compose au plus
 d'abord. Pas de dossier d'échange pour lui.
 
 **Au-delà du réseau local : la DHT** (`src/dht.rs`). Le poste de
-référence demande au routeur d'ouvrir la porte des officines (UPnP,
+référence demande au routeur d'ouvrir la porte des officines (UPnP, PCP ou NAT-PMP,
 `reach::open_officine_mapping`) et, s'il l'obtient, s'annonce sous un
 sujet fixe de la DHT publique de BitTorrent ; toutes les demi-heures, il
 y cherche les autres et en compose au plus `dht::MOST_DIALS`, chacune au
@@ -868,8 +868,8 @@ téléphone.
 
 * ouvre une seconde porte, **IPv6 seulement** (`Door::open_v6_only`), à
   côté de celle du réseau local, sur le même port ;
-* demande au routeur d'ouvrir ce port en IPv4 (UPnP IGD, bail d'une
-  heure, renouvelé toutes les vingt minutes, refermé à la sortie) ;
+* demande au routeur d'ouvrir ce port en IPv4 (UPnP IGD, sinon PCP ou
+  NAT-PMP sur son port 5351, bail d'une heure, renouvelé toutes les vingt minutes, refermé à la sortie) ;
 * **publie** ses adresses composables dans sa ligne de `sync_posts`
   (colonne `reach`, flux `Equipe`) : l'adresse publique du routeur, et
   ses adresses IPv6 globales. Une adresse privée, ou derrière une
@@ -912,7 +912,7 @@ téléphone de son équipe, **sans rien lire ni rien garder**
 
 * **« Relayer les téléphones des officines du réseau »** (`[reseau]
   relais`, port `port_relais`, 7746) sur un poste de l'officine qui
-  relaie — joignable, par UPnP ou un transfert dans sa box. Il annonce
+  relaie — joignable, par UPnP, PCP, NAT-PMP ou un transfert dans sa box. Il annonce
   où au réseau (`{"t":"relais","a":…}`, retiré en l'éteignant) et
   n'accepte que les groupes de postes que des officines du réseau lui
   ont demandé de relayer.
@@ -1299,7 +1299,6 @@ le téléphone l'inscrit à `account_homes`.
    chiffrées de bout en bout, les données de santé d'une autre ferait de
    l'hébergement pour compte de tiers, que le cadre HDS et le RGPD
    encadrent. Le relais construit (§ 7.9) ne garde rien.
-   NAT-PMP / PCP non plus : UPnP seul.
 5. **Le compagnon écrit l'équipe, l'agenda, les fiches et un jour du
    planning à la fois**, par les chemins du bureau (comparer-et-écrire) ;
    une trame, une nature (congé, garde), il ne les pose pas. Il joint un

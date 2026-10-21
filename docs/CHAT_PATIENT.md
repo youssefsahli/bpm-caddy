@@ -263,7 +263,7 @@ main, requête scellée ouverte par le poste, réponse ouverte par la page.
 
 * **La voie directe demande un poste joignable** : une adresse IPv6
   publique que la box laisse entrer, ou une box qui ouvre le port UDP
-  7748 (UPnP, ou à la main). Une ligne derrière une traduction
+  7748 (UPnP, PCP ou NAT-PMP, ou à la main). Une ligne derrière une traduction
   d'opérateur (CGNAT) sans IPv6 ne se joint pas ; un téléphone sur un
   réseau qui bloque l'UDP (certains Wi-Fi d'entreprise) non plus. Si
   toutes les adresses d'une officine changent entre deux visites d'un

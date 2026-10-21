@@ -555,11 +555,12 @@ fn listen_direct(
                         public.push(a.to_string())
                     }
                     IpAddr::V4(_) => {
-                        if let Some(p) = public_v4 {
-                            public.push(
-                                std::net::SocketAddr::new(IpAddr::V4(*p.ip()), a.port())
-                                    .to_string(),
-                            );
+                        // The port the router granted: PCP and NAT-PMP
+                        // may grant another than the one asked for.
+                        if let Some(p) = public_v4.map(|p| p.to_string()) {
+                            if !public.contains(&p) {
+                                public.push(p);
+                            }
                         }
                     }
                     IpAddr::V6(_) => public.push(a.to_string()),

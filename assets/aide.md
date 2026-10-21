@@ -309,7 +309,7 @@ part avec lui.
 **L'allumer** : « Régler la messagerie… », dans l'onglet, une fois pour
 l'officine. **La voie directe** (cochée) suffit : chaque poste en
 service écoute à ses adresses publiques — son IPv6, ou la box qui lui
-ouvre le port UDP 7748 (UPnP) — et la page le joint en WebRTC. L'onglet
+ouvre le port UDP 7748 (UPnP, PCP ou NAT-PMP) — et la page le joint en WebRTC. L'onglet
 dit si ce poste est joignable ; un poste qui ne l'est pas laisse répondre
 les autres, et le code porte les adresses de tous. Si aucun ne l'est,
 ouvrir ce port dans la box, ou régler une passerelle.
@@ -1580,7 +1580,7 @@ ouvert » arrête tout échange avec les officines non appairées ; « Rejoindre
 le réseau ouvert » le rouvre.
 
 **Au-delà du réseau local.** Le poste de référence demande à la box
-d'ouvrir la porte des officines (UPnP) et s'annonce sur la DHT publique
+d'ouvrir la porte des officines (UPnP, PCP ou NAT-PMP) et s'annonce sur la DHT publique
 de BitTorrent — un annuaire partagé sans serveur : il n'y paraît qu'une
 adresse, ni nom ni contenu. Toutes les demi-heures, il y trouve d'autres
 officines et en joint quelques-unes. Une officine dont la box refuse
@@ -1770,7 +1770,7 @@ arrière-plan ; il n'est jamais poste de référence.
 
 **Hors de l'officine**, un téléphone joint un poste « Joignable depuis
 Internet » (Options › Base, éteint par défaut) : le poste écoute aussi
-en IPv6, demande au routeur d'ouvrir son port (UPnP) et communique ses
+en IPv6, demande au routeur d'ouvrir son port (UPnP, PCP ou NAT-PMP) et communique ses
 adresses aux téléphones. Seuls les postes du groupe obtiennent une
 réponse. À défaut, le dossier d'échange ou des adresses saisies sur le
 téléphone.

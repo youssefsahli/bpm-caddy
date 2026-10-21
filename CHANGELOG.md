@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Reach: PCP and NAT-PMP.** A router that does not speak UPnP is asked in PCP (RFC 6887), then NAT-PMP (RFC 6886), on its port 5351 — for the posts' door reachable from the internet, the officines' door the DHT announces, and the patients' direct way. The router is looked for at the gateway Linux declares, else at `.1` and `.254` of the officine's network; the external port the router grants is the one published, and the mapping is closed by the same language at exit. The PCP nonce is derived, so a restart renews the mapping instead of being refused until the old lease ends.
+
 ## [0.440.0] - 2026-10-21
 
 ### Added
