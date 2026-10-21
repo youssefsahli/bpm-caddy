@@ -2015,6 +2015,19 @@ fiches reçues d'autres officines), et activité depuis le lancement.
 « Tout synchroniser » contacte immédiatement les postes joignables et
 les officines du réseau.
 
+**« Tester la connexion »** dit, au fil des connexions, ce qui sort de
+ce poste : le web (port 443), la DHT (qui trouve les officines du réseau
+ouvert ; muette quand le réseau bloque l'UDP, comme souvent à l'hôpital
+ou en entreprise), et la porte de chaque officine connue, puis sa
+**porte web**. Une officine dont la box le permet (UPnP) ouvre aussi
+le port 443 de sa box vers sa porte, quand il est libre (Options ›
+Base, « Ouvrir aussi la porte web », à décocher quand la box se sert
+de son 443) : un poste d'un
+réseau qui ne laisse sortir que le web la joint par là, de lui-même.
+Sans officine connue et sans DHT, rien ne se trouve d'ici : « Joindre »
+une officine par son adresse (Carte), ou un dossier d'échange
+(Options › Base).
+
 # Le poste en service
 
 Un poste **reste en service** tant que l'application tourne : les

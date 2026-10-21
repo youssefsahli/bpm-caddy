@@ -1570,6 +1570,9 @@ pub struct OfficineSide {
     /// **Relayer aussi les patients** (`[reseau] relais_patients`) : le
     /// relais tient aussi, en UDP, la voie directe des pages.
     pub relay_patients: bool,
+    /// **La porte web** (`[reseau] porte_web`) : le port 443 de la box
+    /// vers la porte des officines (`dht::spawn`).
+    pub web_door: bool,
 }
 
 /// Met un drapeau d'arrêt à vrai quand il tombe.
@@ -1760,6 +1763,7 @@ fn auto(
             path.to_path_buf(),
             password.to_owned(),
             side.listen,
+            side.web_door,
             side.name.clone(),
             dht_on,
             move |line| {
@@ -2127,7 +2131,11 @@ fn auto(
             && net_door_looked.is_none_or(|t| t.elapsed() >= Duration::from_secs(60))
         {
             net_door_looked = Some(Instant::now());
-            if crate::network::Net::load_all(&db).is_ok_and(|n| !n.is_empty()) {
+            // D'un réseau ou non, sans lire un journal : `load_all` les
+            // relisait tous, chaque minute que la porte restait fermée.
+            if db.setting("net_trousseau").is_some()
+                || db.net_networks().is_ok_and(|n| !n.is_empty())
+            {
                 net_door = bpm_sync::link::Door::open(&format!("0.0.0.0:{}", side.listen)).ok();
                 if net_door.is_none() && !net_door_said {
                     net_door_said = true;
@@ -3575,6 +3583,7 @@ mod tests {
                 relay_port: 0,
                 posts_relay: false,
                 relay_patients: false,
+                web_door: false,
             },
             Pace::default(),
         );

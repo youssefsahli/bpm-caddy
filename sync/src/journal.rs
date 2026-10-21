@@ -79,7 +79,7 @@ pub struct Limits {
 }
 
 /// Every record this post holds.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Journal {
     records: BTreeMap<Hash, Record>,
     /// Records nothing else names as a parent: what a new record will

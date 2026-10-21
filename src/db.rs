@@ -343,6 +343,16 @@ CREATE TABLE IF NOT EXISTS net_records (
     -- `net_networks` pour les autres.
     network TEXT NOT NULL DEFAULT ''
 );
+-- Combien de fois des enregistrements du réseau ont quitté la base
+-- (oubliés, réseau quitté) : ce qui garde vrai le journal qu'un
+-- processus tient lu (`network::cached_journal`) — une ligne qui part ne
+-- se voit pas en lisant les suivantes.
+CREATE TABLE IF NOT EXISTS net_journal_gen (k INTEGER PRIMARY KEY, n INTEGER NOT NULL);
+-- Combien d'écritures ont touché ce que l'écran montre — tout sauf le
+-- journal du réseau et ses réglages, la capture des postes, les compteurs
+-- d'usage : posé par les déclencheurs `screen_*` (`Db::install_screen_watch`).
+-- L'écran ne relit pas tout quand seul le fil du réseau a écrit.
+CREATE TABLE IF NOT EXISTS screen_rev (k INTEGER PRIMARY KEY, n INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS net_forgotten (
     -- Les enregistrements du réseau oubliés parce qu'une version plus
     -- récente du même auteur les remplace (`Journal::forget`) : leur nom,
@@ -1513,6 +1523,8 @@ const MIGRATIONS: &[&str] = &[
         author  TEXT NOT NULL DEFAULT '',
         parents TEXT NOT NULL DEFAULT ''
     )",
+    "CREATE TABLE IF NOT EXISTS net_journal_gen (k INTEGER PRIMARY KEY, n INTEGER NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS screen_rev (k INTEGER PRIMARY KEY, n INTEGER NOT NULL)",
     "CREATE TABLE IF NOT EXISTS net_networks (
         fingerprint     TEXT PRIMARY KEY,
         secret          TEXT NOT NULL,
@@ -42737,6 +42749,11 @@ fn table_row_of(table_key: &str, label: &str) -> Option<usize> {
 /// historique que plusieurs postes écrivent (`card_edits.at`).
 const AT_NOW: &str = "strftime('%Y-%m-%d %H:%M:%f', 'now')";
 
+/// Ce qu'écrit, dans la transaction qui l'efface, ce qui fait quitter la
+/// base à des enregistrements du réseau.
+const NET_GEN_BUMP: &str = "INSERT INTO net_journal_gen (k, n) VALUES (0, 1)
+     ON CONFLICT(k) DO UPDATE SET n = n + 1";
+
 fn write_tx(conn: &Connection) -> rusqlite::Result<rusqlite::Transaction<'_>> {
     rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
 }
@@ -42962,7 +42979,100 @@ impl Db {
             db.set_missing_blocks(post)?;
             db.install_capture(false)?;
         }
+        db.install_screen_watch()?;
         Ok(db)
+    }
+
+    /// **Ce que l'écran montre a-t-il changé ?** Le compteur que les
+    /// déclencheurs `screen_*` font monter : le même entre deux regards,
+    /// seules des tables que l'écran ne lit pas ont été écrites.
+    pub fn screen_rev(&self) -> i64 {
+        self.conn
+            .query_row("SELECT coalesce(max(n), 0) FROM screen_rev", [], |r| {
+                r.get(0)
+            })
+            .unwrap_or(0)
+    }
+
+    /// Les tables dont l'écran ne montre rien : le journal du réseau et
+    /// ce qu'il note de chaque officine, la capture et le journal des
+    /// postes (pas leurs questions), les compteurs d'usage. Chaque
+    /// officine qui frappe y écrivait, et l'écran relisait toutes ses
+    /// listes — un à-coup par officine, sur un poste lent.
+    fn screen_quiet(name: &str) -> bool {
+        // Les valeurs sourcées reçues s'affichent sur la fiche ouverte.
+        (name.starts_with("net_") && name != "net_facts")
+            || (name.starts_with("sync_") && name != "sync_conflicts")
+            || matches!(name, "telemetry" | "screen_rev")
+    }
+
+    /// Poser les déclencheurs qui font monter [`Db::screen_rev`], sur
+    /// chaque table de la base qu'il compte — ceux d'une table qu'une
+    /// version ajoute, à l'ouverture qui suit. Rien n'est écrit quand ils
+    /// sont déjà là : une ouverture qui écrit, l'écran d'un autre fil la
+    /// prendrait pour un autre poste.
+    fn install_screen_watch(&self) -> Result<(), String> {
+        let names: Vec<String> = {
+            let mut stmt = self
+                .conn
+                .prepare(
+                    "SELECT name, coalesce(sql, '') FROM sqlite_master
+                     WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+                )
+                .map_err(|e| e.to_string())?;
+            let all: Vec<(String, String)> = stmt
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+                .map_err(|e| e.to_string())?
+                .collect::<Result<_, _>>()
+                .map_err(|e| e.to_string())?;
+            // Ni une table virtuelle (on n'y pose pas de déclencheur), ni
+            // les tables où elle range ce qu'elle tient.
+            let virtuals: Vec<String> = all
+                .iter()
+                .filter(|(_, sql)| sql.to_uppercase().starts_with("CREATE VIRTUAL"))
+                .map(|(n, _)| format!("{n}_"))
+                .collect();
+            all.into_iter()
+                .filter(|(n, sql)| {
+                    !sql.to_uppercase().starts_with("CREATE VIRTUAL")
+                        && !virtuals.iter().any(|v| n.starts_with(v.as_str()))
+                        && !Self::screen_quiet(n)
+                })
+                .map(|(n, _)| n)
+                .collect()
+        };
+        let mut sql = String::from("INSERT OR IGNORE INTO screen_rev (k, n) VALUES (0, 0);\n");
+        let bump = "BEGIN UPDATE screen_rev SET n = n + 1 WHERE k = 0; END;\n";
+        for name in &names {
+            for (k, event, row) in [
+                ("i", "INSERT", "NEW"),
+                ("u", "UPDATE", "NEW"),
+                ("d", "DELETE", "OLD"),
+            ] {
+                // Les réglages du réseau (adresses jointes, relais,
+                // propositions) sont du réseau.
+                let when = if name == "settings" {
+                    format!("WHEN {row}.key NOT LIKE 'net\\_%' ESCAPE '\\'")
+                } else {
+                    String::new()
+                };
+                sql.push_str(&format!(
+                    "DROP TRIGGER IF EXISTS screen_{k}_{name};\n\
+                     CREATE TRIGGER screen_{k}_{name} AFTER {event} ON \"{name}\" {when} {bump}"
+                ));
+            }
+        }
+        let stamp = {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            sql.hash(&mut h);
+            format!("{:016x}", h.finish())
+        };
+        if self.sync_local("screen_watch").as_deref() == Some(stamp.as_str()) {
+            return Ok(());
+        }
+        batch_tx(&self.conn, &sql).map_err(|e| format!("déclencheurs impossibles : {e}"))?;
+        self.set_sync_local("screen_watch", &stamp)
     }
 
     /// Ouvrir (ou créer) le fichier des pièces à côté de la base.
@@ -43754,6 +43864,11 @@ impl Db {
     pub fn compact(&self) -> Result<usize, String> {
         self.conn
             .execute_batch("VACUUM")
+            .map_err(|e| format!("compactage impossible : {e}"))?;
+        // Le journal du réseau renuméroté : relu en entier par qui le
+        // tenait lu (`network::cached_journal`).
+        self.conn
+            .execute(NET_GEN_BUMP, [])
             .map_err(|e| format!("compactage impossible : {e}"))?;
         Ok(0)
     }
@@ -48236,6 +48351,58 @@ impl Db {
         tx.commit().map_err(|e| e.to_string())
     }
 
+    /// Les enregistrements d'un réseau rangés après la ligne `after`, avec
+    /// la leur, dans l'ordre où ils sont arrivés.
+    pub fn net_records_after(
+        &self,
+        network: &str,
+        after: i64,
+    ) -> Result<Vec<(i64, Vec<u8>)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT rowid, bytes FROM net_records WHERE rowid > ?2 AND network = ?1
+                 ORDER BY rowid",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![network, after], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// La plus haute ligne du journal du réseau, tous réseaux ensemble.
+    pub fn net_records_top(&self) -> Result<i64, String> {
+        self.conn
+            .query_row("SELECT coalesce(max(rowid), 0) FROM net_records", [], |r| {
+                r.get(0)
+            })
+            .map_err(|e| e.to_string())
+    }
+
+    /// Combien de fois des enregistrements du réseau ont quitté la base.
+    pub fn net_journal_gen(&self) -> Result<i64, String> {
+        self.conn
+            .query_row("SELECT coalesce(max(n), 0) FROM net_journal_gen", [], |r| {
+                r.get(0)
+            })
+            .map_err(|e| e.to_string())
+    }
+
+    /// Combien d'enregistrements la base tient d'un réseau, sans les lire.
+    pub fn net_record_count_of(&self, network: &str) -> Result<usize, String> {
+        self.conn
+            .query_row(
+                "SELECT count(*) FROM net_records WHERE network = ?1",
+                [network],
+                |r| r.get::<_, i64>(0),
+            )
+            .map(|n| usize::try_from(n).unwrap_or(0))
+            .map_err(|e| e.to_string())
+    }
+
     /// Les enregistrements d'un réseau (vide : le principal).
     pub fn net_records_of(&self, network: &str) -> Result<Vec<Vec<u8>>, String> {
         let mut stmt = self
@@ -48310,6 +48477,7 @@ impl Db {
             [network],
         )
         .map_err(|e| e.to_string())?;
+        tx.execute(NET_GEN_BUMP, []).map_err(|e| e.to_string())?;
         tx.commit().map_err(|e| e.to_string())
     }
 
@@ -48596,6 +48764,7 @@ impl Db {
         ] {
             tx.execute(sql, [id]).map_err(|e| e.to_string())?;
         }
+        tx.execute(NET_GEN_BUMP, []).map_err(|e| e.to_string())?;
         tx.commit().map_err(|e| e.to_string())
     }
 
@@ -69600,6 +69769,46 @@ mod tests {
                 .count();
         }
         println!("{:>9} µs  fuzzy sur 862 noms", t.elapsed().as_micros() / 10);
+    }
+
+    /// **The screen's counter moves for what the screen shows, and not
+    /// for the network's own writes**: a setting of the officine, a note
+    /// move it; the network journal, a dial noted, a network setting do
+    /// not — and a second opening writes nothing.
+    #[test]
+    fn the_screen_counter_ignores_what_only_the_network_writes() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-screen-rev-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("rev.db");
+        let db = Db::open(&path, "secret").unwrap();
+        let other = Db::open(&path, "secret").unwrap();
+        let start = db.screen_rev();
+        let seen = db.data_version();
+        let _ = Db::open(&path, "secret").unwrap();
+        assert_eq!(db.data_version(), seen, "une ouverture n'écrit rien");
+        other
+            .keep_net_records_of("", &[("ab".repeat(32), vec![1, 2, 3])])
+            .unwrap();
+        other
+            .set_setting("net_reached:cd", "203.0.113.5:7745", None, "", "")
+            .unwrap();
+        other
+            .add_net_peer(&"cd".repeat(32), "", "2026-10-22")
+            .unwrap();
+        other.note_net_dial(&"cd".repeat(32), None).unwrap();
+        assert_ne!(db.data_version(), seen, "la base a bougé");
+        assert_eq!(db.screen_rev(), start, "rien de ce que l'écran lit");
+        other
+            .set_setting("officine_nom", "Pharmacie", None, "", "")
+            .unwrap();
+        assert!(db.screen_rev() > start, "un réglage de l'officine");
+        let after = db.screen_rev();
+        other
+            .add_note(NoteSubject::Transmission, 0, "CL", "Commande en retard.")
+            .unwrap();
+        assert!(db.screen_rev() > after, "une transmission");
     }
 
     /// Not a test of behavior: seeds a demo database when the env asks for

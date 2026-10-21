@@ -169,6 +169,8 @@ pub struct Session {
     /// Records the peer has handed over in the round now open: an
     /// answer to this post's want, never more than a round carries.
     peer_gives: usize,
+    /// How many of those this post did not hold yet.
+    peer_new: usize,
     rounds: u32,
 }
 
@@ -240,6 +242,7 @@ impl Session {
             my_end_sent: false,
             peer_end: false,
             peer_gives: 0,
+            peer_new: 0,
             rounds: 0,
         })
     }
@@ -630,6 +633,7 @@ impl Session {
                 }
                 let record = Record::decode(&bytes).inspect_err(|e| meter.refuse(*e))?;
                 if journal.insert(record) {
+                    self.peer_new += 1;
                     meter.note(Signal::Received);
                 } else {
                     meter.note(Signal::Known);
@@ -829,6 +833,7 @@ impl Session {
         self.my_end_sent = false;
         self.peer_end = false;
         self.peer_gives = 0;
+        self.peer_new = 0;
         self.peer_more = false;
         self.peer_want_empty = None;
         self.out.push_back(Frame::Want {
@@ -850,7 +855,16 @@ impl Session {
         // the peer has not got it. Asking again would be asking for
         // ever — this is the only thing that comes off a want list, and
         // it comes off because the peer said it had nothing more.
-        if !self.peer_more {
+        //
+        // **And what a round answered with nothing new** — every record
+        // given already held, or refused by this post's budget for the
+        // peer's authors (`Journal::limit_strangers`). The peer answers
+        // the same want with the same records, oldest first: asked again,
+        // a journal larger than the budget came back round after round
+        // until `MOST_ROUNDS` refused the whole conversation, and what
+        // its first rounds brought was lost with it.
+        let fruitless = self.peer_gives > 0 && self.peer_new == 0;
+        if !self.peer_more || fruitless {
             for hash in std::mem::take(&mut self.last_want) {
                 if !journal.has(&hash) {
                     self.unavailable.insert(hash);
@@ -1130,6 +1144,37 @@ mod tests {
         )
         .unwrap();
         converse(a, b, sa, sb, true).unwrap();
+    }
+
+    /// **A journal larger than the budget a peer gives its author still
+    /// syncs**: what fits is kept, and the conversation ends. The rest
+    /// came back round after round, refused, until `MOST_ROUNDS` dropped
+    /// the whole conversation — the open network's officine with more
+    /// than a megabyte written was heard by nobody.
+    #[test]
+    fn a_journal_past_the_peers_budget_still_ends_its_conversation() {
+        let t = officine(5);
+        let mut a = Post::new(1, Some(t.clone()));
+        let mut b = Post::new(2, None);
+        pair_posts(&mut a, &mut b);
+        for i in 0..(3 * MOST_PER_ROUND) {
+            a.write(format!("{i:0>300}").as_bytes());
+        }
+        let one = a.journal.records().next().unwrap().encode().len();
+        b.journal.trust([b.device.id()]);
+        b.journal.limit_strangers(crate::journal::Limits {
+            per_author: MOST_PER_ROUND * one,
+            total: usize::MAX,
+        });
+        sync_posts(&mut a, &mut b);
+        let held = b.journal.len();
+        assert!(
+            held > MOST_PER_ROUND / 2 && held <= MOST_PER_ROUND,
+            "{held}"
+        );
+        // And again: nothing more fits, and the conversation still ends.
+        sync_posts(&mut a, &mut b);
+        assert_eq!(b.journal.len(), held);
     }
 
     /// **A give that answers no want is refused**: after the peer closed

@@ -190,6 +190,69 @@ pub fn open_officine_mapping(port: u16) -> Option<SocketAddrV4> {
     )
 }
 
+/// **La porte web des officines** : le port 443 de la box renvoyé vers
+/// la porte (`port`), par UPnP — pour l'officine qui appelle d'un réseau
+/// d'hôpital ou d'entreprise, d'où seul le web sort
+/// (`network::web_door`). Jamais pris à un autre : une box qui renvoie
+/// déjà son 443 ailleurs refuse, et rien ne change. Rend l'adresse
+/// publique, au port 443.
+pub fn open_officine_web_mapping(port: u16) -> Option<SocketAddrV4> {
+    let options = igd_next::SearchOptions {
+        timeout: Some(Duration::from_secs(3)),
+        ..Default::default()
+    };
+    let gateway = igd_next::search_gateway(options).ok()?;
+    let local = local_v4_towards(gateway.addr)?;
+    let web = crate::network::WEB_DOOR_PORT;
+    // **Un 443 que la box renvoie déjà ailleurs reste à qui le tient** —
+    // une autre machine, ou un serveur de celle-ci sur un autre port :
+    // UPnP laisse une machine récrire sa propre ouverture, et la
+    // refermer à la sortie aurait coupé ce serveur.
+    let taken = (0..64)
+        .map_while(|i| gateway.get_generic_port_mapping_entry(i).ok())
+        .any(|e| {
+            e.external_port == web
+                && e.protocol == igd_next::PortMappingProtocol::TCP
+                && !(e.internal_client == local.to_string() && e.internal_port == port)
+        });
+    if taken {
+        return None;
+    }
+    gateway
+        .add_port(
+            igd_next::PortMappingProtocol::TCP,
+            web,
+            SocketAddr::V4(SocketAddrV4::new(local, port)),
+            LEASE.as_secs() as u32,
+            "BPM-Caddy officines (web)",
+        )
+        .ok()?;
+    match gateway.get_external_ip() {
+        Ok(IpAddr::V4(ip)) if is_public_v4(&ip) => Some(SocketAddrV4::new(ip, web)),
+        // Sans adresse publique (CGNAT, double traduction), l'ouverture
+        // ne mène nulle part : refermée aussitôt, sans attendre la sortie.
+        _ => {
+            let _ = gateway.remove_port(igd_next::PortMappingProtocol::TCP, web);
+            None
+        }
+    }
+}
+
+/// Refermer ce que [`open_officine_web_mapping`] a ouvert — à n'appeler
+/// que pour une ouverture accordée.
+pub fn close_officine_web_mapping() {
+    let options = igd_next::SearchOptions {
+        timeout: Some(Duration::from_secs(2)),
+        ..Default::default()
+    };
+    if let Ok(gateway) = igd_next::search_gateway(options) {
+        let _ = gateway.remove_port(
+            igd_next::PortMappingProtocol::TCP,
+            crate::network::WEB_DOOR_PORT,
+        );
+    }
+}
+
 /// [`open_mapping`] en UDP : la voie directe des patients (`direct.rs`).
 pub fn open_udp_mapping(port: u16) -> Option<SocketAddrV4> {
     open_mapping_of(

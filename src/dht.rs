@@ -96,6 +96,15 @@ impl Finder {
         shared && own
     }
 
+    /// **La DHT répond-elle d'ici ?** Une recherche de voisins aboutie :
+    /// sans réponse, l'UDP sortant est bloqué (un réseau d'hôpital ou
+    /// d'entreprise) ou la machine est hors ligne. Bloque le temps de la
+    /// recherche.
+    #[allow(deprecated)]
+    pub fn reachable(&self) -> bool {
+        self.dht.bootstrapped()
+    }
+
     /// Les adresses qui s'annoncent sous le sujet d'une officine, au plus
     /// [`MOST_DIALS`].
     #[allow(deprecated)]
@@ -173,6 +182,7 @@ pub fn spawn(
     path: std::path::PathBuf,
     password: String,
     port: u16,
+    web_door: bool,
     officine: String,
     on: Arc<AtomicBool>,
     said: impl Fn(String) + Send + 'static,
@@ -189,6 +199,7 @@ pub fn spawn(
         let mut finder: Option<Finder> = None;
         let mut dialed: HashMap<SocketAddrV4, Instant> = HashMap::new();
         let mut mapped = false;
+        let mut web = false;
         let mut next = Instant::now();
         while on.load(Ordering::SeqCst) {
             if Instant::now() < next {
@@ -204,6 +215,9 @@ pub fn spawn(
                 if std::mem::take(&mut mapped) {
                     crate::reach::close_mapping(port);
                 }
+                if std::mem::take(&mut web) {
+                    crate::reach::close_officine_web_mapping();
+                }
                 finder = None;
                 continue;
             }
@@ -215,6 +229,12 @@ pub fn spawn(
             };
             let opened = crate::reach::open_officine_mapping(port);
             mapped |= opened.is_some();
+            // La porte web aussi, quand la box l'accorde : ceux qui
+            // appellent d'un réseau qui ne laisse sortir que le web la
+            // composent d'eux-mêmes (`network::web_door`).
+            if opened.is_some() && web_door {
+                web |= crate::reach::open_officine_web_mapping(port).is_some();
+            }
             // Sans routeur qui ouvre : la porte ouverte à la main dans la
             // box, que l'officine a écrite (« Adresse publique »).
             let mine = opened.or_else(|| {
@@ -240,6 +260,9 @@ pub fn spawn(
         }
         if mapped {
             crate::reach::close_mapping(port);
+        }
+        if web {
+            crate::reach::close_officine_web_mapping();
         }
     });
 }

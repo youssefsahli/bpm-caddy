@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **« Tester la connexion »** in Connexions: from a thread, whether the web gets out (port 443), whether the DHT answers (UDP), and each known officine's door, then its web door — written to the connections feed with what it means (a network that lets only the web out, doors filtered, nothing out at all).
+- **A web door for officines.** An officine whose box opens its door through UPnP also asks for the box's port 443 to lead there, when nothing else holds it (not even another server on this machine), and closes it on leaving; « Ouvrir aussi la porte web » in Options › Base turns it off, for a box that uses its own 443. A web door is tried with a shorter wait, so a closed officine does not cost two full waits. A caller whose dial to a public address fails tries the same machine at 443 and remembers which answered: a post on a hospital or company network, where only the web gets out, reaches such officines by itself.
+
+### Fixed
+
+- **Freezes and « database is locked » with the open network.** The connections view and the network window read the whole network journal on the screen's thread to show a record count — at every knock at the door; they now read the count alone. A process reads each network journal once and then only the rows stored since (`net_journal_gen` says when rows left), a sync with a large journal dropped from about 2.3 s to 0.2 s, and storing a journal writes only what the base lacks instead of every record under the write lock.
+- **No more full screen reload for the network's own writes.** Triggers count the writes to what the screen reads (`screen_rev`); when only the network's tables moved, the lists are not reloaded — a hitch per knocking officine on a slow PC.
+- **An officine with more than a megabyte in the open network is heard again.** A peer whose budget refused the oldest records was sent them again round after round until the conversation was dropped, keeping nothing; a round that brings nothing new now ends what it asked for.
+- The posts' thread no longer decodes every network journal each minute its door stayed closed, only to learn whether the officine belongs to a network.
+
 ## [0.441.0] - 2026-10-21
 
 ### Added

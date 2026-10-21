@@ -713,6 +713,39 @@ annonce vit une demi-heure dans la DHT). Sans routeur qui ouvre, la
 porte ouverte à la main et écrite (`PUBLIC_ADDRESS`, une IPv4 publique)
 s'annonce aussi (`dht::written_door`).
 
+**D'un réseau qui ne laisse sortir que le web** (un hôpital, une
+entreprise : l'UDP bloqué, donc la DHT muette, et les ports autres que
+443 filtrés). L'officine dont la box ouvre sa porte demande aussi, par
+UPnP, que le port **443** de la box y mène (`reach::open_officine_web_mapping`,
+jamais pris à un autre : ni à une autre machine, ni à un autre
+serveur de celle-ci), refermé à la sortie, et aussitôt quand la box n'a
+pas d'adresse publique. `[reseau] porte_web` l'éteint (Options › Base),
+pour une box qui se sert de son 443. Qui appelle essaie, quand le port
+d'une adresse publique ne répond pas, la même machine au 443
+(`network::web_door`, dans `Net::sync_door`) et retient celle qui a
+répondu (`net_reached:`). « Tester la connexion » (Connexions) dit ce
+qui sort d'ici : le web, la DHT, et la porte de chaque officine connue,
+puis sa porte web (`network::diagnose`, `diagnosis_lines`). Sans
+officine connue ni DHT, un poste ainsi enfermé n'en trouve aucune de
+lui-même : « Joindre » par une adresse, ou le dossier d'échange.
+
+**Le journal se lit une fois par processus** (`network::cached_journal`) :
+décoder et vérifier chaque enregistrement coûte des secondes pour le
+réseau ouvert sur un poste lent, et chaque officine qui frappait le
+relisait — sur un dossier de données qui est un partage réseau, des
+mégaoctets chaque fois. Seules les lignes rangées depuis (`rowid`) se
+lisent ; ce qui quitte la base (oubli, réseau quitté) fait monter
+`net_journal_gen`, et tout se relit. `keep` n'écrit que ce que la base
+n'a pas. Une conversation avec un journal plus grand que le budget de
+l'autre s'arrêtait au bout de `MOST_ROUNDS` tours, sans rien garder : un
+tour qui n'apporte rien de neuf retire maintenant ce qu'il demandait
+(`a_journal_past_the_peers_budget_still_ends_its_conversation`).
+Limite connue : la réponse donne les plus anciens d'abord (une suite
+d'histoire sans trou) ; un auteur au-delà du budget peut ainsi remplir un
+tour avant ce qu'un autre auteur a écrit après lui, que ce pair ne donne
+alors pas dans cette conversation — un autre pair, ou une autre
+conversation après que `make_room` a fait de la place, le donne.
+
 **Une officine choisie, sans code** (`dht::reach_officine`). Chacune
 s'annonce aussi sous **son propre sujet**, tiré de sa clé de réseau
 (`dht::own_topic`). « Joindre », sur la carte du répertoire, compose

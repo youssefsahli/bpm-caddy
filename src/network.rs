@@ -93,6 +93,11 @@ pub struct Net {
     device: Device,
     trousseau: Option<Trousseau>,
     journal: Journal,
+    /// Ce que la base tient déjà de ce journal : `keep` n'écrit que le
+    /// reste.
+    stored: std::collections::HashSet<bpm_sync::Hash>,
+    /// La dernière ligne de la base que ce journal a lue.
+    after: i64,
     /// Les officines de **ce** réseau.
     pub peers: Vec<Peer>,
     /// Ce que l'officine partage dans ce réseau.
@@ -117,6 +122,24 @@ impl Net {
     /// hasard la première fois, **dans la base chiffrée** — jamais dans
     /// `config.toml`, qui est en clair.
     pub fn load(db: &Db) -> Result<Self, String> {
+        Self::load_with(db, true)
+    }
+
+    /// **Ce qu'un écran montre d'un réseau, sans son journal** : qui en
+    /// est, sa clé, ses réglages. Le journal se lit et se vérifie
+    /// enregistrement par enregistrement — des secondes pour celui du
+    /// réseau ouvert sur un poste lent —, et la fenêtre des connexions le
+    /// relisait sur le fil de l'écran à chaque officine qui frappait,
+    /// pour n'en montrer que le nombre : `Db::net_record_count_of`.
+    pub fn load_bare(db: &Db, id: &str) -> Result<Self, String> {
+        if id.is_empty() {
+            Self::load_with(db, false)
+        } else {
+            Self::load_network_with(db, id, false)
+        }
+    }
+
+    fn load_with(db: &Db, with_journal: bool) -> Result<Self, String> {
         let seed = db.net_key("net_seed", &hex(&random32()))?;
         let seed = unhex::<32>(&seed).ok_or("identité du réseau illisible")?;
         let trousseau = db
@@ -125,18 +148,18 @@ impl Net {
             .map(Trousseau::from_secret);
         let peers = db.net_members("")?;
         let device = Device::from_seed(seed);
-        let journal = stored_journal(
-            &device,
-            &peers,
-            false,
-            db.net_records_of("")?,
-            db.net_forgotten_of("")?,
-        );
+        let (journal, after) = if with_journal {
+            cached_journal(db, "", &device, &peers, false)?
+        } else {
+            (Journal::new(), 0)
+        };
         Ok(Self {
             id: String::new(),
             label: String::new(),
             device,
             trousseau,
+            stored: journal.records().map(|r| r.id()).collect(),
+            after,
             journal,
             peers,
             shares: db.principal_shares(),
@@ -149,8 +172,12 @@ impl Net {
 
     /// Un réseau de plus, par son `id`.
     pub fn load_network(db: &Db, id: &str) -> Result<Self, String> {
+        Self::load_network_with(db, id, true)
+    }
+
+    fn load_network_with(db: &Db, id: &str, with_journal: bool) -> Result<Self, String> {
         if id.is_empty() {
-            return Self::load(db);
+            return Self::load_with(db, with_journal);
         }
         let n = db
             .net_networks()?
@@ -162,18 +189,18 @@ impl Net {
         let device = Device::from_seed(seed);
         let peers = db.net_members(id)?;
         let open = is_open(id);
-        let journal = stored_journal(
-            &device,
-            &peers,
-            open,
-            db.net_records_of(id)?,
-            db.net_forgotten_of(id)?,
-        );
+        let (journal, after) = if with_journal {
+            cached_journal(db, id, &device, &peers, open)?
+        } else {
+            (Journal::new(), 0)
+        };
         Ok(Self {
             id: n.id.clone(),
             label: n.label.clone(),
             device,
             trousseau: unhex::<32>(&n.secret).map(Trousseau::from_secret),
+            stored: journal.records().map(|r| r.id()).collect(),
+            after,
             journal,
             peers,
             shares: n.shares,
@@ -311,8 +338,13 @@ impl Net {
         // Ce que l'autre vient d'écrire, sous le verrou : sans cela ce
         // journal-ci, lu avant d'attendre, écrivait après des parents
         // périmés et au même rang que le dernier enregistrement.
-        for bytes in db.net_records_of(&self.id)? {
+        // Les lignes rangées depuis sa lecture, seulement : relire et
+        // revérifier tout le journal coûtait la plus grande part d'une
+        // conversation au réseau ouvert.
+        for (row, bytes) in db.net_records_after(&self.id, self.after)? {
+            self.after = row;
             if let Ok(record) = Record::decode(&bytes) {
+                self.stored.insert(record.id());
                 self.journal.insert(record);
             }
         }
@@ -799,13 +831,28 @@ impl Net {
     }
 
     /// Ranger dans la base les enregistrements que le journal tient.
-    fn keep(&self, db: &Db) -> Result<usize, String> {
-        let all: Vec<(String, Vec<u8>)> = self
+    ///
+    /// **Ce qui n'y est pas encore, seulement** : le journal entier se
+    /// réécrivait après chaque conversation — des milliers de lignes
+    /// ignorées sous le verrou d'écriture de la base, à chaque officine
+    /// qui frappe, et l'écran du comptoir attendait derrière.
+    fn keep(&mut self, db: &Db) -> Result<usize, String> {
+        let fresh: Vec<(bpm_sync::Hash, String, Vec<u8>)> = self
             .journal
             .records()
-            .map(|r| (hex(&r.id().0), r.encode()))
+            .filter(|r| !self.stored.contains(&r.id()))
+            .map(|r| (r.id(), hex(&r.id().0), r.encode()))
             .collect();
-        db.keep_net_records_of(&self.id, &all)
+        if fresh.is_empty() {
+            return Ok(0);
+        }
+        let rows: Vec<(String, Vec<u8>)> = fresh
+            .iter()
+            .map(|(_, h, b)| (h.clone(), b.clone()))
+            .collect();
+        let added = db.keep_net_records_of(&self.id, &rows)?;
+        self.stored.extend(fresh.into_iter().map(|(id, _, _)| id));
+        Ok(added)
     }
 
     /// Ce que les officines appairées ont écrit, rangé dans le journal des
@@ -1332,16 +1379,49 @@ impl Net {
         address: &str,
         patience: Duration,
     ) -> Result<Option<String>, String> {
+        self.sync_door(db, address, patience).map(|(who, _)| who)
+    }
+
+    /// [`Net::sync_with`], et l'adresse qui a répondu : celle donnée, ou
+    /// sa porte web ([`web_door`]) quand celle-ci seule passe.
+    pub fn sync_door(
+        &mut self,
+        db: &Db,
+        address: &str,
+        patience: Duration,
+    ) -> Result<(Option<String>, String), String> {
         let Some(trousseau) = self.trousseau.clone() else {
-            return Ok(None);
+            return Ok((None, address.trim().to_owned()));
+        };
+        // **La porte web quand la porte ne répond pas** : un réseau
+        // d'hôpital ou d'entreprise ne laisse sortir que le web, et une
+        // officine dont la box le permet ouvre aussi le port 443 vers sa
+        // porte (`reach::open_officine_web_mapping`).
+        let (link, used) = match bpm_sync::link::dial(address, patience) {
+            Ok(link) => (link, address.trim().to_owned()),
+            Err(e) => match web_door(address) {
+                // Moins d'attente : une officine éteinte ne coûte pas deux
+                // attentes entières à chaque synchronisation.
+                Some(web) => match bpm_sync::link::dial(&web, patience.min(WEB_DOOR_PATIENCE)) {
+                    Ok(link) => (link, web),
+                    Err(_) => return Err(format!("{e:?}")),
+                },
+                None => return Err(format!("{e:?}")),
+            },
         };
         // **Toute la conversation bornée**, comme du côté qui répond : une
         // machine qui se fait passer pour une officine appairée et écrit un
         // octet de temps en temps ne tient pas l'appel.
-        let link = bpm_sync::link::dial(address, patience)
-            .map_err(|e| format!("{e:?}"))?
-            .with_deadline(DIAL_BOUND);
-        self.sync_over(db, link, &trousseau)
+        let who = self.sync_over(db, link.with_deadline(DIAL_BOUND), &trousseau)?;
+        // Ce qui n'a répondu qu'à la porte web y sera composé d'abord.
+        if let Some(device) = who.as_deref().filter(|_| used != address.trim()) {
+            let key = reached_key(device);
+            let was = db.setting(&key);
+            if was.as_deref() != Some(used.as_str()) {
+                let _ = db.set_setting(&key, &used, was.as_deref(), "", "");
+            }
+        }
+        Ok((who, used))
     }
 
     /// **Joindre une officine du réseau par un relais** (`relay.rs`) : à
@@ -1794,6 +1874,203 @@ pub fn usable_announced(text: &str) -> Option<String> {
     (!bad).then(|| at.to_string())
 }
 
+/// Le port de la **porte web** d'une officine : celui du web chiffré, le
+/// seul qu'un réseau d'hôpital ou d'entreprise laisse sortir à coup sûr.
+/// La box de l'officine le renvoie vers sa porte quand elle le permet.
+pub const WEB_DOOR_PORT: u16 = 443;
+
+/// Ce qu'on attend la porte web, une fois la porte muette.
+const WEB_DOOR_PATIENCE: Duration = Duration::from_secs(4);
+
+/// **La porte web d'une adresse** : la même machine au port 443, pour une
+/// adresse publique écrite en chiffres qui n'y est pas déjà. Rien pour un
+/// nom, ni pour une adresse du réseau local — un poste voisin n'a pas de
+/// porte web.
+pub fn web_door(address: &str) -> Option<String> {
+    let at: std::net::SocketAddr = address.trim().parse().ok()?;
+    let public = match at.ip() {
+        std::net::IpAddr::V4(a) => crate::reach::is_public_v4(&a),
+        std::net::IpAddr::V6(a) => crate::reach::is_global_v6(&a),
+    };
+    (public && at.port() != WEB_DOOR_PORT)
+        .then(|| std::net::SocketAddr::new(at.ip(), WEB_DOOR_PORT).to_string())
+}
+
+/// Ce que « Tester la connexion » a trouvé : le web sort-il, la DHT
+/// répond-elle, et les portes des officines connues — à leur port, puis à
+/// leur porte web.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Diagnosis {
+    pub web: bool,
+    pub dht: bool,
+    pub doors: Vec<DoorTry>,
+}
+
+/// Une porte d'officine essayée.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DoorTry {
+    pub name: String,
+    pub address: String,
+    /// À son port.
+    pub door: bool,
+    /// À sa porte web, quand son port ne répond pas.
+    pub web: bool,
+}
+
+/// Combien de portes d'officines le test essaie au plus.
+pub const DIAGNOSIS_DOORS: usize = 6;
+
+/// **Les portes à essayer** : pour chaque officine connue — d'un réseau
+/// ou du réseau ouvert —, la première adresse publique qu'on lui sait (où
+/// elle a répondu, ce qu'on a saisi, ce qu'elle annonce), une par
+/// machine, les plus récemment jointes d'abord.
+pub fn diagnosis_targets(db: &Db) -> Vec<(String, String)> {
+    let mut ids = vec![String::new()];
+    ids.extend(
+        db.net_networks()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|n| n.id),
+    );
+    let mut peers: Vec<Peer> = Vec::new();
+    for id in ids {
+        for p in db.net_members(&id).unwrap_or_default() {
+            if !peers.iter().any(|q| q.device == p.device) {
+                peers.push(p);
+            }
+        }
+    }
+    peers.sort_by(|a, b| b.last_ok.cmp(&a.last_ok));
+    let mut out: Vec<(String, String)> = Vec::new();
+    let mut hosts: Vec<std::net::IpAddr> = Vec::new();
+    for p in peers {
+        let known = [
+            db.setting(&reached_key(&p.device)),
+            Some(p.address.clone()),
+            db.setting(&announced_key(&p.device)),
+        ];
+        let Some(at) = known.into_iter().flatten().find_map(|a| {
+            let at: std::net::SocketAddr = a.trim().parse().ok()?;
+            let public = match at.ip() {
+                std::net::IpAddr::V4(v4) => crate::reach::is_public_v4(&v4),
+                std::net::IpAddr::V6(v6) => crate::reach::is_global_v6(&v6),
+            };
+            public.then_some(at)
+        }) else {
+            continue;
+        };
+        if hosts.contains(&at.ip()) {
+            continue;
+        }
+        hosts.push(at.ip());
+        let name = if p.name.trim().is_empty() {
+            peer_groups(&p.device)
+        } else {
+            p.name.trim().to_owned()
+        };
+        out.push((name, at.to_string()));
+        if out.len() >= DIAGNOSIS_DOORS {
+            break;
+        }
+    }
+    out
+}
+
+/// **Tester la connexion**, d'un fil à part : le web (le port 443 de
+/// GitHub, que l'application joint déjà pour ses mises à jour), la DHT, et
+/// chaque porte de [`diagnosis_targets`] — rien ne s'y échange, la
+/// connexion s'ouvre et se referme. Une dizaine de secondes au plus.
+pub fn diagnose(db: &Db) -> Diagnosis {
+    use std::net::{TcpStream, ToSocketAddrs};
+    let opens = |address: &str, patience: Duration| -> bool {
+        address
+            .to_socket_addrs()
+            .is_ok_and(|mut all| all.any(|a| TcpStream::connect_timeout(&a, patience).is_ok()))
+    };
+    let web = std::thread::spawn(move || opens("github.com:443", Duration::from_secs(5)));
+    let dht = std::thread::spawn(|| crate::dht::Finder::start(None).is_ok_and(|f| f.reachable()));
+    let doors: Vec<_> = diagnosis_targets(db)
+        .into_iter()
+        .map(|(name, address)| {
+            std::thread::spawn(move || {
+                let door = opens(&address, Duration::from_secs(4));
+                let web =
+                    !door && web_door(&address).is_some_and(|w| opens(&w, Duration::from_secs(4)));
+                DoorTry {
+                    name,
+                    address,
+                    door,
+                    web,
+                }
+            })
+        })
+        .collect();
+    Diagnosis {
+        web: web.join().unwrap_or(false),
+        dht: dht.join().unwrap_or(false),
+        doors: doors.into_iter().filter_map(|t| t.join().ok()).collect(),
+    }
+}
+
+/// **Ce que le test dit**, ligne par ligne — `true` : ce qui ne passe pas.
+/// D'abord ce qui sort, puis chaque porte, puis ce qu'il faut en retenir.
+pub fn diagnosis_lines(d: &Diagnosis) -> Vec<(bool, String)> {
+    use crate::strings::{tr, trf, trn};
+    let mut out = vec![
+        (
+            !d.web,
+            tr(if d.web {
+                "diag_web_ok"
+            } else {
+                "diag_web_blocked"
+            })
+            .to_owned(),
+        ),
+        (
+            !d.dht,
+            tr(if d.dht {
+                "diag_dht_ok"
+            } else {
+                "diag_dht_blocked"
+            })
+            .to_owned(),
+        ),
+    ];
+    for t in &d.doors {
+        let key = match (t.door, t.web) {
+            (true, _) => "diag_door_ok",
+            (false, true) => "diag_door_web",
+            (false, false) => "diag_door_closed",
+        };
+        out.push((!t.door && !t.web, trn(key, &[&t.name, &t.address])));
+    }
+    let by_web = d.doors.iter().filter(|t| !t.door && t.web).count();
+    let direct = d.doors.iter().filter(|t| t.door).count();
+    let verdict = if !d.web && !d.dht && direct + by_web == 0 {
+        (true, tr("diag_offline").to_owned())
+    } else if d.doors.is_empty() {
+        (
+            !d.dht,
+            tr(if d.dht {
+                "diag_nobody_known"
+            } else {
+                "diag_nobody_known_blocked"
+            })
+            .to_owned(),
+        )
+    } else if direct > 0 {
+        (false, trn("diag_doors_ok", &[&direct, &d.doors.len()]))
+    } else if by_web > 0 {
+        (false, trn("diag_web_only", &[&by_web, &d.doors.len()]))
+    } else if d.web {
+        (true, trf("diag_only_web", d.doors.len()))
+    } else {
+        (true, trf("diag_doors_closed", d.doors.len()))
+    };
+    out.push(verdict);
+    out
+}
+
 /// Où ranger l'adresse qu'une officine appairée a annoncée.
 pub fn announced_key(device: &str) -> String {
     format!("net_announced:{device}")
@@ -2029,6 +2306,108 @@ fn met(peers: &[Peer]) -> Vec<DeviceId> {
         .filter(|p| !p.last_ok.trim().is_empty())
         .filter_map(|p| unhex::<32>(&p.device).map(DeviceId::from_bytes))
         .collect()
+}
+
+/// **Le journal d'un réseau, lu une fois par processus** : décoder et
+/// vérifier chaque enregistrement coûte des secondes pour celui du réseau
+/// ouvert sur un poste lent, et chaque officine qui frappait le relisait
+/// en entier — sur un dossier de données qui est un partage réseau, des
+/// mégaoctets à chaque fois. Ici, seules les lignes rangées depuis la
+/// dernière lecture sont lues. Ce qui quitte la base (oublié, réseau
+/// quitté) fait monter `net_journal_gen`, et tout se relit ; ce qui règle
+/// le journal (qui règle l'horloge, qui n'a que son budget) aussi.
+fn cached_journal(
+    db: &Db,
+    network: &str,
+    me: &Device,
+    peers: &[Peer],
+    open: bool,
+) -> Result<(Journal, i64), String> {
+    struct Held {
+        rules: (bool, Vec<DeviceId>, Vec<DeviceId>),
+        gen: i64,
+        after: i64,
+        journal: Journal,
+    }
+    static HELD: std::sync::Mutex<Option<std::collections::HashMap<(PathBuf, String), Held>>> =
+        std::sync::Mutex::new(None);
+    let build = |rows: Vec<(i64, Vec<u8>)>| -> Result<(i64, Journal), String> {
+        let after = rows.last().map_or(0, |(r, _)| *r);
+        let journal = stored_journal(
+            me,
+            peers,
+            open,
+            rows.into_iter().map(|(_, b)| b).collect(),
+            db.net_forgotten_of(network)?,
+        );
+        Ok((after, journal))
+    };
+    let Some(path) = db.path() else {
+        return build(db.net_records_after(network, 0)?).map(|(a, j)| (j, a));
+    };
+    // Au réseau ouvert, qui frappe y est inscrite : la liste des membres
+    // change souvent, ce qui règle le journal non — seulement celles
+    // qu'on a rencontrées.
+    let mut rules = if open {
+        (true, vec![me.id()], met(peers))
+    } else {
+        (false, trusted_ids(me, peers), Vec::new())
+    };
+    rules.1.sort();
+    rules.2.sort();
+    let key = (path, network.to_owned());
+    // **Ce qui a bougé pendant la lecture se relit** : le compteur relu
+    // après les lignes, un oubli venu d'un autre fil entre-temps ne laisse
+    // pas au journal ce que la base n'a plus. Et la lecture entière se
+    // fait hors du verrou : des secondes pour le réseau ouvert, pendant
+    // lesquelles les autres réseaux attendaient.
+    for _ in 0..3 {
+        let gen = db.net_journal_gen()?;
+        // Un `VACUUM` renumérote les lignes : la plus haute plus basse que
+        // la dernière lue, tout se relit.
+        let top = db.net_records_top()?;
+        {
+            let mut held = HELD
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let held = held.get_or_insert_with(Default::default);
+            if let Some(h) = held
+                .get_mut(&key)
+                .filter(|h| h.rules == rules && h.gen == gen && top >= h.after)
+            {
+                let rows = db.net_records_after(network, h.after)?;
+                if db.net_journal_gen()? != gen {
+                    continue;
+                }
+                for (row, bytes) in rows {
+                    h.after = row;
+                    if let Ok(record) = Record::decode(&bytes) {
+                        h.journal.insert(record);
+                    }
+                }
+                return Ok((h.journal.clone(), h.after));
+            }
+        }
+        let (after, journal) = build(db.net_records_after(network, 0)?)?;
+        if db.net_journal_gen()? != gen {
+            continue;
+        }
+        HELD.lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get_or_insert_with(Default::default)
+            .insert(
+                key.clone(),
+                Held {
+                    rules: rules.clone(),
+                    gen,
+                    after,
+                    journal: journal.clone(),
+                },
+            );
+        return Ok((journal, after));
+    }
+    // Toujours en mouvement : une lecture qui ne se garde pas.
+    build(db.net_records_after(network, 0)?).map(|(a, j)| (j, a))
 }
 
 /// Le journal tel que la base le garde, avec ce qui règle son horloge —
@@ -2398,8 +2777,8 @@ pub fn dial_heard_in(
         return Err(tr("net_err_no_network").to_owned());
     };
     let sent = net.publish(db, officine)?;
-    let answered = net
-        .sync_with(db, address, TALK_PATIENCE)
+    let (answered, used) = net
+        .sync_door(db, address, TALK_PATIENCE)
         .map_err(|e| dial_reason(&e))?;
     if answered.as_deref() != Some(device) {
         return Err(dial_reason("Handshake"));
@@ -2409,8 +2788,8 @@ pub fn dial_heard_in(
     // remplacée, et tenu ensuite chaque synchronisation à sa merci.
     let key = reached_key(device);
     let was = db.setting(&key);
-    if was.as_deref() != Some(address.trim()) {
-        let _ = db.set_setting(&key, address.trim(), was.as_deref(), "", "");
+    if was.as_deref() != Some(used.as_str()) {
+        let _ = db.set_setting(&key, &used, was.as_deref(), "", "");
     }
     let _ = db.note_net_dial(device, None);
     let received = net.absorb(db)?;
@@ -2448,8 +2827,8 @@ fn dial_open_at(
     let mut net = Net::load_network(db, &open_id())?;
     let me = hex(&net.device.id().0);
     let sent = net.publish(db, officine)?;
-    let answered = net
-        .sync_with(db, address, TALK_PATIENCE)
+    let (answered, used) = net
+        .sync_door(db, address, TALK_PATIENCE)
         .map_err(|e| dial_reason(&e))?;
     let device = match (answered, expected) {
         (Some(a), Some(e)) if a == e => a,
@@ -2460,8 +2839,8 @@ fn dial_open_at(
     add_open_member(db, device, &db.today_iso().unwrap_or_default(), true)?;
     let key = reached_key(device);
     let was = db.setting(&key);
-    if was.as_deref() != Some(address.trim()) {
-        let _ = db.set_setting(&key, address.trim(), was.as_deref(), "", "");
+    if was.as_deref() != Some(used.as_str()) {
+        let _ = db.set_setting(&key, &used, was.as_deref(), "", "");
     }
     let was_met = unhex::<32>(device)
         .map(DeviceId::from_bytes)
@@ -2474,7 +2853,7 @@ fn dial_open_at(
         // **Rencontrée à l'instant** : son budget vaut maintenant, et le
         // total ne la lie plus — une seconde conversation prend ce que la
         // première, le total plein, avait refusé.
-        let _ = fresh.sync_with(db, address, TALK_PATIENCE);
+        let _ = fresh.sync_with(db, &used, TALK_PATIENCE);
     }
     let received = fresh.absorb(db)?;
     let own = db.officine().map(|o| o.name).unwrap_or_default();
@@ -3962,19 +4341,28 @@ mod tests {
         let relay = format!("127.0.0.1:{port}");
         let (path_a, at) = (dir_a.join("net.db"), relay.clone());
         let group = crate::relay::officine_group(&principal, &a_dev);
+        let (ready, opened) = std::sync::mpsc::channel();
         let waiting = std::thread::spawn(move || {
             let db = Db::open(&path_a, "secret").unwrap();
+            let _ = ready.send(());
             let stream = crate::relay::wait(&at, &group, TALK_PATIENCE).unwrap();
             let mut link = bpm_sync::link::TcpLink::new(stream, TALK_PATIENCE).unwrap();
             answer(&db, &mut link)
         });
-        // The wait reaches the relay before the call.
-        std::thread::sleep(Duration::from_millis(300));
+        // The wait reaches the relay before the call — its base opened,
+        // then a call again until it is there: a loaded machine opened the
+        // base slower than any fixed pause.
+        opened.recv().unwrap();
         let mut nb = Net::load(&b).unwrap();
-        assert_eq!(
-            nb.sync_relayed_at(&b, &a_dev, std::slice::from_ref(&relay), TALK_PATIENCE),
-            Ok(Some(a_dev.clone()))
-        );
+        let until = std::time::Instant::now() + Duration::from_secs(10);
+        let met = loop {
+            std::thread::sleep(Duration::from_millis(100));
+            let got = nb.sync_relayed_at(&b, &a_dev, std::slice::from_ref(&relay), TALK_PATIENCE);
+            if got.is_ok() || std::time::Instant::now() > until {
+                break got;
+            }
+        };
+        assert_eq!(met, Ok(Some(a_dev.clone())));
         assert!(waiting.join().unwrap().is_ok());
         // Nobody waits under another officine's name: refused, said.
         let other = "ef".repeat(32);
@@ -4410,6 +4798,7 @@ mod tests {
                 relay_port: 0,
                 posts_relay: false,
                 relay_patients: false,
+                web_door: false,
             },
             crate::postes::Pace::default(),
         );
@@ -4488,6 +4877,116 @@ mod tests {
             b.setting(&reached_key(&a_device)),
             Some(at),
             "retenue une fois jointe"
+        );
+    }
+
+    /// **What the test says**: the verdict follows what got out — a
+    /// network that only lets the web out, and doors that answer only
+    /// at their web door, say so; nothing out says that.
+    #[test]
+    fn the_connection_test_names_what_the_network_blocks() {
+        use crate::strings::{tr, trf, trn};
+        let door = |door: bool, web: bool| DoorTry {
+            name: "Pharmacie B".into(),
+            address: "203.0.113.5:7745".into(),
+            door,
+            web,
+        };
+        let last = |d: &Diagnosis| diagnosis_lines(d).last().cloned().unwrap();
+        let hospital = Diagnosis {
+            web: true,
+            dht: false,
+            doors: vec![door(false, true), door(false, false)],
+        };
+        let lines = diagnosis_lines(&hospital);
+        assert_eq!(lines.len(), 5, "{lines:?}");
+        assert!(lines[1].0, "la DHT ne répond pas");
+        assert!(!lines[2].0 && lines[2].1.contains("443"));
+        assert!(lines[3].0);
+        assert_eq!(last(&hospital), (false, trn("diag_web_only", &[&1, &2])));
+        let walled = Diagnosis {
+            doors: vec![door(false, false)],
+            ..hospital.clone()
+        };
+        assert_eq!(last(&walled), (true, trf("diag_only_web", 1)));
+        assert_eq!(
+            last(&Diagnosis::default()),
+            (true, tr("diag_offline").to_owned())
+        );
+        let home = Diagnosis {
+            web: true,
+            dht: true,
+            doors: vec![door(true, false)],
+        };
+        assert_eq!(last(&home), (false, trn("diag_doors_ok", &[&1, &1])));
+        assert!(
+            !last(&Diagnosis {
+                doors: vec![],
+                ..home
+            })
+            .0
+        );
+    }
+
+    /// A door's web door is the same public machine at 443 — never a
+    /// name, a local address, or a door already there.
+    #[test]
+    fn a_web_door_is_only_for_a_public_address() {
+        assert_eq!(web_door("82.64.1.2:7745").as_deref(), Some("82.64.1.2:443"));
+        assert_eq!(
+            web_door("[2001:4860::1]:7745").as_deref(),
+            Some("[2001:4860::1]:443")
+        );
+        for none in [
+            "82.64.1.2:443",
+            "203.0.113.5:7745",
+            "192.168.1.20:7745",
+            "10.0.0.2:7745",
+            "pharmacie.fr:7745",
+            "[fe80::1]:7745",
+            "",
+        ] {
+            assert_eq!(web_door(none), None, "{none}");
+        }
+    }
+
+    /// **The journal read once per process still says what the base
+    /// holds**: rows stored by another connection arrive, a forgotten one
+    /// leaves, and a network left is empty.
+    #[test]
+    fn a_journal_read_once_follows_what_the_base_stores_and_forgets() {
+        let (dir, _s, a) = officine("cached-journal");
+        join_open(&a, "2026-10-21").unwrap();
+        let other = Db::open(&dir.join("net.db"), "secret").unwrap();
+        let first = Net::load_network(&a, &open_id()).unwrap().record_count();
+        let mut n = Net::load_network(&other, &open_id()).unwrap();
+        let t = n.trousseau.clone().unwrap();
+        for i in 0..3 {
+            n.seal_one(&t, format!("ligne {i}").as_bytes());
+        }
+        n.keep(&other).unwrap();
+        let seen = Net::load_network(&a, &open_id()).unwrap();
+        assert_eq!(
+            seen.record_count(),
+            first + 3,
+            "lues depuis l'autre connexion"
+        );
+        let gone = seen.journal.records().next().unwrap();
+        other
+            .forget_net_records_of(
+                &open_id(),
+                &[[hex(&gone.id().0), hex(&gone.author().0), String::new()]],
+            )
+            .unwrap();
+        let after = Net::load_network(&a, &open_id()).unwrap();
+        assert!(!after.journal.has(&gone.id()), "oubliée ailleurs");
+        assert!(after.journal.knows(&gone.id()));
+        other.leave_net_network(&open_id()).unwrap();
+        assert_eq!(
+            Net::load_network(&a, &open_id())
+                .map(|n| n.record_count())
+                .unwrap_or(0),
+            0
         );
     }
 

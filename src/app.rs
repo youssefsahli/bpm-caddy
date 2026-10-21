@@ -6011,6 +6011,9 @@ struct Session {
     /// What happened on the connections, newest last: time, failure, what.
     #[cfg(feature = "sync")]
     conn_log: std::collections::VecDeque<(String, bool, String)>,
+    /// « Tester la connexion » en cours, sur son fil.
+    #[cfg(feature = "sync")]
+    conn_diag: Option<std::sync::mpsc::Receiver<crate::network::Diagnosis>>,
     /// What the connections view reads from the base, when it opens and
     /// after something moved — never per frame.
     #[cfg(feature = "sync")]
@@ -6429,6 +6432,10 @@ struct Session {
     /// [`db::Db::data_version`]. Quand le témoin bouge, un autre poste a
     /// écrit, et les listes de cet écran datent.
     sync_seen: (i64, i64, i64),
+    /// [`db::Db::screen_rev`] au même regard : le témoin qui bouge sans
+    /// lui, seul le fil du réseau a écrit, et rien de ce que l'écran
+    /// montre n'a changé.
+    screen_seen: i64,
     /// Quand regarder de nouveau. Le témoin coûte trois pragmas, ce qui
     /// n'est rien — mais rien fois soixante par seconde reste une
     /// requête par image, et la règle de la maison est qu'aucune
@@ -7067,6 +7074,8 @@ impl Session {
             #[cfg(feature = "sync")]
             conn_log: std::collections::VecDeque::new(),
             #[cfg(feature = "sync")]
+            conn_diag: None,
+            #[cfg(feature = "sync")]
             conn_summary: None,
             msg: MessagesState::default(),
             conn_dirty: false,
@@ -7175,6 +7184,7 @@ impl Session {
             officine_fresh: None,
             officine_stale: false,
             sync_seen: (0, 0, 0),
+            screen_seen: 0,
             sync_next: Instant::now(),
             sync_notice: None,
             stup_list: StupList::default(),
@@ -8849,8 +8859,16 @@ impl Session {
         // Le tout premier regard ne recharge rien : il ne fait
         // qu'enregistrer l'état de départ.
         let first = self.sync_seen == (0, 0, 0);
+        // **Seul le réseau a écrit** — une officine qui frappe, une
+        // synchronisation qui range son journal : la base principale a
+        // bougé, rien de ce que l'écran lit. Relire toutes les listes à
+        // chaque fois faisait un à-coup par officine.
+        let rev = self.db.screen_rev();
+        let network_only =
+            now.1 == self.sync_seen.1 && now.2 == self.sync_seen.2 && rev == self.screen_seen;
         self.sync_seen = now;
-        if first {
+        self.screen_seen = rev;
+        if first || network_only {
             return;
         }
         self.resync();
@@ -9176,6 +9194,7 @@ impl Session {
                 },
                 posts_relay: config.postes.relais,
                 relay_patients: config.reseau.relais_patients,
+                web_door: config.reseau.porte_web,
             },
             crate::postes::Pace::default(),
         ));
@@ -9435,6 +9454,25 @@ impl Session {
     /// synchronisation ne montre jamais de code.
     #[cfg(feature = "sync")]
     fn poll_net_auto(&mut self, ctx: &egui::Context, config: &Config) {
+        if let Some(rx) = &self.conn_diag {
+            match rx.try_recv() {
+                Ok(d) => {
+                    self.conn_diag = None;
+                    for (bad, line) in crate::network::diagnosis_lines(&d) {
+                        self.log_connection(bad, &line);
+                    }
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    ctx.request_repaint_after(Duration::from_millis(500));
+                }
+                // Le fil est tombé sans rien dire (la base ne s'est pas
+                // ouverte) : la ligne « en cours » ne reste pas sans suite.
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.conn_diag = None;
+                    self.log_connection(true, tr("conn_diagnose_failed"));
+                }
+            }
+        }
         if let Some(rx) = &self.net_auto {
             match rx.try_recv() {
                 Ok(crate::network::Progress::Done(said)) => {
@@ -9530,6 +9568,27 @@ impl Session {
             return;
         }
         self.start_net_sync(config);
+    }
+
+    /// **Tester la connexion** sur son fil, sa propre connexion à la base :
+    /// ce qui sort d'ici, et les portes des officines connues.
+    #[cfg(feature = "sync")]
+    fn start_diagnosis(&mut self) {
+        if self.conn_diag.is_some() {
+            return;
+        }
+        let Some(path) = self.db.path() else {
+            return;
+        };
+        let password = self.password.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            if let Ok(db) = Db::open(&path, &password) {
+                let _ = tx.send(crate::network::diagnose(&db));
+            }
+        });
+        self.conn_diag = Some(rx);
+        self.log_connection(false, tr("conn_diagnose_running"));
     }
 
     /// Lancer une synchronisation du réseau d'officines sur son fil.
@@ -18614,7 +18673,7 @@ impl NetSummary {
 
     /// Ce que la fenêtre montre d'un réseau (vide : le principal).
     fn read_for(db: &Db, network: &str) -> Result<Self, String> {
-        let net = crate::network::Net::load_network(db, network)?;
+        let net = crate::network::Net::load_bare(db, network)?;
         let mut networks = Vec::new();
         if db.setting("net_trousseau").is_some() {
             networks.push((String::new(), tr("net_principal").to_owned()));
@@ -18637,7 +18696,7 @@ impl NetSummary {
             in_network: net.in_network(),
             groups: net.groups(),
             network: net.network_groups(),
-            records: net.record_count(),
+            records: db.net_record_count_of(&net.id)?,
             peers: net.peers.clone(),
             networks,
             label: net.label.clone(),
@@ -23620,6 +23679,7 @@ impl App {
             // vient de faire lui-même. On reprend le repère ici, où les
             // listes sont de toute façon relues.
             session.sync_seen = session.db.data_version();
+            session.screen_seen = session.db.screen_rev();
             // A reset has emptied every table under the open views, so
             // everything cached is dropped and read again. The other
             // three only ever add, but they add to the same lists.
@@ -80284,6 +80344,7 @@ impl App {
                 Self::button_width(ui, tr("conn_sync_all")),
                 Self::button_width(ui, tr("posts_open")),
                 Self::button_width(ui, tr("net_open")),
+                Self::button_width(ui, tr("conn_diagnose")),
                 Self::button_width(ui, tr("conn_map")),
             ]
             .into_iter(),
@@ -80348,6 +80409,13 @@ impl App {
                         .clicked()
                     {
                         open_net = true;
+                    }
+                    // Pendant un test, un second clic ne fait rien (`start_diagnosis`).
+                    if motif::button(ui, tr("conn_diagnose"))
+                        .on_hover_text(tr("conn_diagnose_tooltip"))
+                        .clicked()
+                    {
+                        session.start_diagnosis();
                     }
                     // La carte : les mêmes connexions, dessinées.
                     if motif::toggle(ui, tr("conn_map"), session.conn_map)
@@ -93936,6 +94004,14 @@ impl eframe::App for App {
                                         egui::DragValue::new(&mut editor.cfg.reseau.port_ecoute)
                                             .range(1024..=65535),
                                     );
+                                });
+                                ui.add_enabled_ui(editor.cfg.reseau.ecouter, |ui| {
+                                    motif::checkbox(
+                                        ui,
+                                        &mut editor.cfg.reseau.porte_web,
+                                        tr("opts_reseau_web_door"),
+                                    )
+                                    .on_hover_text(tr("opts_reseau_web_door_tooltip"));
                                 });
                                 let r = &editor.cfg.reseau;
                                 if r.port_ecoute == r.port

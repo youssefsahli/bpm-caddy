@@ -2313,6 +2313,16 @@ add clicking and typing; it is not the price of entry.
   would be worse than the stale screen it fixes. Suspended while a
   maintenance pass runs: it has its own connection, so the witness sees
   it as another post.
+  **Not for what only the network writes.** Every officine knocking at
+  the door wrote its journal and its notes, the witness moved, and the
+  whole screen reloaded — a hitch per knock on a slow PC. Triggers
+  (`screen_*`, `Db::install_screen_watch`) count the writes to every
+  table the screen reads into `screen_rev`; the network's own tables
+  (`net_*` but the sourced values `net_facts`, shown on an open card;
+  settings under `net_`), the posts' capture and telemetry are left out. The witness moving with `screen_rev` still is the network
+  alone, and nothing reloads. The pragma still decides that something
+  moved; the counter only says what did, and a table a later version
+  adds gets its triggers at the next opening.
 - **What belongs to the officine goes in the base; what belongs to the
   post stays in `config.toml`.** That file is one per PC — the team
   declared at the counter did not exist in the back office, and the

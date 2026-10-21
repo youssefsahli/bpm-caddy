@@ -536,6 +536,11 @@ pub struct ReseauConfig {
     /// invitation : une porte tenue ouverte ne doit pas prendre la place
     /// de celle qu'on ouvre pour inviter.
     pub port_ecoute: u16,
+    /// **La porte web** : demander aussi à la box, par UPnP, que son port
+    /// 443 mène à la porte des officines, quand il est libre — pour celles
+    /// qui appellent d'un réseau qui ne laisse sortir que le web. Allumé
+    /// par défaut ; à éteindre quand la box se sert de son 443.
+    pub porte_web: bool,
     /// **Relayer les téléphones des officines du réseau** : tenir, sur
     /// `port_relais`, un relais qui met en relation le poste injoignable
     /// d'une officine amie et le téléphone de son équipe, sans rien
@@ -568,6 +573,7 @@ impl Default for ReseauConfig {
             annoncer: true,
             ecouter: true,
             port_ecoute: 7745,
+            porte_web: true,
             relais: false,
             port_relais: 7746,
             relais_patients: false,

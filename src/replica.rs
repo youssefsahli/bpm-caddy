@@ -212,6 +212,16 @@ pub const LOCAL: &[(File, &str, &str)] = &[
         "net_forgotten",
         "ce que le journal du réseau a oublié, par poste",
     ),
+    (
+        Main,
+        "net_journal_gen",
+        "combien de fois ce journal a perdu des lignes, par poste",
+    ),
+    (
+        Main,
+        "screen_rev",
+        "ce que l'écran de ce poste a vu changer",
+    ),
     (Main, "net_peers", "les officines que ce poste compose"),
     (
         Main,
