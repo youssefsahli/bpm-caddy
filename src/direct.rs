@@ -247,7 +247,7 @@ struct Peer {
 
 /// Le nom de l'utilisateur d'un paquet STUN (RFC 5389) : `ours:theirs`
 /// dans une demande de liaison ICE. `None` pour tout autre paquet.
-fn stun_username(buf: &[u8]) -> Option<&str> {
+pub(crate) fn stun_username(buf: &[u8]) -> Option<&str> {
     // Binding request (0x0001), magic cookie.
     if buf.len() < 20 || buf[0..2] != [0x00, 0x01] || buf[4..8] != [0x21, 0x12, 0xa4, 0x42] {
         return None;
@@ -285,6 +285,28 @@ pub struct Listening {
     thread: Option<std::thread::JoinHandle<()>>,
     /// Les adresses tenues.
     pub bound: Vec<SocketAddr>,
+    /// Les relais où ce poste attend, et quand chacun a tenu l'attente
+    /// pour la dernière fois.
+    held: Arc<std::sync::Mutex<HashMap<SocketAddr, Instant>>>,
+}
+
+impl Listening {
+    /// **Les relais qui tiennent l'attente de ce poste** : ce qu'il peut
+    /// publier, une page les composant comme ses propres adresses.
+    pub fn relayed(&self) -> Vec<SocketAddr> {
+        let mut out: Vec<SocketAddr> = self
+            .held
+            .lock()
+            .map(|h| {
+                h.iter()
+                    .filter(|(_, t)| t.elapsed() < crate::relay::UDP_WAIT_BOUND)
+                    .map(|(a, _)| *a)
+                    .collect()
+            })
+            .unwrap_or_default();
+        out.sort();
+        out
+    }
 }
 
 impl Drop for Listening {
@@ -304,25 +326,110 @@ pub fn serve(
     box_id: &str,
     links: mpsc::Sender<Link>,
 ) -> Listening {
+    serve_relayed(sockets, &[], "", identity, box_id, links)
+}
+
+/// **Une prise de ce poste** : une adresse à lui, ou celle d'un relais
+/// où il attend (`relay.rs`) — la même pour la page, qui y compose ce
+/// poste ; seul ce qui passe par la prise change d'enveloppe.
+struct Port {
+    socket: UdpSocket,
+    /// Ce que la page compose : l'adresse de la prise, ou du relais.
+    at: SocketAddr,
+    relayed: bool,
+}
+
+impl Port {
+    fn send(&self, contents: &[u8], to: SocketAddr) {
+        if self.relayed {
+            let frame = crate::relay::UdpFrame::Data {
+                peer: to,
+                payload: contents,
+            };
+            let _ = self
+                .socket
+                .send_to(&crate::relay::udp_encode(&frame), self.at);
+        } else {
+            let _ = self.socket.send_to(contents, to);
+        }
+    }
+}
+
+/// [`serve`], et en plus **attendre aux relais** `relays` sous le nom du
+/// groupe de postes `group` : une page qui compose l'adresse d'un relais
+/// arrive ici comme à une adresse de ce poste.
+pub fn serve_relayed(
+    sockets: Vec<UdpSocket>,
+    relays: &[SocketAddr],
+    group: &str,
+    identity: &Identity,
+    box_id: &str,
+    links: mpsc::Sender<Link>,
+) -> Listening {
     let stop = Arc::new(AtomicBool::new(false));
     let bound = sockets.iter().filter_map(|s| s.local_addr().ok()).collect();
+    let mut ports: Vec<Port> = sockets
+        .into_iter()
+        .filter_map(|socket| {
+            let at = socket.local_addr().ok()?;
+            Some(Port {
+                socket,
+                at,
+                relayed: false,
+            })
+        })
+        .collect();
+    for at in relays {
+        let any: SocketAddr = if at.is_ipv4() {
+            (std::net::Ipv4Addr::UNSPECIFIED, 0).into()
+        } else {
+            (std::net::Ipv6Addr::UNSPECIFIED, 0).into()
+        };
+        let Ok(socket) = UdpSocket::bind(any) else {
+            continue;
+        };
+        if socket.set_nonblocking(true).is_ok() {
+            ports.push(Port {
+                socket,
+                at: *at,
+                relayed: true,
+            });
+        }
+    }
+    let held: Arc<std::sync::Mutex<HashMap<SocketAddr, Instant>>> = Arc::default();
     let (cert, creds, flag) = (identity.dtls(), ice_creds(box_id), Arc::clone(&stop));
-    let thread = std::thread::spawn(move || drive(sockets, cert, creds, links, flag));
+    let held_by = Arc::clone(&held);
+    let group = group.to_owned();
+    let thread = std::thread::spawn(move || drive(ports, group, held_by, cert, creds, links, flag));
     Listening {
         stop,
         thread: Some(thread),
         bound,
+        held,
     }
 }
 
 fn drive(
-    sockets: Vec<UdpSocket>,
+    ports: Vec<Port>,
+    group: String,
+    held: Arc<std::sync::Mutex<HashMap<SocketAddr, Instant>>>,
     cert: str0m::config::DtlsCert,
     creds: IceCreds,
     links: mpsc::Sender<Link>,
     stop: Arc<AtomicBool>,
 ) {
-    let locals: Vec<Option<SocketAddr>> = sockets.iter().map(|s| s.local_addr().ok()).collect();
+    let locals: Vec<SocketAddr> = ports.iter().map(|p| p.at).collect();
+    let mut waited: Option<Instant> = None;
+    // The cookie each relay gave this post's address: brought back with
+    // every wait, without which none is held.
+    let mut cookies: Vec<[u8; 16]> = vec![[0; 16]; ports.len()];
+    let wait = |cookie: [u8; 16]| {
+        crate::relay::udp_encode(&crate::relay::UdpFrame::Wait {
+            group: &group,
+            ufrag: &creds.ufrag,
+            cookie,
+        })
+    };
     let (commands, orders) = mpsc::channel::<Command>();
     let mut peers: HashMap<u64, Peer> = HashMap::new();
     let mut next: u64 = 0;
@@ -330,16 +437,53 @@ fn drive(
     while !stop.load(Ordering::SeqCst) {
         let now = Instant::now();
         let mut heard = false;
-        for (index, socket) in sockets.iter().enumerate() {
-            let Some(local) = locals[index] else { continue };
+        // The wait said again at every relay: what keeps it held there,
+        // and the operator's translation of this post's address open.
+        if waited.is_none_or(|t| now.duration_since(t) >= crate::relay::UDP_RENEW) {
+            waited = Some(now);
+            for (p, cookie) in ports.iter().zip(&cookies).filter(|(p, _)| p.relayed) {
+                let _ = p.socket.send_to(&wait(*cookie), p.at);
+            }
+        }
+        for (index, port) in ports.iter().enumerate() {
+            let local = port.at;
             // A burst at most per socket and round: one page that floods
             // does not starve the others.
             for _ in 0..64 {
-                let Ok((n, source)) = socket.recv_from(&mut buf) else {
+                let Ok((n, from)) = port.socket.recv_from(&mut buf) else {
                     break;
                 };
                 heard = true;
-                let data = &buf[..n];
+                // Through a relay: only what the relay says, the page's
+                // datagram unwrapped with the page's address.
+                let (source, data) = if port.relayed {
+                    if from != port.at {
+                        continue;
+                    }
+                    match crate::relay::udp_decode(&buf[..n]) {
+                        Some(crate::relay::UdpFrame::Held { cookie, held: true })
+                            if cookie == cookies[index] =>
+                        {
+                            if let Ok(mut h) = held.lock() {
+                                h.insert(port.at, now);
+                            }
+                            continue;
+                        }
+                        // A cookie for this address: the wait said again
+                        // at once, with it.
+                        Some(crate::relay::UdpFrame::Held { cookie, .. }) => {
+                            if cookie != cookies[index] {
+                                cookies[index] = cookie;
+                                let _ = port.socket.send_to(&wait(cookie), port.at);
+                            }
+                            continue;
+                        }
+                        Some(crate::relay::UdpFrame::Data { peer, payload }) => (peer, payload),
+                        _ => continue,
+                    }
+                } else {
+                    (from, &buf[..n])
+                };
                 let Ok(contents) = data.try_into() else {
                     continue;
                 };
@@ -402,7 +546,7 @@ fn drive(
                 }
                 // Every socket a candidate: a page that tries another of
                 // this post's addresses later reaches the same peer.
-                for l in locals.iter().flatten() {
+                for l in &locals {
                     if let Ok(candidate) = Candidate::host(*l, "udp") {
                         rtc.add_local_candidate(candidate);
                     }
@@ -479,9 +623,9 @@ fn drive(
                         // From the socket the answer names as its source.
                         let i = locals
                             .iter()
-                            .position(|l| *l == Some(t.source))
+                            .position(|l| *l == t.source)
                             .unwrap_or(p.socket);
-                        let _ = sockets[i].send_to(&t.contents, t.destination);
+                        ports[i].send(&t.contents, t.destination);
                     }
                     Ok(Output::Timeout(_)) => break,
                     Ok(Output::Event(e)) => match e {
@@ -544,7 +688,7 @@ fn drive(
                 p.rtc.disconnect();
                 // The last words (an SCTP abort, a DTLS close) out.
                 while let Ok(Output::Transmit(t)) = p.rtc.poll_output() {
-                    let _ = sockets[p.socket].send_to(&t.contents, t.destination);
+                    ports[p.socket].send(&t.contents, t.destination);
                 }
             }
         }

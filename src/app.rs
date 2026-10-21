@@ -9175,6 +9175,7 @@ impl Session {
                     0
                 },
                 posts_relay: config.postes.relais,
+                relay_patients: config.reseau.relais_patients,
             },
             crate::postes::Pace::default(),
         ));
@@ -14357,6 +14358,9 @@ impl Session {
         // The officine's name or hours changed: told to the running
         // thread, which keeps listening — restarted, the direct way lost
         // its port while the old listening gave it back.
+        if let Some((w, _)) = &self.pchat_wait {
+            w.set_relays(config.postes.relais && config.postes.relais_patients);
+        }
         if let (Some((w, running)), Some((c, who))) = (&mut self.pchat_wait, &want) {
             if running.0 == *c && running.1 != *who {
                 w.set_officine(who.clone());
@@ -14377,6 +14381,7 @@ impl Session {
                             identity,
                             port: crate::direct::DEFAULT_PORT,
                             at: None,
+                            relays: config.postes.relais && config.postes.relais_patients,
                         });
                 let w = crate::patientpost::spawn(
                     path,
@@ -46905,36 +46910,7 @@ impl App {
         if who.is_empty() {
             return;
         }
-        let start = session
-            .db
-            .shifts_between(&first, &last)
-            .unwrap_or_default()
-            .iter()
-            .filter(|s| s.operator.trim() == who)
-            .filter_map(|s| planning::parse_bound(&s.start_time))
-            .min()
-            .unwrap_or(9 * 60)
-            .min(24 * 60 - 1);
-        let rhythm = if first == last {
-            planning::Cadence::Unique
-        } else {
-            planning::Cadence::Quotidien
-        };
-        let row = db::NewShift {
-            operator: who.clone(),
-            day: first.clone(),
-            start_time: planning::format_bound(start),
-            kind: kind.as_str().to_owned(),
-            repeat_days: rhythm.pas(),
-            cadence: rhythm.as_str().to_owned(),
-            repeat_until: if first == last {
-                String::new()
-            } else {
-                last.clone()
-            },
-            ..Default::default()
-        };
-        match session.db.add_shift(&row) {
+        match session.db.add_absence(&who, kind, &first, &last) {
             Ok(id) => {
                 session.remember(PlanningUndo::Added {
                     id,
@@ -93802,6 +93778,14 @@ impl eframe::App for App {
                                             .range(1024..=65535),
                                     );
                                 });
+                                ui.add_enabled_ui(editor.cfg.reseau.relais, |ui| {
+                                    motif::checkbox(
+                                        ui,
+                                        &mut editor.cfg.reseau.relais_patients,
+                                        tr("opts_reseau_relay_patients"),
+                                    )
+                                    .on_hover_text(tr("opts_reseau_relay_patients_tooltip"));
+                                });
                                 ui.horizontal_wrapped(|ui| {
                                     motif::checkbox(
                                         ui,
@@ -93896,6 +93880,14 @@ impl eframe::App for App {
                                         tr("opts_postes_relay"),
                                     )
                                     .on_hover_text(tr("opts_postes_relay_tooltip"));
+                                    ui.add_enabled_ui(editor.cfg.postes.relais, |ui| {
+                                        motif::checkbox(
+                                            ui,
+                                            &mut editor.cfg.postes.relais_patients,
+                                            tr("opts_postes_relay_patients"),
+                                        )
+                                        .on_hover_text(tr("opts_postes_relay_patients_tooltip"));
+                                    });
                                     ui.horizontal_wrapped(|ui| {
                                         ui.label(dim(tr("opts_reseau_port")));
                                         motif::number(

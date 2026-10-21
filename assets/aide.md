@@ -312,7 +312,9 @@ service écoute à ses adresses publiques — son IPv6, ou la box qui lui
 ouvre le port UDP 7748 (UPnP, PCP ou NAT-PMP) — et la page le joint en WebRTC. L'onglet
 dit si ce poste est joignable ; un poste qui ne l'est pas laisse répondre
 les autres, et le code porte les adresses de tous. Si aucun ne l'est,
-ouvrir ce port dans la box, ou régler une passerelle.
+ouvrir ce port dans la box, passer par le relais d'une officine amie
+(« Se faire relayer par le réseau », « Y compris la messagerie des
+patients », Options › Base), ou régler une passerelle.
 
 **Une passerelle**, facultative, est un serveur que l'officine tient ou
 choisit (son adresse, dans la même fenêtre) : elle sert de second
@@ -1759,8 +1761,9 @@ planning et la messagerie, écrit à l'équipe, ajoute ou retire une
 entrée d'agenda, corrige une fiche. Au planning, un appui long sur un
 poste le change pour ce jour seul — d'autres heures, ou « Pas là ce
 jour » — sans toucher à la trame, et « Un jour de plus » pose un jour
-travaillé aux initiales du téléphone. Un congé, un arrêt ou une
-formation se modifient sur un poste. Il ne reçoit jamais la clé des
+travaillé aux initiales du téléphone. « Une absence » pose un congé,
+un arrêt, une formation ou une récupération du premier au dernier jour,
+comme le planning d'un poste ; elle se modifie ensuite sur un poste. Il ne reçoit jamais la clé des
 dossiers, du registre, de la caisse ni des réglages : il transporte ces
 données chiffrées sans pouvoir les lire. Sa base s'ouvre avec le
 verrouillage du téléphone et se referme après cinq minutes hors de
@@ -1781,6 +1784,13 @@ officine amie du réseau qui coche « Relayer les téléphones des officines
 du réseau ». Le poste s'y tient en attente ; le téléphone le joint par son
 intermédiaire. L'officine relais ne lit ni ne conserve rien : la
 conversation, chiffrée de bout en bout, ne fait que transiter.
+
+**Les patients aussi**, chacun des deux côtés le cochant à part : « Y
+compris la messagerie des patients » chez l'officine relayée, « Relayer
+aussi leurs patients » chez celle qui relaie (qui ouvre alors le même
+port en UDP). La page du patient compose le relais comme une adresse de
+l'officine ; les messages, chiffrés de bout en bout, y passent sans être
+lus ni gardés — mais ce sont des données de santé, d'où un choix à part.
 
 # Messagerie
 

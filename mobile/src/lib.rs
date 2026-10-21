@@ -383,6 +383,20 @@ pub fn event_categories() -> Vec<Choice> {
         .collect()
 }
 
+/// Les natures d'une absence, dans l'ordre du bureau : congé, maladie,
+/// formation, récupération.
+#[uniffi::export]
+pub fn absence_kinds() -> Vec<Choice> {
+    bpm_caddy::planning::ShiftKind::ALL
+        .iter()
+        .filter(|k| k.is_absence())
+        .map(|k| Choice {
+            key: k.as_str().to_owned(),
+            label: k.label().to_owned(),
+        })
+        .collect()
+}
+
 /// Ce qu'un passage par le dossier d'échange a fait.
 #[derive(uniffi::Record)]
 pub struct FolderDone {
@@ -905,6 +919,32 @@ impl Caddy {
             cadence: bpm_caddy::planning::Cadence::Unique.as_str().to_owned(),
             ..Default::default()
         })?)
+    }
+
+    /// **Une absence**, du premier au dernier jour (tapés à la française,
+    /// `today` donne l'année d'un jour tapé sans elle), pour `operator`
+    /// (ses initiales) : une ligne, comme le bureau la pose
+    /// (`Db::add_absence`) — `kind`, la clé d'une absence.
+    pub fn add_absence(
+        &self,
+        operator: String,
+        kind: String,
+        first: String,
+        last: String,
+        today: String,
+    ) -> Result<i64> {
+        use bpm_caddy::db::{parse_french_date, YearHint};
+        let operator = initials(&operator);
+        if operator.trim().is_empty() {
+            return Err(failed("mobile_planning_who"));
+        }
+        let kind = bpm_caddy::planning::ShiftKind::parse(&kind)
+            .filter(|k| k.is_absence())
+            .ok_or_else(|| failed("planning_leave_invalid"))?;
+        let year = today.get(..4).and_then(|y| y.parse().ok()).unwrap_or(2026);
+        let first = parse_french_date(&first, year, YearHint::Future)?;
+        let last = parse_french_date(&last, year, YearHint::Future)?;
+        Ok(self.db().add_absence(&operator, kind, &first, &last)?)
     }
 
     /// **Le fil des actualités**, dans l'ordre du bureau (`compte::feed`),
@@ -2236,6 +2276,54 @@ mod tests {
     /// **One day from the phone**: a day more, typed the counter's way; a
     /// day of a pattern changed or emptied alone; nothing written over a
     /// day that moved since the phone showed it.
+    /// **Une absence posée au téléphone** : une ligne du premier au
+    /// dernier jour, qui cache ce que la trame dit ces jours-là et pas
+    /// les autres ; une nature qui n'est pas une absence, des jours à
+    /// l'envers ou pas d'initiales ne posent rien.
+    #[test]
+    fn the_phone_sets_an_absence_as_the_desktop_does() {
+        let d = dir("absence");
+        let c = Caddy::open(d.display().to_string(), "k".into()).unwrap();
+        let keys: Vec<String> = absence_kinds().into_iter().map(|k| k.key).collect();
+        assert_eq!(keys, ["CONGE", "MALADIE", "FORMATION", "RECUP"]);
+        c.db()
+            .add_shift(&bpm_caddy::db::NewShift {
+                operator: "CL".into(),
+                day: "2026-09-29".into(),
+                start_time: "08:30".into(),
+                end_time: "12:00".into(),
+                kind: "JOURNEE".into(),
+                repeat_days: 7,
+                ..Default::default()
+            })
+            .unwrap();
+        let at = |day: &str| c.planning(day.into(), day.into()).unwrap();
+        let today = || "2026-10-01".to_owned();
+        let set = |who: &str, kind: &str, first: &str, last: &str| {
+            c.add_absence(who.into(), kind.into(), first.into(), last.into(), today())
+        };
+        assert!(set("cl", "JOURNEE", "12/10", "16/10").is_err());
+        assert!(set("cl", "CONGE", "16/10", "12/10").is_err());
+        assert!(set("", "CONGE", "12/10", "16/10").is_err());
+        assert!(set("cl", "CONGE", "12/10", "16/10").is_ok());
+        let tuesday = at("2026-10-13");
+        assert_eq!(tuesday.len(), 1);
+        assert!(tuesday[0].absence);
+        assert_eq!(tuesday[0].operator, "CL");
+        assert_eq!(tuesday[0].start_time, "08:30", "son heure la plus matinale");
+        assert!(
+            at("2026-10-20").iter().all(|s| !s.absence),
+            "la semaine d'après"
+        );
+        assert_eq!(at("2026-10-20").len(), 1);
+        // A single day.
+        assert!(set("MD", "FORMATION", "21/10/2026", "21/10/2026").is_ok());
+        let wed = at("2026-10-21");
+        assert_eq!(wed.len(), 1);
+        assert!(wed[0].absence && !wed[0].repeats);
+        assert_eq!(wed[0].start_time, "09:00");
+    }
+
     #[test]
     fn the_phone_changes_one_day_of_the_planning_and_only_that_day() {
         let d = dir("planning");

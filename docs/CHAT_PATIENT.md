@@ -267,11 +267,14 @@ main, requête scellée ouverte par le poste, réponse ouverte par la page.
   d'opérateur (CGNAT) sans IPv6 ne se joint pas ; un téléphone sur un
   réseau qui bloque l'UDP (certains Wi-Fi d'entreprise) non plus. Si
   toutes les adresses d'une officine changent entre deux visites d'un
-  patient, son code ne mène plus nulle part : un nouveau code. Le
-  relais d'une autre officine du réseau (§ 7.9 de `SYNC.md`), qui
-  garderait ce chemin sans serveur, ne parle pas encore WebRTC.
-* Sous Windows et macOS, le poste ne sait pas distinguer une adresse
-  IPv6 temporaire (qui tourne en une semaine) d'une adresse stable :
+  patient, son code ne mène plus nulle part : un nouveau code. Sans
+  adresse composable, **le relais d'une officine amie du réseau** (§ 7.9
+  de `SYNC.md`, en UDP) garde ce chemin sans serveur — si chaque côté
+  l'a coché à part ; le code porte l'adresse du relais, que la page
+  compose comme une autre.
+* Sous Windows, le poste ne sait pas distinguer une adresse
+  IPv6 temporaire (qui tourne en une semaine) d'une adresse stable
+  (Linux et macOS les distinguent) :
   un code peut en porter une qui mourra. Les réponses rendent les
   adresses à jour à qui écrit ; un code de tableau imprimé, lui, ne les
   suit pas — le réimprimer quand l'onglet dit d'autres adresses.

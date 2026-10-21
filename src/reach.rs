@@ -95,8 +95,9 @@ fn is_eui64(a: &Ipv6Addr) -> bool {
 
 /// Les adresses que le système dit **temporaires** ou **dépréciées** :
 /// sous Linux, `/proc/net/if_inet6` les marque (`IFA_F_TEMPORARY`,
-/// `IFA_F_DEPRECATED`). Ailleurs, rien de sûr à lire sans dépendance :
-/// les adresses formées sur l'adresse matérielle passent d'abord.
+/// `IFA_F_DEPRECATED`) ; sous macOS, `ifconfig` les dit en clair. Sous
+/// Windows, rien de sûr à lire sans dépendance : les adresses formées sur
+/// l'adresse matérielle passent d'abord.
 fn temporary_or_deprecated() -> Vec<Ipv6Addr> {
     #[cfg(target_os = "linux")]
     {
@@ -104,10 +105,37 @@ fn temporary_or_deprecated() -> Vec<Ipv6Addr> {
             .map(|t| flagged_in_if_inet6(&t))
             .unwrap_or_default()
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("/sbin/ifconfig")
+            .output()
+            .map(|o| flagged_in_ifconfig(&String::from_utf8_lossy(&o.stdout)))
+            .unwrap_or_default()
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
         Vec::new()
     }
+}
+
+/// Les adresses que `ifconfig` (macOS, BSD) marque `temporary` ou
+/// `deprecated` : `inet6 <adresse>[%interface] prefixlen 64 autoconf
+/// temporary`.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn flagged_in_ifconfig(text: &str) -> Vec<Ipv6Addr> {
+    text.lines()
+        .filter_map(|line| {
+            let mut words = line.split_whitespace();
+            if words.next()? != "inet6" {
+                return None;
+            }
+            let address = words.next()?;
+            let address = address.split('%').next()?.parse().ok()?;
+            words
+                .any(|w| w == "temporary" || w == "deprecated")
+                .then_some(address)
+        })
+        .collect()
 }
 
 /// Les adresses marquées temporaires (0x01) ou dépréciées (0x20) dans le
@@ -561,6 +589,29 @@ pub fn addresses(text: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Ce que `ifconfig` dit sous macOS : une adresse temporaire, une
+    /// dépréciée, une stable (`secured`), une de lien local.
+    #[test]
+    fn temporary_addresses_are_read_from_ifconfig() {
+        let text = "en0: flags=8863<UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST> mtu 1500\n\
+            \tinet6 fe80::1c2a:3b4c:5d6e:7f80%en0 prefixlen 64 secured scopeid 0x6\n\
+            \tinet6 2a01:cb00:1:2:1c2a:3b4c:5d6e:7f80 prefixlen 64 autoconf secured\n\
+            \tinet6 2a01:cb00:1:2:9d8e:7f6a:5b4c:3d2e prefixlen 64 autoconf temporary\n\
+            \tinet6 2a01:cb00:1:2:aaaa:bbbb:cccc:dddd prefixlen 64 deprecated autoconf temporary\n\
+            \tinet6 2a01:cb00:9:9::5 prefixlen 64 deprecated\n\
+            \tinet 192.168.1.20 netmask 0xffffff00 broadcast 192.168.1.255\n";
+        let got = flagged_in_ifconfig(text);
+        let want: Vec<Ipv6Addr> = [
+            "2a01:cb00:1:2:9d8e:7f6a:5b4c:3d2e",
+            "2a01:cb00:1:2:aaaa:bbbb:cccc:dddd",
+            "2a01:cb00:9:9::5",
+        ]
+        .iter()
+        .map(|a| a.parse().unwrap())
+        .collect();
+        assert_eq!(got, want);
+    }
 
     /// **PCP, à l'octet près** (RFC 6887 § 7 et § 11) : la demande porte
     /// l'adresse du poste en IPv4 dans IPv6, le nonce, le protocole et le

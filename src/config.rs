@@ -542,6 +542,12 @@ pub struct ReseauConfig {
     /// garder ni rien lire (`relay.rs`). Éteint par défaut.
     pub relais: bool,
     pub port_relais: u16,
+    /// **Relayer aussi les patients** de ces officines : leur page joint
+    /// par ce relais, en UDP sur le même port, le poste qu'elle ne peut
+    /// pas joindre — des messages chiffrés de bout en bout, passés sans
+    /// être lus ni gardés, mais des données de santé : un choix à part.
+    /// Éteint par défaut.
+    pub relais_patients: bool,
     /// **Héberger le répertoire des officines** : tenir, sur
     /// `port_repertoire`, le serveur sans disque où les officines qui le
     /// veulent paraissent sur la carte (`repertoire.rs`). Éteint par
@@ -564,6 +570,7 @@ impl Default for ReseauConfig {
             port_ecoute: 7745,
             relais: false,
             port_relais: 7746,
+            relais_patients: false,
             repertoire: false,
             port_repertoire: 7747,
         }
@@ -596,6 +603,10 @@ pub struct PostesConfig {
     /// — pour l'officine qu'aucun chemin ne rend joignable. Éteint par
     /// défaut.
     pub relais: bool,
+    /// **Et les patients** : la voie directe de la messagerie attend aux
+    /// mêmes relais, qu'une page de patient compose quand elle ne joint
+    /// aucune adresse de l'officine. Éteint par défaut.
+    pub relais_patients: bool,
 }
 
 impl Default for PostesConfig {
@@ -608,6 +619,7 @@ impl Default for PostesConfig {
             a_la_fermeture: true,
             internet: false,
             relais: false,
+            relais_patients: false,
         }
     }
 }

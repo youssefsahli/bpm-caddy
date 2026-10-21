@@ -186,6 +186,15 @@ impl Identity {
         self.device.id().fingerprint().groups()
     }
 
+    /// Le nom du groupe en hexadécimal, ce qu'un relais connaît — d'un
+    /// trousseau entier : un compagnon n'attend à aucun relais.
+    pub fn group_hex(&self) -> Option<String> {
+        self.trousseau
+            .as_ref()
+            .filter(|t| t.is_whole())
+            .map(|t| hex(&t.name().bytes()))
+    }
+
     /// Le nom du groupe, en cinq groupes.
     pub fn group_groups(&self) -> Option<String> {
         self.trousseau.as_ref().map(|t| t.name().groups())
@@ -1558,6 +1567,9 @@ pub struct OfficineSide {
     /// **Se faire relayer** (`[postes] relais`) : attendre aux relais que
     /// les officines du réseau offrent.
     pub posts_relay: bool,
+    /// **Relayer aussi les patients** (`[reseau] relais_patients`) : le
+    /// relais tient aussi, en UDP, la voie directe des pages.
+    pub relay_patients: bool,
 }
 
 /// Combien de conversations d'officines à la fois, au plus : chacune a
@@ -1811,6 +1823,16 @@ fn auto(
             std::sync::Arc::clone(&relay_stop),
         )
         .is_ok();
+    // The same relay in UDP, on the same port: the patients' direct way
+    // of a post nobody can reach (`relay::UdpRelay`).
+    let serving_udp = serving
+        && side.relay_patients
+        && crate::relay::serve_udp(
+            side.relay_port,
+            std::sync::Arc::clone(&relay_allowed),
+            std::sync::Arc::clone(&relay_stop),
+        )
+        .is_ok();
     let (offer_tx, offer_rx) = std::sync::mpsc::channel::<(bool, String)>();
     let mut relay_mapped = false;
     let mut relay_read: Option<Instant> = None;
@@ -1891,6 +1913,9 @@ fn auto(
                 let relay_port = side.relay_port;
                 std::thread::spawn(move || {
                     let v4 = crate::reach::open_mapping(relay_port);
+                    if serving_udp {
+                        let _ = crate::reach::open_udp_mapping(relay_port);
+                    }
                     let _ = tx.send((v4.is_some(), crate::reach::reach_text(v4, &[], relay_port)));
                 });
             }
@@ -2344,6 +2369,9 @@ fn auto(
     }
     if relay_mapped {
         crate::reach::close_mapping(side.relay_port);
+        if serving_udp {
+            crate::reach::close_udp_mapping(side.relay_port);
+        }
     }
     Ok(())
 }
@@ -3450,6 +3478,7 @@ mod tests {
                 posts_internet: false,
                 relay_port: 0,
                 posts_relay: false,
+                relay_patients: false,
             },
             Pace::default(),
         );

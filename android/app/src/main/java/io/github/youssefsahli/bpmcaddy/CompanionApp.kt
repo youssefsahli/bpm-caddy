@@ -84,6 +84,7 @@ import uniffi.bpm_caddy_mobile.Caddy
 import uniffi.bpm_caddy_mobile.NewsFeed
 import uniffi.bpm_caddy_mobile.NewsPost
 import uniffi.bpm_caddy_mobile.ShiftItem
+import uniffi.bpm_caddy_mobile.absenceKinds
 import uniffi.bpm_caddy_mobile.displayDate
 import uniffi.bpm_caddy_mobile.eventCategories
 
@@ -591,7 +592,9 @@ private fun PlanningScreen(state: AppState, caddy: Caddy) {
     // Un appui long sur un poste : ce jour seul, d'autres heures ou pas là.
     var editing by remember { mutableStateOf<ShiftItem?>(null) }
     var adding by rememberSaveable { mutableStateOf(false) }
+    var leave by rememberSaveable { mutableStateOf(false) }
     if (adding) ShiftForm(state, null) { adding = false }
+    if (leave) AbsenceForm(state) { leave = false }
     editing?.let { s -> ShiftForm(state, s) { editing = null } }
     Column(Modifier.fillMaxSize()) {
         WeekBar(from, { step ->
@@ -599,6 +602,10 @@ private fun PlanningScreen(state: AppState, caddy: Caddy) {
         }) {
             OutlinedButton(onClick = { adding = true }, contentPadding = PaddingValues(horizontal = 12.dp)) {
                 Text(T("mobile_planning_add"))
+            }
+            Spacer(Modifier.width(6.dp))
+            OutlinedButton(onClick = { leave = true }, contentPadding = PaddingValues(horizontal = 12.dp)) {
+                Text(T("mobile_planning_leave"))
             }
         }
         HorizontalDivider()
@@ -692,6 +699,49 @@ private fun ShiftForm(state: AppState, editing: ShiftItem?, close: () -> Unit) {
                 TextButton(onClick = close) { Text(T("mobile_cancel")) }
             }
         },
+    )
+}
+
+/**
+ * **Une absence** : congé, maladie, formation, récupération, du premier
+ * au dernier jour, aux initiales du téléphone — une ligne, comme le
+ * bureau la pose ; elle se modifie ensuite sur un poste.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AbsenceForm(state: AppState, close: () -> Unit) {
+    val kinds = remember { absenceKinds() }
+    var kind by rememberSaveable { mutableStateOf("CONGE") }
+    var first by rememberSaveable { mutableStateOf(displayDate(today())) }
+    var last by rememberSaveable { mutableStateOf(displayDate(today())) }
+    val who = state.settings.initials
+    AlertDialog(
+        onDismissRequest = close,
+        title = { Text(T("mobile_planning_leave")) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                if (who.isBlank()) Hint(T("mobile_planning_who"))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    kinds.forEach { k ->
+                        FilterChip(selected = kind == k.key, onClick = { kind = k.key }, label = { Text(k.label) })
+                    }
+                }
+                Row {
+                    OutlinedTextField(first, { first = it }, Modifier.weight(1f), label = { Text(T("mobile_planning_leave_first")) }, singleLine = true)
+                    Spacer(Modifier.width(8.dp))
+                    OutlinedTextField(last, { last = it }, Modifier.weight(1f), label = { Text(T("mobile_planning_leave_last")) }, singleLine = true)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    state.planning({ it.addAbsence(who, kind, first, last, today()); true }) { ok -> if (ok) close() }
+                },
+                enabled = who.isNotBlank() && first.isNotBlank() && last.isNotBlank(),
+            ) { Text(T("mobile_save")) }
+        },
+        dismissButton = { TextButton(onClick = close) { Text(T("mobile_cancel")) } },
     )
 }
 

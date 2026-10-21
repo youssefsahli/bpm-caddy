@@ -75,7 +75,18 @@ pub struct Direct {
     pub identity: direct::Identity,
     pub port: u16,
     pub at: Option<Vec<IpAddr>>,
+    /// **Attendre aussi aux relais** que les officines du réseau offrent
+    /// (`[postes] relais`, `relay.rs`) : une page y joint ce poste quand
+    /// aucune de ses adresses ne se compose.
+    pub relays: bool,
 }
+
+/// Les relais où attendre, et le groupe de postes sous lequel : relus de
+/// la base par son fil, toutes les minutes.
+type RelaysWanted = Arc<Mutex<Option<(String, Vec<std::net::SocketAddr>)>>>;
+
+/// Combien de relais une voie directe tient au plus.
+const MOST_RELAYS: usize = 4;
 
 /// **Les adresses de l'officine sur la voie directe**, de tous ses postes,
 /// lues des réglages ([`ADDRESSES`]) : celles qu'un poste a redites dans
@@ -304,6 +315,7 @@ pub struct Waiting {
     stop: Arc<AtomicBool>,
     held: Arc<Mutex<Vec<(u64, std::net::TcpStream)>>>,
     officine: Arc<Mutex<Officine>>,
+    relays: Arc<AtomicBool>,
     pub events: mpsc::Receiver<Event>,
 }
 
@@ -315,6 +327,12 @@ impl Waiting {
         if let Ok(mut o) = self.officine.lock() {
             *o = officine;
         }
+    }
+
+    /// Attendre aux relais, ou plus (`[postes] relais`) : relu à la
+    /// minute suivante, sans relancer l'écoute.
+    pub fn set_relays(&self, on: bool) {
+        self.relays.store(on, Ordering::SeqCst);
     }
 
     pub fn stop(&self) {
@@ -348,6 +366,11 @@ pub fn spawn(
     let held: Arc<Mutex<Vec<(u64, std::net::TcpStream)>>> = Arc::default();
     let shared = Arc::new(Mutex::new(officine));
     let board: BoardCache = Arc::default();
+    let relays: RelaysWanted = Arc::default();
+    let relays_on = Arc::new(AtomicBool::new(
+        direct.as_ref().is_some_and(|d| d.relays && d.at.is_none()),
+    ));
+    let read_relays = Arc::clone(&relays_on);
     let (events_tx, events) = mpsc::channel();
     let (talk_tx, talk_rx) = mpsc::sync_channel::<Job>(0);
     let gateway = patientchat::gateway_host(gateway);
@@ -400,13 +423,16 @@ pub fn spawn(
         });
     }
     if let (Some(d), Some(box_id)) = (direct, patientchat::box_of_secret(&secret)) {
-        let (stop, talk_tx, events_tx, board) = (
+        let (stop, talk_tx, events_tx, board, relays) = (
             Arc::clone(&stop),
             talk_tx.clone(),
             events_tx.clone(),
             Arc::clone(&board),
+            Arc::clone(&relays),
         );
-        std::thread::spawn(move || listen_direct(d, box_id, talk_tx, events_tx, board, stop));
+        std::thread::spawn(move || {
+            listen_direct(d, box_id, talk_tx, events_tx, board, relays, stop)
+        });
     }
     drop(talk_tx);
     // The page the patients open, compared now and then to ours.
@@ -446,6 +472,19 @@ pub fn spawn(
                         *b = Some(bytes);
                     }
                 }
+                if read_relays.load(Ordering::SeqCst) || relays.lock().is_ok_and(|r| r.is_some()) {
+                    let wanted = if read_relays.load(Ordering::SeqCst) {
+                        relays_wanted(&db)
+                    } else {
+                        Ok(None)
+                    };
+                    // A base that could not be read keeps the relays as
+                    // they were: changed, the listening starts again and
+                    // every page talking to this post is cut.
+                    if let (Ok(wanted), Ok(mut r)) = (wanted, relays.lock()) {
+                        *r = wanted;
+                    }
+                }
                 board_read = Some(std::time::Instant::now());
             }
             match talk_rx.recv_timeout(Duration::from_millis(500)) {
@@ -470,6 +509,7 @@ pub fn spawn(
         stop,
         held,
         officine: shared,
+        relays: relays_on,
         events,
     }
 }
@@ -484,6 +524,7 @@ fn listen_direct(
     talk_tx: mpsc::SyncSender<Job>,
     events_tx: mpsc::Sender<Event>,
     board: BoardCache,
+    relays: RelaysWanted,
     stop: Arc<AtomicBool>,
 ) {
     let generation = DIRECT_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
@@ -505,7 +546,9 @@ fn listen_direct(
         });
     }
     let mut listening: Option<(Vec<IpAddr>, direct::Listening)> = None;
+    let mut waiting_at: Option<(String, Vec<std::net::SocketAddr>)> = None;
     while !stop.load(Ordering::SeqCst) {
+        let wanted = relays.lock().ok().and_then(|r| r.clone());
         // Where to listen: this machine's address on the officine's
         // network (which the box translates, by UPnP or by hand) and its
         // public IPv6 addresses — or what the caller named.
@@ -525,15 +568,28 @@ fn listen_direct(
         };
         // Again when the addresses change, or when one could not be held
         // (the port still in use by the listening before this one).
-        let renew = listening
-            .as_ref()
-            .is_none_or(|(had, l)| *had != ips || l.bound.len() < had.len());
+        let renew = waiting_at != wanted
+            || listening
+                .as_ref()
+                .is_none_or(|(had, l)| *had != ips || l.bound.len() < had.len());
         if renew {
             // The old sockets closed first: the port is the same.
             drop(listening.take());
             let sockets = direct::bind_all(&ips, d.port);
-            let l = direct::serve(sockets, &d.identity, &box_id, links_tx.clone());
+            let (group, at) = wanted.clone().unwrap_or_default();
+            let l =
+                direct::serve_relayed(sockets, &at, &group, &d.identity, &box_id, links_tx.clone());
+            // A relay holds the wait within a round trip: a moment, so
+            // that the addresses said below already carry it.
+            let until = std::time::Instant::now() + Duration::from_secs(3);
+            while !at.is_empty()
+                && l.relayed().len() < at.len()
+                && std::time::Instant::now() < until
+            {
+                std::thread::sleep(Duration::from_millis(50));
+            }
             listening = Some((ips.clone(), l));
+            waiting_at = wanted;
         }
         // The router's port, asked again before its lease runs out.
         let lan = ips
@@ -566,6 +622,10 @@ fn listen_direct(
                     IpAddr::V6(_) => public.push(a.to_string()),
                 }
             }
+            // Last: a relay is the way when none of this post's own is.
+            for a in l.relayed() {
+                public.push(a.to_string());
+            }
         }
         let _ = events_tx.send(Event::Direct {
             public: public.clone(),
@@ -574,13 +634,25 @@ fn listen_direct(
         if talk_tx.send(Job::Addresses(public)).is_err() {
             break;
         }
-        let every = if complete {
+        // A relay not holding the wait yet: looked at again within the
+        // minute, to be said once it does.
+        let unheld = waiting_at.as_ref().is_some_and(|(_, at)| {
+            listening
+                .as_ref()
+                .is_some_and(|(_, l)| l.relayed().len() < at.len())
+        });
+        let every = if complete && !unheld {
             ADDRESSES_EVERY
         } else {
             Duration::from_secs(60)
         };
         let until = std::time::Instant::now() + every;
         while std::time::Instant::now() < until && !stop.load(Ordering::SeqCst) {
+            // The relays to wait at changed (read from the base, or the
+            // setting turned on or off): at once, not at the next pass.
+            if relays.lock().is_ok_and(|r| *r != waiting_at) {
+                break;
+            }
             std::thread::sleep(Duration::from_millis(500));
         }
     }
@@ -590,6 +662,23 @@ fn listen_direct(
     if d.at.is_none() && DIRECT_GENERATION.load(Ordering::SeqCst) == generation {
         crate::reach::close_udp_mapping(d.port);
     }
+}
+
+/// **Où attendre aux relais** : le groupe de postes de cette base (un
+/// trousseau entier — un compagnon n'attend pas), et les relais que les
+/// officines du réseau offrent, une adresse IP et un port chacun.
+fn relays_wanted(db: &Db) -> Result<Option<(String, Vec<std::net::SocketAddr>)>, String> {
+    let Some(group) = crate::postes::Posts::identity(db)?.group_hex() else {
+        return Ok(None);
+    };
+    // IPv4: a relay listens there only (`relay::serve_udp`).
+    let at: Vec<std::net::SocketAddr> = crate::network::offered_relays(db)
+        .iter()
+        .filter_map(|a| crate::network::usable_announced(a)?.parse().ok())
+        .filter(std::net::SocketAddr::is_ipv4)
+        .take(MOST_RELAYS)
+        .collect();
+    Ok((!at.is_empty()).then_some((group, at)))
 }
 
 /// Une page de la voie directe : son premier mot lu ici. Le tableau
@@ -708,6 +797,41 @@ mod tests {
         );
     }
 
+    /// **Where the direct way waits**: nowhere before the base is a
+    /// post of a group, then at the relays the network offers — an IPv4
+    /// and a port each, never a name or the loopback a member could
+    /// announce.
+    #[test]
+    fn the_direct_way_waits_at_the_relays_the_network_offers() {
+        let dir = std::env::temp_dir().join(format!(
+            "bpm-caddy-patientpost-relays-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("base.db"), "secret").unwrap();
+        let offer = |device: &str, text: &str| {
+            db.set_setting(&crate::network::relay_key(device), text, None, "", "")
+                .unwrap()
+        };
+        offer("a", "82.64.1.2:7746");
+        offer(
+            "b",
+            "127.0.0.1:7746,relais.example:7746,[2a01:cb00::1]:7746",
+        );
+        assert_eq!(relays_wanted(&db), Ok(None), "pas de groupe");
+        let mut posts = crate::postes::Posts::load(&db).unwrap();
+        posts.found(&db, "Comptoir", "2026-10-21").unwrap();
+        let group = posts.group_hex().unwrap();
+        let (g, at) = relays_wanted(&db).unwrap().unwrap();
+        assert_eq!(g, group);
+        let mut at: Vec<String> = at.iter().map(|a| a.to_string()).collect();
+        at.sort();
+        // IPv4 only: a relay listens there, not in IPv6.
+        assert_eq!(at, vec!["82.64.1.2:7746"]);
+    }
+
     /// The direct way, from a page to the base and back: the post listens,
     /// says and keeps its addresses, answers a patient and the board.
     #[test]
@@ -758,6 +882,7 @@ mod tests {
                 identity: identity.clone(),
                 port: 0,
                 at: Some(vec!["127.0.0.1".parse().unwrap()]),
+                relays: false,
             }),
         );
         let at = loop {
@@ -925,6 +1050,7 @@ mod tests {
                 identity: identity.clone(),
                 port: 17748,
                 at: Some(vec![ip]),
+                relays: false,
             }),
         );
         let reach = patientchat::Reach {

@@ -54665,6 +54665,56 @@ impl Db {
         Ok(present(out))
     }
 
+    /// **An absence from `first` to `last`** (ISO, inclusive) for `who`:
+    /// one row, « every day » to the last day and no end hour — the
+    /// whole day (`planning::hidden_by_absence`); a single day is that
+    /// day alone. Its start hour is the person's earliest on the range,
+    /// else nine: a bound at midnight would stretch the day's plan into
+    /// the night. What the desktop's range gesture and the phone write.
+    pub fn add_absence(
+        &self,
+        who: &str,
+        kind: crate::planning::ShiftKind,
+        first: &str,
+        last: &str,
+    ) -> Result<i64, String> {
+        use crate::planning::{self, Cadence};
+        let who = who.trim();
+        if who.is_empty() || !kind.is_absence() {
+            return Err(crate::strings::tr("planning_leave_invalid").to_owned());
+        }
+        if last < first {
+            return Err(crate::strings::tr("planning_leave_backwards").to_owned());
+        }
+        let start = self
+            .shifts_between(first, last)?
+            .iter()
+            .filter(|s| s.operator.trim() == who)
+            .filter_map(|s| planning::parse_bound(&s.start_time))
+            .min()
+            .unwrap_or(9 * 60)
+            .min(24 * 60 - 1);
+        let rhythm = if first == last {
+            Cadence::Unique
+        } else {
+            Cadence::Quotidien
+        };
+        self.add_shift(&NewShift {
+            operator: who.to_owned(),
+            day: first.to_owned(),
+            start_time: planning::format_bound(start),
+            kind: kind.as_str().to_owned(),
+            repeat_days: rhythm.pas(),
+            cadence: rhythm.as_str().to_owned(),
+            repeat_until: if first == last {
+                String::new()
+            } else {
+                last.to_owned()
+            },
+            ..Default::default()
+        })
+    }
+
     /// Write one shift — a single day, or the pattern a `repeat_days`
     /// of 7 unfolds into every week.
     pub fn add_shift(&self, s: &NewShift) -> Result<i64, String> {

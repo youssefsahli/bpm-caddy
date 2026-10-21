@@ -3927,6 +3927,7 @@ mod tests {
                 posts_internet: false,
                 relay_port: 0,
                 posts_relay: false,
+                relay_patients: false,
             },
             crate::postes::Pace::default(),
         );

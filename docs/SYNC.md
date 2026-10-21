@@ -801,8 +801,10 @@ modifié peut encore écrire : les fiches, l'agenda, le planning et la
 messagerie — ses quatre flux, comme un poste de bureau. Au planning,
 l'application ne lui fait écrire qu'un jour à la fois : d'autres heures
 ou pas là ce jour (`Caddy::edit_shift_day`, `cancel_shift_day`), et un
-jour de plus à ses initiales (`add_shift_day`) — jamais une trame, ni
-une absence (« pas là » sur un congé rendrait la journée qu'il cache). Le
+jour de plus à ses initiales (`add_shift_day`) — jamais une trame. Il
+pose une absence entière, du premier au dernier jour, comme le geste du
+bureau (`add_absence`, `Db::add_absence`, une ligne) ; il n'en change pas
+une (« pas là » sur un congé rendrait la journée qu'il cache). Le
 jour d'une trame y prend une exception, la trame intacte, par la règle
 du bureau (`Db::set_occurrence`, comparer-et-écrire sur le jour montré).
 
@@ -948,6 +950,38 @@ L'offre et la demande s'annoncent une fois **par numéro**
 adresse est annoncé de nouveau. Chaque officine ne retient que le
 dernier mot de chacune — une demande retirée ne laisse pas son groupe
 accepté.
+
+**Les patients, en UDP, sur le même port** (`relay::UdpRelay`). La page
+d'un patient ne parle que WebRTC (§ voie directe, `direct.rs`) et ne
+sait rien d'un relais : elle compose des adresses. Le poste relayé
+**attend** donc au relais en UDP — toutes les quinze secondes il y redit
+le nom de son groupe et l'identifiant ICE de sa boîte (`ufrag`), ce qui
+garde ouverte la traduction de son opérateur ; le relais lui rend un
+**témoin** propre à son adresse (une empreinte sous une clé tirée au
+lancement), et ne tient l'attente qu'une fois revenue avec lui — une
+attente au nom d'une adresse usurpée n'est jamais tenue, et rien n'est
+copié vers elle. Le poste **publie alors l'adresse du relais** parmi
+celles de sa voie directe (une adresse IPv4 : le relais n'écoute que
+là), et la relit dans la minute quand les relais offerts changent. Le relais lit le seul nom d'utilisateur de la première demande
+STUN de la page (`ufrag:page`) et la passe, enveloppée de l'adresse de la
+page (`BPMU`), aux postes qui attendent sous ce `ufrag` ; le premier qui
+lui répond la garde, et le relais passe alors les datagrammes de l'un à
+l'autre sans les lire. DTLS contre l'empreinte du code et la clé du
+patient se négocient de bout en bout. Il ne renvoie un datagramme d'un
+poste qu'à une page qui lui a écrit d'abord, passe au plus trente-deux
+datagrammes d'une page que personne n'a prise, et tient 128 pages à la
+fois (huit par abonné), dix minutes et 90 s de silence chacune — une
+page au bout de ses dix minutes ne repart pas pour un tour avant dix
+autres. Quatre attentes par `ufrag` : la cinquième prend la place de
+celle entendue le moins récemment (un poste dont l'opérateur a changé
+le port). **Deux
+choix à part**, éteints par défaut, parce que ce qui passe là sont des
+données de santé : « Relayer aussi leurs patients » (`[reseau]
+relais_patients`) chez l'officine qui relaie, « Y compris la messagerie
+des patients » (`[postes] relais_patients`) chez celle qui est relayée.
+Un relais d'une version antérieure ne répond pas en UDP : le poste ne le
+publie pas. `a_page_reaches_a_post_through_the_relay_alone` fait le
+chemin de bout en bout sur la boucle locale.
 
 Ce qui n'est pas couvert par un test de bout en bout : le fil
 automatique qui sert ou attend — un relais n'est accepté qu'à une
@@ -1300,8 +1334,9 @@ le téléphone l'inscrit à `account_homes`.
    l'hébergement pour compte de tiers, que le cadre HDS et le RGPD
    encadrent. Le relais construit (§ 7.9) ne garde rien.
 5. **Le compagnon écrit l'équipe, l'agenda, les fiches et un jour du
-   planning à la fois**, par les chemins du bureau (comparer-et-écrire) ;
-   une trame, une nature (congé, garde), il ne les pose pas. Il joint un
+   planning à la fois**, par les chemins du bureau (comparer-et-écrire),
+   et pose une absence entière ; une trame, une garde, il ne les pose
+   pas, ni ne change une absence posée. Il joint un
    fichier à un message (`Caddy::send_file`, 5 Mio au plus).
 6. **Les versions oubliées des comptes** ne s'oublient que chez qui les
    a tenues. Un pair qui n'en a jamais tenu une en garde le nom pour
