@@ -102,6 +102,20 @@ pub fn read_preface(line: &str) -> Option<(Role, String)> {
     Some((role, group))
 }
 
+/// **Le nom sous lequel une officine attend au relais**, pour un réseau
+/// fermé : vingt chiffres hexadécimaux tirés du nom de ce réseau
+/// (`network`, son empreinte — que ses seuls membres connaissent) et de
+/// la clé de l'officine (`device`). La forme d'un nom de groupe de
+/// postes : la préface ne change pas. Tiré de la seule clé, publique, il
+/// laissait n'importe qui prendre les places d'attente d'une officine.
+pub fn officine_group(network: &str, device: &str) -> String {
+    let mut material = network.trim().to_ascii_lowercase().into_bytes();
+    material.push(b'|');
+    material.extend(device.trim().to_ascii_lowercase().bytes());
+    let key = blake3::derive_key("bpm-caddy 2026-10-21 relais officine v2", &material);
+    key[..10].iter().map(|b| format!("{b:02x}")).collect()
+}
+
 /// Les groupes que ce relais accepte, que le fil de l'officine tient à
 /// jour depuis les demandes reçues du réseau.
 pub type Allowed = Arc<Mutex<HashSet<String>>>;

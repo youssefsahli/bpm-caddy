@@ -144,6 +144,17 @@ téléphone y lit, écrit, et change un jour du planning ; le journal d'un
 réseau oublie les versions remplacées et, au réseau ouvert, les plus
 anciennes d'une officine au bout de son budget ; une synchronisation des
 postes ne repasse plus tout le journal — chaque lot relu, corrigé).
+La 0.441.0 (se connecter sans code, demandé le 21/10 : « Joindre » une
+officine choisie sur la carte, trouvée sous son propre sujet de la DHT
+et acceptée sous sa seule clé, ou par son adresse IP ; « Relier… » deux
+officines rencontrées au réseau ouvert dans un réseau à elles deux, que
+la destinataire accepte ; deux officines injoignables qui se parlent par
+un relais du réseau ; la DHT toutes les dix minutes, un port ouvert à la
+main annoncé. Et : PCP et NAT-PMP sans UPnP ; les patients d'un poste
+injoignable relayés en UDP par une officine amie, deux choix à part ;
+macOS ne publie plus d'IPv6 temporaire ; le téléphone pose une absence).
+**À essayer en vrai** : « Joindre » entre deux officines sur deux box
+distinctes ; un relais d'officines avec deux postes derrière CGNAT.
 **Sans serveur, décidé le 16/10** : l'éditeur ne tient aucun serveur ;
 la question « qui tient la passerelle » ne se pose plus (la passerelle
 reste possible, tenue ou choisie par une officine). **À essayer en

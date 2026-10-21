@@ -8,7 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.441.0] - 2026-10-21
+
 ### Added
+
+- **Join an officine without a code.** On the directory map, « Joindre » reaches the officine picked: where it answered before, else under its own topic in the BitTorrent DHT (each officine now announces there too, under a topic drawn from its network key), accepting only the key its card shows — a decoy announced under the same topic fails the handshake and is not listed. An officine known by its IP address is joined from a field under the list (port 7745 when none is typed). Either way it joins the open network: what it shares is offered, never applied.
+- **Link two officines without a code.** In the open network's window, « Relier… » proposes to an officine met there a network for the two of them: a fresh key, sealed for that officine alone and published at the next sync. It sees the proposal under « Propositions de relier » — the name it was signed with and its fingerprint — and accepts or declines; accepted, the next sync links them, at the addresses where they already answered each other, and the network reads as a paired one (ruptures, versions, properties; not the lists). Declining sets that officine aside, so no fresh proposal from it shows; one at a time per officine; a proposal whose key does not make the network it names is dropped. The screen says what this does not prove: the name is the one the officine gives itself, and the key comes from it.
+- **Two unreachable officines meet through a relay.** An officine that set « Se faire relayer par le réseau » now also waits at its networks' relays, from the post that answers officines, under a relay name drawn from a closed network they share and its key (the existing preface, unchanged; drawn from the public key alone, anyone could have taken its waiting places); what arrives goes to a free officine answerer only, six a minute per relay at most. A network peer that reaches it at no address asks up to four relays for it during a sync, and not again for half an hour after a miss; the handshake says who answered. A relay lets through by itself the officines of its closed networks, paired or linked, never the open network's alone.
+- **The DHT, more often and wider**: a round every ten minutes instead of thirty, and a door opened by hand in the box (the public address written in the settings) is announced too.
 
 - **Phone: an absence.** « Une absence » on the companion's planning sets a congé, sick leave, training or time off from a first to a last day, for the phone's initials — one row, as the desktop's range gesture writes it (`Db::add_absence`, now what both call). It is still changed on a post.
 

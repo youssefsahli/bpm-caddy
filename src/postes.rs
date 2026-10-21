@@ -1572,6 +1572,15 @@ pub struct OfficineSide {
     pub relay_patients: bool,
 }
 
+/// Met un drapeau d'arrêt à vrai quand il tombe.
+struct StopOnDrop(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+impl Drop for StopOnDrop {
+    fn drop(&mut self) {
+        self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 /// Combien de conversations d'officines à la fois, au plus : chacune a
 /// son fil, et une officine lente — ou quelqu'un qui frappe sans rien
 /// dire — n'en retient aucune autre, ni les postes.
@@ -1815,6 +1824,9 @@ fn auto(
     // **Le relais** que cette officine tient pour les autres, et ce qu'il
     // accepte — relu chaque minute des demandes reçues du réseau.
     let relay_stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    // Stopped however this fil ends — an early `?` too: the waiters hold
+    // the answerers, and through them a base kept open.
+    let _relay_stopped = StopOnDrop(std::sync::Arc::clone(&relay_stop));
     let relay_allowed: crate::relay::Allowed = Default::default();
     let serving = side.relay_port != 0
         && crate::relay::serve(
@@ -1844,6 +1856,13 @@ fn auto(
         .filter(|t| t.is_whole())
         .map(|t| hex(&t.name().bytes()));
     let waiting_relays = side.posts_relay && group.is_some();
+    // **L'officine aussi attend aux relais**, sous son nom de relais : une
+    // officine du réseau qui ne la joint nulle part l'y demande
+    // (`Net::sync_relayed`). Seulement le poste qui répond aux officines.
+    let waiting_officine = side.posts_relay && answers.is_some();
+    type Wait = (String, String);
+    let mut officine_waited: Vec<(Wait, std::sync::Arc<std::sync::atomic::AtomicBool>)> =
+        Vec::new();
     // One conversation handed over at a time: a waiter that finds the
     // hand-off full waits for the fil to take it, rather than piling up.
     let (relayed_tx, relayed_rx) = std::sync::mpsc::sync_channel::<bpm_sync::link::TcpLink>(1);
@@ -1897,8 +1916,12 @@ fn auto(
         }
         // Once a minute: what the relay accepts, where it can be reached,
         // and the relays this post waits at.
-        if (serving || waiting_relays) && relay_read.is_none_or(|t| t.elapsed() >= RELAY_EVERY) {
+        let mut relay_tick = false;
+        if (serving || waiting_relays || waiting_officine)
+            && relay_read.is_none_or(|t| t.elapsed() >= RELAY_EVERY)
+        {
             relay_read = Some(Instant::now());
+            relay_tick = true;
             if serving {
                 if let Ok(mut a) = relay_allowed.lock() {
                     *a = db
@@ -1907,6 +1930,7 @@ fn auto(
                         .split(',')
                         .filter(|g| !g.is_empty())
                         .map(str::to_owned)
+                        .chain(crate::network::relayed_officines(&db))
                         .collect();
                 }
                 let tx = offer_tx.clone();
@@ -1978,6 +2002,78 @@ fn auto(
                     &me,
                     &crate::reach::with_relays(&direct_reach, &relay_names(&relays_waited)),
                 )?;
+            }
+        }
+        if let (true, Some((give, _))) = (waiting_officine && relay_tick, &answers) {
+            // At each relay, under the name of each closed network this
+            // officine shares with the one offering it: the only one the
+            // relay knows it by.
+            let waits = crate::network::relay_waits(&db, MOST_RELAYS);
+            officine_waited.retain(|(w, stop)| {
+                let kept = waits.contains(w);
+                if !kept {
+                    stop.store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+                kept
+            });
+            for (address, name) in waits {
+                if officine_waited
+                    .iter()
+                    .any(|(w, _)| w.0 == address && w.1 == name)
+                {
+                    continue;
+                }
+                let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+                officine_waited.push((
+                    (address.clone(), name.clone()),
+                    std::sync::Arc::clone(&stop),
+                ));
+                let (give, all) = (give.clone(), std::sync::Arc::clone(&relay_stop));
+                std::thread::spawn(move || {
+                    let stopped = || {
+                        stop.load(std::sync::atomic::Ordering::SeqCst)
+                            || all.load(std::sync::atomic::Ordering::SeqCst)
+                    };
+                    // **Bounded like the door, and never in its way**: at
+                    // most a few conversations a minute through one relay,
+                    // handed over only to an answerer that is free — whoever
+                    // knows the name and calls in a loop does not keep both
+                    // answerers from the officines knocking at the door. Not
+                    // under the relay's address in `busy_ips`: the door's
+                    // knocks from that address are not this.
+                    let mut talks: Vec<Instant> = Vec::new();
+                    while !stopped() {
+                        talks.retain(|at| at.elapsed() < Duration::from_secs(60));
+                        if talks.len() >= KNOCKS_PER_MINUTE {
+                            std::thread::sleep(Duration::from_secs(5));
+                            continue;
+                        }
+                        match crate::relay::wait(&address, &name, TALK_PATIENCE) {
+                            Ok(stream) => {
+                                talks.push(Instant::now());
+                                if let Ok(link) =
+                                    bpm_sync::link::TcpLink::new(stream, TALK_PATIENCE)
+                                {
+                                    let knock = (
+                                        link.with_deadline(ANSWER_BOUND),
+                                        std::net::IpAddr::from(std::net::Ipv4Addr::UNSPECIFIED),
+                                    );
+                                    if let Err(std::sync::mpsc::TrySendError::Disconnected(_)) =
+                                        give.try_send(knock)
+                                    {
+                                        return;
+                                    }
+                                }
+                            }
+                            Err(e)
+                                if matches!(
+                                    e.kind(),
+                                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                                ) => {}
+                            Err(_) => std::thread::sleep(Duration::from_secs(30)),
+                        }
+                    }
+                });
             }
         }
         if let Ok((router, offer)) = offer_rx.try_recv() {

@@ -34,12 +34,30 @@ pub fn topic() -> mainline::Id {
     mainline::Id::from(id)
 }
 
+/// **Le sujet propre à une officine** : tiré de sa clé de réseau (`device`,
+/// en hexadécimal). Elle s'y annonce aussi, si bien qu'une officine
+/// choisie — sur la carte, par son empreinte — se cherche là, sans
+/// parcourir toutes les autres. N'importe qui peut s'y annoncer aussi :
+/// on n'y compose qu'en attendant **cette** officine, et une autre qui
+/// répondrait échoue à la poignée de main.
+pub fn own_topic(device: &str) -> mainline::Id {
+    let key = blake3::derive_key(
+        "bpm-caddy 2026-10-21 officine dht v1",
+        device.trim().to_ascii_lowercase().as_bytes(),
+    );
+    let mut id = [0_u8; 20];
+    id.copy_from_slice(&key[..20]);
+    mainline::Id::from(id)
+}
+
 /// Combien d'adresses trouvées on compose au plus par tour.
 pub const MOST_DIALS: usize = 6;
 /// Une même adresse n'est composée de nouveau qu'après ce délai.
 pub const REDIAL: Duration = Duration::from_secs(6 * 3600);
-/// Entre deux tours : annoncer, chercher, composer.
-pub const ROUND: Duration = Duration::from_secs(30 * 60);
+/// Entre deux tours : annoncer, chercher, composer. Une annonce vit une
+/// demi-heure dans la DHT : un tour de dix minutes la tient toujours, et
+/// une officine qui arrive est trouvée dans le quart d'heure.
+pub const ROUND: Duration = Duration::from_secs(10 * 60);
 /// Combien d'adresses trouvées on lit au plus par recherche.
 const MOST_FOUND: usize = 256;
 
@@ -64,6 +82,37 @@ impl Finder {
     #[allow(deprecated)]
     pub fn announce(&self, port: u16) -> bool {
         self.dht.announce_peer(topic(), Some(port)).is_ok()
+    }
+
+    /// [`Finder::announce`], et sous le sujet propre à l'officine
+    /// ([`own_topic`]) : qui la choisit la trouve là.
+    #[allow(deprecated)]
+    pub fn announce_as(&self, device: &str, port: u16) -> bool {
+        let shared = self.announce(port);
+        let own = self
+            .dht
+            .announce_peer(own_topic(device), Some(port))
+            .is_ok();
+        shared && own
+    }
+
+    /// Les adresses qui s'annoncent sous le sujet d'une officine, au plus
+    /// [`MOST_DIALS`].
+    #[allow(deprecated)]
+    pub fn find_officine(&self, device: &str) -> Vec<SocketAddrV4> {
+        let mut out: Vec<SocketAddrV4> = Vec::new();
+        for batch in self.dht.get_peers(own_topic(device)) {
+            for a in batch {
+                if !out.contains(&a) {
+                    out.push(a);
+                }
+            }
+            if out.len() >= MOST_DIALS {
+                out.truncate(MOST_DIALS);
+                break;
+            }
+        }
+        out
     }
 
     /// Les adresses qui s'annoncent sous le sujet, au plus
@@ -164,10 +213,21 @@ pub fn spawn(
             let Some(f) = &finder else {
                 continue;
             };
-            let mine = crate::reach::open_officine_mapping(port);
-            mapped |= mine.is_some();
+            let opened = crate::reach::open_officine_mapping(port);
+            mapped |= opened.is_some();
+            // Sans routeur qui ouvre : la porte ouverte à la main dans la
+            // box, que l'officine a écrite (« Adresse publique »).
+            let mine = opened.or_else(|| {
+                written_door(
+                    &db.setting(crate::network::PUBLIC_ADDRESS)
+                        .unwrap_or_default(),
+                )
+            });
             if let Some(at) = mine {
-                f.announce(at.port());
+                match crate::network::device_hex(&db) {
+                    Ok(me) => f.announce_as(&me, at.port()),
+                    Err(_) => f.announce(at.port()),
+                };
             }
             for a in to_dial(&f.find(), mine, &mut dialed, Instant::now()) {
                 if !on.load(Ordering::SeqCst) {
@@ -182,6 +242,55 @@ pub fn spawn(
             crate::reach::close_mapping(port);
         }
     });
+}
+
+/// **L'adresse publique écrite par l'officine**, quand c'est une IPv4
+/// publique et un port : ce qu'elle a ouvert à la main dans sa box, et
+/// qu'elle peut annoncer.
+pub fn written_door(text: &str) -> Option<SocketAddrV4> {
+    let at: SocketAddrV4 = text.trim().parse().ok()?;
+    (crate::reach::is_public_v4(at.ip()) && at.port() != 0).then_some(at)
+}
+
+/// **Joindre une officine choisie** (`device`, sa clé de réseau) au réseau
+/// ouvert, sans code : d'abord là où elle a déjà répondu, puis aux
+/// adresses qui s'annoncent sous son sujet dans la DHT — en n'acceptant
+/// qu'**elle** (`network::dial_open`) : une adresse qu'un autre y aurait
+/// mise ne mène qu'à une poignée de main refusée. `bootstrap` : un réseau
+/// d'essai.
+pub fn reach_officine(
+    db: &crate::db::Db,
+    device: &str,
+    officine: &str,
+    bootstrap: Option<&[String]>,
+) -> Result<String, String> {
+    use crate::strings::tr;
+    if !crate::network::in_open(db) {
+        return Err(tr("net_err_no_network").to_owned());
+    }
+    let mut last = tr("carte_join_not_found").to_owned();
+    if let Some(at) = db.setting(&crate::network::reached_key(device)) {
+        match crate::network::dial_open(db, device, &at, officine) {
+            Ok(said) => return Ok(said),
+            Err(e) => last = e,
+        }
+    }
+    let finder = Finder::start(bootstrap).map_err(|e| e.to_string())?;
+    // Un réseau d'essai tient sur la boucle locale, qu'on ne compose
+    // jamais autrement.
+    let testing = bootstrap.is_some();
+    for a in finder.find_officine(device) {
+        // Public addresses only: a DHT node does not point this officine's
+        // dials into its own network.
+        if !testing && !crate::reach::is_public_v4(a.ip()) {
+            continue;
+        }
+        match crate::network::dial_open(db, device, &a.to_string(), officine) {
+            Ok(said) => return Ok(said),
+            Err(e) => last = e,
+        }
+    }
+    Err(last)
 }
 
 #[cfg(test)]
@@ -280,5 +389,93 @@ mod tests {
             .all(|a| *a == public(1)));
         let later = now + REDIAL + Duration::from_secs(1);
         assert_eq!(to_dial(&found, None, &mut dialed, later).len(), MOST_DIALS);
+    }
+
+    /// Ce qu'on annonce sans routeur qui ouvre : une IPv4 publique et un
+    /// port écrits, rien d'autre.
+    #[test]
+    fn a_door_opened_by_hand_is_announced() {
+        assert_eq!(
+            written_door(" 82.64.1.2:7745 "),
+            Some(SocketAddrV4::new([82, 64, 1, 2].into(), 7745))
+        );
+        for no in [
+            "",
+            "192.168.1.20:7745",
+            "100.64.0.9:7745",
+            "82.64.1.2",
+            "nom:7745",
+            "[2a01::1]:7745",
+        ] {
+            assert_eq!(written_door(no), None, "{no}");
+        }
+    }
+
+    /// **Une officine choisie se joint sans code** : A s'annonce sous son
+    /// sujet ; un leurre, une autre officine, s'annonce sous le même
+    /// sujet que A. B, qui ne connaît ni l'une ni l'autre, cherche A par
+    /// sa clé : elle la joint, et le leurre n'est pas inscrit.
+    #[test]
+    fn an_officine_picked_by_its_key_is_reached_and_not_a_decoy() {
+        let dir = |tag: &str| {
+            let d = std::env::temp_dir()
+                .join(format!("bpm-caddy-dht-pick-{tag}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&d);
+            std::fs::create_dir_all(&d).unwrap();
+            d
+        };
+        let (dir_a, dir_b, dir_c) = (dir("a"), dir("b"), dir("c"));
+        let _swept = (
+            crate::db::Swept(dir_a.clone()),
+            crate::db::Swept(dir_b.clone()),
+            crate::db::Swept(dir_c.clone()),
+        );
+        let open = |d: &std::path::Path| {
+            let db = crate::db::Db::open(&d.join("net.db"), "secret").unwrap();
+            crate::network::join_open(&db, "2026-10-21").unwrap();
+            db
+        };
+        let (a, b, c) = (open(&dir_a), open(&dir_b), open(&dir_c));
+        let a_dev = crate::network::device_hex(&a).unwrap();
+        let c_dev = crate::network::device_hex(&c).unwrap();
+        let serve = |d: std::path::PathBuf| {
+            let door = bpm_sync::link::Door::open("127.0.0.1:0").unwrap();
+            let port = door.address().unwrap().port();
+            std::thread::spawn(move || {
+                let db = crate::db::Db::open(&d.join("net.db"), "secret").unwrap();
+                // Answer whoever calls, a few times: the decoy may be
+                // called first.
+                for _ in 0..2 {
+                    if let Ok(mut link) = door.accept(Duration::from_secs(20)) {
+                        let _ = crate::network::answer(&db, &mut link);
+                    }
+                }
+            });
+            port
+        };
+        let (port_a, port_c) = (serve(dir_a.clone()), serve(dir_c.clone()));
+        let testnet = mainline::Testnet::new(8).unwrap();
+        let finder_a = Finder::start(Some(&testnet.bootstrap)).unwrap();
+        let finder_c = Finder::start(Some(&testnet.bootstrap)).unwrap();
+        assert!(finder_a.announce_as(&a_dev, port_a));
+        // The decoy, under A's own topic.
+        #[allow(deprecated)]
+        let decoy = finder_c.dht.announce_peer(own_topic(&a_dev), Some(port_c));
+        assert!(decoy.is_ok());
+        let said = reach_officine(&b, &a_dev, "Pharmacie B", Some(&testnet.bootstrap));
+        assert!(said.is_ok(), "{said:?}");
+        let members: Vec<String> = b
+            .net_members(&crate::network::open_id())
+            .unwrap()
+            .into_iter()
+            .map(|p| p.device)
+            .collect();
+        assert!(members.contains(&a_dev));
+        assert!(!members.contains(&c_dev), "le leurre n'est pas inscrit");
+        // Unknown key: nothing found, said plainly.
+        let nobody = "ab".repeat(32);
+        assert!(reach_officine(&b, &nobody, "Pharmacie B", Some(&testnet.bootstrap)).is_err());
+        assert_ne!(own_topic(&a_dev), own_topic(&c_dev));
+        assert_eq!(own_topic(&a_dev), own_topic(&a_dev.to_uppercase()));
     }
 }

@@ -13160,6 +13160,47 @@ impl Session {
         });
     }
 
+    /// **Join an officine on the open network, without a code**: the one
+    /// picked on the map (`device`, found where it answered before or
+    /// under its own topic in the DHT, and only it accepted), or whoever
+    /// answers a typed address. On a thread: the DHT takes a few seconds.
+    #[cfg(feature = "sync")]
+    fn carte_join(&mut self, device: Option<String>, address: Option<String>, officine: &str) {
+        let Some(path) = self.db.path() else {
+            return;
+        };
+        let (tx, rx) = std::sync::mpsc::channel();
+        let (password, officine) = (self.password.clone(), officine.to_owned());
+        std::thread::spawn(move || {
+            let said =
+                crate::db::Db::open(&path, &password).and_then(|db| match (&device, &address) {
+                    (Some(d), _) => crate::dht::reach_officine(&db, d, &officine, None),
+                    (None, Some(a)) => {
+                        match crate::network::usable_announced(&Self::with_door_port(a)) {
+                            Some(a) => crate::network::dial_found(&db, &a, &officine),
+                            None => Err(tr("carte_join_bad_address").to_owned()),
+                        }
+                    }
+                    (None, None) => Err(String::new()),
+                });
+            let _ = tx.send(CarteAnswer::Joined(said));
+        });
+        self.carte.job = Some(rx);
+    }
+
+    /// A typed address, with the officines' door port (7745) when it
+    /// names none: `82.64.1.2` dials `82.64.1.2:7745`.
+    #[cfg(feature = "sync")]
+    fn with_door_port(typed: &str) -> String {
+        let t = typed.trim();
+        match t.parse::<std::net::IpAddr>() {
+            Ok(ip) => {
+                std::net::SocketAddr::new(ip, Config::default().reseau.port_ecoute).to_string()
+            }
+            Err(_) => t.to_owned(),
+        }
+    }
+
     /// Ask the directory for one officine's catalogue; it opens in « En
     /// ligne » when it arrives.
     #[cfg(feature = "sync")]
@@ -13704,6 +13745,13 @@ impl Session {
             }
             CarteAnswer::Catalogue(fiche, Err(e)) => {
                 self.carte.note = Some((true, trn("carte_catalogue_failed", &[&fiche.nom, &e])));
+            }
+            CarteAnswer::Joined(Ok(said)) => {
+                self.carte.note = Some((false, said));
+                self.carte.join_address.clear();
+            }
+            CarteAnswer::Joined(Err(e)) => {
+                self.carte.note = Some((true, trf("carte_join_failed", &e)));
             }
         }
     }
@@ -17565,6 +17613,8 @@ enum CarteAnswer {
         Box<crate::repertoire::Fiche>,
         Result<Vec<crate::repertoire::Article>, String>,
     ),
+    /// Une officine jointe au réseau ouvert, ou pourquoi non.
+    Joined(Result<String, String>),
 }
 
 /// Une relecture du répertoire faite d'elle-même : l'adresse lue, et la
@@ -17768,6 +17818,8 @@ struct Carte {
     /// Le réglage tel que la base le porte, et son texte lu — contre
     /// lequel s'écrit le suivant.
     presence: crate::repertoire::Presence,
+    /// « Joindre une adresse », tel qu'il se tape.
+    join_address: String,
     presence_raw: Option<String>,
     /// Les tampons de saisie.
     address: String,
@@ -18010,6 +18062,10 @@ struct NetSummary {
     open: bool,
     /// L'officine est du réseau ouvert.
     open_joined: bool,
+    /// Les propositions de relier reçues : de qui, et quoi.
+    offers: Vec<(String, crate::network::LinkOffer)>,
+    /// Les officines à qui l'on a proposé de relier.
+    proposed: std::collections::HashSet<String>,
 }
 
 /// Trois comptes et ce qu'ils rangent, pour les captures : Claire (gardée
@@ -18587,6 +18643,13 @@ impl NetSummary {
             label: net.label.clone(),
             folder: net.folder.clone(),
             shares: net.shares,
+            offers: crate::network::link_offers(db),
+            proposed: db
+                .settings_with_prefix(crate::network::LINK_OFFER)?
+                .into_iter()
+                .filter(|(_, v)| !v.trim().is_empty())
+                .map(|(k, _)| k[crate::network::LINK_OFFER.len()..].to_owned())
+                .collect(),
         })
     }
 }
@@ -72009,6 +72072,8 @@ impl App {
         config: &Config,
     ) {
         let mut browse: Option<String> = None;
+        let mut join: Option<String> = None;
+        let mut join_typed = false;
         let mut pick: Option<String> = None;
         let mut save = false;
         let mut sweep = false;
@@ -72077,14 +72142,41 @@ impl App {
                         }
                         if f.device == me {
                             dim(tr("carte_is_me"), ui);
-                        } else if motif::button_enabled(ui, tr("carte_browse"), !busy)
-                            .on_hover_text(tr("carte_browse_tooltip"))
-                            .clicked()
-                        {
-                            browse = Some(f.device.clone());
+                        } else {
+                            ui.horizontal_wrapped(|ui| {
+                                if motif::button_enabled(ui, tr("carte_browse"), !busy)
+                                    .on_hover_text(tr("carte_browse_tooltip"))
+                                    .clicked()
+                                {
+                                    browse = Some(f.device.clone());
+                                }
+                                if motif::button_enabled(ui, tr("carte_join"), !busy)
+                                    .on_hover_text(tr("carte_join_tooltip"))
+                                    .clicked()
+                                {
+                                    join = Some(f.device.clone());
+                                }
+                            });
                         }
                         ui.add_space(8.0);
                     }
+                    // Une officine qu'on connaît par son adresse, sans code ni
+                    // répertoire : composée au réseau ouvert.
+                    ui.horizontal_wrapped(|ui| {
+                        motif::field(
+                            ui,
+                            chars_wide(ui, 22.0),
+                            egui::TextEdit::singleline(&mut session.carte.join_address)
+                                .hint_text(motif::hint(tr("carte_join_address_hint"))),
+                        );
+                        let typed = !session.carte.join_address.trim().is_empty();
+                        if motif::button_enabled(ui, tr("carte_join"), typed && !busy)
+                            .on_hover_text(tr("carte_join_address_tooltip"))
+                            .clicked()
+                        {
+                            join_typed = true;
+                        }
+                    });
                     // Le répertoire entier, en liste : ce que la carte ne
                     // place pas — une commune inconnue — s'y trouve aussi.
                     motif::section(ui, &trn("carte_list_title", &[&session.carte.list.len()]));
@@ -72355,6 +72447,12 @@ impl App {
         }
         if let Some(d) = browse {
             session.carte_browse(&d);
+        }
+        if let Some(d) = join {
+            session.carte_join(Some(d), None, &config.pharmacy.name);
+        } else if join_typed {
+            let typed = session.carte.join_address.trim().to_owned();
+            session.carte_join(None, Some(typed), &config.pharmacy.name);
         }
         if sweep {
             if let Some(note) = Self::sweep_note(session.carte_sweep(None, "", true)) {
@@ -82782,6 +82880,11 @@ impl App {
         let mut save_meta = false;
         let mut leave = false;
         let mut save_public: Option<(String, Option<String>)> = None;
+        // Relier sans code : proposer (à qui, sous quel nom), accepter,
+        // refuser.
+        let mut link_propose: Option<(String, String)> = None;
+        let mut link_accept: Option<String> = None;
+        let mut link_decline: Option<String> = None;
         let busy = w.job.is_some();
         if !busy {
             start = w.pending.take();
@@ -82850,6 +82953,43 @@ impl App {
                             if !sum.in_network {
                                 return;
                             }
+                        }
+                        // **Les propositions de relier**, d'où qu'on regarde : une
+                        // officine du réseau ouvert propose un réseau à deux.
+                        if !sum.offers.is_empty() {
+                            motif::section(ui, tr("net_link_offers"));
+                            for (from, offer) in &sum.offers {
+                                ui.horizontal_wrapped(|ui| {
+                                    let who = if offer.officine.trim().is_empty() {
+                                        crate::peer_groups(from)
+                                    } else {
+                                        offer.officine.trim().to_owned()
+                                    };
+                                    officine_badge(ui, from, &who);
+                                    ui.add(
+                                        egui::Label::new(trn(
+                                            "net_link_offer_line",
+                                            &[&who, &crate::peer_groups(from), &offer.label],
+                                        ))
+                                        .wrap(),
+                                    );
+                                });
+                                ui.horizontal_wrapped(|ui| {
+                                    if motif::button_enabled(ui, tr("net_link_accept"), !busy)
+                                        .on_hover_text(tr("net_link_accept_tooltip"))
+                                        .clicked()
+                                    {
+                                        link_accept = Some(from.clone());
+                                    }
+                                    if motif::button_enabled(ui, tr("net_link_decline"), !busy)
+                                        .on_hover_text(tr("net_link_decline_tooltip"))
+                                        .clicked()
+                                    {
+                                        link_decline = Some(from.clone());
+                                    }
+                                });
+                            }
+                            ui.add_space(6.0);
                         }
                         if sum.open {
                             ui.add(
@@ -82984,7 +83124,7 @@ impl App {
                             ui.horizontal_wrapped(|ui| {
                                 let title = net_peer_title(p, &sum.peers, &config.pharmacy.name);
                                 officine_badge(ui, &p.device, &title);
-                                ui.label(egui::RichText::new(title).strong());
+                                ui.label(egui::RichText::new(title.clone()).strong());
                                 ui.label(
                                     egui::RichText::new(crate::peer_groups(&p.device))
                                         .monospace()
@@ -83002,6 +83142,25 @@ impl App {
                                     start = Some(Job::Dial {
                                         device: p.device.clone(),
                                     });
+                                }
+                                // Au réseau ouvert : la relier, sans code.
+                                if sum.open {
+                                    if sum.proposed.contains(&p.device) {
+                                        ui.label(
+                                            egui::RichText::new(tr("net_link_pending"))
+                                                .size(motif::pt(ui, 10.5))
+                                                .color(motif::text_dim()),
+                                        );
+                                    } else if motif::button_enabled(
+                                        ui,
+                                        tr("net_link_propose"),
+                                        !busy,
+                                    )
+                                    .on_hover_text(tr("net_link_propose_tooltip"))
+                                    .clicked()
+                                    {
+                                        link_propose = Some((p.device.clone(), title.clone()));
+                                    }
                                 }
                             });
                             ui.horizontal_wrapped(|ui| {
@@ -83133,6 +83292,30 @@ impl App {
                 });
             });
         motif::dialog_relief(ctx, &shown);
+        if let Some((device, theirs)) = link_propose {
+            let label = trn("net_link_label", &[&config.pharmacy.name, &theirs]);
+            match crate::network::propose_link(&session.db, &device, &label, &session.today) {
+                Ok(_) => w.note = Some((false, trf("net_link_proposed", &theirs))),
+                Err(e) => w.note = Some((true, e)),
+            }
+            w.reread(&session.db);
+        }
+        if let Some(device) = link_accept {
+            match crate::network::accept_link(&session.db, &device, &session.today) {
+                Ok(id) => {
+                    w.note = Some((false, tr("net_link_accepted").to_owned()));
+                    pick_net = Some(id);
+                }
+                Err(e) => w.note = Some((true, e)),
+            }
+            w.reread(&session.db);
+        }
+        if let Some(device) = link_decline {
+            if let Err(e) = crate::network::decline_link(&session.db, &device) {
+                w.note = Some((true, e));
+            }
+            w.reread(&session.db);
+        }
         if let Some(id) = pick_net {
             w.network = id;
             w.confirm_leave = false;
@@ -104699,6 +104882,21 @@ mod tests {
     fn identical_notes_merge_to_themselves() {
         let base = "# Notes\n\n- a\n";
         assert_eq!(merge_team_notes(base, base, base), base);
+    }
+
+    /// Une adresse tapée pour joindre une officine prend le port de la
+    /// porte des officines quand elle n'en dit pas ; ce qui n'est pas une
+    /// adresse reste tel quel, et sera refusé.
+    #[cfg(feature = "sync")]
+    #[test]
+    fn a_typed_officine_address_gets_the_door_port() {
+        let port = |t: &str| super::Session::with_door_port(t);
+        assert_eq!(port(" 82.64.1.2 "), "82.64.1.2:7745");
+        assert_eq!(port("2a01:cb00::1"), "[2a01:cb00::1]:7745");
+        assert_eq!(port("82.64.1.2:9000"), "82.64.1.2:9000");
+        assert_eq!(port("pharmacie.example"), "pharmacie.example");
+        assert!(crate::network::usable_announced(&port("pharmacie.example")).is_none());
+        assert!(crate::network::usable_announced(&port("127.0.0.1")).is_none());
     }
 
     /// La vue de la carte : jamais moins que la France entière, jamais

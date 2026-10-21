@@ -1584,9 +1584,28 @@ le réseau ouvert » le rouvre.
 **Au-delà du réseau local.** Le poste de référence demande à la box
 d'ouvrir la porte des officines (UPnP, PCP ou NAT-PMP) et s'annonce sur la DHT publique
 de BitTorrent — un annuaire partagé sans serveur : il n'y paraît qu'une
-adresse, ni nom ni contenu. Toutes les demi-heures, il y trouve d'autres
+adresse, ni nom ni contenu. Toutes les dix minutes, il y trouve d'autres
 officines et en joint quelques-unes. Une officine dont la box refuse
-d'ouvrir le port joint les autres quand même.
+d'ouvrir le port joint les autres quand même ; un port ouvert à la main
+s'annonce aussi, une fois l'adresse publique écrite.
+
+**Joindre une officine précise, sans code** : sur la carte du
+répertoire, « Joindre » la cherche là où elle a déjà répondu, puis sous
+son propre sujet dans la DHT, et n'accepte qu'elle — la clé que montre
+sa carte. Une officine qu'on connaît par son adresse IP se joint du
+champ sous la liste (le port 7745 quand on n'en écrit pas). Elle entre
+au réseau ouvert : ce qu'elle partage est proposé, jamais appliqué.
+
+**Relier deux officines, sans code** : dans la fenêtre du réseau
+ouvert, « Relier… » propose à une officine rencontrée un réseau à vous
+deux. La proposition part scellée pour elle seule ; elle la voit sous
+« Propositions de relier », avec votre nom et votre empreinte, et
+l'accepte ou la refuse. Acceptée, ce réseau se lit comme un réseau
+appairé : ce que chacune y partage (ruptures, versions, propriétés —
+pas les listes) va à l'autre seule. Le nom d'une officine du réseau
+ouvert est celui qu'elle se donne : vérifiez l'empreinte avec elle
+avant d'accepter. La clé vient d'elle : rien ne prouve qu'elle ne l'a
+donnée qu'à vous. Refuser écarte ses propositions suivantes.
 
 **Connexion au lancement.** Application ouverte, chaque officine répond
 aux autres (Options › Base, « Répondre aux officines appairées ») ; une
@@ -1782,8 +1801,10 @@ téléphone.
 l'opérateur) : « Se faire relayer par le réseau » sur un poste, et une
 officine amie du réseau qui coche « Relayer les téléphones des officines
 du réseau ». Le poste s'y tient en attente ; le téléphone le joint par son
-intermédiaire. L'officine relais ne lit ni ne conserve rien : la
-conversation, chiffrée de bout en bout, ne fait que transiter.
+intermédiaire — et les officines de vos réseaux qui ne vous joignent à
+aucune adresse aussi, sur le poste qui leur répond. L'officine relais
+ne lit ni ne conserve rien : la conversation, chiffrée de bout en bout,
+ne fait que transiter.
 
 **Les patients aussi**, chacun des deux côtés le cochant à part : « Y
 compris la messagerie des patients » chez l'officine relayée, « Relayer

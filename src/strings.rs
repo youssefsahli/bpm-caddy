@@ -317,6 +317,7 @@ mod tests {
             ("postes.rs", include_str!("postes.rs")),
             ("versions.rs", include_str!("versions.rs")),
             ("network.rs", include_str!("network.rs")),
+            ("dht.rs", include_str!("dht.rs")),
         ];
         let mut missing: Vec<String> = Vec::new();
         for (file, source) in SOURCES {
@@ -394,6 +395,8 @@ mod tests {
             include_str!("ruptures.rs"),
             include_str!("network.rs"),
             include_str!("postes.rs"),
+            // Une officine choisie qu'on ne trouve pas dans la DHT.
+            include_str!("dht.rs"),
             include_str!("versions.rs"),
             include_str!("pk.rs"),
             include_str!("prescribers.rs"),

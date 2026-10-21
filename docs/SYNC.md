@@ -708,7 +708,22 @@ référence demande au routeur d'ouvrir la porte des officines (UPnP, PCP ou NAT
 sujet fixe de la DHT publique de BitTorrent ; toutes les demi-heures, il
 y cherche les autres et en compose au plus `dht::MOST_DIALS`, chacune au
 plus une fois par six heures (`network::dial_found` : qui répond est
-inscrite, sauf soi-même). Une officine sans porte ouverte compose quand
+inscrite, sauf soi-même). Un tour toutes les **dix minutes** (une
+annonce vit une demi-heure dans la DHT). Sans routeur qui ouvre, la
+porte ouverte à la main et écrite (`PUBLIC_ADDRESS`, une IPv4 publique)
+s'annonce aussi (`dht::written_door`).
+
+**Une officine choisie, sans code** (`dht::reach_officine`). Chacune
+s'annonce aussi sous **son propre sujet**, tiré de sa clé de réseau
+(`dht::own_topic`). « Joindre », sur la carte du répertoire, compose
+d'abord là où elle a déjà répondu, puis les adresses de son sujet, en
+n'acceptant qu'elle (`dial_open`, la clé attendue) : n'importe qui peut
+s'annoncer sous ce sujet, et une autre qui y répond échoue à la poignée
+de main sans être inscrite (`an_officine_picked_by_its_key_is_reached_and_not_a_decoy`).
+Seules des adresses publiques s'y composent : un nœud de la DHT ne
+pointe pas ses appels dans le réseau de l'officine. Une adresse IP
+tapée se compose de même, en acceptant qui répond
+(`dial_found`) : c'est l'officine qui la choisit, pas une annonce. Une officine sans porte ouverte compose quand
 même : une conversation va dans les deux sens. La DHT n'apprend qu'une
 adresse IPv4 sous ce sujet ; une adresse trouvée ne prouve rien, la
 conversation dit qui répond, et ce qu'elle apporte est lu comme tout le
@@ -725,6 +740,33 @@ des identités jetables qui l'auraient rempli ne ferment pas la porte aux
 officines rencontrées ensuite. Au pire, 1 Mo pour chacune des 256, en plus
 des 64 Mo des autres. Rencontrée pour la première fois quand le total est
 plein, une officine est composée une seconde fois aussitôt, favorisée.
+
+**Relier deux officines sans code** (`propose_link`, `accept_link`,
+`decline_link`). Une officine rencontrée au réseau ouvert peut se voir
+proposer **un réseau à elles deux** : « Relier… » tire une clé neuve,
+range le réseau (`net_networks`, partages par défaut : ruptures,
+versions, propriétés, pas les listes), y inscrit l'autre, et garde la
+proposition (`settings`, `net_link_offer:<officine>`). Elle part à la
+publication suivante, au réseau ouvert, **scellée pour la seule
+destinataire** (`boxed`, sous sa clé de boîte annoncée ; `{"relier":…}`,
+qu'aucun message ni morceau ne lit pour lui). La destinataire la range
+(`net_link_asked:<officine>`) si la clé fait bien le réseau qu'elle
+nomme, et la montre — de qui (le nom qu'elle se donne, son empreinte),
+sous quel nom. **C'est elle qui accepte** : le réseau rangé, l'autre inscrite ; la
+synchronisation suivante les relie, aux adresses où elles se sont déjà
+répondu. Refuser écarte l'officine : aucune autre proposition d'elle ne
+se montre (la boîte reste au journal, et une proposition neuve à chaque
+synchronisation revenait sinon d'elle-même). Une seule proposition à la
+fois par officine, écrite avant que le réseau ne soit rangé ; accepter
+s'écrit contre ce que l'écran montrait. **Ce que cela ne prouve
+pas** : qui est derrière une clé du réseau ouvert — le nom est celui
+qu'elle se donne ; l'empreinte se vérifie de vive voix avant
+d'accepter, et l'écran le dit. **Ni que la clé n'est qu'à vous deux** :
+elle vient de qui propose, qui peut l'avoir donnée à d'autres — ce
+qu'on y publie, ils le liraient ; ce qu'ils y écriraient n'est pas lu,
+seuls les membres le sont. La clé reste scellée au journal du
+réseau ouvert : qui tiendrait un jour la clé de boîte de la
+destinataire la lirait — comme ses messages.
 
 ### 7.7 La boîte scellée : un message pour quelques officines
 
@@ -950,6 +992,27 @@ L'offre et la demande s'annoncent une fois **par numéro**
 adresse est annoncé de nouveau. Chaque officine ne retient que le
 dernier mot de chacune — une demande retirée ne laisse pas son groupe
 accepté.
+
+**Les officines aussi** (`Net::sync_relayed`, `relay::officine_group`).
+Deux officines d'un réseau fermé qu'aucun chemin direct ne relie se
+parlent par un relais du réseau. Celle qui a coché « Se faire relayer
+par le réseau » attend, depuis le poste qui répond aux officines, à
+chaque relais offert par une officine d'un réseau fermé qu'elle partage
+avec elle, sous **son nom de relais pour ce réseau** — vingt chiffres
+hexadécimaux tirés du nom du réseau, que ses seuls membres connaissent,
+et de sa clé ; la forme d'un nom de groupe : la préface ne change pas
+(`network::relay_waits`). Tiré de la seule clé, publique, n'importe qui
+en aurait pris les places d'attente. Ce qui y arrive va à un répondeur
+de la porte des officines **s'il en est un de libre** — lâché sinon —,
+au plus six par minute et par relais : qui connaît le nom et appelle en
+boucle ne tient pas la porte. Celle qui ne la joint à aucune adresse,
+à la synchronisation, la demande à ces relais ; la poignée de main dit
+qui répond, et seule l'officine demandée compte ; au plus quatre
+relais, et une officine qu'ils n'ont pas menée n'est pas redemandée
+avant une demi-heure. Un relais accepte
+d'emblée les officines de **ses réseaux fermés** (appairées ou reliées,
+`network::relayed_officines`), jamais celles du seul réseau ouvert.
+`two_unreachable_officines_meet_through_a_relay`.
 
 **Les patients, en UDP, sur le même port** (`relay::UdpRelay`). La page
 d'un patient ne parle que WebRTC (§ voie directe, `direct.rs`) et ne

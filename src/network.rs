@@ -656,6 +656,41 @@ impl Net {
                 done.push(key);
             }
         }
+        // **Les propositions de relier** (`propose_link`), au réseau ouvert :
+        // la clé d'un réseau à deux, scellée pour la seule officine à qui
+        // on la propose. Celle qui n'a pas encore annoncé sa clé de boîte
+        // l'attend à la synchronisation suivante.
+        if self.open {
+            let boxes: std::collections::HashMap<String, String> =
+                db.net_box_keys()?.into_iter().collect();
+            for (setting, value) in db.settings_with_prefix(LINK_OFFER)? {
+                let device = &setting[LINK_OFFER.len()..];
+                let Ok(offer) = serde_json::from_str::<LinkOffer>(&value) else {
+                    continue;
+                };
+                let key = format!("relier:{device}:{}", offer.network);
+                let Some(theirs) = boxes.get(device).and_then(|k| unhex::<32>(k)) else {
+                    continue;
+                };
+                if already.contains(&key) {
+                    continue;
+                }
+                let inner = serde_json::to_vec(&LinkBox {
+                    relier: LinkOffer {
+                        officine: officine.to_owned(),
+                        ..offer
+                    },
+                })
+                .map_err(|e| e.to_string())?;
+                let sealed = bpm_sync::boxed::seal(&[theirs], &inner, &mut bpm_sync::OsEntropy)
+                    .map_err(|e| format!("{e:?}"))?;
+                let mut payload = crate::messages::BOX_TAG.to_vec();
+                payload.extend(sealed);
+                if self.seal_one(trousseau, &payload) {
+                    done.push(key);
+                }
+            }
+        }
         // **Les messages**, scellés pour leurs seules officines — et pour
         // celle-ci, qui les relit comme les autres. Un message dont une
         // destinataire n'a pas encore annoncé sa clé attend la prochaine
@@ -1076,6 +1111,11 @@ impl Net {
                 db.receive_net_message(&m, &author, &me_hex)?;
             } else if let Ok(c) = serde_json::from_slice::<crate::messages::Chunk>(&inner) {
                 chunks.push((c, author));
+            } else if let Ok(b) = serde_json::from_slice::<LinkBox>(&inner) {
+                // Only over the open network, from another officine.
+                if self.open && author != me_hex {
+                    receive_link_offer(db, &author, b.relier)?;
+                }
             }
         }
         for (c, author) in &chunks {
@@ -1298,12 +1338,109 @@ impl Net {
         // **Toute la conversation bornée**, comme du côté qui répond : une
         // machine qui se fait passer pour une officine appairée et écrit un
         // octet de temps en temps ne tient pas l'appel.
-        let mut link = bpm_sync::link::dial(address, patience)
+        let link = bpm_sync::link::dial(address, patience)
             .map_err(|e| format!("{e:?}"))?
             .with_deadline(DIAL_BOUND);
+        self.sync_over(db, link, &trousseau)
+    }
+
+    /// **Joindre une officine du réseau par un relais** (`relay.rs`) : à
+    /// chacun de ceux que les officines du réseau offrent, demander celle
+    /// qui y attend sous son nom (`relay::officine_group`) — pour deux
+    /// officines qu'aucun chemin direct ne relie. Le relais ne lit rien :
+    /// la poignée de main prouve qui répond. Rend qui a répondu.
+    pub fn sync_relayed(
+        &mut self,
+        db: &Db,
+        device: &str,
+        patience: Duration,
+    ) -> Result<Option<String>, String> {
+        // **Bounded, and not at every sync**: a few relays, and an officine
+        // not found through them is not asked for again before half an
+        // hour — an officine simply closed for the night does not cost
+        // each sync a round of every relay.
+        static TRIED: std::sync::Mutex<
+            Option<std::collections::HashMap<String, std::time::Instant>>,
+        > = std::sync::Mutex::new(None);
+        let key = format!("{}|{device}", self.id);
+        let recently = TRIED.lock().ok().is_some_and(|t| {
+            t.as_ref()
+                .and_then(|m| m.get(&key))
+                .is_some_and(|at| at.elapsed() < RELAY_BACKOFF)
+        });
+        if recently {
+            return Ok(None);
+        }
+        let relays: Vec<String> = offered_relays(db)
+            .iter()
+            .filter_map(|a| usable_announced(a))
+            .take(RELAY_TRIES)
+            .collect();
+        if relays.is_empty() {
+            return Ok(None);
+        }
+        let said = self.sync_relayed_at(db, device, &relays, patience);
+        if let Ok(mut t) = TRIED.lock() {
+            let m = t.get_or_insert_with(Default::default);
+            m.retain(|_, at| at.elapsed() < RELAY_BACKOFF);
+            if matches!(said, Ok(Some(_))) {
+                m.remove(&key);
+            } else {
+                m.insert(key, std::time::Instant::now());
+            }
+        }
+        said
+    }
+
+    /// [`Net::sync_relayed`], aux relais `relays`.
+    fn sync_relayed_at(
+        &mut self,
+        db: &Db,
+        device: &str,
+        relays: &[String],
+        patience: Duration,
+    ) -> Result<Option<String>, String> {
+        let Some(trousseau) = self.trousseau.clone() else {
+            return Ok(None);
+        };
+        if self.open {
+            return Ok(None);
+        }
+        let group = crate::relay::officine_group(&hex(&trousseau.name().bytes()), device);
+        let mut last = crate::strings::tr("net_err_no_address").to_owned();
+        for at in relays {
+            let stream = match crate::relay::call(at, &group, patience) {
+                Ok(s) => s,
+                Err(e) => {
+                    last = e.to_string();
+                    continue;
+                }
+            };
+            let link = match bpm_sync::link::TcpLink::new(stream, patience) {
+                Ok(l) => l.with_deadline(DIAL_BOUND),
+                Err(e) => {
+                    last = format!("{e:?}");
+                    continue;
+                }
+            };
+            match self.sync_over(db, link, &trousseau) {
+                Ok(Some(who)) if who == device => return Ok(Some(who)),
+                Ok(_) => last = dial_reason("Handshake"),
+                Err(e) => last = e,
+            }
+        }
+        Err(last)
+    }
+
+    fn sync_over<L: bpm_sync::Link>(
+        &mut self,
+        db: &Db,
+        mut link: L,
+        trousseau: &Trousseau,
+    ) -> Result<Option<String>, String> {
         let mut session = Session::new(
             &self.device,
-            Some(&trousseau),
+            Some(trousseau),
             Intent::Sync,
             true,
             &self.known(),
@@ -1351,6 +1488,161 @@ pub enum Job {
     Dial { device: String },
 }
 
+/// **Relier deux officines sans code** : la proposition qu'une officine
+/// fait à une autre, rencontrée au réseau ouvert — la clé d'un réseau à
+/// elles deux, son nom, et le nom de qui propose. Scellée pour la seule
+/// destinataire ; c'est elle qui accepte, ou non.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LinkOffer {
+    /// L'empreinte du réseau proposé (vingt chiffres hexadécimaux).
+    pub network: String,
+    /// Sa clé, en hexadécimal.
+    pub secret: String,
+    pub label: String,
+    /// Le nom sous lequel signe l'officine qui propose.
+    #[serde(default)]
+    pub officine: String,
+}
+
+/// Ce que porte la boîte : un champ que ni un message ni un morceau n'ont,
+/// pour qu'aucun ne se lise pour l'autre.
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LinkBox {
+    relier: LinkOffer,
+}
+
+/// Combien de relais une synchronisation essaie pour une officine…
+const RELAY_TRIES: usize = 4;
+/// …et combien de temps elle ne la redemande pas après un échec.
+const RELAY_BACKOFF: Duration = Duration::from_secs(30 * 60);
+
+/// Où l'officine range une proposition qu'elle a faite, par destinataire.
+pub const LINK_OFFER: &str = "net_link_offer:";
+/// Où elle range une proposition reçue, par officine qui propose — vide
+/// une fois acceptée, `-` refusée : **refuser écarte l'officine**, pas la
+/// seule proposition — sans quoi une proposition neuve à chaque
+/// synchronisation revenait d'elle-même.
+pub const LINK_ASKED: &str = "net_link_asked:";
+
+/// **Proposer à une officine du réseau ouvert de relier les deux**, sans
+/// code : un réseau neuf, nommé `label`, où elle est inscrite, et sa clé
+/// qui partira scellée pour elle seule à la prochaine synchronisation.
+/// Ce qu'elle reçoit, elle l'accepte ou non ([`accept_link`]) ; d'ici là,
+/// ce réseau ne lui répond que si elle a la clé. Rend l'`id` du réseau.
+pub fn propose_link(db: &Db, device: &str, label: &str, day: &str) -> Result<String, String> {
+    use crate::strings::tr;
+    if !db
+        .net_members(&open_id())?
+        .iter()
+        .any(|p| p.device == device)
+    {
+        return Err(tr("net_link_not_open").to_owned());
+    }
+    let key = format!("{LINK_OFFER}{device}");
+    let was = db.setting(&key);
+    if was.as_deref().is_some_and(|v| !v.trim().is_empty()) {
+        return Err(tr("net_link_already").to_owned());
+    }
+    let secret = random32();
+    let id = hex(&Trousseau::from_secret(secret).name().bytes());
+    let offer = LinkOffer {
+        network: id.clone(),
+        secret: hex(&secret),
+        label: label.trim().to_owned(),
+        officine: String::new(),
+    };
+    let text = serde_json::to_string(&offer).map_err(|e| e.to_string())?;
+    // The proposal first, written against what was read: a post that
+    // proposed at the same moment wins, and no network is left behind.
+    if !db.set_setting(&key, &text, was.as_deref(), day, "")? {
+        return Err(tr("net_link_already").to_owned());
+    }
+    db.add_net_network(&id, &hex(&secret), label, day)?;
+    db.add_net_peer_member(&id, device, "", day, false)?;
+    Ok(id)
+}
+
+/// Une proposition reçue : rangée pour que l'opérateur la voie, sauf un
+/// réseau déjà tenu ou refusé, ou une clé qui ne fait pas ce réseau.
+fn receive_link_offer(db: &Db, author: &str, offer: LinkOffer) -> Result<(), String> {
+    let Some(secret) = unhex::<32>(&offer.secret) else {
+        return Ok(());
+    };
+    if hex(&Trousseau::from_secret(secret).name().bytes()) != offer.network {
+        return Ok(());
+    }
+    if db.net_networks()?.iter().any(|n| n.id == offer.network) {
+        return Ok(());
+    }
+    let key = format!("{LINK_ASKED}{author}");
+    let was = db.setting(&key);
+    if let Some(w) = &was {
+        let declined = w.starts_with('-');
+        let same = serde_json::from_str::<LinkOffer>(w).is_ok_and(|o| o.network == offer.network);
+        if declined || same {
+            return Ok(());
+        }
+    }
+    let text = serde_json::to_string(&offer).map_err(|e| e.to_string())?;
+    db.set_setting(&key, &text, was.as_deref(), "", "")
+        .map(|_| ())
+}
+
+/// Les propositions reçues, à montrer : `(officine qui propose, ce
+/// qu'elle propose)`.
+pub fn link_offers(db: &Db) -> Vec<(String, LinkOffer)> {
+    let held: std::collections::HashSet<String> = db
+        .net_networks()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|n| n.id)
+        .collect();
+    db.settings_with_prefix(LINK_ASKED)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|(k, v)| {
+            let offer = serde_json::from_str::<LinkOffer>(&v).ok()?;
+            (!held.contains(&offer.network)).then(|| (k[LINK_ASKED.len()..].to_owned(), offer))
+        })
+        .collect()
+}
+
+/// **Accepter** la proposition d'une officine : le réseau à deux rangé,
+/// elle inscrite — la synchronisation suivante les relie. Rend l'`id`.
+pub fn accept_link(db: &Db, device: &str, day: &str) -> Result<String, String> {
+    let key = format!("{LINK_ASKED}{device}");
+    let was = db.setting(&key);
+    let offer = was
+        .as_deref()
+        .and_then(|v| serde_json::from_str::<LinkOffer>(v).ok())
+        .ok_or_else(|| crate::strings::tr("net_peer_stale").to_owned())?;
+    // Against what the screen showed: another post that answered first
+    // wins, and this one reloads.
+    if !db.set_setting(&key, "", was.as_deref(), day, "")? {
+        return Err(crate::strings::tr("net_peer_stale").to_owned());
+    }
+    db.add_net_network(&offer.network, &offer.secret, &offer.label, day)?;
+    db.add_net_peer_member(&offer.network, device, "", day, false)?;
+    Ok(offer.network)
+}
+
+/// **Refuser** : la proposition n'est plus montrée, et cette officine
+/// n'en fait plus d'autre qui se montre.
+pub fn decline_link(db: &Db, device: &str) -> Result<(), String> {
+    let key = format!("{LINK_ASKED}{device}");
+    let was = db.setting(&key);
+    let Some(offer) = was
+        .as_deref()
+        .and_then(|v| serde_json::from_str::<LinkOffer>(v).ok())
+    else {
+        return Ok(());
+    };
+    let _ = offer;
+    db.set_setting(&key, "-", was.as_deref(), "", "")
+        .map(|_| ())
+}
+
 /// Le réglage de l'officine : l'adresse où elle se joint de l'extérieur
 /// (routeur, VPN), annoncée aux membres de ses réseaux. Vide : aucune.
 pub const PUBLIC_ADDRESS: &str = "net_public_address";
@@ -1388,6 +1680,80 @@ pub fn set_relay_value(db: &Db, key: &str, value: &str) {
 /// Où ranger les adresses de relais qu'une officine du réseau offre.
 pub fn relay_key(device: &str) -> String {
     format!("net_relay:{device}")
+}
+
+/// **Les officines qu'un relais de cette officine accepte d'elles-mêmes**,
+/// sous leur nom de relais (`relay::officine_group`) : celles de ses
+/// réseaux fermés — appairées, ou reliées — jamais le réseau ouvert.
+pub fn relayed_officines(db: &Db) -> Vec<String> {
+    let mut out: Vec<String> = closed_networks(db)
+        .iter()
+        .flat_map(|(id, name)| {
+            db.net_members(id)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|p| crate::relay::officine_group(name, &p.device))
+        })
+        .collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// Les réseaux fermés de l'officine : `(id, nom)` — l'id tel que la base
+/// le range (vide pour le principal), le nom tel que la poignée de main
+/// le dit.
+fn closed_networks(db: &Db) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    if let Some(t) = db
+        .setting("net_trousseau")
+        .and_then(|t| unhex::<32>(&t))
+        .map(Trousseau::from_secret)
+    {
+        out.push((String::new(), hex(&t.name().bytes())));
+    }
+    for n in db.net_networks().unwrap_or_default() {
+        if !is_open(&n.id) {
+            out.push((n.id.clone(), n.id));
+        }
+    }
+    out
+}
+
+/// **Où cette officine attend aux relais**, et sous quel nom : chaque
+/// adresse qu'une officine offre, sous le nom de chaque réseau fermé que
+/// celle-ci partage avec elle — le seul où le relais la connaît. Au plus
+/// `most`.
+pub fn relay_waits(db: &Db, most: usize) -> Vec<(String, String)> {
+    let Ok(me) = device_hex(db) else {
+        return Vec::new();
+    };
+    let networks = closed_networks(db);
+    let mut out: Vec<(String, String)> = Vec::new();
+    for (key, value) in db.settings_with_prefix("net_relay:").unwrap_or_default() {
+        let offerer = &key["net_relay:".len()..];
+        for (id, name) in &networks {
+            let shares = db
+                .net_members(id)
+                .unwrap_or_default()
+                .iter()
+                .any(|p| p.device == offerer);
+            if !shares {
+                continue;
+            }
+            for at in crate::reach::addresses(&value)
+                .iter()
+                .filter_map(|a| usable_announced(a))
+            {
+                let wait = (at, crate::relay::officine_group(name, &me));
+                if !out.contains(&wait) {
+                    out.push(wait);
+                }
+            }
+        }
+    }
+    out.truncate(most);
+    out
 }
 
 /// Les adresses de relais offertes par les officines du réseau.
@@ -2232,12 +2598,30 @@ pub fn run(
                     }
                     out
                 };
+                // Nowhere to dial it directly: a relay of the network, where
+                // an officine nobody reaches waits (`Net::sync_relayed`).
+                let by_relay = |net: &mut Net, device: &str| -> bool {
+                    !net.open
+                        && net
+                            .sync_relayed(&db, device, TALK_PATIENCE)
+                            .is_ok_and(|who| {
+                                who.is_some_and(|w| {
+                                    let _ = db.note_net_dial(&w, None);
+                                    true
+                                })
+                            })
+                };
                 for p in peers.iter().filter(|p| p.address.trim().is_empty()) {
+                    let mut reached = false;
                     for a in fallbacks(&p.device, "") {
                         if dial_heard_in(&db, Some(&net.id), &p.device, &a, officine).is_ok() {
                             reread = true;
+                            reached = true;
                             break;
                         }
+                    }
+                    if !reached && by_relay(&mut net, &p.device) {
+                        reread = true;
                     }
                 }
                 for p in peers.iter().filter(|p| !p.address.trim().is_empty()) {
@@ -2253,7 +2637,7 @@ pub fn run(
                             let reached = fallbacks(&p.device, &p.address).into_iter().any(|a| {
                                 dial_heard_in(&db, Some(&net.id), &p.device, &a, officine).is_ok()
                             });
-                            if reached {
+                            if reached || by_relay(&mut net, &p.device) {
                                 reread = true;
                                 continue;
                             }
@@ -3548,6 +3932,104 @@ mod tests {
         (done(), done())
     }
 
+    /// **Deux officines qu'on ne joint pas se parlent par un relais** :
+    /// A n'écoute nulle part, elle attend au relais sous son nom ; B, qui
+    /// ne la joint à aucune adresse, la demande au relais — et la
+    /// poignée de main dit que c'est bien A. Un relais qui ne connaît pas
+    /// A ne la met en relation avec personne.
+    #[test]
+    fn two_unreachable_officines_meet_through_a_relay() {
+        let (dir_a, _sa, a) = officine("relay-a");
+        let (dir_b, _sb, b) = officine("relay-b");
+        pair(&dir_a, &dir_b, "");
+        let (a_dev, _) = (device_hex(&a).unwrap(), device_hex(&b).unwrap());
+        // A relay knowing A, on loopback.
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let principal = hex(&Trousseau::from_secret(
+            unhex::<32>(&a.setting("net_trousseau").unwrap()).unwrap(),
+        )
+        .name()
+        .bytes());
+        let allowed: crate::relay::Allowed = std::sync::Arc::new(std::sync::Mutex::new(
+            [crate::relay::officine_group(&principal, &a_dev)].into(),
+        ));
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        crate::relay::serve(port, allowed, std::sync::Arc::clone(&stop)).unwrap();
+        let relay = format!("127.0.0.1:{port}");
+        let (path_a, at) = (dir_a.join("net.db"), relay.clone());
+        let group = crate::relay::officine_group(&principal, &a_dev);
+        let waiting = std::thread::spawn(move || {
+            let db = Db::open(&path_a, "secret").unwrap();
+            let stream = crate::relay::wait(&at, &group, TALK_PATIENCE).unwrap();
+            let mut link = bpm_sync::link::TcpLink::new(stream, TALK_PATIENCE).unwrap();
+            answer(&db, &mut link)
+        });
+        // The wait reaches the relay before the call.
+        std::thread::sleep(Duration::from_millis(300));
+        let mut nb = Net::load(&b).unwrap();
+        assert_eq!(
+            nb.sync_relayed_at(&b, &a_dev, std::slice::from_ref(&relay), TALK_PATIENCE),
+            Ok(Some(a_dev.clone()))
+        );
+        assert!(waiting.join().unwrap().is_ok());
+        // Nobody waits under another officine's name: refused, said.
+        let other = "ef".repeat(32);
+        assert!(nb
+            .sync_relayed_at(&b, &other, &[relay], TALK_PATIENCE)
+            .is_err());
+        // Never through the open network.
+        join_open(&b, "2026-10-21").unwrap();
+        let mut open = Net::load_network(&b, &open_id()).unwrap();
+        assert_eq!(
+            open.sync_relayed_at(&b, &a_dev, &[], TALK_PATIENCE),
+            Ok(None)
+        );
+        stop.store(true, std::sync::atomic::Ordering::SeqCst);
+        // What a relay of this officine lets through by itself: its closed
+        // networks' officines, not the open network's.
+        let b_dev = device_hex(&b).unwrap();
+        assert_eq!(
+            relayed_officines(&a),
+            vec![crate::relay::officine_group(&principal, &b_dev)]
+        );
+        // The name needs the network's: the key alone, public, is not it.
+        assert_ne!(
+            crate::relay::officine_group(&principal, &a_dev),
+            crate::relay::officine_group(&"00".repeat(10), &a_dev)
+        );
+        assert_ne!(
+            crate::relay::officine_group(&principal, &a_dev),
+            crate::relay::officine_group(&principal, &other)
+        );
+        assert!(
+            crate::relay::read_preface(&crate::relay::preface(
+                crate::relay::Role::Appel,
+                &crate::relay::officine_group(&principal, &a_dev)
+            ))
+            .is_some(),
+            "la préface d'avant"
+        );
+        // Where A waits: at the relay B offers, under their network's name.
+        b.set_setting(&relay_key(&a_dev), "", None, "", "").ok();
+        a.set_setting(&relay_key(&b_dev), "82.64.1.2:7746", None, "", "")
+            .unwrap();
+        assert_eq!(
+            relay_waits(&a, 8),
+            vec![(
+                "82.64.1.2:7746".to_owned(),
+                crate::relay::officine_group(&principal, &a_dev)
+            )]
+        );
+        // An offer from an officine A shares no closed network with: not there.
+        a.set_setting(&relay_key(&other), "82.64.9.9:7746", None, "", "")
+            .unwrap();
+        assert_eq!(relay_waits(&a, 8).len(), 1);
+    }
+
     #[test]
     fn a_key_reads_back_and_a_bad_one_does_not() {
         let k = random32();
@@ -4007,6 +4489,128 @@ mod tests {
             Some(at),
             "retenue une fois jointe"
         );
+    }
+
+    /// **Relier deux officines sans code** : rencontrées au réseau ouvert,
+    /// A propose à B un réseau à elles deux ; la clé part scellée pour B
+    /// seule, B voit la proposition (de qui, sous quel nom), l'accepte, et
+    /// les deux se parlent sur ce réseau. Une seule proposition à la fois,
+    /// et seulement à une officine du réseau ouvert.
+    #[test]
+    fn two_officines_met_openly_link_without_a_code() {
+        let (dir_a, _sa, a) = officine("link-a");
+        let (dir_b, _sb, b) = officine("link-b");
+        for (db, name) in [(&a, "Pharmacie A"), (&b, "Pharmacie B")] {
+            join_open(db, "2026-10-21").unwrap();
+            let mut n = Net::load_network(db, &open_id()).unwrap();
+            n.publish(db, name).unwrap();
+            n.keep(db).unwrap();
+        }
+        let _ = dir_a;
+        let (a_dev, b_dev) = (device_hex(&a).unwrap(), device_hex(&b).unwrap());
+        let door = bpm_sync::link::Door::open("127.0.0.1:0").unwrap();
+        let at = door.address().unwrap().to_string();
+        let path_b = dir_b.join("net.db");
+        let answering = std::thread::spawn(move || {
+            let db = Db::open(&path_b, "secret").unwrap();
+            let mut said = Vec::new();
+            while let Ok(mut link) = door.accept(Duration::from_secs(5)) {
+                said.push(answer(&db, &mut link));
+            }
+            said
+        });
+        dial_open(&a, &b_dev, &at, "Pharmacie A").expect("rencontrée");
+        assert!(propose_link(&a, &"cd".repeat(32), "X", "2026-10-21").is_err());
+        let id = propose_link(&a, &b_dev, "A et B", "2026-10-21").unwrap();
+        assert!(
+            propose_link(&a, &b_dev, "Encore", "2026-10-21").is_err(),
+            "une fois"
+        );
+        assert!(a
+            .net_members(&id)
+            .unwrap()
+            .iter()
+            .any(|p| p.device == b_dev));
+        dial_open(&a, &b_dev, &at, "Pharmacie A").expect("la proposition part");
+        let until = std::time::Instant::now() + Duration::from_secs(5);
+        let offers = loop {
+            let o = link_offers(&b);
+            if !o.is_empty() || std::time::Instant::now() > until {
+                break o;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        };
+        assert_eq!(offers.len(), 1, "{offers:?}");
+        let (from, offer) = &offers[0];
+        assert_eq!(from, &a_dev);
+        assert_eq!(offer.network, id);
+        assert_eq!(offer.label, "A et B");
+        assert_eq!(offer.officine, "Pharmacie A");
+        assert!(
+            b.net_networks().unwrap().iter().all(|n| n.id != id),
+            "pas avant"
+        );
+        assert_eq!(accept_link(&b, &a_dev, "2026-10-21").unwrap(), id);
+        assert!(link_offers(&b).is_empty());
+        assert!(b
+            .net_members(&id)
+            .unwrap()
+            .iter()
+            .any(|p| p.device == a_dev));
+        // Their own network now: A dials B on it, and B answers there.
+        let mut n = Net::load_network(&a, &id).unwrap();
+        assert!(!n.open);
+        assert_eq!(
+            n.sync_with(&a, &at, TALK_PATIENCE).unwrap(),
+            Some(b_dev.clone())
+        );
+        let said = answering.join().unwrap();
+        assert!(said.iter().all(Result::is_ok), "{said:?}");
+        assert!(said.iter().all(|s| s.as_deref() == Ok(a_dev.as_str())));
+    }
+
+    /// Une proposition reçue dont la clé ne fait pas le réseau qu'elle
+    /// nomme n'est pas montrée ; refusée, elle ne revient pas — la boîte
+    /// reste au journal, relue à chaque synchronisation.
+    #[test]
+    fn a_link_offer_that_lies_is_dropped_and_a_declined_one_stays_declined() {
+        let (_dir, _s, b) = officine("link-decline");
+        let c_dev = "ce".repeat(32);
+        let secret = random32();
+        let good = LinkOffer {
+            network: hex(&Trousseau::from_secret(secret).name().bytes()),
+            secret: hex(&secret),
+            label: "C et B".to_owned(),
+            officine: "Pharmacie C".to_owned(),
+        };
+        let lie = LinkOffer {
+            network: "00".repeat(10),
+            ..good.clone()
+        };
+        receive_link_offer(&b, &c_dev, lie).unwrap();
+        assert!(
+            link_offers(&b).is_empty(),
+            "une clé qui ne fait pas ce réseau"
+        );
+        receive_link_offer(&b, &c_dev, good.clone()).unwrap();
+        assert_eq!(link_offers(&b), vec![(c_dev.clone(), good.clone())]);
+        receive_link_offer(&b, &c_dev, good.clone()).unwrap();
+        assert_eq!(link_offers(&b).len(), 1, "pas deux fois");
+        decline_link(&b, &c_dev).unwrap();
+        assert!(link_offers(&b).is_empty());
+        receive_link_offer(&b, &c_dev, good).unwrap();
+        assert!(link_offers(&b).is_empty(), "refusée, elle le reste");
+        // A fresh proposal from the same officine: not shown either.
+        let other = random32();
+        let fresh = LinkOffer {
+            network: hex(&Trousseau::from_secret(other).name().bytes()),
+            secret: hex(&other),
+            label: "Encore".to_owned(),
+            officine: "Pharmacie C".to_owned(),
+        };
+        receive_link_offer(&b, &c_dev, fresh).unwrap();
+        assert!(link_offers(&b).is_empty(), "l'officine écartée");
+        assert!(accept_link(&b, &c_dev, "2026-10-21").is_err());
     }
 
     /// **Deux officines qui ne se sont jamais appairées se parlent au
