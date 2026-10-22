@@ -713,9 +713,9 @@ annonce vit une demi-heure dans la DHT). Sans routeur qui ouvre, la
 porte ouverte à la main et écrite (`PUBLIC_ADDRESS`, une IPv4 publique)
 s'annonce aussi (`dht::written_door`).
 
-**D'un réseau qui ne laisse sortir que le web** (un hôpital, une
-entreprise : l'UDP bloqué, donc la DHT muette, et les ports autres que
-443 filtrés). L'officine dont la box ouvre sa porte demande aussi, par
+**D'un réseau qui ne laisse sortir que le web** (une officine dont le
+routeur est tenu par un prestataire, un hôpital, une entreprise : l'UDP
+bloqué, donc la DHT muette, et les ports autres que 443 filtrés). L'officine dont la box ouvre sa porte demande aussi, par
 UPnP, que le port **443** de la box y mène (`reach::open_officine_web_mapping`,
 jamais pris à un autre : ni à une autre machine, ni à un autre
 serveur de celle-ci), refermé à la sortie, et aussitôt quand la box n'a
@@ -725,7 +725,11 @@ d'une adresse publique ne répond pas, la même machine au 443
 (`network::web_door`, dans `Net::sync_door`) et retient celle qui a
 répondu (`net_reached:`). « Tester la connexion » (Connexions) dit ce
 qui sort d'ici : le web, la DHT, et la porte de chaque officine connue,
-puis sa porte web (`network::diagnose`, `diagnosis_lines`). Sans
+puis sa porte web (`network::diagnose`, `diagnosis_lines`), et ce que
+la box a fait de la sienne au dernier tour du fil de la DHT
+(`dht::own_door` : ouverte, écrite à la main, ou fermée — une box tenue
+par un prestataire coupe souvent l'UPnP, et la ligne dit quel port lui
+faire rediriger). Sans
 officine connue ni DHT, un poste ainsi enfermé n'en trouve aucune de
 lui-même : « Joindre » par une adresse, ou le dossier d'échange.
 

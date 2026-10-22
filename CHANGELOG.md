@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **« Tester la connexion » also says what the box did with this officine's own door**: opened (and where, web door included), written by hand as the external address, or nothing opened — UPnP, PCP and NAT-PMP all refused, as often behind a router run by the pharmacy's IT provider. Then no officine can reach this one; the line names the TCP port to have redirected to this post.
+
 ### Fixed
 
 - **Accounts and the news feed reload without re-checking every signature.** Each version arriving from another post or officine re-read every account record and verified each signature again (about 30 µs each, 60 ms for two thousand); a signature already held in this process is not checked again — changed bytes are.

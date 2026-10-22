@@ -218,6 +218,7 @@ pub fn spawn(
                 if std::mem::take(&mut web) {
                     crate::reach::close_officine_web_mapping();
                 }
+                set_own_door(None);
                 finder = None;
                 continue;
             }
@@ -232,9 +233,10 @@ pub fn spawn(
             // La porte web aussi, quand la box l'accorde : ceux qui
             // appellent d'un réseau qui ne laisse sortir que le web la
             // composent d'eux-mêmes (`network::web_door`).
-            if opened.is_some() && web_door {
-                web |= crate::reach::open_officine_web_mapping(port).is_some();
-            }
+            let web_now = opened.is_some()
+                && web_door
+                && crate::reach::open_officine_web_mapping(port).is_some();
+            web |= web_now;
             // Sans routeur qui ouvre : la porte ouverte à la main dans la
             // box, que l'officine a écrite (« Adresse publique »).
             let mine = opened.or_else(|| {
@@ -243,6 +245,11 @@ pub fn spawn(
                         .unwrap_or_default(),
                 )
             });
+            set_own_door(Some(match (opened, mine) {
+                (Some(at), _) => OwnDoor::Opened { at, web: web_now },
+                (None, Some(at)) => OwnDoor::Written(at),
+                (None, None) => OwnDoor::Closed(port),
+            }));
             if let Some(at) = mine {
                 match crate::network::device_hex(&db) {
                     Ok(me) => f.announce_as(&me, at.port()),
@@ -264,7 +271,39 @@ pub fn spawn(
         if web {
             crate::reach::close_officine_web_mapping();
         }
+        set_own_door(None);
     });
+}
+
+/// **Ce que la box a fait de la porte de cette officine**, au dernier tour
+/// du fil de la DHT : ce que « Tester la connexion » en dit. Dans une
+/// officine dont le routeur est tenu par un prestataire, l'UPnP est
+/// souvent coupé : personne ne la joint, elle seule appelle.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OwnDoor {
+    /// Ouverte par la box (UPnP, PCP ou NAT-PMP) ; `web` : sa porte web
+    /// aussi.
+    Opened { at: SocketAddrV4, web: bool },
+    /// Rien d'ouvert par la box, mais une adresse écrite à la main.
+    Written(SocketAddrV4),
+    /// Rien d'ouvert, rien d'écrit : ce port n'est joint de personne.
+    Closed(u16),
+}
+
+static OWN_DOOR: std::sync::Mutex<Option<OwnDoor>> = std::sync::Mutex::new(None);
+
+fn set_own_door(door: Option<OwnDoor>) {
+    *OWN_DOOR
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = door;
+}
+
+/// La porte de cette officine au dernier tour ; `None` hors du réseau
+/// ouvert, ou avant le premier tour.
+pub fn own_door() -> Option<OwnDoor> {
+    *OWN_DOOR
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// **L'adresse publique écrite par l'officine**, quand c'est une IPv4

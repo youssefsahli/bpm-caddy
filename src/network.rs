@@ -1897,13 +1897,15 @@ pub fn web_door(address: &str) -> Option<String> {
 }
 
 /// Ce que « Tester la connexion » a trouvé : le web sort-il, la DHT
-/// répond-elle, et les portes des officines connues — à leur port, puis à
-/// leur porte web.
+/// répond-elle, les portes des officines connues — à leur port, puis à
+/// leur porte web — et ce que la box a fait de la sienne.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Diagnosis {
     pub web: bool,
     pub dht: bool,
     pub doors: Vec<DoorTry>,
+    /// `None` hors du réseau ouvert : aucune porte n'y est demandée.
+    pub own: Option<crate::dht::OwnDoor>,
 }
 
 /// Une porte d'officine essayée.
@@ -2009,11 +2011,13 @@ pub fn diagnose(db: &Db) -> Diagnosis {
         web: web.join().unwrap_or(false),
         dht: dht.join().unwrap_or(false),
         doors: doors.into_iter().filter_map(|t| t.join().ok()).collect(),
+        own: crate::dht::own_door(),
     }
 }
 
 /// **Ce que le test dit**, ligne par ligne — `true` : ce qui ne passe pas.
-/// D'abord ce qui sort, puis chaque porte, puis ce qu'il faut en retenir.
+/// D'abord ce qui sort, puis chaque porte, puis celle de cette officine,
+/// puis ce qu'il faut en retenir.
 pub fn diagnosis_lines(d: &Diagnosis) -> Vec<(bool, String)> {
     use crate::strings::{tr, trf, trn};
     let mut out = vec![
@@ -2043,6 +2047,23 @@ pub fn diagnosis_lines(d: &Diagnosis) -> Vec<(bool, String)> {
             (false, false) => "diag_door_closed",
         };
         out.push((!t.door && !t.web, trn(key, &[&t.name, &t.address])));
+    }
+    use crate::dht::OwnDoor;
+    match d.own {
+        Some(OwnDoor::Opened { at, web }) => out.push((
+            false,
+            trf(
+                if web {
+                    "diag_mine_opened_web"
+                } else {
+                    "diag_mine_opened"
+                },
+                at,
+            ),
+        )),
+        Some(OwnDoor::Written(at)) => out.push((false, trf("diag_mine_written", at))),
+        Some(OwnDoor::Closed(port)) => out.push((true, trf("diag_mine_closed", port))),
+        None => {}
     }
     let by_web = d.doors.iter().filter(|t| !t.door && t.web).count();
     let direct = d.doors.iter().filter(|t| t.door).count();
@@ -4897,9 +4918,25 @@ mod tests {
             web: true,
             dht: false,
             doors: vec![door(false, true), door(false, false)],
+            own: None,
         };
         let lines = diagnosis_lines(&hospital);
         assert_eq!(lines.len(), 5, "{lines:?}");
+        // Its own door: a box that opened nothing is said, with the port to
+        // ask for; one that opened says where.
+        let closed = diagnosis_lines(&Diagnosis {
+            own: Some(crate::dht::OwnDoor::Closed(7745)),
+            ..hospital.clone()
+        });
+        assert_eq!(closed.len(), 6);
+        assert_eq!(closed[4], (true, trf("diag_mine_closed", 7745)));
+        assert_eq!(closed.last(), lines.last());
+        let at: std::net::SocketAddrV4 = "82.64.1.2:7745".parse().unwrap();
+        let opened = diagnosis_lines(&Diagnosis {
+            own: Some(crate::dht::OwnDoor::Opened { at, web: true }),
+            ..hospital.clone()
+        });
+        assert_eq!(opened[4], (false, trf("diag_mine_opened_web", at)));
         assert!(lines[1].0, "la DHT ne répond pas");
         assert!(!lines[2].0 && lines[2].1.contains("443"));
         assert!(lines[3].0);
@@ -4917,6 +4954,7 @@ mod tests {
             web: true,
             dht: true,
             doors: vec![door(true, false)],
+            own: None,
         };
         assert_eq!(last(&home), (false, trn("diag_doors_ok", &[&1, &1])));
         assert!(

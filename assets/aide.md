@@ -2017,9 +2017,13 @@ les officines du réseau.
 
 **« Tester la connexion »** dit, au fil des connexions, ce qui sort de
 ce poste : le web (port 443), la DHT (qui trouve les officines du réseau
-ouvert ; muette quand le réseau bloque l'UDP, comme souvent à l'hôpital
-ou en entreprise), et la porte de chaque officine connue, puis sa
-**porte web**. Une officine dont la box le permet (UPnP) ouvre aussi
+ouvert ; muette quand le réseau bloque l'UDP, comme souvent derrière un
+routeur tenu par un prestataire, à l'hôpital ou en entreprise), la porte
+de chaque officine connue, puis sa **porte web**, et enfin la porte de
+cette officine : ce que sa box en a ouvert. Une box qui n'ouvre rien
+(UPnP coupé) laisse l'officine appeler sans être jointe ; la ligne dit
+quel port demander au prestataire de rediriger vers ce poste, à écrire
+ensuite en adresse externe (Réseau d'officines). Une officine dont la box le permet (UPnP) ouvre aussi
 le port 443 de sa box vers sa porte, quand il est libre (Options ›
 Base, « Ouvrir aussi la porte web », à décocher quand la box se sert
 de son 443) : un poste d'un
