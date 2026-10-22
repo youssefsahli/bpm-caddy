@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Accounts and the news feed reload without re-checking every signature.** Each version arriving from another post or officine re-read every account record and verified each signature again (about 30 µs each, 60 ms for two thousand); a signature already held in this process is not checked again — changed bytes are.
+
 ## [0.442.0] - 2026-10-22
 
 ### Added

@@ -631,6 +631,18 @@ pub fn peek(bytes: &[u8]) -> Option<(String, String, u64)> {
 /// mal formé, trop long, ou si la signature ne tient pas. `reader` est
 /// le compte ouvert ici, qui essaie d'ouvrir ce qui est scellé.
 pub fn read(bytes: &[u8], reader: Option<&Account>) -> Option<Read> {
+    read_known(bytes, reader, &mut std::collections::HashSet::new())
+}
+
+/// [`read`], sans vérifier de nouveau une signature déjà tenue : `known`
+/// garde le hachage des octets dont la signature a tenu. Une signature
+/// ne dépend que des octets ; relire mille éléments à chaque version
+/// arrivée coûtait une vérification chacun.
+pub fn read_known(
+    bytes: &[u8],
+    reader: Option<&Account>,
+    known: &mut std::collections::HashSet<[u8; 32]>,
+) -> Option<Read> {
     let rest = bytes.strip_prefix(TAG)?;
     if rest.len() < 96 || rest.len() > 96 + MOST_BODY {
         return None;
@@ -638,9 +650,13 @@ pub fn read(bytes: &[u8], reader: Option<&Account>) -> Option<Read> {
     let key: [u8; 32] = rest[..32].try_into().ok()?;
     let signature: [u8; 64] = rest[32..96].try_into().ok()?;
     let body = &rest[96..];
-    DeviceId::from_bytes(key)
-        .verify(&signed(body), &signature)
-        .ok()?;
+    let hash = blake3::hash(bytes);
+    if !known.contains(hash.as_bytes()) {
+        DeviceId::from_bytes(key)
+            .verify(&signed(body), &signature)
+            .ok()?;
+        known.insert(*hash.as_bytes());
+    }
     let body: Body = serde_json::from_slice(body).ok()?;
     if body.a != hex(&key) || body.i.is_empty() || body.i.len() > 64 {
         return None;
@@ -680,7 +696,7 @@ pub fn read(bytes: &[u8], reader: Option<&Account>) -> Option<Read> {
         _ => return None,
     };
     Some(Read {
-        name: name_of(bytes),
+        name: hash.to_hex().to_string(),
         account: body.a,
         item: body.i,
         seq: body.n,
@@ -1251,6 +1267,33 @@ mod tests {
         assert!(words
             .iter()
             .all(|w| !w.chars().any(|c| ('\u{300}'..='\u{36f}').contains(&c))));
+    }
+
+    #[test]
+    fn a_signature_held_once_is_not_checked_again_but_a_changed_byte_is() {
+        let a = account(9);
+        let b = write(
+            &a,
+            "b1",
+            1,
+            Kind::Billet,
+            Content::Public("bonjour"),
+            &mut Counter(1),
+        )
+        .unwrap();
+        let mut known = std::collections::HashSet::new();
+        let first = read_known(&b, None, &mut known).unwrap();
+        assert_eq!(known.len(), 1);
+        assert_eq!(read_known(&b, None, &mut known), Some(first.clone()));
+        assert_eq!(first, read(&b, None).unwrap());
+        assert_eq!(first.name, name_of(&b));
+        // Un octet du corps changé : d'autres octets, une signature à
+        // vérifier, qui ne tient pas.
+        let mut forged = b.clone();
+        let last = forged.len() - 3;
+        forged[last] ^= 1;
+        assert_eq!(read_known(&forged, None, &mut known), None);
+        assert_eq!(known.len(), 1);
     }
 
     #[test]

@@ -48250,10 +48250,19 @@ impl Db {
         &self,
         reader: Option<&crate::compte::Account>,
     ) -> Result<Vec<(crate::compte::Read, Vec<u8>)>, String> {
+        // Les signatures déjà tenues, pour tout le processus : un poste
+        // relit les comptes à chaque version arrivée d'ailleurs.
+        static KNOWN: std::sync::Mutex<Option<std::collections::HashSet<[u8; 32]>>> =
+            std::sync::Mutex::new(None);
+        let mut known = KNOWN.lock().unwrap_or_else(|e| e.into_inner());
+        let known = known.get_or_insert_with(Default::default);
+        if known.len() > 100_000 {
+            known.clear();
+        }
         let mut bytes_of = std::collections::HashMap::new();
         let mut reads = Vec::new();
         for b in self.account_record_bytes()? {
-            if let Some(r) = crate::compte::read(&b, reader) {
+            if let Some(r) = crate::compte::read_known(&b, reader, known) {
                 bytes_of.insert(r.name.clone(), b);
                 reads.push(r);
             }
