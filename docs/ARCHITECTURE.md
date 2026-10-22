@@ -2290,10 +2290,12 @@ add clicking and typing; it is not the price of entry.
   Options › Officine on stale text, corrected it, and had its write
   refused: the conflict was real, and the screen was what manufactured
   it. `resync` now surfaces it in `officine_fresh`, and the application
-  takes it **only when the Options tab is closed** — the Options editor
-  carries its own copy of the configuration and somebody may have typed in it
-  without saving, and replacing that would be worse than the stale
-  screen it fixes. What is taken updates `officine_seen` too, so the
+  takes it at once when the Options tab is closed, and under an open
+  tab **only while the tab's officine is still what the base held**
+  (`Session::take_officine_under`) — the Options editor carries its own
+  copy of the configuration and somebody may have typed in it without
+  saving, and replacing that would be worse than the stale screen it
+  fixes; typed, the save merges instead. What is taken updates `officine_seen` too, so the
   next compare-and-set measures against what the base holds rather than
   what this post saw at breakfast.
 - **And the screen learns of another post's write without being asked.**

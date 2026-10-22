@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An open Options tab no longer holds back the officine another post changed**: an untouched Officine page takes it at once; one being typed in keeps what is typed, and its save merges.
+- **The status bar follows the modules**: with the officine network unchecked, its count, failure colour and news leave the connections mark (the posts stay); with accounts unchecked, the open account's name leaves too.
 - **Accounts and the news feed reload without re-checking every signature.** Each version arriving from another post or officine re-read every account record and verified each signature again (about 30 µs each, 60 ms for two thousand); a signature already held in this process is not checked again — changed bytes are.
 
 ## [0.442.0] - 2026-10-22

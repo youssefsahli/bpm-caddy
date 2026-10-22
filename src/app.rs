@@ -8823,6 +8823,22 @@ impl Session {
         }
     }
 
+    /// **Ce qu'un autre poste a écrit de l'officine, pris sous un
+    /// formulaire ouvert** — seulement si le formulaire porte encore ce
+    /// que la base portait : rien n'y est tapé, rien n'est perdu. Le
+    /// témoin du compare-and-set suit ce qui est pris.
+    fn take_officine_under(
+        &mut self,
+        shown: &crate::config::PharmacyConfig,
+    ) -> Option<crate::config::PharmacyConfig> {
+        if self.officine_seen.as_ref() != Some(shown) {
+            return None;
+        }
+        let theirs = self.officine_fresh.take()?;
+        self.officine_seen = Some(theirs.clone());
+        Some(theirs)
+    }
+
     /// **Remplacer l'officine par ce qui est à l'écran**, sans comparer :
     /// la sortie d'un enregistrement refusé, quand ce poste doit
     /// l'emporter. Ce qu'un autre poste avait écrit est perdu, et le
@@ -9476,8 +9492,13 @@ impl Session {
         #[cfg(feature = "sync")]
         {
             let (others, network, reached) = self.conn_badge;
+            // Le réseau d'officines décoché sur ce poste : la marque ne
+            // parle plus que des postes de l'officine — un échec ou un
+            // « réseau » d'avant le décochage n'y a plus sa place.
+            let reseau = crate::config::loaded(crate::config::Module::Reseau);
+            let network = network && reseau;
             let failed = self.posts_status.as_ref().is_some_and(|s| s.0)
-                || self.net_status.as_ref().is_some_and(|s| s.0);
+                || (reseau && self.net_status.as_ref().is_some_and(|s| s.0));
             let online = self
                 .posts_peers
                 .iter()
@@ -92244,6 +92265,21 @@ impl eframe::App for App {
         // remplacer cela serait pire que l'écran périmé que l'on
         // corrige. L'adoption attend donc la fermeture, ce qui ne coûte
         // rien : `officine_fresh` garde ce qui est à prendre.
+        //
+        // **L'onglet ouvert sur une officine intacte la prend aussi.**
+        // Les options sont un onglet qui reste ouvert des heures ;
+        // attendre sa fermeture, c'était retrouver le défaut corrigé.
+        // Ce que l'onglet porte de l'officine est encore ce que la base
+        // portait (`officine_seen`) : rien n'y est tapé, il n'y a rien à
+        // perdre. Tapé, l'adoption attend, et l'enregistrement fusionne
+        // avec ce qu'un autre poste a écrit (`save_officine`).
+        if let (State::Unlocked(session), Some(e)) = (&mut self.state, &mut self.options) {
+            if let Some(theirs) = session.take_officine_under(&e.cfg.pharmacy) {
+                e.cfg.pharmacy = theirs.clone();
+                e.officine_from = Some(theirs.clone());
+                self.config.pharmacy = theirs;
+            }
+        }
         if self.options.is_none() {
             if let State::Unlocked(session) = &mut self.state {
                 if let Some(theirs) = session.officine_fresh.take() {
@@ -92565,9 +92601,11 @@ impl eframe::App for App {
             // Dix minutes : une nouvelle du réseau arrive en fond, pendant
             // qu'on sert quelqu'un — quelques secondes, et personne ne
             // l'aurait lue.
+            let reseau = crate::config::loaded(crate::config::Module::Reseau);
             let net_news = session
                 .net_news
                 .as_ref()
+                .filter(|_| reseau)
                 .filter(|(at, _)| at.elapsed() < Duration::from_secs(600))
                 .map(|(_, said)| said.clone());
             // L'invitation d'une voisine : tant qu'elle est ouverte (cinq
@@ -92578,6 +92616,7 @@ impl eframe::App for App {
             let near_news = session
                 .near_news
                 .as_ref()
+                .filter(|_| reseau)
                 .filter(|(at, _, _)| at.elapsed() < Duration::from_secs(300))
                 .filter(|(_, _, d)| {
                     session
@@ -92593,6 +92632,7 @@ impl eframe::App for App {
                 .comptes
                 .open
                 .as_ref()
+                .filter(|_| crate::config::loaded(crate::config::Module::Comptes))
                 .map(|a| session.account_name(&a.id()));
             #[cfg(not(feature = "sync"))]
             let account_mark: Option<String> = None;
@@ -105753,6 +105793,48 @@ mod tests {
         session.officine_seen = session.officine_fresh.take();
         session.resync();
         assert_eq!(session.officine_fresh, None);
+    }
+
+    /// **L'onglet des options ouvert ne fait plus attendre l'officine.**
+    /// Intact, il prend ce qu'un autre poste a écrit ; tapé, il garde ce
+    /// qui est tapé, et l'enregistrement fusionnera.
+    #[test]
+    fn an_open_options_tab_takes_the_officine_unless_something_is_typed() {
+        let dir =
+            std::env::temp_dir().join(format!("bpm-caddy-officine-tab-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = crate::db::Swept(dir.clone());
+        let path = dir.join("shared.db");
+        let mut session =
+            super::Session::new(crate::db::Db::open(&path, "secret").unwrap(), 12, 30, true)
+                .unwrap();
+        let start = crate::config::PharmacyConfig {
+            name: "Pharmacie des Lilas".to_owned(),
+            ..Default::default()
+        };
+        session.officine_seen = Some(start.clone());
+        let there = crate::config::PharmacyConfig {
+            phone: "01".to_owned(),
+            ..start.clone()
+        };
+
+        // Quelque chose est tapé : rien n'est pris, rien n'est oublié.
+        session.officine_fresh = Some(there.clone());
+        let typed = crate::config::PharmacyConfig {
+            address: "14 rue des Lilas".to_owned(),
+            ..start.clone()
+        };
+        assert_eq!(session.take_officine_under(&typed), None);
+        assert_eq!(session.officine_fresh.as_ref(), Some(&there));
+        assert_eq!(session.officine_seen.as_ref(), Some(&start));
+
+        // Intact : pris, et le témoin suit.
+        assert_eq!(session.take_officine_under(&start), Some(there.clone()));
+        assert_eq!(session.officine_fresh, None);
+        assert_eq!(session.officine_seen.as_ref(), Some(&there));
+        // Rien de neuf : rien à prendre.
+        assert_eq!(session.take_officine_under(&there), None);
     }
 
     /// **Deux postes corrigent l'officine en même temps : rien de ce qui
