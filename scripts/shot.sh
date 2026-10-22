@@ -31,6 +31,7 @@ mkdir -p "$tmp/config/bpm-caddy"
 theme=motif
 mono=feuille
 fresh=
+sans=
 for kv in "$@"; do
     # `theme=` et `mono=` sont les deux clés qui vivent dans config.toml
     # et non dans la forme du plan de travail — ce sont celles qu'on veut
@@ -44,11 +45,21 @@ for kv in "$@"; do
         # La base du premier lancement, sans la démonstration — comme
         # `eyeball.sh … vierge=1`, pour une seule vue.
         fresh=${kv#*=}
+    elif [ "${kv%%=*}" = sans ]; then
+        # Les modules que ce poste ne charge pas (`[modules]`), séparés
+        # par des virgules : `sans=reseau,gestion`.
+        sans=${kv#*=}
     else
         printf '%s = %s\n' "${kv%%=*}" "${kv#*=}" >> "$tmp/config/bpm-caddy/layout.toml"
     fi
 done
 demo_config "$tmp/config/bpm-caddy/config.toml" "$SCALE" "$theme" "$mono"
+if [ -n "$sans" ]; then
+    printf '\n[modules]\n' >> "$tmp/config/bpm-caddy/config.toml"
+    for m in ${sans//,/ }; do
+        printf '%s = false\n' "$m" >> "$tmp/config/bpm-caddy/config.toml"
+    done
+fi
 demo_home "$tmp/config"
 export BPM_CADDY_WINDOW="$SIZE"
 

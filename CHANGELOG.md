@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Options is a work tab.** The settings were a window over the screen, greying out what they set; they now open as a tab beside the others (the toolbar's « Options », « Aller à… », the tools that led to a page), keep what was typed while you switch tabs, and close with « Fermer » or the tab's cross.
+- **Modules, per post** (Options › Modules, `[modules]` in `config.toml`): the officine network (open network, DHT, map, paired officines — the posts stay), patient messaging (gateway, direct way, relays, the board), accounts and news, and back-office tools (till, takings, statistics, vaccination campaign, console, printed texts). An unchecked module is not loaded on that post: no tab, no tool in « Aller à… », no thread — a slow counter PC no longer runs the officine network for the office PC.
+- **A start-up script** (Options › Modules): Rhai, run on its own thread at each session's opening, on the console's read-only snapshot — it can neither write nor send anything out. Its first lines show on the dashboard, all of them in the console; « Essayer » runs what is typed. Like the console, a script that reads the patient list is written to the access log.
+- `BPM_CADDY_FRAME_STATS` also reports the slow frames among the first thirty (`frame-early`): what opening the session and each view's first read cost.
 - **« Tester la connexion » also says what the box did with this officine's own door**: opened (and where, web door included), written by hand as the external address, or nothing opened — UPnP, PCP and NAT-PMP all refused, as often behind a router run by the pharmacy's IT provider. Then no officine can reach this one; the line names the TCP port to have redirected to this post.
 
 ### Fixed

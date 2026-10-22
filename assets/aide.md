@@ -2123,6 +2123,33 @@ libellé changé, une phrase retirée — ne s'imprime plus nulle part :
 texte, pour le reprendre dans la phrase qui la remplace, puis la retirer
 en deux clics.
 
+# Options
+
+Les **options** sont un onglet de l'espace de travail (« Options » dans
+la barre, ou « Aller à… » : « options »), à côté de ce qu'on règle et
+non plus par-dessus : on voit l'effet d'un réglage en passant d'un
+onglet à l'autre. Les pages : Officine, Mentions, Interface, Modules,
+Base, Honoraires, Règles, Locations, À propos. « Enregistrer » écrit ;
+« Fermer » ou la croix de l'onglet referment sans enregistrer.
+
+**Modules.** Ce que ce poste charge, pour lui seul : le **réseau
+d'officines** (réseau ouvert, DHT, carte des officines, officines
+appairées — les postes de l'officine restent), la **messagerie des
+patients** (passerelle, voie directe, relais, tableau de l'officine),
+les **comptes et actualités**, et la **gestion** (caisse, recettes,
+statistiques, campagne de vaccination, console, documents imprimés).
+Un module décoché n'est pas chargé : ni onglet, ni outil dans
+« Aller à… », ni fil qui tourne. Un poste de comptoir lent n'a pas à
+faire tourner le réseau d'officines pour le poste du bureau. Le reste
+ne se lit qu'à l'ouverture de ce qui le montre.
+
+**Script de démarrage.** Un script Rhai, lancé à l'ouverture de chaque
+session sur ce que lit la console, en lecture seule : il ne peut rien
+écrire ni rien faire sortir. Ses premières lignes s'affichent au plan
+de travail, toutes dans la console ; « Essayer » le lance tout de
+suite, enregistré ou non. Comme la console, un script qui lit la liste
+des patients est porté au journal des accès.
+
 # Base de données
 
 Un fichier chiffré, partageable entre postes. Le registre des

@@ -2290,8 +2290,8 @@ add clicking and typing; it is not the price of entry.
   Options › Officine on stale text, corrected it, and had its write
   refused: the conflict was real, and the screen was what manufactured
   it. `resync` now surfaces it in `officine_fresh`, and the application
-  takes it **only when no dialog is open** — the Options dialog carries
-  its own copy of the configuration and somebody may have typed in it
+  takes it **only when the Options tab is closed** — the Options editor
+  carries its own copy of the configuration and somebody may have typed in it
   without saving, and replacing that would be worse than the stale
   screen it fixes. What is taken updates `officine_seen` too, so the
   next compare-and-set measures against what the base holds rather than
@@ -2355,7 +2355,7 @@ add clicking and typing; it is not the price of entry.
 - `BPM_CADDY_NO_KEYRING=1` — skip the OS credential manager
 - `BPM_CADDY_START_VIEW=verrou|search|dashboard|patient|patient_edit|patient_new|drugs|drug_card|agenda|agenda_day|
   agenda_filtre|agenda_month|planning|planning_mois|protocols|protocol_open|template|options|about|tables|
-  tables_search|regles|mentions|honoraires|forfaits|calc|carnet|vaccins|bio|watch|revue|conciliation|
+  tables_search|regles|mentions|honoraires|forfaits|modules|calc|carnet|vaccins|bio|watch|revue|conciliation|
   vaccine_map|campagne|campagne_rdv|campagne_parametrer|campagne_entretiens|vaccins_grossesse|vaccins_catalogue|ruptures|reseau|versions|postes|postes_seul|postes_telephone|connexions|officines|ordonnance|ordonnance_lignes|rein|grossesse|age|cyp|ddi|ddi_crush|libelles|listes|base|codex|
   codex_open|en_ligne|dispositifs|dispositif_open|conseil_contention|conseil_nutrition|conseil_protections|couverture|locations|keys|keys_outils|nouveautes|messages|comptes|comptes_phrase|comptes_ouvert|actualites|connexions_carte|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|graph_zoom|graph_wide|graph_ordonnance|graph_filtre|registres|stup|
@@ -2368,12 +2368,15 @@ add clicking and typing; it is not the price of entry.
   all: it opens the right-hand dock on its « Aide » tab, which is in no
   tab strip and therefore reachable no other way.
   `about` is the Options
-  dialog on its « À propos » page, `base` on « Base », and `peaux` on
+  tab (a work tab since 0.443, drawn by `App::options_tab` in the place
+  `MainView::Options` keeps) on its « À propos » page, `base` on « Base », and `peaux` on
   « Interface », where the ten skins are picked — each drawn in its
   own palette, which is the one thing only a screenshot can check.
   `regles`, `mentions`, `honoraires` and `forfaits` open its « Règles »,
   « Mentions », « Honoraires » and « Locations » pages: the last three had
   no key until 0.349, so no sweep had ever captured them.
+  `modules` opens « Modules »: what this post loads (`[modules]`) and its
+  start-up script.
   `caisse` opens the till count **with a drawer already counted**:
   fifteen lines at zero show neither the summary, nor the gap, nor the
   red it carries — that is, none of what the view exists to draw.

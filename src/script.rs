@@ -121,7 +121,7 @@ const MAX_OPERATIONS: u64 = 20_000_000;
 const MAX_HANDED: u64 = 2_000_000;
 
 /// Ce que la console rend.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Outcome {
     /// Ce que le script a écrit, ligne par ligne.
     pub printed: Vec<String>,

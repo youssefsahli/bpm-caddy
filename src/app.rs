@@ -2046,6 +2046,7 @@ fn help_title_for(
         MainView::Campagne => "Campagne de vaccination",
         MainView::Registres => "Registre des stupéfiants",
         MainView::Script => "Console",
+        MainView::Options => "Options",
         MainView::Caisse | MainView::CaisseHistory => "Caisse",
         MainView::Ddi => "Croisement",
         MainView::UiTexts => "Documents imprimés",
@@ -3130,6 +3131,11 @@ enum MainView {
     /// qu'un langage existe du tout dans une application qui tient des
     /// données de santé chiffrées.
     Script,
+    /// Les options de ce poste et de l'officine, en onglet : elles
+    /// étaient une fenêtre posée sur l'écran, qui cachait ce qu'on
+    /// réglait. Dessinées par [`App::options_tab`] dans la place que la
+    /// vue garde.
+    Options,
     /// Le comptage de la caisse : ce qu'il y a dans le tiroir le soir,
     /// ce qu'on y laisse pour demain, et l'écart avec ce que la journée
     /// devait rentrer. Voir [`crate::caisse`].
@@ -3214,6 +3220,7 @@ impl MainView {
             MainView::Stats => "stats",
             MainView::Ruptures => "ruptures",
             MainView::Script => "script",
+            MainView::Options => "options",
             MainView::Caisse => "caisse",
             MainView::CaisseHistory => "caisses",
             MainView::Ddi => "ddi",
@@ -3244,6 +3251,7 @@ impl MainView {
             "stats" => Some(MainView::Stats),
             "ruptures" => Some(MainView::Ruptures),
             "script" => Some(MainView::Script),
+            "options" => Some(MainView::Options),
             "caisse" => Some(MainView::Caisse),
             "caisses" => Some(MainView::CaisseHistory),
             "ddi" => Some(MainView::Ddi),
@@ -3352,6 +3360,8 @@ enum WorkTab {
     Stats,
     /// La console de scripts.
     Script,
+    /// Les options.
+    Options,
     /// Le comptage de la caisse.
     Caisse,
     /// Le croisement d'une liste de médicaments.
@@ -3372,7 +3382,11 @@ impl WorkTab {
     /// Does this tab survive a "close"? The four standing views are
     /// fixtures of the workspace; only opened files can be dismissed.
     fn closable(&self) -> bool {
-        matches!(self, WorkTab::Patient(_) | WorkTab::Drug(_))
+        // Les options aussi : un réglage se fait, puis se referme.
+        matches!(
+            self,
+            WorkTab::Patient(_) | WorkTab::Drug(_) | WorkTab::Options
+        )
     }
 }
 
@@ -3561,10 +3575,11 @@ impl Tool {
     /// entre postes et entre officines n'existe qu'avec la fonction
     /// `sync`.
     fn available(self) -> bool {
-        match self {
+        let built = match self {
             Tool::Reseau | Tool::Postes => cfg!(feature = "sync"),
             _ => true,
-        }
+        };
+        built && tool_module(self).is_none_or(crate::config::loaded)
     }
 
     /// Proposé dans la liste de la boîte vide — tous, sauf la
@@ -3575,6 +3590,45 @@ impl Tool {
         self != Tool::Facturation
     }
 }
+
+/// **Le module dont relève un onglet** ; `None` : le cœur, toujours
+/// chargé. Un onglet d'un module que ce poste ne charge pas n'existe pas
+/// ici : ni dans la rangée, ni dans « Aller à… », ni rouvert au
+/// lancement.
+fn tab_module(tab: &WorkTab) -> Option<crate::config::Module> {
+    use crate::config::Module;
+    Some(match tab {
+        WorkTab::Officines => Module::Reseau,
+        WorkTab::Comptes | WorkTab::Actualites => Module::Comptes,
+        WorkTab::Caisse
+        | WorkTab::Finances
+        | WorkTab::Stats
+        | WorkTab::Campagne
+        | WorkTab::Script
+        | WorkTab::UiTexts => Module::Gestion,
+        _ => return None,
+    })
+}
+
+/// Le module dont relève un outil — comme [`tab_module`].
+fn tool_module(tool: Tool) -> Option<crate::config::Module> {
+    use crate::config::Module;
+    Some(match tool {
+        Tool::Reseau => Module::Reseau,
+        Tool::Tableau => Module::Patients,
+        Tool::Facturation | Tool::Libelles => Module::Gestion,
+        _ => return None,
+    })
+}
+
+/// Cet onglet est-il chargé par ce poste ?
+fn tab_loaded(tab: &WorkTab) -> bool {
+    tab_module(tab).is_none_or(crate::config::loaded)
+}
+
+/// Combien de lignes du script de démarrage le tableau de bord montre ;
+/// la console les a toutes.
+const INIT_DASH_LINES: usize = 6;
 
 /// Where a jump-box result goes.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -5448,6 +5502,12 @@ struct Session {
     /// Un script en cours, sur son propre fil : ce qu'il rendra, et le
     /// drapeau qui l'arrête.
     script_job: Option<ScriptJob>,
+    /// **Le script de démarrage** (`[modules] demarrage`) : lancé une fois
+    /// à l'ouverture de la session, sur son fil, et ce qu'il a rendu —
+    /// montré au tableau de bord, dans la console et dans les options.
+    init_job: Option<ScriptJob>,
+    init_out: Option<crate::script::Outcome>,
+    init_started: bool,
     script_note: Option<(bool, String)>,
     script_name: String,
     /// Ce que l'éditeur propose : la portion du mot commencé, les
@@ -6862,6 +6922,9 @@ impl Session {
             script_text: String::new(),
             script_out: None,
             script_job: None,
+            init_job: None,
+            init_out: None,
+            init_started: false,
             script_note: None,
             script_name: String::new(),
             script_sugg: None,
@@ -7389,6 +7452,7 @@ impl Session {
             MainView::Comptes => WorkTab::Comptes,
             MainView::Actualites => WorkTab::Actualites,
             MainView::Script => WorkTab::Script,
+            MainView::Options => WorkTab::Options,
             MainView::Caisse | MainView::CaisseHistory => WorkTab::Caisse,
             MainView::Ddi => WorkTab::Ddi,
             MainView::UiTexts => WorkTab::UiTexts,
@@ -7418,6 +7482,11 @@ impl Session {
     /// Point the live view at `tab`. Reloads whatever that destination
     /// needs, exactly as opening it the long way would.
     fn activate_tab(&mut self, tab: &WorkTab) {
+        // Rien de ce qu'un module non chargé ouvrirait, pas même sa
+        // lecture de la base.
+        if !tab_loaded(tab) {
+            return;
+        }
         self.flush_date_edits();
         self.show_amounts = false;
         match tab {
@@ -7508,6 +7577,8 @@ impl Session {
                 self.view = MainView::Script;
                 self.refresh_scripts();
             }
+            // L'éditeur s'ouvre de lui-même sous la vue (`App::options_tab`).
+            WorkTab::Options => self.view = MainView::Options,
             WorkTab::Caisse => {
                 self.view = MainView::Caisse;
                 self.refresh_caisse();
@@ -7657,6 +7728,9 @@ impl Session {
             WorkTab::Script,
             WorkTab::Caisse,
         ] {
+            if !tab_loaded(&tab) {
+                continue;
+            }
             let label = self.goto_label(&tab);
             let score = if q.is_empty() {
                 Some(0)
@@ -7672,7 +7746,7 @@ impl Session {
         // boîte propose à vide : un écran « pour soi » qui figure en
         // cinquième ligne dès qu'on presse Ctrl+K n'est pas un écran
         // pour soi. Il faut savoir qu'il existe et le taper.
-        if !q.is_empty() {
+        if !q.is_empty() && tab_loaded(&WorkTab::Finances) {
             let label = self.tab_label(&WorkTab::Finances);
             if let Some(sc) = fuzzy::score(q, &label) {
                 push(
@@ -7692,9 +7766,13 @@ impl Session {
             let recent: Vec<GotoHit> = self
                 .goto_recent
                 .iter()
-                .filter(|h| match h.dest {
-                    Goto::Patient(id) => self.patients.iter().any(|p| p.id == id),
-                    Goto::Drug(id) => self.drugs.iter().any(|d| d.id == id),
+                .filter(|h| match &h.dest {
+                    Goto::Patient(id) => self.patients.iter().any(|p| p.id == *id),
+                    Goto::Drug(id) => self.drugs.iter().any(|d| d.id == *id),
+                    // Ni ce qu'un module que ce poste ne charge plus
+                    // laissait derrière lui.
+                    Goto::Tab(t) => tab_loaded(t),
+                    Goto::Tool(t) => t.available(),
                     _ => true,
                 })
                 .cloned()
@@ -8918,8 +8996,9 @@ impl Session {
         // Les comptes : une version arrivée d'un autre poste ou d'une
         // autre officine. Les tampons de saisie restent.
         #[cfg(feature = "sync")]
-        if self.comptes.open.is_some()
-            || matches!(self.view, MainView::Comptes | MainView::Actualites)
+        if crate::config::loaded(crate::config::Module::Comptes)
+            && (self.comptes.open.is_some()
+                || matches!(self.view, MainView::Comptes | MainView::Actualites))
         {
             self.reload_comptes();
         }
@@ -9152,7 +9231,9 @@ impl Session {
         // how the connections view knows which posts announce themselves.
         // Le fil sert aussi l'officine — l'annonce, la porte des officines
         // appairées : il tourne dès que l'un ou l'autre est voulu.
-        let officine_wants = config.reseau.ecouter || config.reseau.annoncer;
+        // Le réseau d'officines non chargé : le fil ne sert que les postes.
+        let reseau = config.modules.reseau;
+        let officine_wants = reseau && (config.reseau.ecouter || config.reseau.annoncer);
         if self.posts_auto.is_some() || !(config.postes.automatique || officine_wants) {
             return;
         }
@@ -9168,7 +9249,7 @@ impl Session {
             (!folder.is_empty()).then(|| std::path::PathBuf::from(folder)),
             config.postes.adresses.clone(),
             crate::postes::OfficineSide {
-                announce: config.reseau.annoncer.then(|| {
+                announce: (reseau && config.reseau.annoncer).then(|| {
                     (
                         config.pharmacy.name.trim().to_owned(),
                         crate::network::town_of(&config.pharmacy.address),
@@ -9176,7 +9257,8 @@ impl Session {
                 }),
                 // Un port d'écoute qui serait celui des invitations ou des
                 // postes : refusé — il prendrait leur place.
-                listen: if config.reseau.ecouter
+                listen: if reseau
+                    && config.reseau.ecouter
                     && config.reseau.port_ecoute != config.reseau.port
                     && config.reseau.port_ecoute != config.postes.port
                 {
@@ -9187,14 +9269,15 @@ impl Session {
                 name: config.pharmacy.name.clone(),
                 posts_paused: !config.postes.automatique,
                 posts_internet: config.postes.internet,
-                relay_port: if config.reseau.relais {
+                relay_port: if reseau && config.reseau.relais {
                     config.reseau.port_relais
                 } else {
                     0
                 },
-                posts_relay: config.postes.relais,
-                relay_patients: config.reseau.relais_patients,
-                web_door: config.reseau.porte_web,
+                // Les relais sont ceux des officines du réseau.
+                posts_relay: reseau && config.postes.relais,
+                relay_patients: config.modules.patients && config.reseau.relais_patients,
+                web_door: reseau && config.reseau.porte_web,
             },
             crate::postes::Pace::default(),
         ));
@@ -9550,7 +9633,7 @@ impl Session {
             return;
         }
         let r = &config.reseau;
-        if !r.automatique {
+        if !r.automatique || !config.modules.reseau {
             return;
         }
         let now = Instant::now();
@@ -9597,7 +9680,7 @@ impl Session {
     /// automatique — « Essayer » depuis la carte des connexions.
     #[cfg(feature = "sync")]
     fn start_net_dial(&mut self, device: &str, config: &Config) {
-        if self.net_auto.is_some() {
+        if self.net_auto.is_some() || !config.modules.reseau {
             return;
         }
         let Some(path) = self.db.path() else {
@@ -9616,7 +9699,7 @@ impl Session {
 
     #[cfg(feature = "sync")]
     fn start_net_sync(&mut self, config: &Config) {
-        if self.net_auto.is_some() {
+        if self.net_auto.is_some() || !config.modules.reseau {
             return;
         }
         let Some(path) = self.db.path() else {
@@ -9770,6 +9853,56 @@ impl Session {
 
     /// Ce qu'un script en cours a rendu, relevé à chaque image — un
     /// `try_recv` quand rien ne tourne.
+    /// Lancer le script de démarrage sur son fil, sur l'instantané de la
+    /// console : il lit, ne peut rien écrire ni rien faire sortir.
+    fn start_init_script(&mut self, source: &str) {
+        if self.init_job.is_some() || source.trim().is_empty() {
+            return;
+        }
+        let data = self.script_snapshot();
+        let source = source.to_owned();
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (tx, rx) = std::sync::mpsc::channel();
+        let flag = std::sync::Arc::clone(&stop);
+        std::thread::spawn(move || {
+            let _ = tx.send(crate::script::run_until(&source, &data, flag));
+        });
+        self.init_out = None;
+        self.init_job = Some(ScriptJob {
+            rx,
+            stop,
+            operator: self.operator.clone(),
+        });
+    }
+
+    /// Ce que le script de démarrage a rendu, quand il a fini — tracé au
+    /// journal des accès comme la console, s'il a lu les patients.
+    fn poll_init_script(&mut self, ctx: &egui::Context) {
+        let Some(job) = &self.init_job else {
+            return;
+        };
+        match job.rx.try_recv() {
+            Ok(out) => {
+                let operator = job.operator.clone();
+                self.init_job = None;
+                if out.read_patients {
+                    let _ = self.db.log_access(&operator, crate::audit::Act::Console, 0);
+                }
+                self.init_out = Some(out);
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {
+                ctx.request_repaint_after(Duration::from_millis(100));
+            }
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.init_job = None;
+                self.init_out = Some(crate::script::Outcome {
+                    error: Some(tr("script_failed").to_owned()),
+                    ..Default::default()
+                });
+            }
+        }
+    }
+
     fn poll_script(&mut self, ctx: &egui::Context) {
         let Some(job) = &self.script_job else {
             return;
@@ -10849,6 +10982,7 @@ impl Session {
             WorkTab::Stats => tr("tab_stats").to_owned(),
             WorkTab::Ruptures => tr("tab_ruptures").to_owned(),
             WorkTab::Connexions => tr("tab_connexions").to_owned(),
+            WorkTab::Options => tr("tab_options").to_owned(),
             // Celles qui sont apparues depuis la dernière visite.
             WorkTab::Officines if self.carte_fresh > 0 => {
                 trn("tab_officines_fresh", &[&self.carte_fresh])
@@ -14443,6 +14577,16 @@ impl Session {
     /// le réglage de l'officine, et ce qu'il dit.
     #[cfg(feature = "sync")]
     fn poll_pchat(&mut self, config: &Config) {
+        // La messagerie des patients non chargée : rien ne se lit, rien
+        // n'attend — et ce qui attendait s'arrête.
+        if !config.modules.patients {
+            if self.pchat_wait.take().is_some() {
+                self.pchat_unreachable = None;
+                self.pchat_page = None;
+                self.pchat_direct_at = None;
+            }
+            return;
+        }
         if !self.pchat_conf_read {
             self.refresh_pchat();
         }
@@ -20878,6 +21022,8 @@ pub struct App {
     create_armed: Option<(std::path::PathBuf, String)>,
     /// Global options editor, when open.
     options: Option<OptionsEditor>,
+    /// Où l'espace de travail a gardé la place des options, à cette image.
+    options_rect: Option<egui::Rect>,
     /// A base found rather than configured, on a first launch. Kept so
     /// the lock screen can say so before a password is typed into it.
     db_adopted: Option<std::path::PathBuf>,
@@ -21022,6 +21168,8 @@ enum OptionsPage {
     Pharmacy,
     Mentions,
     Ui,
+    /// Ce que ce poste charge, et son script de démarrage.
+    Modules,
     Database,
     Fees,
     Rules,
@@ -21034,10 +21182,11 @@ enum OptionsPage {
 }
 
 impl OptionsPage {
-    const ALL: [OptionsPage; 8] = [
+    const ALL: [OptionsPage; 9] = [
         Self::Pharmacy,
         Self::Mentions,
         Self::Ui,
+        Self::Modules,
         Self::Database,
         Self::Fees,
         Self::Rules,
@@ -21052,6 +21201,7 @@ impl OptionsPage {
             Self::Pharmacy => tr("opts_tab_pharmacy"),
             Self::Mentions => tr("opts_tab_mentions"),
             Self::Ui => tr("opts_tab_ui"),
+            Self::Modules => tr("opts_tab_modules"),
             Self::Database => tr("opts_tab_db"),
             Self::Fees => tr("opts_tab_fees"),
             Self::Rules => tr("opts_tab_rules"),
@@ -21101,6 +21251,10 @@ struct OptionsEditor {
     /// elle écrasait ce qu'un autre poste avait changé entre-temps.
     officine_from: Option<crate::config::PharmacyConfig>,
     parked: bool,
+    /// L'onglet a été montré : avant, l'éditeur vient d'être ouvert (un
+    /// outil, la barre, une clé de vue) et l'espace de travail passe à
+    /// lui ; après, l'onglet fermé emporte l'éditeur.
+    tabbed: bool,
 }
 
 /// **Retrouver son officine au registre FINESS** : ce qu'on tape, et
@@ -21137,6 +21291,7 @@ impl OptionsEditor {
             registre: Registre::default(),
             officine_from: Some(config.pharmacy.clone()),
             parked: false,
+            tabbed: false,
         }
     }
 }
@@ -21351,6 +21506,7 @@ impl App {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         let mut config = Config::load();
+        crate::config::load_modules(&config.modules);
         // A first launch with nothing written down and nothing where the
         // default would be: look where an installed copy actually puts
         // its base — the launcher's directory, or beside a portable
@@ -23439,11 +23595,13 @@ impl App {
             || start_view == "mentions"
             || start_view == "honoraires"
             || start_view == "forfaits"
+            || start_view == "modules"
         {
             Some(OptionsEditor {
                 registre: Registre::default(),
                 officine_from: Some(config.pharmacy.clone()),
                 parked: false,
+                tabbed: false,
                 officine_seeded: false,
                 keep_seen: None,
                 shared_seen: std::collections::HashMap::new(),
@@ -23471,6 +23629,8 @@ impl App {
                     "mentions" => OptionsPage::Mentions,
                     "honoraires" => OptionsPage::Fees,
                     "forfaits" => OptionsPage::Locations,
+                    // Les modules de ce poste et son script de démarrage.
+                    "modules" => OptionsPage::Modules,
                     _ => OptionsPage::Pharmacy,
                 },
                 loc_fee_text: loc_fee_text_of(&config.locations),
@@ -23531,6 +23691,7 @@ impl App {
             tpl_editor,
             create_armed: None,
             options,
+            options_rect: None,
             op_notes: Vec::new(),
             op_notes_for: None,
             op_note_text: String::new(),
@@ -24499,6 +24660,7 @@ impl App {
                             // Les connexions ne trient rien : le dock
                             // qu'on avait devant soi reste.
                             | MainView::Connexions
+                            | MainView::Options
                             | MainView::Officines
                             | MainView::Messages
                             | MainView::Comptes
@@ -26238,6 +26400,15 @@ impl App {
             session.show_amounts = false;
         }
 
+        // **Un module que ce poste ne charge pas** n'a pas d'onglet : décoché
+        // dans les options, ou rouvert au lancement depuis la vue d'avant,
+        // sa vue cède la place au tableau de bord.
+        if !tab_loaded(&session.current_tab()) {
+            session.view = MainView::Dashboard;
+            session.refresh_dashboard();
+        }
+        session.tabs.retain(tab_loaded);
+
         let config = self.config.clone();
         let operator = self.operator.clone();
         let doc = (
@@ -26245,7 +26416,14 @@ impl App {
             &mut self.doc_dirty,
             &mut self.doc_last_edit,
         );
+        let options_rect = &mut self.options_rect;
         egui::CentralPanel::default().show(ctx, |ui| {
+            // Les options se dessinent ici après coup (`App::options_tab`) :
+            // la vue ne fait que garder la place.
+            if session.view == MainView::Options {
+                *options_rect = Some(ui.max_rect());
+                return;
+            }
             if session.view == MainView::Dashboard {
                 Self::dashboard_view(ui, session, &config);
                 return;
@@ -26904,8 +27082,15 @@ impl App {
         // Ctrl+Tab walks the workspace's. Three of them had no keyboard
         // route at all. Alt, so the bare arrows keep driving the acts
         // table and the agenda; and not while a field has the keyboard.
-        const TABS: [PatientTab; 9] = PatientTab::ALL;
-        let mut active = TABS
+        // La messagerie, la dernière, n'est là que si ce poste charge
+        // celle des patients.
+        let chat = crate::config::loaded(crate::config::Module::Patients);
+        let all = PatientTab::ALL;
+        let order: &[PatientTab] = if chat { &all } else { &all[..all.len() - 1] };
+        if !order.contains(&session.patient_tab) {
+            session.patient_tab = PatientTab::Acts;
+        }
+        let mut active = order
             .iter()
             .position(|t| *t == session.patient_tab)
             .unwrap_or(0);
@@ -26916,9 +27101,9 @@ impl App {
                         - i.key_pressed(egui::Key::ArrowLeft) as i32)
             });
             if step != 0 {
-                let n = TABS.len() as i32;
+                let n = order.len() as i32;
                 active = (((active as i32 + step) % n + n) % n) as usize;
-                session.patient_tab = TABS[active];
+                session.patient_tab = order[active];
             }
         }
         // Ce que le patient a écrit et que personne n'a lu se voit sur
@@ -26946,9 +27131,9 @@ impl App {
                 motif::Tab::new(&chat_label),
             ];
             if let Some(motif::TabAction::Select(i)) =
-                motif::tab_strip(ui, "patient_tabs", &tabs, active)
+                motif::tab_strip(ui, "patient_tabs", &tabs[..order.len()], active)
             {
-                session.patient_tab = TABS[i.min(TABS.len() - 1)];
+                session.patient_tab = order[i.min(order.len() - 1)];
             }
         });
         let work = strip[1];
@@ -76928,6 +77113,50 @@ impl App {
         .max(120.0)
     }
 
+    /// **Ce qu'un script a rendu** : ses lignes (au plus `most`, puis
+    /// combien d'autres), sa valeur, et son erreur **après** ce qui a été
+    /// écrit — ce qu'un script a imprimé avant de se tromper est souvent
+    /// ce qui dit où il s'est trompé. La console et le script de démarrage.
+    fn script_outcome(ui: &mut egui::Ui, out: &crate::script::Outcome, most: usize) {
+        for l in out.printed.iter().take(most) {
+            ui.label(
+                egui::RichText::new(l.as_str())
+                    .size(motif::pt(ui, 11.0))
+                    .monospace(),
+            );
+        }
+        if out.printed.len() > most {
+            ui.label(
+                egui::RichText::new(trf("init_more", out.printed.len() - most))
+                    .size(motif::pt(ui, 11.0))
+                    .color(motif::text_dim()),
+            );
+        }
+        if !out.value.is_empty() {
+            ui.add_space(4.0);
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(out.value.as_str())
+                        .size(motif::pt(ui, 11.5))
+                        .monospace()
+                        .strong(),
+                )
+                .wrap(),
+            );
+        }
+        if let Some(e) = &out.error {
+            ui.add_space(4.0);
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(e.as_str())
+                        .size(motif::pt(ui, 11.0))
+                        .color(motif::alert()),
+                )
+                .wrap(),
+            );
+        }
+    }
+
     /// La console : le script à gauche, ce qu'il rend à droite.
     ///
     /// **Ce qui la rend possible** est écrit dans [`crate::script`] : le
@@ -77343,6 +77572,17 @@ impl App {
                     .id_salt("script_output")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
+                        // Le script de démarrage d'abord, quand il a
+                        // rendu quelque chose : c'est ici qu'on le relit.
+                        if let Some(init) = &session.init_out {
+                            ui.label(
+                                egui::RichText::new(tr("init_title"))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            );
+                            Self::script_outcome(ui, init, usize::MAX);
+                            motif::separator(ui);
+                        }
                         let Some(out) = &session.script_out else {
                             ui.add(
                                 egui::Label::new(
@@ -77354,39 +77594,7 @@ impl App {
                             );
                             return;
                         };
-                        for l in &out.printed {
-                            ui.label(
-                                egui::RichText::new(l.as_str())
-                                    .size(motif::pt(ui, 11.0))
-                                    .monospace(),
-                            );
-                        }
-                        if !out.value.is_empty() {
-                            ui.add_space(4.0);
-                            ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(out.value.as_str())
-                                        .size(motif::pt(ui, 11.5))
-                                        .monospace()
-                                        .strong(),
-                                )
-                                .wrap(),
-                            );
-                        }
-                        // L'erreur **après** ce qui a été écrit : ce
-                        // qu'un script a imprimé avant de se tromper est
-                        // souvent ce qui dit où il s'est trompé.
-                        if let Some(e) = &out.error {
-                            ui.add_space(4.0);
-                            ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(e.as_str())
-                                        .size(motif::pt(ui, 11.0))
-                                        .color(motif::alert()),
-                                )
-                                .wrap(),
-                            );
-                        }
+                        Self::script_outcome(ui, out, usize::MAX);
                     });
             });
         });
@@ -84208,6 +84416,26 @@ impl App {
         // prenait — ce qui est la raison pour laquelle il remplace un
         // `add_space` plutôt que de s'ajouter à lui.
         motif::separator(ui);
+        // **Le script de démarrage**, quand il a rendu quelque chose : ses
+        // premières lignes ici, le reste dans la console.
+        if let Some(out) = session
+            .init_out
+            .as_ref()
+            .filter(|o| !o.printed.is_empty() || !o.value.is_empty() || o.error.is_some())
+        {
+            ui.horizontal(|ui| {
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new(tr("init_title"))
+                        .size(motif::pt(ui, 11.0))
+                        .color(motif::text_dim()),
+                );
+            });
+            ui.indent("init_out", |ui| {
+                Self::script_outcome(ui, out, INIT_DASH_LINES)
+            });
+            motif::separator(ui);
+        }
 
         // ---- Ce que la journée compte, et pas un euro ----
         let acts = session.summaries.len();
@@ -87946,12 +88174,15 @@ impl App {
             )
             .clicked()
         {
-            self.options = if self.options.is_some() {
-                None
-            } else {
-                Some(OptionsEditor::open(&self.config, OptionsPage::Pharmacy))
-            };
-            self.seed_officine_settings();
+            // Un onglet : rouvert là où on l'avait laissé, ce qui y était
+            // tapé compris.
+            if let State::Unlocked(session) = &mut self.state {
+                match &mut self.options {
+                    Some(e) => e.tabbed = false,
+                    None => session.open_options = Some(OptionsPage::Pharmacy),
+                }
+            }
+            ui.ctx().request_repaint();
         }
         if matches!(self.state, State::Unlocked(_))
             && motif::icon_button(
@@ -91711,6 +91942,11 @@ impl Drop for FrameStopwatch {
         if n > 30 && us > 20_000 {
             eprintln!("frame-slow frame={n} us={us}");
         }
+        // Les premières à part : l'ouverture de la session, la première
+        // lecture de chaque vue — ce que le lancement coûte.
+        if n <= 30 && us > 20_000 {
+            eprintln!("frame-early frame={n} us={us}");
+        }
         if n.is_multiple_of(60) {
             eprintln!("frame-stats frames={n} avg_us={} max_us={max}", total / n);
         }
@@ -91921,6 +92157,12 @@ impl eframe::App for App {
         self.poll_maintenance(ctx);
         if let State::Unlocked(session) = &mut self.state {
             session.poll_script(ctx);
+            // Le script de démarrage, une fois par session ouverte.
+            if !session.init_started {
+                session.init_started = true;
+                session.start_init_script(&self.config.modules.demarrage);
+            }
+            session.poll_init_script(ctx);
             // The card's three windows — substitution, sourced values,
             // history — drawn every frame whatever path drew the card:
             // the card view returns early on more than one branch.
@@ -92621,6 +92863,7 @@ impl eframe::App for App {
                     | MainView::Stats
                     | MainView::Ruptures
                     | MainView::Connexions
+                    | MainView::Options
                     | MainView::Officines
                     | MainView::Messages
                     | MainView::Comptes
@@ -92734,11 +92977,12 @@ impl eframe::App for App {
         // greyed out behind them and stops answering the mouse. Without
         // it a click aimed at the dialog's edge landed in the table
         // underneath, and on a dense screen the dialog itself was hard
-        // to pick out of the panels it floats over.
+        // to pick out of the panels it floats over. Les options, elles,
+        // sont un onglet : rien à voiler.
         // Une fenêtre mise de côté au verrouillage ne voile ni ne bloque
         // l'écran de déverrouillage.
         if matches!(self.state, State::Unlocked(_))
-            && (self.options.is_some() || self.pw_change.is_some() || self.tpl_editor.is_some())
+            && (self.pw_change.is_some() || self.tpl_editor.is_some())
         {
             Self::swallow_clicks_behind_modal(ctx);
         }
@@ -93056,8 +93300,16 @@ impl eframe::App for App {
             if let Some(key) = session.open_template.take() {
                 switch_tpl = Some(key);
             }
+            // Déjà ouvertes : la page demandée, sans perdre ce qui est
+            // tapé sur les autres.
             if let Some(page) = session.open_options.take() {
-                self.options = Some(OptionsEditor::open(&self.config, page));
+                match &mut self.options {
+                    Some(e) => {
+                        e.page = page;
+                        e.tabbed = false;
+                    }
+                    None => self.options = Some(OptionsEditor::open(&self.config, page)),
+                }
             }
         }
         if self.options.as_ref().is_some_and(|e| !e.officine_seeded) {
@@ -93068,6 +93320,101 @@ impl eframe::App for App {
             self.tpl_editor = Some(TplEditor::open(t, &self.config.doc_template_path(t)));
         }
 
+        // Les options : un onglet de l'espace de travail, dessiné après lui
+        // (`App::options_tab`).
+
+        // **Une fois après une mise à jour** : le lanceur met
+        // l'application à jour sans rien demander, et ce qui vient
+        // d'arriver ne se découvre qu'en le cherchant. Jamais sous une clé
+        // de vue — une capture n'a pas de fenêtre de plus —, sauf la
+        // sienne.
+        if !self.whatsnew_checked && matches!(self.state, State::Unlocked(_)) {
+            self.whatsnew_checked = true;
+            let view = std::env::var("BPM_CADDY_START_VIEW").unwrap_or_default();
+            if view.is_empty() || view == "nouveautes" {
+                let notes = whatsnew_notes(&self.config.ui.seen_notes, view == "nouveautes");
+                if !notes.is_empty() {
+                    self.whatsnew = Some(notes);
+                }
+            }
+        }
+        if self.whatsnew.is_some() && matches!(self.state, State::Unlocked(_)) {
+            self.whatsnew_window(ctx);
+        }
+        if self.show_keys && matches!(self.state, State::Unlocked(_)) {
+            self.keys_window(ctx);
+        }
+
+        // The jump box sits above everything: it is how you leave
+        // wherever you are, so it cannot be drawn under it.
+        if let State::Unlocked(session) = &mut self.state {
+            if session.goto_open {
+                if let Some(dest) = goto_window(ctx, session) {
+                    session.go_to(dest);
+                }
+            }
+        }
+
+        // The docs pane may hold patient-adjacent notes: never show it on
+        // the lock screen. Same for the navigator, which lists patients.
+        if self.show_docs && matches!(self.state, State::Unlocked(_)) {
+            self.docs_pane(ctx);
+        }
+        if self.show_nav && matches!(self.state, State::Unlocked(_)) {
+            self.nav_dock(ctx);
+        }
+
+        // Les notes d'équipe, lues de la base dès qu'une session est ouverte
+        // — à chaque déverrouillage, quel qu'en soit le chemin.
+        if !self.doc_loaded && matches!(self.state, State::Unlocked(_)) {
+            self.load_team_doc();
+        }
+        // Debounced auto-save runs even when the pane is hidden.
+        if self.doc_dirty && self.doc_last_edit.elapsed() > Duration::from_millis(1200) {
+            self.save_doc();
+        }
+        if self.doc_dirty {
+            ctx.request_repaint_after(Duration::from_millis(300));
+        }
+
+        match self.state {
+            State::Locked { .. } => self.unlock_screen(ctx),
+            State::Unlocked(_) => self.main_screen(ctx),
+        }
+        // Les options se dessinent dans la place que l'espace de travail
+        // leur a gardée, une fois celui-ci peint (`options_rect`).
+        self.options_tab(ctx);
+
+        // Last of all, and deliberately: the veil behind a modal dialog
+        // is painted into the *background* layer, and every panel —
+        // toolbar, docks, workspace — has just finished painting into
+        // that same layer. A rectangle appended after them covers all of
+        // them, and the windows, which live a layer above, stay lit.
+        // Une fenêtre mise de côté au verrouillage ne voile ni ne bloque
+        // l'écran de déverrouillage.
+        if matches!(self.state, State::Unlocked(_))
+            && (self.pw_change.is_some() || self.tpl_editor.is_some())
+        {
+            ctx.layer_painter(egui::LayerId::background()).rect_filled(
+                ctx.screen_rect(),
+                0.0,
+                egui::Color32::from_black_alpha(96),
+            );
+        }
+    }
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.shutdown();
+    }
+}
+
+impl App {
+    /// **Les options, en onglet** : ce qui était une fenêtre au-dessus de
+    /// l'écran se dessine dans l'espace de travail, à la place que la vue
+    /// `MainView::Options` y a gardée (`options_rect`), sur la couche du
+    /// fond, après les panneaux. Les drapeaux de la page restent ce
+    /// qu'ils étaient : posés en dessinant, faits après l'emprunt.
+    fn options_tab(&mut self, ctx: &egui::Context) {
         // Global options editor: edits config.toml from within the app.
         // **Mis de côté au verrouillage, pas jeté** : un verrouillage
         // automatique emportait sans un mot ce qui était tapé. Caché tant
@@ -93095,6 +93442,44 @@ impl eframe::App for App {
                 }
             }
         }
+        // **L'onglet et l'éditeur vont ensemble.** Un éditeur qui vient
+        // d'ouvrir montre son onglet ; l'onglet ouvert sans éditeur (la vue
+        // rouverte au lancement, un clic dans la rangée) en ouvre un ; et
+        // l'onglet fermé emporte ce qui n'était pas enregistré.
+        let mut fresh = false;
+        if let State::Unlocked(session) = &mut self.state {
+            match &mut self.options {
+                Some(e) if !e.tabbed => {
+                    e.tabbed = true;
+                    if session.view != MainView::Options {
+                        session.flush_date_edits();
+                        session.view = MainView::Options;
+                    }
+                    ctx.request_repaint();
+                }
+                Some(_)
+                    if session.view != MainView::Options
+                        && !session.tabs.contains(&WorkTab::Options) =>
+                {
+                    self.options = None;
+                }
+                None if session.view == MainView::Options => {
+                    let mut e = OptionsEditor::open(&self.config, OptionsPage::Pharmacy);
+                    e.tabbed = true;
+                    self.options = Some(e);
+                    fresh = true;
+                }
+                _ => {}
+            }
+        }
+        if fresh {
+            self.seed_officine_settings();
+        }
+        // La place gardée à cette image, si c'est bien la vue montrée.
+        let rect = match (&self.state, self.options_rect.take()) {
+            (State::Unlocked(s), Some(r)) if s.view == MainView::Options => Some(r),
+            _ => None,
+        };
         let mut close_opts = false;
         let mut open_pw = false;
         let mut saved_cfg: Option<Config> = None;
@@ -93192,2230 +93577,2222 @@ impl eframe::App for App {
         // fichiers se copient l'un après l'autre, et un compactage ou une
         // réinitialisation entre deux les rendait d'époques différentes.
         let maint_busy = self.maint_job.is_some() || self.export_job.is_some();
-        if let Some(editor) = &mut self.options {
-            // Fit the dialog to the window: the options list is long,
-            // and a fixed height clipped the last rows on small screens.
-            //
-            // **En largeur aussi.** Une fenêtre egui grandit avec son
-            // contenu tant qu'on ne lui donne pas de maximum : la page
-            // « Base » porte deux paragraphes qui ne se replient pas, et
-            // à 1024x700 la fenêtre des options sortait de l'écran des
-            // deux côtés — les libellés de la colonne de gauche étaient
-            // coupés par le bord, et rien ne permettait de la rapetisser
-            // puisqu'elle est centrée.
-            let avail = ctx.screen_rect().height();
-            let across = ctx.screen_rect().width();
-            let shown = egui::Window::new(tr("opts_title"))
-                .collapsible(false)
-                // Plus redimensionnable : la taille vient de l'écran, et
-                // c'est précisément parce qu'elle en venait pas que la
-                // fenêtre sortait des deux côtés. Une boîte de dialogue
-                // centrée qu'on ne peut pas rapetisser doit tenir seule.
-                .resizable(false)
-                .fixed_size(dialog_size(
-                    egui::vec2(across, avail),
-                    egui::vec2(860.0, 900.0),
-                ))
-                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-                .show(ctx, |ui| {
-                    // Et le contenu, borné : une fenêtre egui grandit
-                    // avec lui, et `max_width` seul ne suffit pas —
-                    // c'est la rangée d'onglets et les paragraphes de la
-                    // page « Base » qui la poussaient, et ils ne se
-                    // replient que si on leur donne une largeur.
-                    ui.set_max_width((across - 56.0).max(300.0));
-                    // One page at a time: the fee matrix and the
-                    // auto-lock timeout used to be the same five-screen
-                    // scroll apart.
-                    ui.horizontal_wrapped(|ui| {
-                        for page in OptionsPage::ALL {
-                            if motif::toggle(ui, page.label(), editor.page == page).clicked() {
-                                editor.page = page;
+        // Le script de démarrage : « Essayer » part après l'emprunt, et ce
+        // qu'il a rendu se lit avant — seulement sur sa page.
+        let mut run_init = false;
+        let init_shown = match (&self.options, &self.state) {
+            (Some(e), State::Unlocked(s)) if e.page == OptionsPage::Modules => {
+                Some((s.init_job.is_some(), s.init_out.clone()))
+            }
+            _ => None,
+        };
+        if let (Some(editor), Some(rect)) = (&mut self.options, rect) {
+            // **Dans l'espace de travail**, sur la couche des panneaux et
+            // après eux : la place est celle de la vue, bornée des deux
+            // côtés — ce que la fenêtre devait se donner à la main pour ne
+            // pas sortir de l'écran.
+            let mut tab_ui = egui::Ui::new(
+                ctx.clone(),
+                egui::LayerId::background(),
+                egui::Id::new("options_tab"),
+                egui::UiBuilder::new().max_rect(rect),
+            );
+            let draw = |ui: &mut egui::Ui| {
+                // One page at a time: the fee matrix and the
+                // auto-lock timeout used to be the same five-screen
+                // scroll apart.
+                ui.horizontal_wrapped(|ui| {
+                    for page in OptionsPage::ALL {
+                        if motif::toggle(ui, page.label(), editor.page == page).clicked() {
+                            editor.page = page;
+                        }
+                    }
+                });
+                ui.add_space(6.0);
+                let page = editor.page;
+                // Les deux sens. Certaines pages portent une grille
+                // dont les colonnes ont une largeur incompressible —
+                // un champ de chemin et son bouton « Parcourir… » —
+                // et sur un écran étroit elles demandent plus que la
+                // fenêtre ne peut donner : mieux vaut les atteindre
+                // en défilant qu'avoir une fenêtre qui sort de
+                // l'écran des deux côtés.
+                // Ce qui reste **vraiment** sous la rangée d'onglets,
+                // moins la rangée « Enregistrer / Fermer » qui vient
+                // après : « la hauteur de l'écran moins deux cents »
+                // ne comptait pas les onglets, qui passent à deux
+                // rangées dès qu'on grossit le texte — et la rangée
+                // des boutons sortait alors par le bas.
+                let bottom = Self::row_height(ui) + ui.spacing().item_spacing.y * 2.0 + 8.0;
+                // **Et la barre se voit au repos.** À 1024x700 en
+                // `text_scale = 1,6`, « Interface » s'arrête sous la
+                // taille du texte : les dix peaux — ce que cette
+                // page existe pour montrer, et la seule chose qu'une
+                // capture puisse vérifier — sont sous le pli, sans
+                // rien pour le dire. La région défile dans les deux
+                // sens, et la barre pleine y coûte donc une colonne
+                // et une rangée — ce que la fenêtre peut payer, elle
+                // qui fait mille pixels de large et dont les boutons
+                // sont taillés hors du défilement. La barre
+                // flottante « toujours affichée » a été essayée
+                // d'abord : sous cette peau elle est peinte dans la
+                // couleur du panneau, donc invisible même affichée —
+                // c'est le piège que ce dépôt nomme déjà pour tout
+                // ce qu'egui dessine à partir de `widgets.*.bg_fill`.
+                ui.spacing_mut().scroll.floating = false;
+                egui::ScrollArea::both()
+                    .id_salt("opts_body")
+                    .max_height((ui.available_height() - bottom).max(160.0))
+                    .show(ui, |ui| {
+                        let dim = |t: &str| egui::RichText::new(t).color(motif::text_dim());
+                        if page == OptionsPage::Pharmacy {
+                            motif::section(ui, tr("opts_pharmacy"));
+                            // Cette page ne se range pas où les
+                            // autres se rangent, et il vaut mieux le
+                            // dire : ce qu'on y écrit part dans la
+                            // base et vaut pour tous les postes.
+                            ui.label(
+                                egui::RichText::new(tr("opts_officine_shared"))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            );
+                            ui.add_space(4.0);
+                            Self::registre_lookup(ui, editor);
+                            ui.add_space(4.0);
+                            egui::Grid::new("opts_pharmacy")
+                                .num_columns(2)
+                                .spacing([12.0, 6.0])
+                                .show(ui, |ui| {
+                                    Self::form_label(ui, tr("form_last_name"));
+                                    motif::field(
+                                        ui,
+                                        chars_wide(ui, 38.0),
+                                        egui::TextEdit::singleline(&mut editor.cfg.pharmacy.name),
+                                    );
+                                    ui.end_row();
+                                    Self::form_label(ui, tr("form_address"));
+                                    motif::field(
+                                        ui,
+                                        chars_wide(ui, 38.0),
+                                        egui::TextEdit::singleline(
+                                            &mut editor.cfg.pharmacy.address,
+                                        ),
+                                    );
+                                    ui.end_row();
+                                    Self::form_label(ui, tr("form_phone"));
+                                    motif::field(
+                                        ui,
+                                        chars_wide(ui, 38.0),
+                                        egui::TextEdit::singleline(&mut editor.cfg.pharmacy.phone),
+                                    );
+                                    ui.end_row();
+                                    Self::form_label(ui, tr("opts_pharmacist"));
+                                    motif::field(
+                                        ui,
+                                        chars_wide(ui, 38.0),
+                                        egui::TextEdit::singleline(
+                                            &mut editor.cfg.pharmacy.pharmacist,
+                                        ),
+                                    );
+                                    ui.end_row();
+                                    Self::form_label(ui, tr("opts_am_number"));
+                                    motif::field_sized(
+                                        ui,
+                                        egui::vec2(
+                                            Self::field_width(
+                                                ui,
+                                                [tr("opts_am_number_hint")].into_iter(),
+                                            )
+                                            .max(300.0),
+                                            Self::button_height(ui),
+                                        ),
+                                        egui::TextEdit::singleline(
+                                            &mut editor.cfg.pharmacy.am_number,
+                                        )
+                                        .hint_text(motif::hint(tr("opts_am_number_hint"))),
+                                    );
+                                    ui.end_row();
+                                });
+                            ui.add_space(10.0);
+                            // The team. The initials stamp the
+                            // notes and the carnet; the name and
+                            // the qualité are what a printed
+                            // document signs, in place of the
+                            // pharmacien signataire above.
+                            motif::section(ui, tr("opts_operators"));
+                            ui.label(
+                                egui::RichText::new(tr("opts_operators_hint"))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            );
+                            ui.add_space(4.0);
+                            let mut drop: Option<usize> = None;
+                            // **Le tableau tient dans la fenêtre** : le
+                            // menu des qualités à la mesure de la plus
+                            // longue, et le nom et le libellé libre
+                            // prennent ce qui reste (25 : 22), jamais
+                            // moins de douze caractères. En largeurs
+                            // fixes le tableau débordait à 1024 en
+                            // texte 1,6, et le menu élidait
+                            // « Préparateur en pharmacie » à 1400.
+                            let role_w = motif::select_width(
+                                ui,
+                                crate::config::Role::ALL
+                                    .iter()
+                                    .map(|r| r.label())
+                                    .chain(std::iter::once(tr("opts_op_role_other"))),
+                            );
+                            let fixed = chars_wide(ui, 7.0)
+                                + role_w
+                                + Self::button_width(ui, tr("itv_delete"))
+                                + 4.0 * 8.0;
+                            let flex = (Self::scrolled_width(ui, ui.available_width()) - fixed)
+                                .clamp(chars_wide(ui, 24.0), chars_wide(ui, 47.0));
+                            let name_w = flex * 25.0 / 47.0;
+                            let free_w = flex - name_w;
+                            egui::Grid::new("opts_operators")
+                                .num_columns(5)
+                                .spacing([8.0, 6.0])
+                                .show(ui, |ui| {
+                                    for header in [
+                                        tr("opts_op_initials"),
+                                        tr("opts_op_name"),
+                                        tr("opts_op_role"),
+                                        tr("opts_op_role_free"),
+                                        "",
+                                    ] {
+                                        ui.label(
+                                            egui::RichText::new(header)
+                                                .size(motif::pt(ui, 11.0))
+                                                .color(motif::text_dim()),
+                                        );
+                                    }
+                                    ui.end_row();
+                                    for (i, op) in
+                                        editor.cfg.pharmacy.operators.iter_mut().enumerate()
+                                    {
+                                        motif::field(
+                                            ui,
+                                            chars_wide(ui, 7.0),
+                                            egui::TextEdit::singleline(&mut op.initials),
+                                        );
+                                        motif::field(
+                                            ui,
+                                            name_w,
+                                            egui::TextEdit::singleline(&mut op.name),
+                                        );
+                                        // **Le menu écrit dans la
+                                        // case, il ne la remplace
+                                        // pas.** La qualité reste du
+                                        // texte libre — c'est elle
+                                        // qui s'imprime au bas d'un
+                                        // document, et une officine
+                                        // doit pouvoir y écrire
+                                        // « Pharmacien adjoint, DU
+                                        // de nutrition ». Le menu
+                                        // n'est qu'un raccourci de
+                                        // frappe, et il affiche
+                                        // « Autre… » dès que ce qui
+                                        // est écrit n'est d'aucune
+                                        // qualité qu'il connaisse.
+                                        let kind = op.role_kind();
+                                        // « Autre » n'a pas de
+                                        // libellé à écrire : elle
+                                        // *est* ce qui est écrit,
+                                        // donc la case montre ce
+                                        // que l'officine a tapé.
+                                        let mut roles: Vec<(crate::config::Role, String)> =
+                                            crate::config::Role::ALL
+                                                .into_iter()
+                                                .map(|r| (r, r.label().to_owned()))
+                                                .collect();
+                                        if kind == crate::config::Role::Autre {
+                                            roles.push((
+                                                crate::config::Role::Autre,
+                                                tr("opts_op_role_other").to_owned(),
+                                            ));
+                                        }
+                                        let mut picked = kind;
+                                        if motif::select(
+                                            ui,
+                                            ("opts_op_role", i),
+                                            role_w,
+                                            &mut picked,
+                                            &roles,
+                                        )
+                                        .changed()
+                                        {
+                                            op.role = picked.label().to_owned();
+                                        }
+                                        motif::field(
+                                            ui,
+                                            free_w,
+                                            egui::TextEdit::singleline(&mut op.role)
+                                                .hint_text(motif::hint(tr("opts_op_role_hint"))),
+                                        )
+                                        .on_hover_text(tr("opts_op_role_tooltip"));
+                                        if motif::button(ui, tr("itv_delete"))
+                                            .on_hover_text(tr("opts_op_remove"))
+                                            .clicked()
+                                        {
+                                            drop = Some(i);
+                                        }
+                                        ui.end_row();
+                                    }
+                                });
+                            if let Some(i) = drop {
+                                editor.cfg.pharmacy.operators.remove(i);
+                            }
+                            if motif::button(ui, tr("opts_op_add")).clicked() {
+                                editor
+                                    .cfg
+                                    .pharmacy
+                                    .operators
+                                    .push(crate::config::Operator::default());
                             }
                         }
-                    });
-                    ui.add_space(6.0);
-                    let page = editor.page;
-                    // Les deux sens. Certaines pages portent une grille
-                    // dont les colonnes ont une largeur incompressible —
-                    // un champ de chemin et son bouton « Parcourir… » —
-                    // et sur un écran étroit elles demandent plus que la
-                    // fenêtre ne peut donner : mieux vaut les atteindre
-                    // en défilant qu'avoir une fenêtre qui sort de
-                    // l'écran des deux côtés.
-                    // Ce qui reste **vraiment** sous la rangée d'onglets,
-                    // moins la rangée « Enregistrer / Fermer » qui vient
-                    // après : « la hauteur de l'écran moins deux cents »
-                    // ne comptait pas les onglets, qui passent à deux
-                    // rangées dès qu'on grossit le texte — et la rangée
-                    // des boutons sortait alors par le bas.
-                    let bottom = Self::row_height(ui) + ui.spacing().item_spacing.y * 2.0 + 8.0;
-                    // **Et la barre se voit au repos.** À 1024x700 en
-                    // `text_scale = 1,6`, « Interface » s'arrête sous la
-                    // taille du texte : les dix peaux — ce que cette
-                    // page existe pour montrer, et la seule chose qu'une
-                    // capture puisse vérifier — sont sous le pli, sans
-                    // rien pour le dire. La région défile dans les deux
-                    // sens, et la barre pleine y coûte donc une colonne
-                    // et une rangée — ce que la fenêtre peut payer, elle
-                    // qui fait mille pixels de large et dont les boutons
-                    // sont taillés hors du défilement. La barre
-                    // flottante « toujours affichée » a été essayée
-                    // d'abord : sous cette peau elle est peinte dans la
-                    // couleur du panneau, donc invisible même affichée —
-                    // c'est le piège que ce dépôt nomme déjà pour tout
-                    // ce qu'egui dessine à partir de `widgets.*.bg_fill`.
-                    ui.spacing_mut().scroll.floating = false;
-                    egui::ScrollArea::both()
-                        .id_salt("opts_body")
-                        .max_height((ui.available_height() - bottom).max(160.0))
-                        .show(ui, |ui| {
-                            let dim = |t: &str| egui::RichText::new(t).color(motif::text_dim());
-                            if page == OptionsPage::Pharmacy {
-                                motif::section(ui, tr("opts_pharmacy"));
-                                // Cette page ne se range pas où les
-                                // autres se rangent, et il vaut mieux le
-                                // dire : ce qu'on y écrit part dans la
-                                // base et vaut pour tous les postes.
+                        if page == OptionsPage::Locations {
+                            // Empty by default and empty on purpose:
+                            // the LPP moves, and a tarif shipped in
+                            // the application would be a tarif wrong
+                            // within the year. The officine writes
+                            // what its own line pays.
+                            motif::section(ui, tr("loc_options_title"));
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(tr("loc_options_hint"))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                )
+                                .wrap(),
+                            );
+                            ui.add_space(6.0);
+                            ui.horizontal(|ui| {
                                 ui.label(
-                                    egui::RichText::new(tr("opts_officine_shared"))
+                                    egui::RichText::new(tr("loc_opt_notice"))
                                         .size(motif::pt(ui, 11.0))
                                         .color(motif::text_dim()),
                                 );
-                                ui.add_space(4.0);
-                                Self::registre_lookup(ui, editor);
-                                ui.add_space(4.0);
-                                egui::Grid::new("opts_pharmacy")
-                                    .num_columns(2)
-                                    .spacing([12.0, 6.0])
-                                    .show(ui, |ui| {
-                                        Self::form_label(ui, tr("form_last_name"));
-                                        motif::field(
-                                            ui,
-                                            chars_wide(ui, 38.0),
-                                            egui::TextEdit::singleline(
-                                                &mut editor.cfg.pharmacy.name,
-                                            ),
-                                        );
-                                        ui.end_row();
-                                        Self::form_label(ui, tr("form_address"));
-                                        motif::field(
-                                            ui,
-                                            chars_wide(ui, 38.0),
-                                            egui::TextEdit::singleline(
-                                                &mut editor.cfg.pharmacy.address,
-                                            ),
-                                        );
-                                        ui.end_row();
-                                        Self::form_label(ui, tr("form_phone"));
-                                        motif::field(
-                                            ui,
-                                            chars_wide(ui, 38.0),
-                                            egui::TextEdit::singleline(
-                                                &mut editor.cfg.pharmacy.phone,
-                                            ),
-                                        );
-                                        ui.end_row();
-                                        Self::form_label(ui, tr("opts_pharmacist"));
-                                        motif::field(
-                                            ui,
-                                            chars_wide(ui, 38.0),
-                                            egui::TextEdit::singleline(
-                                                &mut editor.cfg.pharmacy.pharmacist,
-                                            ),
-                                        );
-                                        ui.end_row();
-                                        Self::form_label(ui, tr("opts_am_number"));
-                                        motif::field_sized(
-                                            ui,
-                                            egui::vec2(
-                                                Self::field_width(
-                                                    ui,
-                                                    [tr("opts_am_number_hint")].into_iter(),
-                                                )
-                                                .max(300.0),
-                                                Self::button_height(ui),
-                                            ),
-                                            egui::TextEdit::singleline(
-                                                &mut editor.cfg.pharmacy.am_number,
-                                            )
-                                            .hint_text(motif::hint(tr("opts_am_number_hint"))),
-                                        );
-                                        ui.end_row();
-                                    });
-                                ui.add_space(10.0);
-                                // The team. The initials stamp the
-                                // notes and the carnet; the name and
-                                // the qualité are what a printed
-                                // document signs, in place of the
-                                // pharmacien signataire above.
-                                motif::section(ui, tr("opts_operators"));
-                                ui.label(
-                                    egui::RichText::new(tr("opts_operators_hint"))
-                                        .size(motif::pt(ui, 11.0))
-                                        .color(motif::text_dim()),
-                                );
-                                ui.add_space(4.0);
-                                let mut drop: Option<usize> = None;
-                                // **Le tableau tient dans la fenêtre** : le
-                                // menu des qualités à la mesure de la plus
-                                // longue, et le nom et le libellé libre
-                                // prennent ce qui reste (25 : 22), jamais
-                                // moins de douze caractères. En largeurs
-                                // fixes le tableau débordait à 1024 en
-                                // texte 1,6, et le menu élidait
-                                // « Préparateur en pharmacie » à 1400.
-                                let role_w = motif::select_width(
+                                let mut notice = editor.cfg.locations.notice_days.to_string();
+                                if motif::field(
                                     ui,
-                                    crate::config::Role::ALL
-                                        .iter()
-                                        .map(|r| r.label())
-                                        .chain(std::iter::once(tr("opts_op_role_other"))),
-                                );
-                                let fixed = chars_wide(ui, 7.0)
-                                    + role_w
-                                    + Self::button_width(ui, tr("itv_delete"))
-                                    + 4.0 * 8.0;
-                                let flex = (Self::scrolled_width(ui, ui.available_width()) - fixed)
-                                    .clamp(chars_wide(ui, 24.0), chars_wide(ui, 47.0));
-                                let name_w = flex * 25.0 / 47.0;
-                                let free_w = flex - name_w;
-                                egui::Grid::new("opts_operators")
-                                    .num_columns(5)
-                                    .spacing([8.0, 6.0])
-                                    .show(ui, |ui| {
-                                        for header in [
-                                            tr("opts_op_initials"),
-                                            tr("opts_op_name"),
-                                            tr("opts_op_role"),
-                                            tr("opts_op_role_free"),
-                                            "",
-                                        ] {
-                                            ui.label(
-                                                egui::RichText::new(header)
-                                                    .size(motif::pt(ui, 11.0))
-                                                    .color(motif::text_dim()),
-                                            );
+                                    chars_wide(ui, 7.0),
+                                    egui::TextEdit::singleline(&mut notice),
+                                )
+                                .changed()
+                                {
+                                    editor.cfg.locations.notice_days =
+                                        notice.trim().parse().unwrap_or(0);
+                                }
+                            });
+                            ui.add_space(6.0);
+                            let mut drop: Option<usize> = None;
+                            // **Le libellé et la ligne LPP prennent ce
+                            // que les colonnes chiffrées laissent**,
+                            // dans le rapport de leurs largeurs d'avant
+                            // (21 : 25) : fixes, les sept colonnes
+                            // sortaient de la fenêtre à 1024 en texte
+                            // 1,6 et « Renouvellement » se lisait
+                            // « Renouvellem ».
+                            let gap = 8.0;
+                            let fixed = chars_wide(ui, 11.0)
+                                + chars_wide(ui, 9.0)
+                                + 2.0 * chars_wide(ui, 7.0)
+                                + Self::button_width(ui, tr("itv_delete"))
+                                + 6.0 * gap;
+                            let flex = (Self::scrolled_width(ui, ui.available_width()) - fixed)
+                                .clamp(chars_wide(ui, 24.0), chars_wide(ui, 80.0));
+                            let label_w = flex * 21.0 / 46.0;
+                            let lpp_w = flex - label_w;
+                            egui::Grid::new("opts_locations")
+                                .num_columns(7)
+                                .spacing([gap, 6.0])
+                                .show(ui, |ui| {
+                                    for (header, tip) in [
+                                        (tr("loc_opt_label"), ""),
+                                        (tr("loc_opt_lpp"), ""),
+                                        (tr("loc_opt_period"), ""),
+                                        (tr("loc_opt_fee"), ""),
+                                        (tr("loc_opt_renewal"), tr("loc_opt_renewal_tooltip")),
+                                        (tr("loc_opt_max"), tr("loc_opt_max_tooltip")),
+                                        ("", ""),
+                                    ] {
+                                        let r = ui.label(
+                                            egui::RichText::new(header)
+                                                .size(motif::pt(ui, 11.0))
+                                                .color(motif::text_dim()),
+                                        );
+                                        if !tip.is_empty() {
+                                            r.on_hover_text(tip);
+                                        }
+                                    }
+                                    ui.end_row();
+                                    // Le texte des montants sort de
+                                    // l'éditeur le temps de la
+                                    // boucle : celle-ci emprunte
+                                    // déjà `editor.cfg`.
+                                    let mut fee_text = std::mem::take(&mut editor.loc_fee_text);
+                                    while fee_text.len() < editor.cfg.locations.forfaits.len() {
+                                        let i = fee_text.len();
+                                        fee_text.push(crate::codex::format_quantity(
+                                            editor.cfg.locations.forfaits[i].fee,
+                                        ));
+                                    }
+                                    fee_text.truncate(editor.cfg.locations.forfaits.len());
+                                    for (i, f) in
+                                        editor.cfg.locations.forfaits.iter_mut().enumerate()
+                                    {
+                                        motif::field(
+                                            ui,
+                                            label_w,
+                                            egui::TextEdit::singleline(&mut f.label),
+                                        );
+                                        motif::field(
+                                            ui,
+                                            lpp_w,
+                                            egui::TextEdit::singleline(&mut f.lpp),
+                                        )
+                                        .on_hover_text(f.lpp.clone());
+                                        let periods: Vec<(crate::config::Period, String)> =
+                                            crate::config::Period::ALL
+                                                .into_iter()
+                                                .map(|p| (p, p.label().to_owned()))
+                                                .collect();
+                                        motif::select(
+                                            ui,
+                                            ("loc_period", i),
+                                            chars_wide(ui, 11.0),
+                                            &mut f.period,
+                                            &periods,
+                                        );
+                                        // **Relu quand le champ se
+                                        // ferme, pas à chaque
+                                        // frappe.** Réécrire la
+                                        // valeur à chaque lettre la
+                                        // reformatait aussitôt :
+                                        // « 1, » se relit 1 et se
+                                        // réécrit « 1 », donc taper
+                                        // « 1,5 » donnait « 15 » et
+                                        // un forfait à décimales
+                                        // était impossible à saisir.
+                                        let resp = motif::field(
+                                            ui,
+                                            chars_wide(ui, 9.0),
+                                            egui::TextEdit::singleline(&mut fee_text[i]),
+                                        );
+                                        if resp.lost_focus() {
+                                            // Illisible (« 4O »), le
+                                            // montant d'avant reste et
+                                            // le champ le remontre :
+                                            // il devenait 0 € sans un mot.
+                                            if fee_text[i].trim().is_empty() {
+                                                f.fee = 0.0;
+                                            } else if let Some((v, _)) =
+                                                crate::codex::parse_amount(&fee_text[i])
+                                                    .filter(|(v, _)| v.is_finite() && *v >= 0.0)
+                                            {
+                                                f.fee = v;
+                                            }
+                                            fee_text[i] = crate::codex::format_quantity(f.fee);
+                                        }
+                                        let mut days = f.renewal_days.to_string();
+                                        if motif::field(
+                                            ui,
+                                            chars_wide(ui, 7.0),
+                                            egui::TextEdit::singleline(&mut days),
+                                        )
+                                        .changed()
+                                        {
+                                            f.renewal_days = days.trim().parse().unwrap_or(0);
+                                        }
+                                        let mut max = f.max_periods.to_string();
+                                        if motif::field(
+                                            ui,
+                                            chars_wide(ui, 7.0),
+                                            egui::TextEdit::singleline(&mut max),
+                                        )
+                                        .changed()
+                                        {
+                                            f.max_periods = max.trim().parse().unwrap_or(0);
+                                        }
+                                        if motif::button(ui, tr("itv_delete"))
+                                            .on_hover_text(tr("loc_opt_remove"))
+                                            .clicked()
+                                        {
+                                            drop = Some(i);
                                         }
                                         ui.end_row();
-                                        for (i, op) in
-                                            editor.cfg.pharmacy.operators.iter_mut().enumerate()
-                                        {
-                                            motif::field(
-                                                ui,
-                                                chars_wide(ui, 7.0),
-                                                egui::TextEdit::singleline(&mut op.initials),
-                                            );
-                                            motif::field(
-                                                ui,
-                                                name_w,
-                                                egui::TextEdit::singleline(&mut op.name),
-                                            );
-                                            // **Le menu écrit dans la
-                                            // case, il ne la remplace
-                                            // pas.** La qualité reste du
-                                            // texte libre — c'est elle
-                                            // qui s'imprime au bas d'un
-                                            // document, et une officine
-                                            // doit pouvoir y écrire
-                                            // « Pharmacien adjoint, DU
-                                            // de nutrition ». Le menu
-                                            // n'est qu'un raccourci de
-                                            // frappe, et il affiche
-                                            // « Autre… » dès que ce qui
-                                            // est écrit n'est d'aucune
-                                            // qualité qu'il connaisse.
-                                            let kind = op.role_kind();
-                                            // « Autre » n'a pas de
-                                            // libellé à écrire : elle
-                                            // *est* ce qui est écrit,
-                                            // donc la case montre ce
-                                            // que l'officine a tapé.
-                                            let mut roles: Vec<(crate::config::Role, String)> =
-                                                crate::config::Role::ALL
-                                                    .into_iter()
-                                                    .map(|r| (r, r.label().to_owned()))
-                                                    .collect();
-                                            if kind == crate::config::Role::Autre {
-                                                roles.push((
-                                                    crate::config::Role::Autre,
-                                                    tr("opts_op_role_other").to_owned(),
-                                                ));
-                                            }
-                                            let mut picked = kind;
-                                            if motif::select(
-                                                ui,
-                                                ("opts_op_role", i),
-                                                role_w,
-                                                &mut picked,
-                                                &roles,
-                                            )
-                                            .changed()
-                                            {
-                                                op.role = picked.label().to_owned();
-                                            }
-                                            motif::field(
-                                                ui,
-                                                free_w,
-                                                egui::TextEdit::singleline(&mut op.role).hint_text(
-                                                    motif::hint(tr("opts_op_role_hint")),
-                                                ),
-                                            )
-                                            .on_hover_text(tr("opts_op_role_tooltip"));
-                                            if motif::button(ui, tr("itv_delete"))
-                                                .on_hover_text(tr("opts_op_remove"))
-                                                .clicked()
-                                            {
-                                                drop = Some(i);
-                                            }
-                                            ui.end_row();
-                                        }
-                                    });
-                                if let Some(i) = drop {
-                                    editor.cfg.pharmacy.operators.remove(i);
-                                }
-                                if motif::button(ui, tr("opts_op_add")).clicked() {
-                                    editor
-                                        .cfg
-                                        .pharmacy
-                                        .operators
-                                        .push(crate::config::Operator::default());
+                                    }
+                                    editor.loc_fee_text = fee_text;
+                                });
+                            if let Some(i) = drop {
+                                editor.cfg.locations.forfaits.remove(i);
+                                // Le texte suit la ligne : sans cela
+                                // le montant de la ligne supprimée
+                                // resterait devant celle d'après.
+                                if i < editor.loc_fee_text.len() {
+                                    editor.loc_fee_text.remove(i);
                                 }
                             }
-                            if page == OptionsPage::Locations {
-                                // Empty by default and empty on purpose:
-                                // the LPP moves, and a tarif shipped in
-                                // the application would be a tarif wrong
-                                // within the year. The officine writes
-                                // what its own line pays.
-                                motif::section(ui, tr("loc_options_title"));
+                            ui.horizontal(|ui| {
+                                if motif::button(ui, tr("loc_opt_add")).clicked() {
+                                    editor
+                                        .cfg
+                                        .locations
+                                        .forfaits
+                                        .push(crate::config::LocationForfait::default());
+                                }
+                                // For a base that predates the
+                                // shipped catalogue, or one someone
+                                // has pruned: it adds the lines that
+                                // are missing and touches none of
+                                // the ones already written.
+                                if motif::button(ui, tr("loc_opt_complete"))
+                                    .on_hover_text(tr("loc_opt_complete_tooltip"))
+                                    .clicked()
+                                {
+                                    let n = editor.cfg.locations.complete_forfaits();
+                                    editor.message = Some((
+                                        false,
+                                        if n == 0 {
+                                            tr("loc_opt_complete_none").to_owned()
+                                        } else {
+                                            trf("loc_opt_complete_done", n)
+                                        },
+                                    ));
+                                }
+                            });
+                        }
+                        if page == OptionsPage::About {
+                            // What this copy is, what its base
+                            // holds, and — only when asked — what
+                            // GitHub says the newest release is.
+                            motif::section(ui, tr("opts_about"));
+                            egui::Grid::new("opts_about")
+                                .num_columns(2)
+                                .spacing([12.0, 5.0])
+                                .show(ui, |ui| {
+                                    // Une liste qu'on lit, pas un formulaire :
+                                    // `form_label` prend la hauteur d'une
+                                    // rangée de champs, et les deux premières
+                                    // lignes s'écartaient des autres.
+                                    ui.label(dim(tr("about_version")));
+                                    ui.label(
+                                        egui::RichText::new(crate::release::current()).strong(),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("about_target")));
+                                    ui.label(crate::release::target());
+                                    ui.end_row();
+                                    // Only when this copy was put
+                                    // here by the launcher: a build
+                                    // run by hand has no such file,
+                                    // and an empty row would read as
+                                    // a fault.
+                                    if let Some(v) = crate::release::launcher_version() {
+                                        ui.label(dim(tr("about_launcher")));
+                                        ui.label(v);
+                                        ui.end_row();
+                                    }
+                                    if let Some(v) = &about_layout_version {
+                                        ui.label(dim(tr("about_layout_version")));
+                                        ui.label(v.as_str());
+                                        ui.end_row();
+                                    }
+                                    ui.label(dim(tr("about_db")));
+                                    ui.label(
+                                        egui::RichText::new(about_db.display().to_string())
+                                            .size(motif::pt(ui, 11.5)),
+                                    );
+                                    ui.end_row();
+                                    if let Some(bytes) = about_db_size {
+                                        ui.label(dim(tr("about_db_size")));
+                                        ui.label(trf(
+                                            "about_megabytes",
+                                            crate::strings::decimal(bytes as f64 / 1e6, 1),
+                                        ));
+                                        ui.end_row();
+                                    }
+                                    for (label, n) in about_counts.iter().flatten() {
+                                        ui.label(dim(label));
+                                        ui.label(n.to_string());
+                                        ui.end_row();
+                                    }
+                                });
+                            if about_adopted {
+                                ui.add_space(4.0);
                                 ui.add(
                                     egui::Label::new(
-                                        egui::RichText::new(tr("loc_options_hint"))
+                                        egui::RichText::new(tr("about_db_found"))
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::alert()),
+                                    )
+                                    .wrap(),
+                                );
+                            }
+                            ui.add_space(10.0);
+                            motif::section(ui, tr("about_updates"));
+                            ui.horizontal_wrapped(|ui| {
+                                let check = motif::button(ui, tr("about_check"));
+                                if check.on_hover_text(tr("about_check_tooltip")).clicked()
+                                    && !about_checking
+                                {
+                                    check_update = true;
+                                }
+                                if motif::button(ui, tr("about_notes"))
+                                    .on_hover_text(tr("about_notes_tooltip"))
+                                    .clicked()
+                                {
+                                    open_releases = true;
+                                }
+                                if motif::button(ui, tr("whatsnew_open"))
+                                    .on_hover_text(tr("whatsnew_open_tooltip"))
+                                    .clicked()
+                                {
+                                    open_whatsnew = true;
+                                }
+                                if motif::button_enabled(ui, tr("about_sync"), !maint_busy)
+                                    .on_hover_text(tr("about_sync_tooltip"))
+                                    .clicked()
+                                {
+                                    sync_content = true;
+                                }
+                            });
+                            if let Some(step) = &maint_running {
+                                ui.label(
+                                    egui::RichText::new(step.as_str())
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::accent()),
+                                );
+                            }
+                            if about_checking {
+                                ui.label(
+                                    egui::RichText::new(tr("about_checking"))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                );
+                            }
+                            if let Some((is_error, msg)) = &about_note {
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(msg.as_str())
+                                            .size(motif::pt(ui, 11.5))
+                                            .color(if *is_error {
+                                                motif::alert()
+                                            } else {
+                                                motif::accent()
+                                            }),
+                                    )
+                                    .wrap(),
+                                );
+                            }
+                            ui.add_space(4.0);
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(tr("about_offline"))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                )
+                                .wrap(),
+                            );
+
+                            // Les compteurs d'usage.
+                            ui.add_space(10.0);
+                            motif::section(ui, tr("telem_title"));
+                            // **La réserve avant le contenu**, comme
+                            // les panneaux cliniques : ce qui est
+                            // écrit après les chiffres est ce que
+                            // personne ne lit, et ici c'est la seule
+                            // phrase qui dise où ces chiffres vont —
+                            // c'est-à-dire nulle part.
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(tr("telem_scope"))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                )
+                                .wrap(),
+                            );
+                            ui.add_space(2.0);
+                            motif::checkbox(
+                                ui,
+                                &mut editor.cfg.telemetry.enabled,
+                                tr("telem_enabled"),
+                            )
+                            .on_hover_text(tr("telem_enabled_tooltip"));
+                            // **Les chiffres se lisent dans `bpm-audit`**, la
+                            // fenêtre d'audit de l'officine : ici ne reste
+                            // que ce qui appartient au poste — compter ou
+                            // non, et effacer ce qui a été compté.
+                            if !editor.cfg.telemetry.enabled {
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(tr("telem_off"))
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::accent()),
+                                    )
+                                    .wrap(),
+                                );
+                            }
+                            // Effacer est un geste à part, et demandé deux
+                            // fois : décocher arrête de compter, effacer
+                            // efface, et confondre les deux ferait
+                            // disparaître des chiffres que personne n'a
+                            // demandé à perdre.
+                            if motif::button(
+                                ui,
+                                if editor.confirm_telemetry_clear {
+                                    tr("telem_clear_confirm")
+                                } else {
+                                    tr("telem_clear")
+                                },
+                            )
+                            .on_hover_text(tr("telem_clear_tooltip"))
+                            .clicked()
+                            {
+                                if editor.confirm_telemetry_clear {
+                                    clear_telemetry = true;
+                                    editor.confirm_telemetry_clear = false;
+                                } else {
+                                    editor.confirm_telemetry_clear = true;
+                                }
+                            }
+
+                            // Le journal des accès. L'exact
+                            // contraire du volet au-dessus : il
+                            // nomme la personne, et jamais le
+                            // logiciel.
+                            ui.add_space(10.0);
+                            motif::section(ui, tr("audit_title"));
+                            // La réserve avant le contenu, encore :
+                            // ce qui dit ce qu'une ligne porte — un
+                            // numéro, jamais un nom — et combien de
+                            // temps elle est gardée.
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(if editor.cfg.audit.keep_days == 0 {
+                                        tr("audit_scope_kept").to_owned()
+                                    } else {
+                                        trf("audit_scope", editor.cfg.audit.keep_days)
+                                    })
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                                )
+                                .wrap(),
+                            );
+                            // La durée, **pour l'officine** : la changer
+                            // ici l'écrit dans la base, et tous les
+                            // postes purgent à la même.
+                            ui.horizontal(|ui| {
+                                ui.label(dim(tr("audit_keep_label")));
+                                motif::number(
+                                    ui,
+                                    egui::DragValue::new(&mut editor.cfg.audit.keep_days)
+                                        .range(0..=3650)
+                                        .suffix(tr("audit_keep_suffix")),
+                                );
+                            });
+                            ui.add_space(2.0);
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(tr("audit_elsewhere"))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                )
+                                .wrap(),
+                            );
+                        }
+                        if page == OptionsPage::Database {
+                            // Le réseau d'officines, ce qui en est
+                            // propre au poste : où est le dossier
+                            // d'échange sur cette machine, le port
+                            // d'une invitation, et la fermeture.
+                            ui.add_space(10.0);
+                            motif::section(ui, tr("opts_reseau"));
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(tr("opts_reseau_hint"))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                )
+                                .wrap(),
+                            );
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(dim(tr("opts_reseau_folder")));
+                                motif::field(
+                                    ui,
+                                    chars_wide(ui, 34.0),
+                                    egui::TextEdit::singleline(&mut editor.cfg.reseau.dossier)
+                                        .hint_text(motif::hint(tr("opts_reseau_folder_hint"))),
+                                );
+                            });
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(dim(tr("opts_reseau_port")));
+                                motif::number(
+                                    ui,
+                                    egui::DragValue::new(&mut editor.cfg.reseau.port)
+                                        .range(1024..=65535),
+                                );
+                            });
+                            motif::checkbox(
+                                ui,
+                                &mut editor.cfg.reseau.a_la_fermeture,
+                                tr("opts_reseau_close"),
+                            );
+                            ui.horizontal_wrapped(|ui| {
+                                motif::checkbox(
+                                    ui,
+                                    &mut editor.cfg.reseau.automatique,
+                                    tr("opts_reseau_auto"),
+                                );
+                                motif::number(
+                                    ui,
+                                    egui::DragValue::new(&mut editor.cfg.reseau.intervalle_minutes)
+                                        .range(1..=1440),
+                                );
+                                ui.label(dim(tr("opts_reseau_minutes")));
+                            });
+                            motif::checkbox(
+                                ui,
+                                &mut editor.cfg.reseau.annoncer,
+                                tr("opts_reseau_announce"),
+                            )
+                            .on_hover_text(tr("opts_reseau_announce_tooltip"));
+                            ui.horizontal_wrapped(|ui| {
+                                motif::checkbox(
+                                    ui,
+                                    &mut editor.cfg.reseau.ecouter,
+                                    tr("opts_reseau_listen"),
+                                )
+                                .on_hover_text(tr("opts_reseau_listen_tooltip"));
+                                ui.label(dim(tr("opts_reseau_listen_port")));
+                                motif::number(
+                                    ui,
+                                    egui::DragValue::new(&mut editor.cfg.reseau.port_ecoute)
+                                        .range(1024..=65535),
+                                );
+                            });
+                            ui.add_enabled_ui(editor.cfg.reseau.ecouter, |ui| {
+                                motif::checkbox(
+                                    ui,
+                                    &mut editor.cfg.reseau.porte_web,
+                                    tr("opts_reseau_web_door"),
+                                )
+                                .on_hover_text(tr("opts_reseau_web_door_tooltip"));
+                            });
+                            let r = &editor.cfg.reseau;
+                            if r.port_ecoute == r.port || r.port_ecoute == editor.cfg.postes.port {
+                                ui.label(
+                                    egui::RichText::new(tr("opts_reseau_listen_clash"))
+                                        .size(motif::pt(ui, 10.5))
+                                        .color(motif::alert()),
+                                );
+                            }
+                            ui.horizontal_wrapped(|ui| {
+                                motif::checkbox(
+                                    ui,
+                                    &mut editor.cfg.reseau.relais,
+                                    tr("opts_reseau_relay"),
+                                )
+                                .on_hover_text(tr("opts_reseau_relay_tooltip"));
+                                ui.label(dim(tr("opts_reseau_listen_port")));
+                                motif::number(
+                                    ui,
+                                    egui::DragValue::new(&mut editor.cfg.reseau.port_relais)
+                                        .range(1024..=65535),
+                                );
+                            });
+                            ui.add_enabled_ui(editor.cfg.reseau.relais, |ui| {
+                                motif::checkbox(
+                                    ui,
+                                    &mut editor.cfg.reseau.relais_patients,
+                                    tr("opts_reseau_relay_patients"),
+                                )
+                                .on_hover_text(tr("opts_reseau_relay_patients_tooltip"));
+                            });
+                            ui.horizontal_wrapped(|ui| {
+                                motif::checkbox(
+                                    ui,
+                                    &mut editor.cfg.reseau.repertoire,
+                                    tr("opts_reseau_repertoire"),
+                                )
+                                .on_hover_text(tr("opts_reseau_repertoire_tooltip"));
+                                ui.label(dim(tr("opts_reseau_listen_port")));
+                                motif::number(
+                                    ui,
+                                    egui::DragValue::new(&mut editor.cfg.reseau.port_repertoire)
+                                        .range(1024..=65535),
+                                );
+                            });
+                            let r = &editor.cfg.reseau;
+                            if r.repertoire
+                                && [r.port, r.port_ecoute, r.port_relais, editor.cfg.postes.port]
+                                    .contains(&r.port_repertoire)
+                            {
+                                ui.label(
+                                    egui::RichText::new(tr("opts_reseau_repertoire_clash"))
+                                        .size(motif::pt(ui, 10.5))
+                                        .color(motif::alert()),
+                                );
+                            }
+                            // Les postes de l'officine, ce qui en est
+                            // propre à ce poste-ci. La clé et la liste
+                            // des postes sont dans la base.
+                            // **Le poste en service** : propre à ce
+                            // poste-ci, comme ce qui suit.
+                            ui.add_space(10.0);
+                            motif::section(ui, tr("opts_bureau"));
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(tr("opts_bureau_hint"))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                )
+                                .wrap(),
+                            );
+                            motif::checkbox(
+                                ui,
+                                &mut editor.cfg.bureau.en_service,
+                                tr("opts_bureau_service"),
+                            )
+                            .on_hover_text(tr("opts_bureau_service_tooltip"));
+                            motif::checkbox(
+                                ui,
+                                &mut editor.cfg.bureau.au_demarrage,
+                                tr("opts_bureau_autostart"),
+                            )
+                            .on_hover_text(tr("opts_bureau_autostart_tooltip"));
+                            #[cfg(feature = "sync")]
+                            {
+                                ui.add_space(10.0);
+                                motif::section(ui, tr("opts_postes"));
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(tr("opts_postes_hint"))
                                             .size(motif::pt(ui, 11.0))
                                             .color(motif::text_dim()),
                                     )
                                     .wrap(),
                                 );
-                                ui.add_space(6.0);
-                                ui.horizontal(|ui| {
-                                    ui.label(
-                                        egui::RichText::new(tr("loc_opt_notice"))
-                                            .size(motif::pt(ui, 11.0))
-                                            .color(motif::text_dim()),
+                                if motif::button(ui, tr("posts_open"))
+                                    .on_hover_text(tr("posts_open_tooltip"))
+                                    .clicked()
+                                {
+                                    open_posts = true;
+                                }
+                                motif::checkbox(
+                                    ui,
+                                    &mut editor.cfg.postes.automatique,
+                                    tr("opts_postes_auto"),
+                                );
+                                motif::checkbox(
+                                    ui,
+                                    &mut editor.cfg.postes.internet,
+                                    tr("opts_postes_internet"),
+                                )
+                                .on_hover_text(tr("opts_postes_internet_tooltip"));
+                                motif::checkbox(
+                                    ui,
+                                    &mut editor.cfg.postes.relais,
+                                    tr("opts_postes_relay"),
+                                )
+                                .on_hover_text(tr("opts_postes_relay_tooltip"));
+                                ui.add_enabled_ui(editor.cfg.postes.relais, |ui| {
+                                    motif::checkbox(
+                                        ui,
+                                        &mut editor.cfg.postes.relais_patients,
+                                        tr("opts_postes_relay_patients"),
+                                    )
+                                    .on_hover_text(tr("opts_postes_relay_patients_tooltip"));
+                                });
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.label(dim(tr("opts_reseau_port")));
+                                    motif::number(
+                                        ui,
+                                        egui::DragValue::new(&mut editor.cfg.postes.port)
+                                            .range(1024..=65535),
                                     );
-                                    let mut notice = editor.cfg.locations.notice_days.to_string();
+                                });
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.label(dim(tr("opts_reseau_folder")));
+                                    motif::field(
+                                        ui,
+                                        chars_wide(ui, 34.0),
+                                        egui::TextEdit::singleline(&mut editor.cfg.postes.dossier)
+                                            .hint_text(motif::hint(tr("opts_reseau_folder_hint"))),
+                                    );
+                                });
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.label(dim(tr("opts_postes_addresses")));
+                                    let mut typed = editor.cfg.postes.adresses.join(", ");
                                     if motif::field(
                                         ui,
-                                        chars_wide(ui, 7.0),
-                                        egui::TextEdit::singleline(&mut notice),
+                                        chars_wide(ui, 34.0),
+                                        egui::TextEdit::singleline(&mut typed).hint_text(
+                                            motif::hint(tr("opts_postes_addresses_hint")),
+                                        ),
                                     )
                                     .changed()
                                     {
-                                        editor.cfg.locations.notice_days =
-                                            notice.trim().parse().unwrap_or(0);
+                                        editor.cfg.postes.adresses = typed
+                                            .split([',', ';', ' '])
+                                            .map(str::trim)
+                                            .filter(|a| !a.is_empty())
+                                            .map(str::to_owned)
+                                            .collect();
+                                    }
+                                });
+                                motif::checkbox(
+                                    ui,
+                                    &mut editor.cfg.postes.a_la_fermeture,
+                                    tr("opts_reseau_close"),
+                                );
+                            }
+                            // The card reader lives on the Base page:
+                            // it is about this post's hardware, like
+                            // the database path beside it.
+                            ui.add_space(10.0);
+                            motif::section(ui, tr("opts_vitale"));
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(tr("opts_vitale_hint"))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                )
+                                .wrap(),
+                            );
+                            ui.add_space(4.0);
+                            motif::checkbox(
+                                ui,
+                                &mut editor.cfg.vitale.enabled,
+                                tr("opts_vitale_enabled"),
+                            );
+                            ui.horizontal(|ui| {
+                                ui.label(dim(tr("opts_vitale_reader")));
+                                motif::field(
+                                    ui,
+                                    chars_wide(ui, 30.0),
+                                    egui::TextEdit::singleline(&mut editor.cfg.vitale.reader),
+                                );
+                            });
+                            ui.label(dim(tr("opts_vitale_apdu")));
+                            // One command per line, edited as text:
+                            // a list of hex strings is a list, and a
+                            // grid of one-line fields for it is a
+                            // form nobody can paste into.
+                            let mut script = editor.cfg.vitale.apdu.join("\n");
+                            if motif::area(
+                                ui,
+                                egui::vec2(ui.available_width(), Self::row_height(ui) * 3.0),
+                                egui::TextEdit::multiline(&mut script)
+                                    .desired_rows(3)
+                                    .hint_text(motif::hint(tr("opts_vitale_apdu_hint"))),
+                            )
+                            .changed()
+                            {
+                                editor.cfg.vitale.apdu = script
+                                    .lines()
+                                    .map(str::trim)
+                                    .filter(|l| !l.is_empty())
+                                    .map(str::to_owned)
+                                    .collect();
+                            }
+                            // Say straight away whether the script
+                            // can be sent at all: a typo found when
+                            // the card is in the reader is a typo
+                            // found with a patient waiting.
+                            if let Err(e) = editor.cfg.vitale.script() {
+                                ui.colored_label(motif::alert(), e);
+                            }
+                        }
+                        if page == OptionsPage::Mentions {
+                            // Nothing here is filled in by the
+                            // application: an empty field prints no
+                            // line at all. What the officine wants
+                            // said, it writes.
+                            motif::section(ui, tr("opts_mentions"));
+                            ui.label(
+                                egui::RichText::new(tr("opts_mentions_hint"))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            );
+                            ui.add_space(6.0);
+                            let mut fields: Vec<(&str, &mut String)> = Vec::new();
+                            for (label, value) in [
+                                (
+                                    tr("opts_mention_ord_header"),
+                                    &mut editor.cfg.disclaimers.ordonnance_header,
+                                ),
+                                (
+                                    tr("opts_mention_ord_footer"),
+                                    &mut editor.cfg.disclaimers.ordonnance_footer,
+                                ),
+                                (
+                                    tr("opts_mention_ord_screen"),
+                                    &mut editor.cfg.disclaimers.ordonnance_screen,
+                                ),
+                                (
+                                    tr("opts_mention_carnet"),
+                                    &mut editor.cfg.disclaimers.carnet,
+                                ),
+                                (
+                                    tr("opts_mention_vaccins"),
+                                    &mut editor.cfg.disclaimers.vaccins,
+                                ),
+                                (
+                                    tr("opts_mention_calc"),
+                                    &mut editor.cfg.disclaimers.calculator,
+                                ),
+                                (tr("opts_mention_plan"), &mut editor.cfg.disclaimers.plan),
+                                (
+                                    tr("opts_mention_concil"),
+                                    &mut editor.cfg.disclaimers.conciliation,
+                                ),
+                                (
+                                    tr("opts_mention_cascades"),
+                                    &mut editor.cfg.disclaimers.cascades,
+                                ),
+                            ] {
+                                fields.push((label, value));
+                            }
+                            // **Deux colonnes quand la fenêtre les
+                            // porte** : une seule colonne de 520 pixels
+                            // laissait à 1400 les deux tiers de la
+                            // fenêtre vides et les huit mentions sur
+                            // deux écrans. Chaque case à la largeur de
+                            // sa colonne, en caractères.
+                            let gap = 16.0;
+                            let avail = Self::scrolled_width(ui, ui.available_width());
+                            let two = avail >= 2.0 * chars_wide(ui, 44.0) + gap;
+                            let col_w = if two {
+                                ((avail - gap) / 2.0).min(chars_wide(ui, 70.0))
+                            } else {
+                                avail.min(chars_wide(ui, 70.0))
+                            };
+                            let mut it = fields.into_iter();
+                            loop {
+                                let left = it.next();
+                                let right = if two { it.next() } else { None };
+                                let Some(left) = left else { break };
+                                ui.horizontal_top(|ui| {
+                                    for (label, value) in std::iter::once(left).chain(right) {
+                                        ui.vertical(|ui| {
+                                            ui.set_width(col_w);
+                                            ui.label(dim(label));
+                                            motif::area(
+                                                ui,
+                                                egui::vec2(col_w, Self::row_height(ui) * 2.0),
+                                                egui::TextEdit::multiline(value).hint_text(
+                                                    motif::hint(tr("opts_mention_hint")),
+                                                ),
+                                            );
+                                        });
+                                        ui.add_space(gap - ui.spacing().item_spacing.x);
                                     }
                                 });
                                 ui.add_space(6.0);
-                                let mut drop: Option<usize> = None;
-                                // **Le libellé et la ligne LPP prennent ce
-                                // que les colonnes chiffrées laissent**,
-                                // dans le rapport de leurs largeurs d'avant
-                                // (21 : 25) : fixes, les sept colonnes
-                                // sortaient de la fenêtre à 1024 en texte
-                                // 1,6 et « Renouvellement » se lisait
-                                // « Renouvellem ».
-                                let gap = 8.0;
-                                let fixed = chars_wide(ui, 11.0)
-                                    + chars_wide(ui, 9.0)
-                                    + 2.0 * chars_wide(ui, 7.0)
-                                    + Self::button_width(ui, tr("itv_delete"))
-                                    + 6.0 * gap;
-                                let flex = (Self::scrolled_width(ui, ui.available_width()) - fixed)
-                                    .clamp(chars_wide(ui, 24.0), chars_wide(ui, 80.0));
-                                let label_w = flex * 21.0 / 46.0;
-                                let lpp_w = flex - label_w;
-                                egui::Grid::new("opts_locations")
-                                    .num_columns(7)
-                                    .spacing([gap, 6.0])
-                                    .show(ui, |ui| {
-                                        for (header, tip) in [
-                                            (tr("loc_opt_label"), ""),
-                                            (tr("loc_opt_lpp"), ""),
-                                            (tr("loc_opt_period"), ""),
-                                            (tr("loc_opt_fee"), ""),
-                                            (tr("loc_opt_renewal"), tr("loc_opt_renewal_tooltip")),
-                                            (tr("loc_opt_max"), tr("loc_opt_max_tooltip")),
-                                            ("", ""),
-                                        ] {
-                                            let r = ui.label(
-                                                egui::RichText::new(header)
-                                                    .size(motif::pt(ui, 11.0))
-                                                    .color(motif::text_dim()),
-                                            );
-                                            if !tip.is_empty() {
-                                                r.on_hover_text(tip);
+                            }
+                        }
+                        if page == OptionsPage::Ui {
+                            motif::section(ui, tr("opts_ui"));
+                            egui::Grid::new("opts_ui")
+                                .num_columns(2)
+                                .spacing([12.0, 6.0])
+                                .show(ui, |ui| {
+                                    Self::form_label(ui, tr("docs_operator"));
+                                    motif::field(
+                                        ui,
+                                        chars_wide(ui, 10.0),
+                                        egui::TextEdit::singleline(&mut editor.cfg.ui.operator),
+                                    );
+                                    ui.end_row();
+                                });
+                            motif::checkbox(
+                                ui,
+                                &mut editor.cfg.ui.show_docs_on_start,
+                                tr("opts_show_docs"),
+                            );
+                            motif::checkbox(
+                                ui,
+                                &mut editor.cfg.ui.show_nav_on_start,
+                                tr("opts_show_nav"),
+                            );
+                            motif::checkbox(ui, &mut editor.cfg.ui.icons, tr("opts_icons"));
+                            egui::Grid::new("opts_look")
+                                .num_columns(2)
+                                .spacing([12.0, 6.0])
+                                .show(ui, |ui| {
+                                    Self::form_label(ui, tr("opts_text_scale"));
+                                    // La glissière de la maison, et
+                                    // non celle d'egui : celle-ci
+                                    // peignait son rail avec
+                                    // `widgets.inactive.bg_fill`,
+                                    // que `motif::apply` met au fond
+                                    // du panneau pour tous les états
+                                    // — donc pas de rail du tout, sur
+                                    // les dix palettes. Mesuré sur
+                                    // une capture : deux cent trente
+                                    // pixels de fond et deux pixels
+                                    // de bord de pouce. Rien ne
+                                    // disait où était 0,8, ni 1,6,
+                                    // ni où l'on se trouvait, sur le
+                                    // réglage même que va chercher
+                                    // en premier quelqu'un qui lit
+                                    // mal l'écran.
+                                    ui.horizontal(|ui| {
+                                        let scale = f64::from(editor.cfg.ui.text_scale);
+                                        let shown = format!(
+                                            "{} ×",
+                                            format!("{scale:.2}").replace('.', ",")
+                                        );
+                                        // La valeur d'abord, à
+                                        // largeur fixe : lue après
+                                        // la glissière elle serait
+                                        // la première chose que
+                                        // l'élision mange, et c'est
+                                        // la seule que cette rangée
+                                        // existe pour dire.
+                                        // Mesurée à la taille qui
+                                        // la dessine, et sur le
+                                        // gabarit le plus large —
+                                        // « 0,00 × » — pour que le
+                                        // pouce ne se déplace pas
+                                        // quand le chiffre change.
+                                        let value_w =
+                                            Self::widest(ui, 11.5, ["0,00 ×"].into_iter());
+                                        ui.allocate_ui_with_layout(
+                                            egui::vec2(value_w, Self::button_height(ui)),
+                                            egui::Layout::left_to_right(egui::Align::Center),
+                                            |ui| {
+                                                ui.label(
+                                                    egui::RichText::new(shown)
+                                                        .size(motif::pt(ui, 11.5)),
+                                                );
+                                            },
+                                        );
+                                        let room =
+                                            (ui.available_width() - 8.0).min(chars_wide(ui, 24.0));
+                                        if room >= 60.0 {
+                                            let (resp, dragged) =
+                                                motif::scale_range(ui, room, scale, 0.8, 1.6, 0.05);
+                                            if resp.dragged() || resp.clicked() {
+                                                editor.cfg.ui.text_scale = dragged as f32;
                                             }
                                         }
-                                        ui.end_row();
-                                        // Le texte des montants sort de
-                                        // l'éditeur le temps de la
-                                        // boucle : celle-ci emprunte
-                                        // déjà `editor.cfg`.
-                                        let mut fee_text = std::mem::take(&mut editor.loc_fee_text);
-                                        while fee_text.len() < editor.cfg.locations.forfaits.len() {
-                                            let i = fee_text.len();
-                                            fee_text.push(crate::codex::format_quantity(
-                                                editor.cfg.locations.forfaits[i].fee,
-                                            ));
-                                        }
-                                        fee_text.truncate(editor.cfg.locations.forfaits.len());
-                                        for (i, f) in
-                                            editor.cfg.locations.forfaits.iter_mut().enumerate()
+                                    });
+                                    ui.end_row();
+                                    Self::form_label(ui, tr("opts_font"));
+                                    ui.horizontal(|ui| {
+                                        let mut shown = editor
+                                            .cfg
+                                            .ui
+                                            .font_path
+                                            .as_ref()
+                                            .map(|p| p.display().to_string())
+                                            .unwrap_or_default();
+                                        if motif::field_sized(
+                                            ui,
+                                            egui::vec2(
+                                                Self::field_width(
+                                                    ui,
+                                                    [tr("opts_font_default")].into_iter(),
+                                                )
+                                                .max(220.0),
+                                                Self::button_height(ui),
+                                            ),
+                                            egui::TextEdit::singleline(&mut shown)
+                                                .hint_text(motif::hint(tr("opts_font_default"))),
+                                        )
+                                        .changed()
                                         {
-                                            motif::field(
-                                                ui,
-                                                label_w,
-                                                egui::TextEdit::singleline(&mut f.label),
-                                            );
-                                            motif::field(
-                                                ui,
-                                                lpp_w,
-                                                egui::TextEdit::singleline(&mut f.lpp),
-                                            )
-                                            .on_hover_text(f.lpp.clone());
-                                            let periods: Vec<(crate::config::Period, String)> =
-                                                crate::config::Period::ALL
-                                                    .into_iter()
-                                                    .map(|p| (p, p.label().to_owned()))
-                                                    .collect();
-                                            motif::select(
-                                                ui,
-                                                ("loc_period", i),
-                                                chars_wide(ui, 11.0),
-                                                &mut f.period,
-                                                &periods,
-                                            );
-                                            // **Relu quand le champ se
-                                            // ferme, pas à chaque
-                                            // frappe.** Réécrire la
-                                            // valeur à chaque lettre la
-                                            // reformatait aussitôt :
-                                            // « 1, » se relit 1 et se
-                                            // réécrit « 1 », donc taper
-                                            // « 1,5 » donnait « 15 » et
-                                            // un forfait à décimales
-                                            // était impossible à saisir.
-                                            let resp = motif::field(
-                                                ui,
-                                                chars_wide(ui, 9.0),
-                                                egui::TextEdit::singleline(&mut fee_text[i]),
-                                            );
-                                            if resp.lost_focus() {
-                                                // Illisible (« 4O »), le
-                                                // montant d'avant reste et
-                                                // le champ le remontre :
-                                                // il devenait 0 € sans un mot.
-                                                if fee_text[i].trim().is_empty() {
-                                                    f.fee = 0.0;
-                                                } else if let Some((v, _)) =
-                                                    crate::codex::parse_amount(&fee_text[i])
-                                                        .filter(|(v, _)| v.is_finite() && *v >= 0.0)
-                                                {
-                                                    f.fee = v;
-                                                }
-                                                fee_text[i] = crate::codex::format_quantity(f.fee);
-                                            }
-                                            let mut days = f.renewal_days.to_string();
-                                            if motif::field(
-                                                ui,
-                                                chars_wide(ui, 7.0),
-                                                egui::TextEdit::singleline(&mut days),
-                                            )
-                                            .changed()
+                                            editor.cfg.ui.font_path = if shown.trim().is_empty() {
+                                                None
+                                            } else {
+                                                Some(std::path::PathBuf::from(shown.trim()))
+                                            };
+                                        }
+                                        if motif::button(ui, tr("opts_db_browse")).clicked() {
+                                            if let Some(p) = rfd::FileDialog::new()
+                                                .add_filter("Police", &["ttf", "otf", "TTF", "OTF"])
+                                                .pick_file()
                                             {
-                                                f.renewal_days = days.trim().parse().unwrap_or(0);
+                                                editor.cfg.ui.font_path = Some(p);
                                             }
-                                            let mut max = f.max_periods.to_string();
-                                            if motif::field(
+                                        }
+                                        if motif::button(ui, tr("tpl_reset")).clicked() {
+                                            editor.cfg.ui.font_path = None;
+                                        }
+                                    });
+                                    ui.end_row();
+                                    Self::form_label(ui, tr("opts_side_pane"));
+                                    // Des bascules en relief, comme les pages
+                                    // de cette fenêtre : une étiquette plate
+                                    // y était le seul choix qui ne se lisait
+                                    // pas comme un bouton. Et enveloppées :
+                                    // les trois ne tiennent pas sur une
+                                    // rangée à l'échelle 1,6.
+                                    ui.horizontal_wrapped(|ui| {
+                                        for (value, label) in [
+                                            ("docs", tr("docs_title")),
+                                            ("carnet", tr("trans_title")),
+                                            ("notes", tr("side_pane_notes")),
+                                        ] {
+                                            if motif::toggle(
                                                 ui,
-                                                chars_wide(ui, 7.0),
-                                                egui::TextEdit::singleline(&mut max),
+                                                label,
+                                                editor.cfg.ui.side_pane == value,
                                             )
-                                            .changed()
+                                            .clicked()
                                             {
-                                                f.max_periods = max.trim().parse().unwrap_or(0);
+                                                editor.cfg.ui.side_pane = value.to_owned();
                                             }
-                                            if motif::button(ui, tr("itv_delete"))
-                                                .on_hover_text(tr("loc_opt_remove"))
+                                        }
+                                    });
+                                    ui.end_row();
+                                    // La colonne des libellés, vide sur
+                                    // cette rangée : la note qui suit
+                                    // porte sur la rangée entière.
+                                    ui.label("");
+                                    ui.label(
+                                        egui::RichText::new(tr("opts_restart"))
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::text_dim()),
+                                    );
+                                    ui.end_row();
+                                    Self::form_label(ui, tr("opts_density"));
+                                    ui.horizontal(|ui| {
+                                        for (value, label) in [
+                                            ("confortable", tr("opts_density_comfort")),
+                                            ("compact", tr("opts_density_compact")),
+                                        ] {
+                                            if ui
+                                                .selectable_label(
+                                                    editor
+                                                        .cfg
+                                                        .ui
+                                                        .density
+                                                        .eq_ignore_ascii_case(value),
+                                                    label,
+                                                )
                                                 .clicked()
                                             {
-                                                drop = Some(i);
+                                                editor.cfg.ui.density = value.to_owned();
                                             }
-                                            ui.end_row();
                                         }
-                                        editor.loc_fee_text = fee_text;
                                     });
-                                if let Some(i) = drop {
-                                    editor.cfg.locations.forfaits.remove(i);
-                                    // Le texte suit la ligne : sans cela
-                                    // le montant de la ligne supprimée
-                                    // resterait devant celle d'après.
-                                    if i < editor.loc_fee_text.len() {
-                                        editor.loc_fee_text.remove(i);
+                                    ui.end_row();
+                                    // **Comment une monographie se
+                                    // lit** : une feuille, une
+                                    // colonne dense, ou une mesure
+                                    // de lecture. Aucune des trois
+                                    // ne touche à la taille des
+                                    // lettres — c'est la glissière
+                                    // au-dessus qui en décide, et
+                                    // un second réglage qui la
+                                    // contredirait sur un écran
+                                    // seulement serait un piège.
+                                    Self::form_label(ui, tr("opts_mono"));
+                                    let looks: Vec<(MonoStyle, String, String)> = MonoStyle::ALL
+                                        .iter()
+                                        .map(|(style, label, hint)| {
+                                            (*style, tr(label).to_owned(), tr(hint).to_owned())
+                                        })
+                                        .collect();
+                                    let mut chosen = MonoStyle::from_key(&editor.cfg.ui.monograph);
+                                    if motif::select_hinted(
+                                        ui,
+                                        "opts_mono",
+                                        chars_wide(ui, 22.0),
+                                        &mut chosen,
+                                        &looks,
+                                    )
+                                    .changed()
+                                    {
+                                        editor.cfg.ui.monograph = chosen.key().to_owned();
                                     }
-                                }
-                                ui.horizontal(|ui| {
-                                    if motif::button(ui, tr("loc_opt_add")).clicked() {
-                                        editor
-                                            .cfg
-                                            .locations
-                                            .forfaits
-                                            .push(crate::config::LocationForfait::default());
-                                    }
-                                    // For a base that predates the
-                                    // shipped catalogue, or one someone
-                                    // has pruned: it adds the lines that
-                                    // are missing and touches none of
-                                    // the ones already written.
-                                    if motif::button(ui, tr("loc_opt_complete"))
-                                        .on_hover_text(tr("loc_opt_complete_tooltip"))
+                                    ui.end_row();
+                                });
+                            // The palette. The shape never moves —
+                            // square corners, two-pixel bevels — so
+                            // what is chosen here is a skin and not
+                            // a different application. Each one says
+                            // on hover where it comes from.
+                            //
+                            // **Outside the grid**, and that is not
+                            // a matter of taste: eight buttons wrap
+                            // to two rows, and a wrapped row inside
+                            // a `Grid` cell reports the height of
+                            // its first line — the second was drawn
+                            // straight over the « Aperçu » under it,
+                            // which no test would have said and one
+                            // screenshot did. In the dialog's own
+                            // vertical flow the band grows as it
+                            // should.
+                            motif::separator(ui);
+                            ui.label(dim(tr("opts_theme")));
+                            ui.horizontal_wrapped(|ui| {
+                                for t in motif::THEMES.iter() {
+                                    let on = editor.cfg.ui.theme.eq_ignore_ascii_case(t.key);
+                                    if Self::theme_button(ui, t, on)
+                                        .on_hover_text(t.note)
                                         .clicked()
                                     {
-                                        let n = editor.cfg.locations.complete_forfaits();
-                                        editor.message = Some((
-                                            false,
-                                            if n == 0 {
-                                                tr("loc_opt_complete_none").to_owned()
-                                            } else {
-                                                trf("loc_opt_complete_done", n)
-                                            },
-                                        ));
+                                        editor.cfg.ui.theme = t.key.to_owned();
                                     }
-                                });
-                            }
-                            if page == OptionsPage::About {
-                                // What this copy is, what its base
-                                // holds, and — only when asked — what
-                                // GitHub says the newest release is.
-                                motif::section(ui, tr("opts_about"));
-                                egui::Grid::new("opts_about")
-                                    .num_columns(2)
-                                    .spacing([12.0, 5.0])
-                                    .show(ui, |ui| {
-                                        // Une liste qu'on lit, pas un formulaire :
-                                        // `form_label` prend la hauteur d'une
-                                        // rangée de champs, et les deux premières
-                                        // lignes s'écartaient des autres.
-                                        ui.label(dim(tr("about_version")));
-                                        ui.label(
-                                            egui::RichText::new(crate::release::current()).strong(),
+                                }
+                            });
+                            // Seen before it is saved: the eight
+                            // colours of the chosen palette, side by
+                            // side, so the choice is made by looking
+                            // rather than by restarting.
+                            ui.horizontal(|ui| {
+                                ui.label(dim(tr("opts_theme_preview")));
+                                Self::theme_swatches(ui, &editor.cfg.ui.theme);
+                            });
+                            motif::checkbox(
+                                ui,
+                                &mut editor.cfg.ui.discreet_finances,
+                                tr("opts_discreet"),
+                            );
+                            motif::checkbox(
+                                ui,
+                                &mut editor.cfg.ui.caisse_expected,
+                                tr("opts_caisse_expected"),
+                            )
+                            .on_hover_text(tr("opts_caisse_expected_tooltip"));
+                        }
+                        if page == OptionsPage::Database {
+                            motif::section(ui, tr("opts_db"));
+                            egui::Grid::new("opts_db")
+                                .num_columns(2)
+                                .spacing([12.0, 6.0])
+                                .show(ui, |ui| {
+                                    Self::form_label(ui, tr("opts_autolock"));
+                                    motif::number(
+                                        ui,
+                                        egui::DragValue::new(
+                                            &mut editor.cfg.database.auto_lock_timeout_minutes,
+                                        )
+                                        .range(0..=240),
+                                    );
+                                    ui.end_row();
+                                    Self::form_label(ui, tr("opts_backups"));
+                                    motif::number(
+                                        ui,
+                                        egui::DragValue::new(&mut editor.cfg.database.backups_keep)
+                                            .range(0..=60),
+                                    );
+                                    ui.end_row();
+                                    Self::form_label(ui, tr("opts_db_path"));
+                                    ui.horizontal(|ui| {
+                                        motif::field(
+                                            ui,
+                                            chars_wide(ui, 32.0),
+                                            egui::TextEdit::singleline(&mut editor.db_path_text),
                                         );
-                                        ui.end_row();
-                                        ui.label(dim(tr("about_target")));
-                                        ui.label(crate::release::target());
-                                        ui.end_row();
-                                        // Only when this copy was put
-                                        // here by the launcher: a build
-                                        // run by hand has no such file,
-                                        // and an empty row would read as
-                                        // a fault.
-                                        if let Some(v) = crate::release::launcher_version() {
-                                            ui.label(dim(tr("about_launcher")));
-                                            ui.label(v);
-                                            ui.end_row();
-                                        }
-                                        if let Some(v) = &about_layout_version {
-                                            ui.label(dim(tr("about_layout_version")));
-                                            ui.label(v.as_str());
-                                            ui.end_row();
-                                        }
-                                        ui.label(dim(tr("about_db")));
-                                        ui.label(
-                                            egui::RichText::new(about_db.display().to_string())
-                                                .size(motif::pt(ui, 11.5)),
-                                        );
-                                        ui.end_row();
-                                        if let Some(bytes) = about_db_size {
-                                            ui.label(dim(tr("about_db_size")));
-                                            ui.label(trf(
-                                                "about_megabytes",
-                                                crate::strings::decimal(bytes as f64 / 1e6, 1),
-                                            ));
-                                            ui.end_row();
-                                        }
-                                        for (label, n) in about_counts.iter().flatten() {
-                                            ui.label(dim(label));
-                                            ui.label(n.to_string());
-                                            ui.end_row();
+                                        if motif::button(ui, tr("opts_db_browse")).clicked() {
+                                            if let Some(p) = rfd::FileDialog::new()
+                                                .add_filter("SQLite", &["db", "sqlite"])
+                                                .add_filter("*", &["*"])
+                                                .pick_file()
+                                            {
+                                                editor.db_path_text = p.display().to_string();
+                                            }
                                         }
                                     });
-                                if about_adopted {
-                                    ui.add_space(4.0);
+                                    ui.end_row();
+                                    // What the backup folder actually
+                                    // holds. The daily copy writes its
+                                    // failures to stderr and nowhere
+                                    // else, so a share that did not
+                                    // mount or a folder made read-only
+                                    // is silent: this line is what
+                                    // makes it audible.
+                                    Self::form_label(ui, tr("opts_backup_state"));
+                                    let path = editor.cfg.db_path();
+                                    let fresh =
+                                        editor.backup_seen.as_ref().is_some_and(|(p, at, _)| {
+                                            *p == path && at.elapsed() < Duration::from_secs(30)
+                                        });
+                                    if !fresh {
+                                        let read = crate::db::backup_state(&path);
+                                        editor.backup_seen = Some((path, Instant::now(), read));
+                                    }
+                                    let state = editor
+                                        .backup_seen
+                                        .as_ref()
+                                        .map(|(_, _, s)| s.clone())
+                                        .unwrap_or_default();
+                                    let text = match (&state.newest, &state.oldest) {
+                                        (Some(newest), Some(oldest)) => trn(
+                                            "opts_backup_have",
+                                            &[
+                                                &state.count,
+                                                &db::format_french_date(oldest),
+                                                &db::format_french_date(newest),
+                                                &(state.bytes / 1_048_576),
+                                            ],
+                                        ),
+                                        _ if editor.cfg.database.backups_keep == 0 => {
+                                            tr("opts_backup_off").to_owned()
+                                        }
+                                        _ => tr("opts_backup_none").to_owned(),
+                                    };
+                                    // Stated and not judged: this page
+                                    // does not know what day it is —
+                                    // the session does, and it is not
+                                    // in scope here. The sentence says
+                                    // what to compare the date with,
+                                    // which is what an operator needs
+                                    // to see it.
+                                    // **Bornée, et non « ce qui reste ».**
+                                    // Dans un `Grid`, un libellé qui
+                                    // s'enroule sur `available_width`
+                                    // s'enroule sur tout ce qui reste à
+                                    // droite : la colonne mémorise cette
+                                    // largeur, la fenêtre grandit pour la
+                                    // contenir, et à 1024x700 la fenêtre
+                                    // des options sortait de l'écran des
+                                    // deux côtés. Une phrase de note se
+                                    // lit sur une mesure, pas sur un
+                                    // écran.
+                                    ui.scope(|ui| {
+                                        ui.set_max_width(
+                                            (ui.ctx().screen_rect().width() * 0.40)
+                                                .clamp(220.0, 460.0),
+                                        );
+                                        ui.add(
+                                            egui::Label::new(
+                                                egui::RichText::new(text)
+                                                    .size(motif::pt(ui, 11.0))
+                                                    .color(motif::text_dim()),
+                                            )
+                                            .wrap(),
+                                        );
+                                    });
+                                    ui.end_row();
+                                });
+                            // Ce que les pièces numérisées ajoutent à
+                            // la base. Elles y vivent — une
+                            // ordonnance posée en clair à côté d'une
+                            // base chiffrée annulerait le
+                            // chiffrement — donc elles voyagent dans
+                            // chaque sauvegarde quotidienne et dans
+                            // chaque copie sur le partage. Une
+                            // officine qui ne le voit pas s'en
+                            // aperçoit le jour où la copie du soir
+                            // ne tient plus.
+                            // La commande du scanner et le plafond
+                            // des pièces, ici plutôt que dans le
+                            // seul config.toml : une officine qui a
+                            // un scanner ne devrait pas avoir à
+                            // ouvrir un fichier texte pour s'en
+                            // servir, et la séquence APDU de la
+                            // carte Vitale a sa page pour la même
+                            // raison.
+                            motif::section(ui, tr("opts_scans"));
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(tr("opts_scans_hint"))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                )
+                                .wrap(),
+                            );
+                            ui.horizontal(|ui| {
+                                ui.label(dim(tr("opts_scan_max")));
+                                motif::number(
+                                    ui,
+                                    egui::DragValue::new(&mut editor.cfg.scans.max_mb)
+                                        .range(0..=200)
+                                        .suffix(" Mo"),
+                                );
+                            });
+                            motif::field(
+                                ui,
+                                ui.available_width(),
+                                egui::TextEdit::singleline(&mut editor.cfg.scans.command)
+                                    .desired_width(f32::INFINITY)
+                                    .hint_text(motif::hint(tr("opts_scan_command_hint"))),
+                            );
+                            if let Some((count, bytes, legacy)) = scan_weight {
+                                if count > 0 {
                                     ui.add(
                                         egui::Label::new(
-                                            egui::RichText::new(tr("about_db_found"))
+                                            egui::RichText::new(trn(
+                                                "opts_scan_weight",
+                                                &[
+                                                    &count,
+                                                    &crate::scans::human_size(bytes.max(0) as u64),
+                                                    &db::scans_path(&about_db)
+                                                        .file_name()
+                                                        .map(|n| n.to_string_lossy().into_owned())
+                                                        .unwrap_or_default(),
+                                                ],
+                                            ))
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::text_dim()),
+                                        )
+                                        .wrap(),
+                                    );
+                                }
+                                // Ce qui vient de la version d'avant et pèse
+                                // encore sur la base : le dire, et dire quel
+                                // bouton le règle.
+                                if legacy > 0 {
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(trf("opts_scan_legacy", legacy))
                                                 .size(motif::pt(ui, 11.0))
                                                 .color(motif::alert()),
                                         )
                                         .wrap(),
                                     );
                                 }
-                                ui.add_space(10.0);
-                                motif::section(ui, tr("about_updates"));
-                                ui.horizontal_wrapped(|ui| {
-                                    let check = motif::button(ui, tr("about_check"));
-                                    if check.on_hover_text(tr("about_check_tooltip")).clicked()
-                                        && !about_checking
-                                    {
-                                        check_update = true;
-                                    }
-                                    if motif::button(ui, tr("about_notes"))
-                                        .on_hover_text(tr("about_notes_tooltip"))
-                                        .clicked()
-                                    {
-                                        open_releases = true;
-                                    }
-                                    if motif::button(ui, tr("whatsnew_open"))
-                                        .on_hover_text(tr("whatsnew_open_tooltip"))
-                                        .clicked()
-                                    {
-                                        open_whatsnew = true;
-                                    }
-                                    if motif::button_enabled(ui, tr("about_sync"), !maint_busy)
-                                        .on_hover_text(tr("about_sync_tooltip"))
-                                        .clicked()
-                                    {
-                                        sync_content = true;
-                                    }
-                                });
-                                if let Some(step) = &maint_running {
-                                    ui.label(
-                                        egui::RichText::new(step.as_str())
-                                            .size(motif::pt(ui, 11.0))
-                                            .color(motif::accent()),
-                                    );
-                                }
-                                if about_checking {
-                                    ui.label(
-                                        egui::RichText::new(tr("about_checking"))
-                                            .size(motif::pt(ui, 11.0))
-                                            .color(motif::text_dim()),
-                                    );
-                                }
-                                if let Some((is_error, msg)) = &about_note {
+                            }
+                            // Le registre, et sur quelle étendue de
+                            // jours il court : c'est la pièce qu'on
+                            // garde dix ans, et la seule que
+                            // l'application ne saurait pas
+                            // reconstituer.
+                            if let Some((products, lines, first, last)) = stup_weight {
+                                if lines > 0 {
                                     ui.add(
                                         egui::Label::new(
-                                            egui::RichText::new(msg.as_str())
-                                                .size(motif::pt(ui, 11.5))
-                                                .color(if *is_error {
-                                                    motif::alert()
-                                                } else {
-                                                    motif::accent()
-                                                }),
+                                            egui::RichText::new(trn(
+                                                "opts_stup_weight",
+                                                &[
+                                                    &lines,
+                                                    &products,
+                                                    &db::format_french_date(&first),
+                                                    &db::format_french_date(&last),
+                                                    &db::stups_path(&about_db)
+                                                        .file_name()
+                                                        .map(|n| n.to_string_lossy().into_owned())
+                                                        .unwrap_or_default(),
+                                                ],
+                                            ))
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::text_dim()),
                                         )
                                         .wrap(),
                                     );
                                 }
-                                ui.add_space(4.0);
-                                ui.add(
-                                    egui::Label::new(
-                                        egui::RichText::new(tr("about_offline"))
-                                            .size(motif::pt(ui, 11.0))
-                                            .color(motif::text_dim()),
-                                    )
-                                    .wrap(),
-                                );
-
-                                // Les compteurs d'usage.
-                                ui.add_space(10.0);
-                                motif::section(ui, tr("telem_title"));
-                                // **La réserve avant le contenu**, comme
-                                // les panneaux cliniques : ce qui est
-                                // écrit après les chiffres est ce que
-                                // personne ne lit, et ici c'est la seule
-                                // phrase qui dise où ces chiffres vont —
-                                // c'est-à-dire nulle part.
-                                ui.add(
-                                    egui::Label::new(
-                                        egui::RichText::new(tr("telem_scope"))
-                                            .size(motif::pt(ui, 11.0))
-                                            .color(motif::text_dim()),
-                                    )
-                                    .wrap(),
-                                );
-                                ui.add_space(2.0);
-                                motif::checkbox(
+                            }
+                            // File-level tools: consistent encrypted copy
+                            // (VACUUM INTO) to any destination; "move"
+                            // additionally points this post at the copy
+                            // and reopens on it (old file kept). Not
+                            // during a maintenance pass: the three files
+                            // would be taken halfway through it.
+                            ui.horizontal(|ui| {
+                                if motif::button_enabled(
                                     ui,
-                                    &mut editor.cfg.telemetry.enabled,
-                                    tr("telem_enabled"),
+                                    tr("opts_db_copy"),
+                                    !maint_busy && !bundle_busy,
                                 )
-                                .on_hover_text(tr("telem_enabled_tooltip"));
-                                // **Les chiffres se lisent dans `bpm-audit`**, la
-                                // fenêtre d'audit de l'officine : ici ne reste
-                                // que ce qui appartient au poste — compter ou
-                                // non, et effacer ce qui a été compté.
-                                if !editor.cfg.telemetry.enabled {
-                                    ui.add(
-                                        egui::Label::new(
-                                            egui::RichText::new(tr("telem_off"))
-                                                .size(motif::pt(ui, 11.0))
-                                                .color(motif::accent()),
-                                        )
-                                        .wrap(),
-                                    );
-                                }
-                                // Effacer est un geste à part, et demandé deux
-                                // fois : décocher arrête de compter, effacer
-                                // efface, et confondre les deux ferait
-                                // disparaître des chiffres que personne n'a
-                                // demandé à perdre.
-                                if motif::button(
-                                    ui,
-                                    if editor.confirm_telemetry_clear {
-                                        tr("telem_clear_confirm")
-                                    } else {
-                                        tr("telem_clear")
-                                    },
-                                )
-                                .on_hover_text(tr("telem_clear_tooltip"))
                                 .clicked()
                                 {
-                                    if editor.confirm_telemetry_clear {
-                                        clear_telemetry = true;
-                                        editor.confirm_telemetry_clear = false;
-                                    } else {
-                                        editor.confirm_telemetry_clear = true;
+                                    if let Some(p) = rfd::FileDialog::new()
+                                        .set_file_name("bpm_caddy.db")
+                                        .save_file()
+                                    {
+                                        db_export = Some((p, false));
                                     }
                                 }
-
-                                // Le journal des accès. L'exact
-                                // contraire du volet au-dessus : il
-                                // nomme la personne, et jamais le
-                                // logiciel.
-                                ui.add_space(10.0);
-                                motif::section(ui, tr("audit_title"));
-                                // La réserve avant le contenu, encore :
-                                // ce qui dit ce qu'une ligne porte — un
-                                // numéro, jamais un nom — et combien de
-                                // temps elle est gardée.
+                                if motif::button_enabled(
+                                    ui,
+                                    tr("opts_db_move"),
+                                    !maint_busy && !bundle_busy,
+                                )
+                                .clicked()
+                                {
+                                    if let Some(p) = rfd::FileDialog::new()
+                                        .set_file_name("bpm_caddy.db")
+                                        .save_file()
+                                    {
+                                        db_export = Some((p, true));
+                                    }
+                                }
+                            });
+                            // **L'annuaire des prescripteurs.**
+                            // Rien n'est livré : ce fichier
+                            // appartient à l'officine, comme les
+                            // codes-barres qu'elle apprend une
+                            // boîte à la main.
+                            if let Some(n) = presc_count {
                                 ui.add(
                                     egui::Label::new(
-                                        egui::RichText::new(if editor.cfg.audit.keep_days == 0 {
-                                            tr("audit_scope_kept").to_owned()
+                                        egui::RichText::new(if n == 0 {
+                                            tr("opts_presc_none").to_owned()
                                         } else {
-                                            trf("audit_scope", editor.cfg.audit.keep_days)
+                                            trf("opts_presc_count", n)
                                         })
                                         .size(motif::pt(ui, 11.0))
                                         .color(motif::text_dim()),
                                     )
                                     .wrap(),
                                 );
-                                // La durée, **pour l'officine** : la changer
-                                // ici l'écrit dans la base, et tous les
-                                // postes purgent à la même.
-                                ui.horizontal(|ui| {
-                                    ui.label(dim(tr("audit_keep_label")));
-                                    motif::number(
-                                        ui,
-                                        egui::DragValue::new(&mut editor.cfg.audit.keep_days)
-                                            .range(0..=3650)
-                                            .suffix(tr("audit_keep_suffix")),
-                                    );
-                                });
-                                ui.add_space(2.0);
-                                ui.add(
-                                    egui::Label::new(
-                                        egui::RichText::new(tr("audit_elsewhere"))
-                                            .size(motif::pt(ui, 11.0))
-                                            .color(motif::text_dim()),
-                                    )
-                                    .wrap(),
-                                );
                             }
-                            if page == OptionsPage::Database {
-                                // Le réseau d'officines, ce qui en est
-                                // propre au poste : où est le dossier
-                                // d'échange sur cette machine, le port
-                                // d'une invitation, et la fermeture.
-                                ui.add_space(10.0);
-                                motif::section(ui, tr("opts_reseau"));
-                                ui.add(
-                                    egui::Label::new(
-                                        egui::RichText::new(tr("opts_reseau_hint"))
-                                            .size(motif::pt(ui, 11.0))
-                                            .color(motif::text_dim()),
-                                    )
-                                    .wrap(),
-                                );
-                                ui.horizontal_wrapped(|ui| {
-                                    ui.label(dim(tr("opts_reseau_folder")));
-                                    motif::field(
-                                        ui,
-                                        chars_wide(ui, 34.0),
-                                        egui::TextEdit::singleline(&mut editor.cfg.reseau.dossier)
-                                            .hint_text(motif::hint(tr("opts_reseau_folder_hint"))),
-                                    );
-                                });
-                                ui.horizontal_wrapped(|ui| {
-                                    ui.label(dim(tr("opts_reseau_port")));
-                                    motif::number(
-                                        ui,
-                                        egui::DragValue::new(&mut editor.cfg.reseau.port)
-                                            .range(1024..=65535),
-                                    );
-                                });
-                                motif::checkbox(
-                                    ui,
-                                    &mut editor.cfg.reseau.a_la_fermeture,
-                                    tr("opts_reseau_close"),
-                                );
-                                ui.horizontal_wrapped(|ui| {
-                                    motif::checkbox(
-                                        ui,
-                                        &mut editor.cfg.reseau.automatique,
-                                        tr("opts_reseau_auto"),
-                                    );
-                                    motif::number(
-                                        ui,
-                                        egui::DragValue::new(
-                                            &mut editor.cfg.reseau.intervalle_minutes,
-                                        )
-                                        .range(1..=1440),
-                                    );
-                                    ui.label(dim(tr("opts_reseau_minutes")));
-                                });
-                                motif::checkbox(
-                                    ui,
-                                    &mut editor.cfg.reseau.annoncer,
-                                    tr("opts_reseau_announce"),
-                                )
-                                .on_hover_text(tr("opts_reseau_announce_tooltip"));
-                                ui.horizontal_wrapped(|ui| {
-                                    motif::checkbox(
-                                        ui,
-                                        &mut editor.cfg.reseau.ecouter,
-                                        tr("opts_reseau_listen"),
-                                    )
-                                    .on_hover_text(tr("opts_reseau_listen_tooltip"));
-                                    ui.label(dim(tr("opts_reseau_listen_port")));
-                                    motif::number(
-                                        ui,
-                                        egui::DragValue::new(&mut editor.cfg.reseau.port_ecoute)
-                                            .range(1024..=65535),
-                                    );
-                                });
-                                ui.add_enabled_ui(editor.cfg.reseau.ecouter, |ui| {
-                                    motif::checkbox(
-                                        ui,
-                                        &mut editor.cfg.reseau.porte_web,
-                                        tr("opts_reseau_web_door"),
-                                    )
-                                    .on_hover_text(tr("opts_reseau_web_door_tooltip"));
-                                });
-                                let r = &editor.cfg.reseau;
-                                if r.port_ecoute == r.port
-                                    || r.port_ecoute == editor.cfg.postes.port
+                            ui.horizontal_wrapped(|ui| {
+                                if motif::button(ui, tr("opts_presc_import"))
+                                    .on_hover_text(tr("opts_presc_import_tooltip"))
+                                    .clicked()
                                 {
-                                    ui.label(
-                                        egui::RichText::new(tr("opts_reseau_listen_clash"))
-                                            .size(motif::pt(ui, 10.5))
-                                            .color(motif::alert()),
-                                    );
-                                }
-                                ui.horizontal_wrapped(|ui| {
-                                    motif::checkbox(
-                                        ui,
-                                        &mut editor.cfg.reseau.relais,
-                                        tr("opts_reseau_relay"),
-                                    )
-                                    .on_hover_text(tr("opts_reseau_relay_tooltip"));
-                                    ui.label(dim(tr("opts_reseau_listen_port")));
-                                    motif::number(
-                                        ui,
-                                        egui::DragValue::new(&mut editor.cfg.reseau.port_relais)
-                                            .range(1024..=65535),
-                                    );
-                                });
-                                ui.add_enabled_ui(editor.cfg.reseau.relais, |ui| {
-                                    motif::checkbox(
-                                        ui,
-                                        &mut editor.cfg.reseau.relais_patients,
-                                        tr("opts_reseau_relay_patients"),
-                                    )
-                                    .on_hover_text(tr("opts_reseau_relay_patients_tooltip"));
-                                });
-                                ui.horizontal_wrapped(|ui| {
-                                    motif::checkbox(
-                                        ui,
-                                        &mut editor.cfg.reseau.repertoire,
-                                        tr("opts_reseau_repertoire"),
-                                    )
-                                    .on_hover_text(tr("opts_reseau_repertoire_tooltip"));
-                                    ui.label(dim(tr("opts_reseau_listen_port")));
-                                    motif::number(
-                                        ui,
-                                        egui::DragValue::new(
-                                            &mut editor.cfg.reseau.port_repertoire,
-                                        )
-                                        .range(1024..=65535),
-                                    );
-                                });
-                                let r = &editor.cfg.reseau;
-                                if r.repertoire
-                                    && [
-                                        r.port,
-                                        r.port_ecoute,
-                                        r.port_relais,
-                                        editor.cfg.postes.port,
-                                    ]
-                                    .contains(&r.port_repertoire)
-                                {
-                                    ui.label(
-                                        egui::RichText::new(tr("opts_reseau_repertoire_clash"))
-                                            .size(motif::pt(ui, 10.5))
-                                            .color(motif::alert()),
-                                    );
-                                }
-                                // Les postes de l'officine, ce qui en est
-                                // propre à ce poste-ci. La clé et la liste
-                                // des postes sont dans la base.
-                                // **Le poste en service** : propre à ce
-                                // poste-ci, comme ce qui suit.
-                                ui.add_space(10.0);
-                                motif::section(ui, tr("opts_bureau"));
-                                ui.add(
-                                    egui::Label::new(
-                                        egui::RichText::new(tr("opts_bureau_hint"))
-                                            .size(motif::pt(ui, 11.0))
-                                            .color(motif::text_dim()),
-                                    )
-                                    .wrap(),
-                                );
-                                motif::checkbox(
-                                    ui,
-                                    &mut editor.cfg.bureau.en_service,
-                                    tr("opts_bureau_service"),
-                                )
-                                .on_hover_text(tr("opts_bureau_service_tooltip"));
-                                motif::checkbox(
-                                    ui,
-                                    &mut editor.cfg.bureau.au_demarrage,
-                                    tr("opts_bureau_autostart"),
-                                )
-                                .on_hover_text(tr("opts_bureau_autostart_tooltip"));
-                                #[cfg(feature = "sync")]
-                                {
-                                    ui.add_space(10.0);
-                                    motif::section(ui, tr("opts_postes"));
-                                    ui.add(
-                                        egui::Label::new(
-                                            egui::RichText::new(tr("opts_postes_hint"))
-                                                .size(motif::pt(ui, 11.0))
-                                                .color(motif::text_dim()),
-                                        )
-                                        .wrap(),
-                                    );
-                                    if motif::button(ui, tr("posts_open"))
-                                        .on_hover_text(tr("posts_open_tooltip"))
-                                        .clicked()
-                                    {
-                                        open_posts = true;
+                                    if let Some(p) = rfd::FileDialog::new().pick_file() {
+                                        presc_file = Some(p);
                                     }
-                                    motif::checkbox(
-                                        ui,
-                                        &mut editor.cfg.postes.automatique,
-                                        tr("opts_postes_auto"),
-                                    );
-                                    motif::checkbox(
-                                        ui,
-                                        &mut editor.cfg.postes.internet,
-                                        tr("opts_postes_internet"),
-                                    )
-                                    .on_hover_text(tr("opts_postes_internet_tooltip"));
-                                    motif::checkbox(
-                                        ui,
-                                        &mut editor.cfg.postes.relais,
-                                        tr("opts_postes_relay"),
-                                    )
-                                    .on_hover_text(tr("opts_postes_relay_tooltip"));
-                                    ui.add_enabled_ui(editor.cfg.postes.relais, |ui| {
-                                        motif::checkbox(
-                                            ui,
-                                            &mut editor.cfg.postes.relais_patients,
-                                            tr("opts_postes_relay_patients"),
-                                        )
-                                        .on_hover_text(tr("opts_postes_relay_patients_tooltip"));
-                                    });
-                                    ui.horizontal_wrapped(|ui| {
-                                        ui.label(dim(tr("opts_reseau_port")));
-                                        motif::number(
-                                            ui,
-                                            egui::DragValue::new(&mut editor.cfg.postes.port)
-                                                .range(1024..=65535),
-                                        );
-                                    });
-                                    ui.horizontal_wrapped(|ui| {
-                                        ui.label(dim(tr("opts_reseau_folder")));
-                                        motif::field(
-                                            ui,
-                                            chars_wide(ui, 34.0),
-                                            egui::TextEdit::singleline(
-                                                &mut editor.cfg.postes.dossier,
-                                            )
-                                            .hint_text(motif::hint(tr("opts_reseau_folder_hint"))),
-                                        );
-                                    });
-                                    ui.horizontal_wrapped(|ui| {
-                                        ui.label(dim(tr("opts_postes_addresses")));
-                                        let mut typed = editor.cfg.postes.adresses.join(", ");
-                                        if motif::field(
-                                            ui,
-                                            chars_wide(ui, 34.0),
-                                            egui::TextEdit::singleline(&mut typed).hint_text(
-                                                motif::hint(tr("opts_postes_addresses_hint")),
-                                            ),
-                                        )
-                                        .changed()
-                                        {
-                                            editor.cfg.postes.adresses = typed
-                                                .split([',', ';', ' '])
-                                                .map(str::trim)
-                                                .filter(|a| !a.is_empty())
-                                                .map(str::to_owned)
-                                                .collect();
-                                        }
-                                    });
-                                    motif::checkbox(
-                                        ui,
-                                        &mut editor.cfg.postes.a_la_fermeture,
-                                        tr("opts_reseau_close"),
-                                    );
                                 }
-                                // The card reader lives on the Base page:
-                                // it is about this post's hardware, like
-                                // the database path beside it.
-                                ui.add_space(10.0);
-                                motif::section(ui, tr("opts_vitale"));
-                                ui.add(
-                                    egui::Label::new(
-                                        egui::RichText::new(tr("opts_vitale_hint"))
-                                            .size(motif::pt(ui, 11.0))
-                                            .color(motif::text_dim()),
-                                    )
-                                    .wrap(),
-                                );
-                                ui.add_space(4.0);
-                                motif::checkbox(
-                                    ui,
-                                    &mut editor.cfg.vitale.enabled,
-                                    tr("opts_vitale_enabled"),
-                                );
-                                ui.horizontal(|ui| {
-                                    ui.label(dim(tr("opts_vitale_reader")));
-                                    motif::field(
+                                // **Le bouton n'existe pas tant
+                                // qu'aucune adresse n'est écrite.**
+                                // Un bouton grisé invite à chercher
+                                // pourquoi ; un bouton absent ne
+                                // promet rien — et l'application
+                                // n'ouvre alors aucune connexion
+                                // pour cela, jamais.
+                                let url = editor.cfg.prescribers.source_url.trim().to_owned();
+                                if !url.is_empty()
+                                    && motif::button_enabled(
                                         ui,
-                                        chars_wide(ui, 30.0),
-                                        egui::TextEdit::singleline(&mut editor.cfg.vitale.reader),
-                                    );
-                                });
-                                ui.label(dim(tr("opts_vitale_apdu")));
-                                // One command per line, edited as text:
-                                // a list of hex strings is a list, and a
-                                // grid of one-line fields for it is a
-                                // form nobody can paste into.
-                                let mut script = editor.cfg.vitale.apdu.join("\n");
-                                if motif::area(
-                                    ui,
-                                    egui::vec2(ui.available_width(), Self::row_height(ui) * 3.0),
-                                    egui::TextEdit::multiline(&mut script)
-                                        .desired_rows(3)
-                                        .hint_text(motif::hint(tr("opts_vitale_apdu_hint"))),
-                                )
-                                .changed()
+                                        tr("opts_presc_fetch"),
+                                        !presc_busy,
+                                    )
+                                    .on_hover_text(tr("opts_presc_fetch_tooltip"))
+                                    .clicked()
                                 {
-                                    editor.cfg.vitale.apdu = script
-                                        .lines()
-                                        .map(str::trim)
-                                        .filter(|l| !l.is_empty())
-                                        .map(str::to_owned)
-                                        .collect();
+                                    presc_url = Some(url);
                                 }
-                                // Say straight away whether the script
-                                // can be sent at all: a typo found when
-                                // the card is in the reader is a typo
-                                // found with a patient waiting.
-                                if let Err(e) = editor.cfg.vitale.script() {
-                                    ui.colored_label(motif::alert(), e);
-                                }
-                            }
-                            if page == OptionsPage::Mentions {
-                                // Nothing here is filled in by the
-                                // application: an empty field prints no
-                                // line at all. What the officine wants
-                                // said, it writes.
-                                motif::section(ui, tr("opts_mentions"));
+                            });
+                            if presc_busy {
                                 ui.label(
-                                    egui::RichText::new(tr("opts_mentions_hint"))
+                                    egui::RichText::new(tr("opts_presc_fetching"))
                                         .size(motif::pt(ui, 11.0))
-                                        .color(motif::text_dim()),
+                                        .color(motif::accent()),
                                 );
-                                ui.add_space(6.0);
-                                let mut fields: Vec<(&str, &mut String)> = Vec::new();
-                                for (label, value) in [
-                                    (
-                                        tr("opts_mention_ord_header"),
-                                        &mut editor.cfg.disclaimers.ordonnance_header,
-                                    ),
-                                    (
-                                        tr("opts_mention_ord_footer"),
-                                        &mut editor.cfg.disclaimers.ordonnance_footer,
-                                    ),
-                                    (
-                                        tr("opts_mention_ord_screen"),
-                                        &mut editor.cfg.disclaimers.ordonnance_screen,
-                                    ),
-                                    (
-                                        tr("opts_mention_carnet"),
-                                        &mut editor.cfg.disclaimers.carnet,
-                                    ),
-                                    (
-                                        tr("opts_mention_vaccins"),
-                                        &mut editor.cfg.disclaimers.vaccins,
-                                    ),
-                                    (
-                                        tr("opts_mention_calc"),
-                                        &mut editor.cfg.disclaimers.calculator,
-                                    ),
-                                    (tr("opts_mention_plan"), &mut editor.cfg.disclaimers.plan),
-                                    (
-                                        tr("opts_mention_concil"),
-                                        &mut editor.cfg.disclaimers.conciliation,
-                                    ),
-                                    (
-                                        tr("opts_mention_cascades"),
-                                        &mut editor.cfg.disclaimers.cascades,
-                                    ),
-                                ] {
-                                    fields.push((label, value));
-                                }
-                                // **Deux colonnes quand la fenêtre les
-                                // porte** : une seule colonne de 520 pixels
-                                // laissait à 1400 les deux tiers de la
-                                // fenêtre vides et les huit mentions sur
-                                // deux écrans. Chaque case à la largeur de
-                                // sa colonne, en caractères.
-                                let gap = 16.0;
-                                let avail = Self::scrolled_width(ui, ui.available_width());
-                                let two = avail >= 2.0 * chars_wide(ui, 44.0) + gap;
-                                let col_w = if two {
-                                    ((avail - gap) / 2.0).min(chars_wide(ui, 70.0))
-                                } else {
-                                    avail.min(chars_wide(ui, 70.0))
-                                };
-                                let mut it = fields.into_iter();
-                                loop {
-                                    let left = it.next();
-                                    let right = if two { it.next() } else { None };
-                                    let Some(left) = left else { break };
-                                    ui.horizontal_top(|ui| {
-                                        for (label, value) in std::iter::once(left).chain(right) {
-                                            ui.vertical(|ui| {
-                                                ui.set_width(col_w);
-                                                ui.label(dim(label));
-                                                motif::area(
-                                                    ui,
-                                                    egui::vec2(col_w, Self::row_height(ui) * 2.0),
-                                                    egui::TextEdit::multiline(value).hint_text(
-                                                        motif::hint(tr("opts_mention_hint")),
-                                                    ),
-                                                );
-                                            });
-                                            ui.add_space(gap - ui.spacing().item_spacing.x);
-                                        }
-                                    });
-                                    ui.add_space(6.0);
-                                }
-                            }
-                            if page == OptionsPage::Ui {
-                                motif::section(ui, tr("opts_ui"));
-                                egui::Grid::new("opts_ui")
-                                    .num_columns(2)
-                                    .spacing([12.0, 6.0])
-                                    .show(ui, |ui| {
-                                        Self::form_label(ui, tr("docs_operator"));
-                                        motif::field(
-                                            ui,
-                                            chars_wide(ui, 10.0),
-                                            egui::TextEdit::singleline(&mut editor.cfg.ui.operator),
-                                        );
-                                        ui.end_row();
-                                    });
-                                motif::checkbox(
-                                    ui,
-                                    &mut editor.cfg.ui.show_docs_on_start,
-                                    tr("opts_show_docs"),
-                                );
-                                motif::checkbox(
-                                    ui,
-                                    &mut editor.cfg.ui.show_nav_on_start,
-                                    tr("opts_show_nav"),
-                                );
-                                motif::checkbox(ui, &mut editor.cfg.ui.icons, tr("opts_icons"));
-                                egui::Grid::new("opts_look")
-                                    .num_columns(2)
-                                    .spacing([12.0, 6.0])
-                                    .show(ui, |ui| {
-                                        Self::form_label(ui, tr("opts_text_scale"));
-                                        // La glissière de la maison, et
-                                        // non celle d'egui : celle-ci
-                                        // peignait son rail avec
-                                        // `widgets.inactive.bg_fill`,
-                                        // que `motif::apply` met au fond
-                                        // du panneau pour tous les états
-                                        // — donc pas de rail du tout, sur
-                                        // les dix palettes. Mesuré sur
-                                        // une capture : deux cent trente
-                                        // pixels de fond et deux pixels
-                                        // de bord de pouce. Rien ne
-                                        // disait où était 0,8, ni 1,6,
-                                        // ni où l'on se trouvait, sur le
-                                        // réglage même que va chercher
-                                        // en premier quelqu'un qui lit
-                                        // mal l'écran.
-                                        ui.horizontal(|ui| {
-                                            let scale = f64::from(editor.cfg.ui.text_scale);
-                                            let shown = format!(
-                                                "{} ×",
-                                                format!("{scale:.2}").replace('.', ",")
-                                            );
-                                            // La valeur d'abord, à
-                                            // largeur fixe : lue après
-                                            // la glissière elle serait
-                                            // la première chose que
-                                            // l'élision mange, et c'est
-                                            // la seule que cette rangée
-                                            // existe pour dire.
-                                            // Mesurée à la taille qui
-                                            // la dessine, et sur le
-                                            // gabarit le plus large —
-                                            // « 0,00 × » — pour que le
-                                            // pouce ne se déplace pas
-                                            // quand le chiffre change.
-                                            let value_w =
-                                                Self::widest(ui, 11.5, ["0,00 ×"].into_iter());
-                                            ui.allocate_ui_with_layout(
-                                                egui::vec2(value_w, Self::button_height(ui)),
-                                                egui::Layout::left_to_right(egui::Align::Center),
-                                                |ui| {
-                                                    ui.label(
-                                                        egui::RichText::new(shown)
-                                                            .size(motif::pt(ui, 11.5)),
-                                                    );
-                                                },
-                                            );
-                                            let room = (ui.available_width() - 8.0)
-                                                .min(chars_wide(ui, 24.0));
-                                            if room >= 60.0 {
-                                                let (resp, dragged) = motif::scale_range(
-                                                    ui, room, scale, 0.8, 1.6, 0.05,
-                                                );
-                                                if resp.dragged() || resp.clicked() {
-                                                    editor.cfg.ui.text_scale = dragged as f32;
-                                                }
-                                            }
-                                        });
-                                        ui.end_row();
-                                        Self::form_label(ui, tr("opts_font"));
-                                        ui.horizontal(|ui| {
-                                            let mut shown = editor
-                                                .cfg
-                                                .ui
-                                                .font_path
-                                                .as_ref()
-                                                .map(|p| p.display().to_string())
-                                                .unwrap_or_default();
-                                            if motif::field_sized(
-                                                ui,
-                                                egui::vec2(
-                                                    Self::field_width(
-                                                        ui,
-                                                        [tr("opts_font_default")].into_iter(),
-                                                    )
-                                                    .max(220.0),
-                                                    Self::button_height(ui),
-                                                ),
-                                                egui::TextEdit::singleline(&mut shown).hint_text(
-                                                    motif::hint(tr("opts_font_default")),
-                                                ),
-                                            )
-                                            .changed()
-                                            {
-                                                editor.cfg.ui.font_path = if shown.trim().is_empty()
-                                                {
-                                                    None
-                                                } else {
-                                                    Some(std::path::PathBuf::from(shown.trim()))
-                                                };
-                                            }
-                                            if motif::button(ui, tr("opts_db_browse")).clicked() {
-                                                if let Some(p) = rfd::FileDialog::new()
-                                                    .add_filter(
-                                                        "Police",
-                                                        &["ttf", "otf", "TTF", "OTF"],
-                                                    )
-                                                    .pick_file()
-                                                {
-                                                    editor.cfg.ui.font_path = Some(p);
-                                                }
-                                            }
-                                            if motif::button(ui, tr("tpl_reset")).clicked() {
-                                                editor.cfg.ui.font_path = None;
-                                            }
-                                        });
-                                        ui.end_row();
-                                        Self::form_label(ui, tr("opts_side_pane"));
-                                        // Des bascules en relief, comme les pages
-                                        // de cette fenêtre : une étiquette plate
-                                        // y était le seul choix qui ne se lisait
-                                        // pas comme un bouton. Et enveloppées :
-                                        // les trois ne tiennent pas sur une
-                                        // rangée à l'échelle 1,6.
-                                        ui.horizontal_wrapped(|ui| {
-                                            for (value, label) in [
-                                                ("docs", tr("docs_title")),
-                                                ("carnet", tr("trans_title")),
-                                                ("notes", tr("side_pane_notes")),
-                                            ] {
-                                                if motif::toggle(
-                                                    ui,
-                                                    label,
-                                                    editor.cfg.ui.side_pane == value,
-                                                )
-                                                .clicked()
-                                                {
-                                                    editor.cfg.ui.side_pane = value.to_owned();
-                                                }
-                                            }
-                                        });
-                                        ui.end_row();
-                                        // La colonne des libellés, vide sur
-                                        // cette rangée : la note qui suit
-                                        // porte sur la rangée entière.
-                                        ui.label("");
-                                        ui.label(
-                                            egui::RichText::new(tr("opts_restart"))
-                                                .size(motif::pt(ui, 11.0))
-                                                .color(motif::text_dim()),
-                                        );
-                                        ui.end_row();
-                                        Self::form_label(ui, tr("opts_density"));
-                                        ui.horizontal(|ui| {
-                                            for (value, label) in [
-                                                ("confortable", tr("opts_density_comfort")),
-                                                ("compact", tr("opts_density_compact")),
-                                            ] {
-                                                if ui
-                                                    .selectable_label(
-                                                        editor
-                                                            .cfg
-                                                            .ui
-                                                            .density
-                                                            .eq_ignore_ascii_case(value),
-                                                        label,
-                                                    )
-                                                    .clicked()
-                                                {
-                                                    editor.cfg.ui.density = value.to_owned();
-                                                }
-                                            }
-                                        });
-                                        ui.end_row();
-                                        // **Comment une monographie se
-                                        // lit** : une feuille, une
-                                        // colonne dense, ou une mesure
-                                        // de lecture. Aucune des trois
-                                        // ne touche à la taille des
-                                        // lettres — c'est la glissière
-                                        // au-dessus qui en décide, et
-                                        // un second réglage qui la
-                                        // contredirait sur un écran
-                                        // seulement serait un piège.
-                                        Self::form_label(ui, tr("opts_mono"));
-                                        let looks: Vec<(MonoStyle, String, String)> =
-                                            MonoStyle::ALL
-                                                .iter()
-                                                .map(|(style, label, hint)| {
-                                                    (
-                                                        *style,
-                                                        tr(label).to_owned(),
-                                                        tr(hint).to_owned(),
-                                                    )
-                                                })
-                                                .collect();
-                                        let mut chosen =
-                                            MonoStyle::from_key(&editor.cfg.ui.monograph);
-                                        if motif::select_hinted(
-                                            ui,
-                                            "opts_mono",
-                                            chars_wide(ui, 22.0),
-                                            &mut chosen,
-                                            &looks,
-                                        )
-                                        .changed()
-                                        {
-                                            editor.cfg.ui.monograph = chosen.key().to_owned();
-                                        }
-                                        ui.end_row();
-                                    });
-                                // The palette. The shape never moves —
-                                // square corners, two-pixel bevels — so
-                                // what is chosen here is a skin and not
-                                // a different application. Each one says
-                                // on hover where it comes from.
-                                //
-                                // **Outside the grid**, and that is not
-                                // a matter of taste: eight buttons wrap
-                                // to two rows, and a wrapped row inside
-                                // a `Grid` cell reports the height of
-                                // its first line — the second was drawn
-                                // straight over the « Aperçu » under it,
-                                // which no test would have said and one
-                                // screenshot did. In the dialog's own
-                                // vertical flow the band grows as it
-                                // should.
-                                motif::separator(ui);
-                                ui.label(dim(tr("opts_theme")));
-                                ui.horizontal_wrapped(|ui| {
-                                    for t in motif::THEMES.iter() {
-                                        let on = editor.cfg.ui.theme.eq_ignore_ascii_case(t.key);
-                                        if Self::theme_button(ui, t, on)
-                                            .on_hover_text(t.note)
-                                            .clicked()
-                                        {
-                                            editor.cfg.ui.theme = t.key.to_owned();
-                                        }
-                                    }
-                                });
-                                // Seen before it is saved: the eight
-                                // colours of the chosen palette, side by
-                                // side, so the choice is made by looking
-                                // rather than by restarting.
-                                ui.horizontal(|ui| {
-                                    ui.label(dim(tr("opts_theme_preview")));
-                                    Self::theme_swatches(ui, &editor.cfg.ui.theme);
-                                });
-                                motif::checkbox(
-                                    ui,
-                                    &mut editor.cfg.ui.discreet_finances,
-                                    tr("opts_discreet"),
-                                );
-                                motif::checkbox(
-                                    ui,
-                                    &mut editor.cfg.ui.caisse_expected,
-                                    tr("opts_caisse_expected"),
-                                )
-                                .on_hover_text(tr("opts_caisse_expected_tooltip"));
-                            }
-                            if page == OptionsPage::Database {
-                                motif::section(ui, tr("opts_db"));
-                                egui::Grid::new("opts_db")
-                                    .num_columns(2)
-                                    .spacing([12.0, 6.0])
-                                    .show(ui, |ui| {
-                                        Self::form_label(ui, tr("opts_autolock"));
-                                        motif::number(
-                                            ui,
-                                            egui::DragValue::new(
-                                                &mut editor.cfg.database.auto_lock_timeout_minutes,
-                                            )
-                                            .range(0..=240),
-                                        );
-                                        ui.end_row();
-                                        Self::form_label(ui, tr("opts_backups"));
-                                        motif::number(
-                                            ui,
-                                            egui::DragValue::new(
-                                                &mut editor.cfg.database.backups_keep,
-                                            )
-                                            .range(0..=60),
-                                        );
-                                        ui.end_row();
-                                        Self::form_label(ui, tr("opts_db_path"));
-                                        ui.horizontal(|ui| {
-                                            motif::field(
-                                                ui,
-                                                chars_wide(ui, 32.0),
-                                                egui::TextEdit::singleline(
-                                                    &mut editor.db_path_text,
-                                                ),
-                                            );
-                                            if motif::button(ui, tr("opts_db_browse")).clicked() {
-                                                if let Some(p) = rfd::FileDialog::new()
-                                                    .add_filter("SQLite", &["db", "sqlite"])
-                                                    .add_filter("*", &["*"])
-                                                    .pick_file()
-                                                {
-                                                    editor.db_path_text = p.display().to_string();
-                                                }
-                                            }
-                                        });
-                                        ui.end_row();
-                                        // What the backup folder actually
-                                        // holds. The daily copy writes its
-                                        // failures to stderr and nowhere
-                                        // else, so a share that did not
-                                        // mount or a folder made read-only
-                                        // is silent: this line is what
-                                        // makes it audible.
-                                        Self::form_label(ui, tr("opts_backup_state"));
-                                        let path = editor.cfg.db_path();
-                                        let fresh = editor.backup_seen.as_ref().is_some_and(
-                                            |(p, at, _)| {
-                                                *p == path && at.elapsed() < Duration::from_secs(30)
-                                            },
-                                        );
-                                        if !fresh {
-                                            let read = crate::db::backup_state(&path);
-                                            editor.backup_seen = Some((path, Instant::now(), read));
-                                        }
-                                        let state = editor
-                                            .backup_seen
-                                            .as_ref()
-                                            .map(|(_, _, s)| s.clone())
-                                            .unwrap_or_default();
-                                        let text = match (&state.newest, &state.oldest) {
-                                            (Some(newest), Some(oldest)) => trn(
-                                                "opts_backup_have",
-                                                &[
-                                                    &state.count,
-                                                    &db::format_french_date(oldest),
-                                                    &db::format_french_date(newest),
-                                                    &(state.bytes / 1_048_576),
-                                                ],
-                                            ),
-                                            _ if editor.cfg.database.backups_keep == 0 => {
-                                                tr("opts_backup_off").to_owned()
-                                            }
-                                            _ => tr("opts_backup_none").to_owned(),
-                                        };
-                                        // Stated and not judged: this page
-                                        // does not know what day it is —
-                                        // the session does, and it is not
-                                        // in scope here. The sentence says
-                                        // what to compare the date with,
-                                        // which is what an operator needs
-                                        // to see it.
-                                        // **Bornée, et non « ce qui reste ».**
-                                        // Dans un `Grid`, un libellé qui
-                                        // s'enroule sur `available_width`
-                                        // s'enroule sur tout ce qui reste à
-                                        // droite : la colonne mémorise cette
-                                        // largeur, la fenêtre grandit pour la
-                                        // contenir, et à 1024x700 la fenêtre
-                                        // des options sortait de l'écran des
-                                        // deux côtés. Une phrase de note se
-                                        // lit sur une mesure, pas sur un
-                                        // écran.
-                                        ui.scope(|ui| {
-                                            ui.set_max_width(
-                                                (ui.ctx().screen_rect().width() * 0.40)
-                                                    .clamp(220.0, 460.0),
-                                            );
-                                            ui.add(
-                                                egui::Label::new(
-                                                    egui::RichText::new(text)
-                                                        .size(motif::pt(ui, 11.0))
-                                                        .color(motif::text_dim()),
-                                                )
-                                                .wrap(),
-                                            );
-                                        });
-                                        ui.end_row();
-                                    });
-                                // Ce que les pièces numérisées ajoutent à
-                                // la base. Elles y vivent — une
-                                // ordonnance posée en clair à côté d'une
-                                // base chiffrée annulerait le
-                                // chiffrement — donc elles voyagent dans
-                                // chaque sauvegarde quotidienne et dans
-                                // chaque copie sur le partage. Une
-                                // officine qui ne le voit pas s'en
-                                // aperçoit le jour où la copie du soir
-                                // ne tient plus.
-                                // La commande du scanner et le plafond
-                                // des pièces, ici plutôt que dans le
-                                // seul config.toml : une officine qui a
-                                // un scanner ne devrait pas avoir à
-                                // ouvrir un fichier texte pour s'en
-                                // servir, et la séquence APDU de la
-                                // carte Vitale a sa page pour la même
-                                // raison.
-                                motif::section(ui, tr("opts_scans"));
+                            } else if editor.cfg.prescribers.source_url.trim().is_empty() {
                                 ui.add(
                                     egui::Label::new(
-                                        egui::RichText::new(tr("opts_scans_hint"))
+                                        egui::RichText::new(tr("opts_presc_no_url"))
                                             .size(motif::pt(ui, 11.0))
                                             .color(motif::text_dim()),
                                     )
                                     .wrap(),
                                 );
-                                ui.horizontal(|ui| {
-                                    ui.label(dim(tr("opts_scan_max")));
-                                    motif::number(
-                                        ui,
-                                        egui::DragValue::new(&mut editor.cfg.scans.max_mb)
-                                            .range(0..=200)
-                                            .suffix(" Mo"),
-                                    );
-                                });
-                                motif::field(
-                                    ui,
-                                    ui.available_width(),
-                                    egui::TextEdit::singleline(&mut editor.cfg.scans.command)
-                                        .desired_width(f32::INFINITY)
-                                        .hint_text(motif::hint(tr("opts_scan_command_hint"))),
-                                );
-                                if let Some((count, bytes, legacy)) = scan_weight {
-                                    if count > 0 {
-                                        ui.add(
-                                            egui::Label::new(
-                                                egui::RichText::new(trn(
-                                                    "opts_scan_weight",
-                                                    &[
-                                                        &count,
-                                                        &crate::scans::human_size(
-                                                            bytes.max(0) as u64
-                                                        ),
-                                                        &db::scans_path(&about_db)
-                                                            .file_name()
-                                                            .map(|n| {
-                                                                n.to_string_lossy().into_owned()
-                                                            })
-                                                            .unwrap_or_default(),
-                                                    ],
-                                                ))
-                                                .size(motif::pt(ui, 11.0))
-                                                .color(motif::text_dim()),
-                                            )
-                                            .wrap(),
-                                        );
-                                    }
-                                    // Ce qui vient de la version d'avant et pèse
-                                    // encore sur la base : le dire, et dire quel
-                                    // bouton le règle.
-                                    if legacy > 0 {
-                                        ui.add(
-                                            egui::Label::new(
-                                                egui::RichText::new(trf(
-                                                    "opts_scan_legacy",
-                                                    legacy,
-                                                ))
-                                                .size(motif::pt(ui, 11.0))
-                                                .color(motif::alert()),
-                                            )
-                                            .wrap(),
-                                        );
-                                    }
-                                }
-                                // Le registre, et sur quelle étendue de
-                                // jours il court : c'est la pièce qu'on
-                                // garde dix ans, et la seule que
-                                // l'application ne saurait pas
-                                // reconstituer.
-                                if let Some((products, lines, first, last)) = stup_weight {
-                                    if lines > 0 {
-                                        ui.add(
-                                            egui::Label::new(
-                                                egui::RichText::new(trn(
-                                                    "opts_stup_weight",
-                                                    &[
-                                                        &lines,
-                                                        &products,
-                                                        &db::format_french_date(&first),
-                                                        &db::format_french_date(&last),
-                                                        &db::stups_path(&about_db)
-                                                            .file_name()
-                                                            .map(|n| {
-                                                                n.to_string_lossy().into_owned()
-                                                            })
-                                                            .unwrap_or_default(),
-                                                    ],
-                                                ))
-                                                .size(motif::pt(ui, 11.0))
-                                                .color(motif::text_dim()),
-                                            )
-                                            .wrap(),
-                                        );
-                                    }
-                                }
-                                // File-level tools: consistent encrypted copy
-                                // (VACUUM INTO) to any destination; "move"
-                                // additionally points this post at the copy
-                                // and reopens on it (old file kept). Not
-                                // during a maintenance pass: the three files
-                                // would be taken halfway through it.
-                                ui.horizontal(|ui| {
-                                    if motif::button_enabled(
-                                        ui,
-                                        tr("opts_db_copy"),
-                                        !maint_busy && !bundle_busy,
-                                    )
-                                    .clicked()
-                                    {
-                                        if let Some(p) = rfd::FileDialog::new()
-                                            .set_file_name("bpm_caddy.db")
-                                            .save_file()
-                                        {
-                                            db_export = Some((p, false));
-                                        }
-                                    }
-                                    if motif::button_enabled(
-                                        ui,
-                                        tr("opts_db_move"),
-                                        !maint_busy && !bundle_busy,
-                                    )
-                                    .clicked()
-                                    {
-                                        if let Some(p) = rfd::FileDialog::new()
-                                            .set_file_name("bpm_caddy.db")
-                                            .save_file()
-                                        {
-                                            db_export = Some((p, true));
-                                        }
-                                    }
-                                });
-                                // **L'annuaire des prescripteurs.**
-                                // Rien n'est livré : ce fichier
-                                // appartient à l'officine, comme les
-                                // codes-barres qu'elle apprend une
-                                // boîte à la main.
-                                if let Some(n) = presc_count {
-                                    ui.add(
-                                        egui::Label::new(
-                                            egui::RichText::new(if n == 0 {
-                                                tr("opts_presc_none").to_owned()
-                                            } else {
-                                                trf("opts_presc_count", n)
-                                            })
-                                            .size(motif::pt(ui, 11.0))
-                                            .color(motif::text_dim()),
-                                        )
-                                        .wrap(),
-                                    );
-                                }
-                                ui.horizontal_wrapped(|ui| {
-                                    if motif::button(ui, tr("opts_presc_import"))
-                                        .on_hover_text(tr("opts_presc_import_tooltip"))
-                                        .clicked()
-                                    {
-                                        if let Some(p) = rfd::FileDialog::new().pick_file() {
-                                            presc_file = Some(p);
-                                        }
-                                    }
-                                    // **Le bouton n'existe pas tant
-                                    // qu'aucune adresse n'est écrite.**
-                                    // Un bouton grisé invite à chercher
-                                    // pourquoi ; un bouton absent ne
-                                    // promet rien — et l'application
-                                    // n'ouvre alors aucune connexion
-                                    // pour cela, jamais.
-                                    let url = editor.cfg.prescribers.source_url.trim().to_owned();
-                                    if !url.is_empty()
-                                        && motif::button_enabled(
-                                            ui,
-                                            tr("opts_presc_fetch"),
-                                            !presc_busy,
-                                        )
-                                        .on_hover_text(tr("opts_presc_fetch_tooltip"))
-                                        .clicked()
-                                    {
-                                        presc_url = Some(url);
-                                    }
-                                });
-                                if presc_busy {
-                                    ui.label(
-                                        egui::RichText::new(tr("opts_presc_fetching"))
-                                            .size(motif::pt(ui, 11.0))
-                                            .color(motif::accent()),
-                                    );
-                                } else if editor.cfg.prescribers.source_url.trim().is_empty() {
-                                    ui.add(
-                                        egui::Label::new(
-                                            egui::RichText::new(tr("opts_presc_no_url"))
-                                                .size(motif::pt(ui, 11.0))
-                                                .color(motif::text_dim()),
-                                        )
-                                        .wrap(),
-                                    );
-                                }
-                                // **Les trois fichiers en un seul.**
-                                // La base, les pièces et le registre
-                                // vivent à part pour de bonnes raisons,
-                                // et cela fait trois choses à emporter
-                                // sans en oublier une. L'import écrit à
-                                // côté et n'écrase rien : la base y
-                                // pointe au redémarrage, comme
-                                // « Déplacer la base vers… ».
-                                ui.horizontal(|ui| {
-                                    if motif::button_enabled(
-                                        ui,
-                                        tr("opts_bundle_export"),
-                                        !bundle_busy,
-                                    )
+                            }
+                            // **Les trois fichiers en un seul.**
+                            // La base, les pièces et le registre
+                            // vivent à part pour de bonnes raisons,
+                            // et cela fait trois choses à emporter
+                            // sans en oublier une. L'import écrit à
+                            // côté et n'écrase rien : la base y
+                            // pointe au redémarrage, comme
+                            // « Déplacer la base vers… ».
+                            ui.horizontal(|ui| {
+                                if motif::button_enabled(ui, tr("opts_bundle_export"), !bundle_busy)
                                     .on_hover_text(tr("opts_bundle_export_tooltip"))
                                     .clicked()
+                                {
+                                    if let Some(p) = rfd::FileDialog::new()
+                                        .set_file_name("officine.bpmpack")
+                                        .save_file()
                                     {
-                                        if let Some(p) = rfd::FileDialog::new()
-                                            .set_file_name("officine.bpmpack")
-                                            .save_file()
-                                        {
-                                            bundle_out = Some(p);
+                                        bundle_out = Some(p);
+                                    }
+                                }
+                                if motif::button(ui, tr("opts_bundle_import"))
+                                    .on_hover_text(tr("opts_bundle_import_tooltip"))
+                                    .clicked()
+                                {
+                                    // Deux dialogues : le paquet,
+                                    // puis où le rendre. Le second
+                                    // n'est demandé que si le
+                                    // premier a été choisi.
+                                    if let Some(pack) = rfd::FileDialog::new().pick_file() {
+                                        if let Some(dir) = rfd::FileDialog::new().pick_folder() {
+                                            bundle_in = Some((pack, dir));
                                         }
                                     }
-                                    if motif::button(ui, tr("opts_bundle_import"))
-                                        .on_hover_text(tr("opts_bundle_import_tooltip"))
-                                        .clicked()
-                                    {
-                                        // Deux dialogues : le paquet,
-                                        // puis où le rendre. Le second
-                                        // n'est demandé que si le
-                                        // premier a été choisi.
-                                        if let Some(pack) = rfd::FileDialog::new().pick_file() {
-                                            if let Some(dir) = rfd::FileDialog::new().pick_folder()
-                                            {
-                                                bundle_in = Some((pack, dir));
+                                }
+                            });
+                            // Maintenance: complete a base created before
+                            // the starter list grew, or wipe everything
+                            // (debug/demo — two clicks, never one).
+                            ui.horizontal(|ui| {
+                                if motif::button_enabled(ui, tr("opts_db_seed"), !maint_busy)
+                                    .clicked()
+                                {
+                                    db_seed = true;
+                                }
+                                if motif::button_enabled(ui, tr("opts_db_details"), !maint_busy)
+                                    .on_hover_text(tr("opts_db_details_tooltip"))
+                                    .clicked()
+                                {
+                                    db_details = true;
+                                }
+                                // Rendre au disque ce que les
+                                // suppressions ont laissé : SQLite ne
+                                // rétrécit jamais un fichier de
+                                // lui-même, et une pièce numérisée
+                                // effacée ne rend rien tant que la
+                                // base n'est pas réécrite.
+                                if motif::button_enabled(ui, tr("opts_db_compact"), !maint_busy)
+                                    .on_hover_text(tr("opts_db_compact_tooltip"))
+                                    .clicked()
+                                {
+                                    db_compact = true;
+                                }
+                                let danger = if editor.confirm_reset {
+                                    tr("opts_db_reset_confirm")
+                                } else {
+                                    tr("opts_db_reset")
+                                };
+                                let btn = ui.add_enabled(
+                                    !maint_busy,
+                                    egui::Button::new(
+                                        egui::RichText::new(danger)
+                                            .color(motif::on_fill(motif::alert()))
+                                            .size(motif::pt(ui, 12.0)),
+                                    )
+                                    .fill(motif::alert()),
+                                );
+                                if btn.clicked() {
+                                    if editor.confirm_reset {
+                                        db_reset = true;
+                                        editor.confirm_reset = false;
+                                    } else {
+                                        editor.confirm_reset = true;
+                                    }
+                                }
+                            });
+                            // The step a running pass is on. Under
+                            // the buttons that start one, so it is
+                            // read where it was asked for.
+                            if let Some(step) = &maint_running {
+                                ui.label(
+                                    egui::RichText::new(step.as_str())
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::accent()),
+                                );
+                            }
+                            ui.label(
+                                egui::RichText::new(tr("opts_db_note"))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            );
+                        }
+                        if page == OptionsPage::Fees {
+                            motif::section(ui, tr("opts_fees"));
+                            ui.label(
+                                egui::RichText::new(tr("opts_fees_note"))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            );
+                            ui.label(
+                                egui::RichText::new(tr("opts_fees_rules"))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            );
+                            ui.add_space(4.0);
+                            egui::Grid::new("opts_fees")
+                                .num_columns(7)
+                                .spacing([10.0, 5.0])
+                                .show(ui, |ui| {
+                                    // Un montant tient en cinq caractères
+                                    // (« 20 € ») : à la largeur par défaut
+                                    // d'un champ, les quatre rangs et le
+                                    // total sortaient de la fenêtre en
+                                    // grand texte.
+                                    // Un DragValue se taille sur sa
+                                    // marge de bouton (quatorze points
+                                    // de chaque côté ici), pas sur
+                                    // `interact_size`.
+                                    ui.spacing_mut().interact_size.x = chars_wide(ui, 5.0);
+                                    ui.spacing_mut().button_padding.x = 4.0;
+                                    let themes: [(&str, &mut ActFees); 10] = [
+                                        ("BPM", &mut editor.cfg.billing.bpm),
+                                        ("AOD", &mut editor.cfg.billing.aod),
+                                        ("AVK", &mut editor.cfg.billing.avk),
+                                        ("Asthme", &mut editor.cfg.billing.asthme),
+                                        (
+                                            "Anticancéreux long cours",
+                                            &mut editor.cfg.billing.anticancereux_lc,
+                                        ),
+                                        (
+                                            "Anticancéreux (autres)",
+                                            &mut editor.cfg.billing.anticancereux_autres,
+                                        ),
+                                        ("TROD angine", &mut editor.cfg.billing.trod_angine),
+                                        ("TROD cystite", &mut editor.cfg.billing.trod_cystite),
+                                        ("Vaccination", &mut editor.cfg.billing.vaccination),
+                                        ("Prévention", &mut editor.cfg.billing.prevention),
+                                    ];
+                                    // Theme, code, then one column per
+                                    // entretien of the sequence, then
+                                    // the year's total.
+                                    ui.label("");
+                                    ui.label(dim(tr("opts_fee_code")));
+                                    // Le rang, en ordinal court : « 1e entretien »
+                                    // en tête de chaque colonne faisait
+                                    // quatre colonnes larges pour des
+                                    // montants de deux chiffres, et la
+                                    // quatrième sortait de la fenêtre.
+                                    for i in 1..=ActFees::STEPS {
+                                        let head = if i == 1 {
+                                            tr("opts_fee_first").to_owned()
+                                        } else {
+                                            trf("opts_fee_nth", i)
+                                        };
+                                        ui.label(dim(&head))
+                                            .on_hover_text(tr("opts_fee_rank_tooltip"));
+                                    }
+                                    ui.label(dim(tr("opts_fee_total")));
+                                    ui.end_row();
+                                    for (label, fees) in themes {
+                                        let kind = InterviewKind::ALL
+                                            .into_iter()
+                                            .find(|k| k.label() == label);
+                                        for year in 0..2 {
+                                            let steps = kind
+                                                .filter(|k| k.is_accompaniment())
+                                                .map(|k| k.sequence(year).len())
+                                                .unwrap_or(1);
+                                            let row_label = match (kind, year) {
+                                                (Some(k), _) if !k.is_accompaniment() => {
+                                                    label.to_owned()
+                                                }
+                                                (_, 0) => {
+                                                    format!("{label} — {}", tr("opts_year_1"))
+                                                }
+                                                _ => format!("{label} — {}", tr("opts_year_next")),
+                                            };
+                                            ui.label(dim(&row_label));
+                                            ui.label(
+                                                egui::RichText::new(
+                                                    kind.and_then(|k| k.act_code(year))
+                                                        .unwrap_or("—"),
+                                                )
+                                                .size(motif::pt(ui, 11.0))
+                                                .strong()
+                                                .color(motif::accent()),
+                                            );
+                                            for rank in 0..ActFees::STEPS {
+                                                if rank < steps {
+                                                    motif::number(
+                                                        ui,
+                                                        egui::DragValue::new(
+                                                            fees.slot_mut(year, rank),
+                                                        )
+                                                        .range(0.0..=500.0)
+                                                        .suffix(" €"),
+                                                    );
+                                                } else {
+                                                    ui.label(dim("—"))
+                                                        .on_hover_text(tr("opts_fee_unused"));
+                                                }
+                                            }
+                                            ui.label(
+                                                egui::RichText::new(format!(
+                                                    "{} €",
+                                                    crate::strings::decimal(
+                                                        fees.year_total(year),
+                                                        2
+                                                    )
+                                                ))
+                                                .strong(),
+                                            );
+                                            ui.end_row();
+                                            // A theme outside the
+                                            // convention has one rate,
+                                            // not one per year.
+                                            if kind.is_none_or(|k| !k.is_accompaniment()) {
+                                                break;
                                             }
                                         }
                                     }
-                                });
-                                // Maintenance: complete a base created before
-                                // the starter list grew, or wipe everything
-                                // (debug/demo — two clicks, never one).
-                                ui.horizontal(|ui| {
-                                    if motif::button_enabled(ui, tr("opts_db_seed"), !maint_busy)
-                                        .clicked()
-                                    {
-                                        db_seed = true;
-                                    }
-                                    if motif::button_enabled(ui, tr("opts_db_details"), !maint_busy)
-                                        .on_hover_text(tr("opts_db_details_tooltip"))
-                                        .clicked()
-                                    {
-                                        db_details = true;
-                                    }
-                                    // Rendre au disque ce que les
-                                    // suppressions ont laissé : SQLite ne
-                                    // rétrécit jamais un fichier de
-                                    // lui-même, et une pièce numérisée
-                                    // effacée ne rend rien tant que la
-                                    // base n'est pas réécrite.
-                                    if motif::button_enabled(ui, tr("opts_db_compact"), !maint_busy)
-                                        .on_hover_text(tr("opts_db_compact_tooltip"))
-                                        .clicked()
-                                    {
-                                        db_compact = true;
-                                    }
-                                    let danger = if editor.confirm_reset {
-                                        tr("opts_db_reset_confirm")
-                                    } else {
-                                        tr("opts_db_reset")
-                                    };
-                                    let btn = ui.add_enabled(
-                                        !maint_busy,
-                                        egui::Button::new(
-                                            egui::RichText::new(danger)
-                                                .color(motif::on_fill(motif::alert()))
-                                                .size(motif::pt(ui, 12.0)),
-                                        )
-                                        .fill(motif::alert()),
-                                    );
-                                    if btn.clicked() {
-                                        if editor.confirm_reset {
-                                            db_reset = true;
-                                            editor.confirm_reset = false;
-                                        } else {
-                                            editor.confirm_reset = true;
-                                        }
-                                    }
-                                });
-                                // The step a running pass is on. Under
-                                // the buttons that start one, so it is
-                                // read where it was asked for.
-                                if let Some(step) = &maint_running {
+                                    ui.label(dim(tr("opts_fee_adhesion")));
                                     ui.label(
-                                        egui::RichText::new(step.as_str())
+                                        egui::RichText::new(db::ADHESION_CODE)
                                             .size(motif::pt(ui, 11.0))
+                                            .strong()
                                             .color(motif::accent()),
                                     );
-                                }
-                                ui.label(
-                                    egui::RichText::new(tr("opts_db_note"))
-                                        .size(motif::pt(ui, 11.0))
-                                        .color(motif::text_dim()),
-                                );
-                            }
-                            if page == OptionsPage::Fees {
-                                motif::section(ui, tr("opts_fees"));
-                                ui.label(
-                                    egui::RichText::new(tr("opts_fees_note"))
-                                        .size(motif::pt(ui, 11.0))
-                                        .color(motif::text_dim()),
-                                );
-                                ui.label(
-                                    egui::RichText::new(tr("opts_fees_rules"))
-                                        .size(motif::pt(ui, 11.0))
-                                        .color(motif::text_dim()),
-                                );
-                                ui.add_space(4.0);
-                                egui::Grid::new("opts_fees")
-                                    .num_columns(7)
-                                    .spacing([10.0, 5.0])
-                                    .show(ui, |ui| {
-                                        // Un montant tient en cinq caractères
-                                        // (« 20 € ») : à la largeur par défaut
-                                        // d'un champ, les quatre rangs et le
-                                        // total sortaient de la fenêtre en
-                                        // grand texte.
-                                        // Un DragValue se taille sur sa
-                                        // marge de bouton (quatorze points
-                                        // de chaque côté ici), pas sur
-                                        // `interact_size`.
-                                        ui.spacing_mut().interact_size.x = chars_wide(ui, 5.0);
-                                        ui.spacing_mut().button_padding.x = 4.0;
-                                        let themes: [(&str, &mut ActFees); 10] = [
-                                            ("BPM", &mut editor.cfg.billing.bpm),
-                                            ("AOD", &mut editor.cfg.billing.aod),
-                                            ("AVK", &mut editor.cfg.billing.avk),
-                                            ("Asthme", &mut editor.cfg.billing.asthme),
-                                            (
-                                                "Anticancéreux long cours",
-                                                &mut editor.cfg.billing.anticancereux_lc,
-                                            ),
-                                            (
-                                                "Anticancéreux (autres)",
-                                                &mut editor.cfg.billing.anticancereux_autres,
-                                            ),
-                                            ("TROD angine", &mut editor.cfg.billing.trod_angine),
-                                            ("TROD cystite", &mut editor.cfg.billing.trod_cystite),
-                                            ("Vaccination", &mut editor.cfg.billing.vaccination),
-                                            ("Prévention", &mut editor.cfg.billing.prevention),
-                                        ];
-                                        // Theme, code, then one column per
-                                        // entretien of the sequence, then
-                                        // the year's total.
-                                        ui.label("");
-                                        ui.label(dim(tr("opts_fee_code")));
-                                        // Le rang, en ordinal court : « 1e entretien »
-                                        // en tête de chaque colonne faisait
-                                        // quatre colonnes larges pour des
-                                        // montants de deux chiffres, et la
-                                        // quatrième sortait de la fenêtre.
-                                        for i in 1..=ActFees::STEPS {
-                                            let head = if i == 1 {
-                                                tr("opts_fee_first").to_owned()
-                                            } else {
-                                                trf("opts_fee_nth", i)
-                                            };
-                                            ui.label(dim(&head))
-                                                .on_hover_text(tr("opts_fee_rank_tooltip"));
-                                        }
-                                        ui.label(dim(tr("opts_fee_total")));
-                                        ui.end_row();
-                                        for (label, fees) in themes {
-                                            let kind = InterviewKind::ALL
-                                                .into_iter()
-                                                .find(|k| k.label() == label);
-                                            for year in 0..2 {
-                                                let steps = kind
-                                                    .filter(|k| k.is_accompaniment())
-                                                    .map(|k| k.sequence(year).len())
-                                                    .unwrap_or(1);
-                                                let row_label = match (kind, year) {
-                                                    (Some(k), _) if !k.is_accompaniment() => {
-                                                        label.to_owned()
-                                                    }
-                                                    (_, 0) => {
-                                                        format!("{label} — {}", tr("opts_year_1"))
-                                                    }
-                                                    _ => format!(
-                                                        "{label} — {}",
-                                                        tr("opts_year_next")
-                                                    ),
-                                                };
-                                                ui.label(dim(&row_label));
-                                                ui.label(
-                                                    egui::RichText::new(
-                                                        kind.and_then(|k| k.act_code(year))
-                                                            .unwrap_or("—"),
-                                                    )
-                                                    .size(motif::pt(ui, 11.0))
-                                                    .strong()
-                                                    .color(motif::accent()),
-                                                );
-                                                for rank in 0..ActFees::STEPS {
-                                                    if rank < steps {
-                                                        motif::number(
-                                                            ui,
-                                                            egui::DragValue::new(
-                                                                fees.slot_mut(year, rank),
-                                                            )
-                                                            .range(0.0..=500.0)
-                                                            .suffix(" €"),
-                                                        );
-                                                    } else {
-                                                        ui.label(dim("—"))
-                                                            .on_hover_text(tr("opts_fee_unused"));
-                                                    }
-                                                }
-                                                ui.label(
-                                                    egui::RichText::new(format!(
-                                                        "{} €",
-                                                        crate::strings::decimal(
-                                                            fees.year_total(year),
-                                                            2
-                                                        )
-                                                    ))
-                                                    .strong(),
-                                                );
-                                                ui.end_row();
-                                                // A theme outside the
-                                                // convention has one rate,
-                                                // not one per year.
-                                                if kind.is_none_or(|k| !k.is_accompaniment()) {
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                        ui.label(dim(tr("opts_fee_adhesion")));
-                                        ui.label(
-                                            egui::RichText::new(db::ADHESION_CODE)
-                                                .size(motif::pt(ui, 11.0))
-                                                .strong()
-                                                .color(motif::accent()),
-                                        );
-                                        motif::number(
-                                            ui,
-                                            egui::DragValue::new(&mut editor.cfg.billing.adhesion)
-                                                .range(0.0..=100.0)
-                                                .speed(0.01)
-                                                .suffix(" €"),
-                                        );
-                                        ui.label("");
-                                        ui.label("");
-                                        ui.label("");
-                                        ui.label("");
-                                        ui.end_row();
-                                        Self::form_label(ui, tr("opts_fee_remote"));
-                                        ui.label(
-                                            egui::RichText::new(db::REMOTE_CODE)
-                                                .size(motif::pt(ui, 11.0))
-                                                .strong()
-                                                .color(motif::accent()),
-                                        );
-                                        motif::number(
-                                            ui,
-                                            egui::DragValue::new(
-                                                &mut editor.cfg.billing.teleconsultation,
-                                            )
+                                    motif::number(
+                                        ui,
+                                        egui::DragValue::new(&mut editor.cfg.billing.adhesion)
                                             .range(0.0..=100.0)
+                                            .speed(0.01)
                                             .suffix(" €"),
-                                        );
-                                        ui.label("");
-                                        ui.label("");
-                                        ui.label("");
-                                        ui.label("");
-                                        ui.end_row();
-                                    });
-                            }
-                            if page == OptionsPage::Rules {
-                                motif::section(ui, tr("opts_rules"));
-                                egui::Grid::new("opts_rules_cycle")
-                                    .num_columns(2)
-                                    .spacing([12.0, 6.0])
-                                    .show(ui, |ui| {
-                                        Self::form_label(ui, tr("opts_cycle_months"));
-                                        motif::number(
-                                            ui,
-                                            egui::DragValue::new(
-                                                &mut editor.cfg.rules.cycle_months,
-                                            )
+                                    );
+                                    ui.label("");
+                                    ui.label("");
+                                    ui.label("");
+                                    ui.label("");
+                                    ui.end_row();
+                                    Self::form_label(ui, tr("opts_fee_remote"));
+                                    ui.label(
+                                        egui::RichText::new(db::REMOTE_CODE)
+                                            .size(motif::pt(ui, 11.0))
+                                            .strong()
+                                            .color(motif::accent()),
+                                    );
+                                    motif::number(
+                                        ui,
+                                        egui::DragValue::new(
+                                            &mut editor.cfg.billing.teleconsultation,
+                                        )
+                                        .range(0.0..=100.0)
+                                        .suffix(" €"),
+                                    );
+                                    ui.label("");
+                                    ui.label("");
+                                    ui.label("");
+                                    ui.label("");
+                                    ui.end_row();
+                                });
+                        }
+                        if page == OptionsPage::Rules {
+                            motif::section(ui, tr("opts_rules"));
+                            egui::Grid::new("opts_rules_cycle")
+                                .num_columns(2)
+                                .spacing([12.0, 6.0])
+                                .show(ui, |ui| {
+                                    Self::form_label(ui, tr("opts_cycle_months"));
+                                    motif::number(
+                                        ui,
+                                        egui::DragValue::new(&mut editor.cfg.rules.cycle_months)
                                             .range(1..=36)
                                             .suffix(tr("opts_cycle_suffix")),
-                                        );
-                                        ui.end_row();
-                                        Self::form_label(ui, tr("opts_enforcement"));
-                                        ui.horizontal(|ui| {
-                                            for (level, label) in [
-                                                (RuleEnforcement::Warn, tr("opts_enforce_warn")),
-                                                (
-                                                    RuleEnforcement::Inform,
-                                                    tr("opts_enforce_inform"),
-                                                ),
-                                                (RuleEnforcement::Block, tr("opts_enforce_block")),
-                                            ] {
-                                                if motif::radio(
-                                                    ui,
-                                                    editor.cfg.rules.enforcement == level,
-                                                    label,
-                                                )
-                                                .clicked()
-                                                {
-                                                    editor.cfg.rules.enforcement = level;
-                                                }
-                                            }
-                                        });
-                                        ui.end_row();
-                                    });
-                                egui::Grid::new("opts_rules")
-                                    .num_columns(4)
-                                    .spacing([12.0, 6.0])
-                                    .show(ui, |ui| {
-                                        let rules: [(&str, &mut u32); 4] = [
-                                            // Les accompagnements (BPM, AOD, AVK,
-                                            // asthme, anticancéreux) ne sont pas ici :
-                                            // le nombre d'actes de chaque année est
-                                            // celui de la convention
-                                            // (`Config::sequence_len`), et leurs
-                                            // champs ne changeaient rien — « 0 = sans
-                                            // limite » y laissait la limite.
-                                            (
-                                                "TROD angine",
-                                                &mut editor.cfg.rules.trod_angine_per_year,
-                                            ),
-                                            (
-                                                "TROD cystite",
-                                                &mut editor.cfg.rules.trod_cystite_per_year,
-                                            ),
-                                            (
-                                                "Vaccination",
-                                                &mut editor.cfg.rules.vaccination_per_year,
-                                            ),
-                                            (
-                                                "Prévention",
-                                                &mut editor.cfg.rules.prevention_per_year,
-                                            ),
-                                        ];
-                                        for (i, (label, n)) in rules.into_iter().enumerate() {
-                                            ui.label(dim(label));
-                                            motif::number(
+                                    );
+                                    ui.end_row();
+                                    Self::form_label(ui, tr("opts_enforcement"));
+                                    ui.horizontal(|ui| {
+                                        for (level, label) in [
+                                            (RuleEnforcement::Warn, tr("opts_enforce_warn")),
+                                            (RuleEnforcement::Inform, tr("opts_enforce_inform")),
+                                            (RuleEnforcement::Block, tr("opts_enforce_block")),
+                                        ] {
+                                            if motif::radio(
                                                 ui,
-                                                egui::DragValue::new(n).range(0..=12),
-                                            );
-                                            if i % 2 == 1 {
-                                                ui.end_row();
+                                                editor.cfg.rules.enforcement == level,
+                                                label,
+                                            )
+                                            .clicked()
+                                            {
+                                                editor.cfg.rules.enforcement = level;
                                             }
                                         }
                                     });
-                                ui.add(egui::Label::new(dim(tr("opts_rules_convention"))).wrap());
-                                // La fiche de traitement remise au
-                                // patient : de combien de jours le
-                                // rendez-vous doit précéder
-                                // l'épuisement, et comment
-                                // l'avancement se dessine. Ici plutôt
-                                // que dans un onglet à part : c'est
-                                // une règle de conduite de l'officine,
-                                // comme le quota d'actes au-dessus, et
-                                // un onglet portant deux réglages est
-                                // un onglet que personne n'ouvre.
-                                ui.add_space(8.0);
-                                motif::section(ui, tr("opts_fiche"));
-                                egui::Grid::new("opts_fiche")
-                                    .num_columns(2)
-                                    .spacing([12.0, 6.0])
-                                    .show(ui, |ui| {
-                                        Self::form_label(ui, tr("opts_notice_days"));
-                                        motif::number(
-                                            ui,
-                                            egui::DragValue::new(
-                                                &mut editor.cfg.ordonnance.notice_days,
-                                            )
-                                            .range(0..=90),
-                                        );
-                                        ui.end_row();
-                                        Self::form_label(ui, tr("opts_renewal_viz"));
-                                        // Une **visualisation**, donc
-                                        // un `select` lié à sa valeur
-                                        // et non un menu d'actions : il
-                                        // y a un réglage courant, et
-                                        // c'est lui que la boîte
-                                        // montre.
-                                        let mut current = crate::renewal::Viz::from_key(
-                                            &editor.cfg.ordonnance.renewal_viz,
-                                        );
-                                        let options: Vec<(crate::renewal::Viz, String)> =
-                                            crate::renewal::Viz::ALL
-                                                .into_iter()
-                                                .map(|v| (v, v.label().to_owned()))
-                                                .collect();
-                                        let width = Self::widest(
-                                            ui,
-                                            12.0,
-                                            crate::renewal::Viz::ALL.iter().map(|v| v.label()),
-                                        ) + Self::button_height(ui);
-                                        if motif::select(
-                                            ui,
-                                            "opts_renewal_viz",
-                                            width,
-                                            &mut current,
-                                            &options,
-                                        )
-                                        .changed()
-                                        {
-                                            editor.cfg.ordonnance.renewal_viz =
-                                                current.key().to_owned();
+                                    ui.end_row();
+                                });
+                            egui::Grid::new("opts_rules")
+                                .num_columns(4)
+                                .spacing([12.0, 6.0])
+                                .show(ui, |ui| {
+                                    let rules: [(&str, &mut u32); 4] = [
+                                        // Les accompagnements (BPM, AOD, AVK,
+                                        // asthme, anticancéreux) ne sont pas ici :
+                                        // le nombre d'actes de chaque année est
+                                        // celui de la convention
+                                        // (`Config::sequence_len`), et leurs
+                                        // champs ne changeaient rien — « 0 = sans
+                                        // limite » y laissait la limite.
+                                        ("TROD angine", &mut editor.cfg.rules.trod_angine_per_year),
+                                        (
+                                            "TROD cystite",
+                                            &mut editor.cfg.rules.trod_cystite_per_year,
+                                        ),
+                                        ("Vaccination", &mut editor.cfg.rules.vaccination_per_year),
+                                        ("Prévention", &mut editor.cfg.rules.prevention_per_year),
+                                    ];
+                                    for (i, (label, n)) in rules.into_iter().enumerate() {
+                                        ui.label(dim(label));
+                                        motif::number(ui, egui::DragValue::new(n).range(0..=12));
+                                        if i % 2 == 1 {
+                                            ui.end_row();
                                         }
-                                        ui.end_row();
-                                    });
-                            }
-                            if page == OptionsPage::Database {
-                                ui.add_space(8.0);
-                                motif::section(ui, tr("opts_security"));
-                                if motif::button(ui, tr("opts_change_pw")).clicked() {
-                                    open_pw = true;
+                                    }
+                                });
+                            ui.add(egui::Label::new(dim(tr("opts_rules_convention"))).wrap());
+                            // La fiche de traitement remise au
+                            // patient : de combien de jours le
+                            // rendez-vous doit précéder
+                            // l'épuisement, et comment
+                            // l'avancement se dessine. Ici plutôt
+                            // que dans un onglet à part : c'est
+                            // une règle de conduite de l'officine,
+                            // comme le quota d'actes au-dessus, et
+                            // un onglet portant deux réglages est
+                            // un onglet que personne n'ouvre.
+                            ui.add_space(8.0);
+                            motif::section(ui, tr("opts_fiche"));
+                            egui::Grid::new("opts_fiche")
+                                .num_columns(2)
+                                .spacing([12.0, 6.0])
+                                .show(ui, |ui| {
+                                    Self::form_label(ui, tr("opts_notice_days"));
+                                    motif::number(
+                                        ui,
+                                        egui::DragValue::new(
+                                            &mut editor.cfg.ordonnance.notice_days,
+                                        )
+                                        .range(0..=90),
+                                    );
+                                    ui.end_row();
+                                    Self::form_label(ui, tr("opts_renewal_viz"));
+                                    // Une **visualisation**, donc
+                                    // un `select` lié à sa valeur
+                                    // et non un menu d'actions : il
+                                    // y a un réglage courant, et
+                                    // c'est lui que la boîte
+                                    // montre.
+                                    let mut current = crate::renewal::Viz::from_key(
+                                        &editor.cfg.ordonnance.renewal_viz,
+                                    );
+                                    let options: Vec<(crate::renewal::Viz, String)> =
+                                        crate::renewal::Viz::ALL
+                                            .into_iter()
+                                            .map(|v| (v, v.label().to_owned()))
+                                            .collect();
+                                    let width = Self::widest(
+                                        ui,
+                                        12.0,
+                                        crate::renewal::Viz::ALL.iter().map(|v| v.label()),
+                                    ) + Self::button_height(ui);
+                                    if motif::select(
+                                        ui,
+                                        "opts_renewal_viz",
+                                        width,
+                                        &mut current,
+                                        &options,
+                                    )
+                                    .changed()
+                                    {
+                                        editor.cfg.ordonnance.renewal_viz =
+                                            current.key().to_owned();
+                                    }
+                                    ui.end_row();
+                                });
+                        }
+                        if page == OptionsPage::Modules {
+                            motif::section(ui, tr("opts_modules"));
+                            ui.add(egui::Label::new(dim(tr("opts_modules_hint"))).wrap());
+                            ui.add_space(4.0);
+                            for (m, label, tip) in [
+                                (
+                                    crate::config::Module::Reseau,
+                                    "opts_module_reseau",
+                                    "opts_module_reseau_tooltip",
+                                ),
+                                (
+                                    crate::config::Module::Patients,
+                                    "opts_module_patients",
+                                    "opts_module_patients_tooltip",
+                                ),
+                                (
+                                    crate::config::Module::Comptes,
+                                    "opts_module_comptes",
+                                    "opts_module_comptes_tooltip",
+                                ),
+                                (
+                                    crate::config::Module::Gestion,
+                                    "opts_module_gestion",
+                                    "opts_module_gestion_tooltip",
+                                ),
+                            ] {
+                                let mut on = editor.cfg.modules.on(m);
+                                if motif::checkbox(ui, &mut on, tr(label))
+                                    .on_hover_text(tr(tip))
+                                    .changed()
+                                {
+                                    editor.cfg.modules.set(m, on);
                                 }
                             }
-                        });
-                    ui.add_space(8.0);
-                    ui.horizontal(|ui| {
-                        if motif::button(ui, tr("form_save")).clicked() {
-                            editor.cfg.database.path = if editor.db_path_text.trim().is_empty() {
-                                None
-                            } else {
-                                Some(std::path::PathBuf::from(editor.db_path_text.trim()))
-                            };
-                            match editor.cfg.save() {
-                                Ok(()) => {
-                                    saved_cfg = Some(editor.cfg.clone());
-                                    editor.message = Some((false, tr("opts_saved").to_owned()));
+                            ui.add_space(8.0);
+                            motif::section(ui, tr("opts_init"));
+                            ui.add(egui::Label::new(dim(tr("opts_init_hint"))).wrap());
+                            ui.add_space(4.0);
+                            let w = Self::scrolled_width(ui, ui.available_width());
+                            motif::area(
+                                ui,
+                                egui::vec2(w, Self::row_height(ui) * 8.0),
+                                egui::TextEdit::multiline(&mut editor.cfg.modules.demarrage)
+                                    .code_editor()
+                                    .hint_text(motif::hint(tr("opts_init_placeholder"))),
+                            );
+                            let (running, out) = init_shown.clone().unwrap_or((false, None));
+                            ui.horizontal(|ui| {
+                                let can =
+                                    !running && !editor.cfg.modules.demarrage.trim().is_empty();
+                                if ui
+                                    .add_enabled_ui(can, |ui| {
+                                        motif::button(ui, tr("opts_init_try"))
+                                    })
+                                    .inner
+                                    .on_hover_text(tr("opts_init_try_tooltip"))
+                                    .clicked()
+                                {
+                                    run_init = true;
                                 }
-                                Err(e) => {
-                                    editor.message = Some((true, trf("opts_save_error", e)));
+                                if running {
+                                    ui.label(dim(tr("script_running")));
                                 }
+                            });
+                            match &out {
+                                Some(o) => Self::script_outcome(ui, o, usize::MAX),
+                                None if !running => {
+                                    ui.label(dim(tr("opts_init_none")));
+                                }
+                                None => {}
                             }
                         }
-                        if motif::button(ui, tr("tpl_close")).clicked() {
-                            close_opts = true;
-                        }
-                        if officine_refused
-                            && editor.page == OptionsPage::Pharmacy
-                            && motif::button(ui, tr("opts_officine_force"))
-                                .on_hover_text(tr("opts_officine_force_tooltip"))
-                                .clicked()
-                        {
-                            force_officine = Some(editor.cfg.pharmacy.clone());
+                        if page == OptionsPage::Database {
+                            ui.add_space(8.0);
+                            motif::section(ui, tr("opts_security"));
+                            if motif::button(ui, tr("opts_change_pw")).clicked() {
+                                open_pw = true;
+                            }
                         }
                     });
-                    if let Some((is_error, msg)) = &editor.message {
-                        let color = if *is_error {
-                            motif::alert()
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    if motif::button(ui, tr("form_save")).clicked() {
+                        editor.cfg.database.path = if editor.db_path_text.trim().is_empty() {
+                            None
                         } else {
-                            motif::accent()
+                            Some(std::path::PathBuf::from(editor.db_path_text.trim()))
                         };
-                        ui.colored_label(color, msg.as_str());
+                        match editor.cfg.save() {
+                            Ok(()) => {
+                                saved_cfg = Some(editor.cfg.clone());
+                                editor.message = Some((false, tr("opts_saved").to_owned()));
+                            }
+                            Err(e) => {
+                                editor.message = Some((true, trf("opts_save_error", e)));
+                            }
+                        }
+                    }
+                    if motif::button(ui, tr("tpl_close")).clicked() {
+                        close_opts = true;
+                    }
+                    if officine_refused
+                        && editor.page == OptionsPage::Pharmacy
+                        && motif::button(ui, tr("opts_officine_force"))
+                            .on_hover_text(tr("opts_officine_force_tooltip"))
+                            .clicked()
+                    {
+                        force_officine = Some(editor.cfg.pharmacy.clone());
                     }
                 });
-            motif::dialog_relief(ctx, &shown);
+                if let Some((is_error, msg)) = &editor.message {
+                    let color = if *is_error {
+                        motif::alert()
+                    } else {
+                        motif::accent()
+                    };
+                    ui.colored_label(color, msg.as_str());
+                }
+            };
+            draw(&mut tab_ui);
         }
         if check_update {
             self.update_note = None;
@@ -95785,6 +96162,7 @@ impl eframe::App for App {
         if let Some(cfg) = saved_cfg {
             // Live-apply everything except the database path (restart).
             let before = std::mem::replace(&mut self.config, cfg);
+            crate::config::load_modules(&self.config.modules);
             // **Ce qui s'ouvre au démarrage s'applique tout de suite** :
             // la forme de la fenêtre est retenue dans `layout.toml` et
             // l'emporte au lancement suivant, si bien qu'une case décochée
@@ -95954,96 +96332,25 @@ impl eframe::App for App {
         if open_pw {
             self.pw_change = Some(PwChangeForm::default());
         }
+        // « Essayer » : ce qui est tapé, enregistré ou non.
+        if run_init {
+            if let (State::Unlocked(s), Some(e)) = (&mut self.state, &self.options) {
+                s.init_job = None;
+                s.start_init_script(&e.cfg.modules.demarrage);
+            }
+        }
+        // « Fermer » : l'onglet avec, ce qui n'était pas enregistré perdu.
         if close_opts {
             self.options = None;
+            if let State::Unlocked(session) = &mut self.state {
+                session.close_tab(&WorkTab::Options);
+            }
         }
         if parked.is_some() {
             self.options = parked;
         }
-
-        // **Une fois après une mise à jour** : le lanceur met
-        // l'application à jour sans rien demander, et ce qui vient
-        // d'arriver ne se découvre qu'en le cherchant. Jamais sous une clé
-        // de vue — une capture n'a pas de fenêtre de plus —, sauf la
-        // sienne.
-        if !self.whatsnew_checked && matches!(self.state, State::Unlocked(_)) {
-            self.whatsnew_checked = true;
-            let view = std::env::var("BPM_CADDY_START_VIEW").unwrap_or_default();
-            if view.is_empty() || view == "nouveautes" {
-                let notes = whatsnew_notes(&self.config.ui.seen_notes, view == "nouveautes");
-                if !notes.is_empty() {
-                    self.whatsnew = Some(notes);
-                }
-            }
-        }
-        if self.whatsnew.is_some() && matches!(self.state, State::Unlocked(_)) {
-            self.whatsnew_window(ctx);
-        }
-        if self.show_keys && matches!(self.state, State::Unlocked(_)) {
-            self.keys_window(ctx);
-        }
-
-        // The jump box sits above everything: it is how you leave
-        // wherever you are, so it cannot be drawn under it.
-        if let State::Unlocked(session) = &mut self.state {
-            if session.goto_open {
-                if let Some(dest) = goto_window(ctx, session) {
-                    session.go_to(dest);
-                }
-            }
-        }
-
-        // The docs pane may hold patient-adjacent notes: never show it on
-        // the lock screen. Same for the navigator, which lists patients.
-        if self.show_docs && matches!(self.state, State::Unlocked(_)) {
-            self.docs_pane(ctx);
-        }
-        if self.show_nav && matches!(self.state, State::Unlocked(_)) {
-            self.nav_dock(ctx);
-        }
-
-        // Les notes d'équipe, lues de la base dès qu'une session est ouverte
-        // — à chaque déverrouillage, quel qu'en soit le chemin.
-        if !self.doc_loaded && matches!(self.state, State::Unlocked(_)) {
-            self.load_team_doc();
-        }
-        // Debounced auto-save runs even when the pane is hidden.
-        if self.doc_dirty && self.doc_last_edit.elapsed() > Duration::from_millis(1200) {
-            self.save_doc();
-        }
-        if self.doc_dirty {
-            ctx.request_repaint_after(Duration::from_millis(300));
-        }
-
-        match self.state {
-            State::Locked { .. } => self.unlock_screen(ctx),
-            State::Unlocked(_) => self.main_screen(ctx),
-        }
-
-        // Last of all, and deliberately: the veil behind a modal dialog
-        // is painted into the *background* layer, and every panel —
-        // toolbar, docks, workspace — has just finished painting into
-        // that same layer. A rectangle appended after them covers all of
-        // them, and the windows, which live a layer above, stay lit.
-        // Une fenêtre mise de côté au verrouillage ne voile ni ne bloque
-        // l'écran de déverrouillage.
-        if matches!(self.state, State::Unlocked(_))
-            && (self.options.is_some() || self.pw_change.is_some() || self.tpl_editor.is_some())
-        {
-            ctx.layer_painter(egui::LayerId::background()).rect_filled(
-                ctx.screen_rect(),
-                0.0,
-                egui::Color32::from_black_alpha(96),
-            );
-        }
     }
 
-    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
-        self.shutdown();
-    }
-}
-
-impl App {
     /// **Quitter**, et seulement quitter : la fenêtre qui se range dans
     /// la zone de notification passe par [`App::window_closed`].
     /// Ce que dit un paquet fini : dans les options si elles sont
@@ -96123,7 +96430,7 @@ impl App {
         #[cfg(feature = "sync")]
         if let State::Unlocked(s) = &self.state {
             let r = &self.config.reseau;
-            if r.a_la_fermeture {
+            if r.a_la_fermeture && self.config.modules.reseau {
                 if let Some(path) = s.db.path() {
                     let in_network = s.db.setting("net_trousseau").is_some();
                     let folder = r.dossier.trim();
@@ -104997,6 +105304,90 @@ mod tests {
         assert_eq!(carte.view(), (4.0, whole));
         carte.set_view(0.2, focus);
         assert_eq!(carte.view(), (1.0, whole));
+    }
+
+    /// **Le script de démarrage** tourne sur son fil et rend ce qu'il a
+    /// écrit ; vide, rien ne part ; et une erreur se lit comme dans la
+    /// console.
+    #[test]
+    fn the_start_up_script_runs_once_on_its_own_thread() {
+        use std::time::Duration;
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-init-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = crate::db::Swept(dir.clone());
+        let db = crate::db::Db::open(&dir.join("init.db"), "secret").unwrap();
+        let mut session = super::Session::new(db, 12, 30, true).unwrap();
+        let ctx = egui::Context::default();
+        let wait = |session: &mut super::Session| {
+            let start = std::time::Instant::now();
+            while session.init_job.is_some() && start.elapsed() < Duration::from_secs(20) {
+                session.poll_init_script(&ctx);
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            session.init_out.take()
+        };
+        session.start_init_script("  \n");
+        assert!(session.init_job.is_none(), "un script vide ne part pas");
+        session.start_init_script("print(\"bonjour\"); 1 + 1");
+        let out = wait(&mut session).expect("rendu");
+        assert_eq!(out.printed, vec!["bonjour".to_owned()]);
+        assert_eq!(out.value, "2");
+        assert!(out.error.is_none());
+        session.start_init_script("print(\"avant\"); nulle_part()");
+        let out = wait(&mut session).expect("rendu");
+        assert_eq!(out.printed, vec!["avant".to_owned()]);
+        assert!(out.error.is_some());
+    }
+
+    /// **Un onglet relève d'un module ou du cœur** : ce que les cases
+    /// décochent, et rien de ce qui tient l'officine — la recherche, les
+    /// registres, les connexions des postes, les options elles-mêmes.
+    #[test]
+    fn a_module_unchecked_takes_its_tabs_and_tools_and_nothing_else() {
+        use super::{tab_module, tool_module, Tool, WorkTab};
+        use crate::config::Module;
+        for core in [
+            WorkTab::Dashboard,
+            WorkTab::Search,
+            WorkTab::Drugs,
+            WorkTab::Agenda,
+            WorkTab::Registres,
+            WorkTab::Connexions,
+            WorkTab::Messages,
+            WorkTab::Options,
+        ] {
+            assert_eq!(tab_module(&core), None, "{core:?}");
+        }
+        assert_eq!(tab_module(&WorkTab::Officines), Some(Module::Reseau));
+        assert_eq!(tab_module(&WorkTab::Comptes), Some(Module::Comptes));
+        assert_eq!(tab_module(&WorkTab::Actualites), Some(Module::Comptes));
+        for t in [
+            WorkTab::Caisse,
+            WorkTab::Finances,
+            WorkTab::Stats,
+            WorkTab::Campagne,
+            WorkTab::Script,
+            WorkTab::UiTexts,
+        ] {
+            assert_eq!(tab_module(&t), Some(Module::Gestion), "{t:?}");
+        }
+        // Un outil qui ouvre l'onglet d'un module relève du même.
+        assert_eq!(tool_module(Tool::Reseau), Some(Module::Reseau));
+        assert_eq!(
+            tool_module(Tool::Facturation),
+            tab_module(&WorkTab::Finances)
+        );
+        assert_eq!(tool_module(Tool::Libelles), tab_module(&WorkTab::UiTexts));
+        assert_eq!(tool_module(Tool::Tableau), Some(Module::Patients));
+        for keep in [
+            Tool::Options,
+            Tool::Sauvegarde,
+            Tool::Postes,
+            Tool::Ordonnancier,
+        ] {
+            assert_eq!(tool_module(keep), None, "{keep:?}");
+        }
     }
 
     /// **L'onglet compte celles qui sont apparues** : la première lecture

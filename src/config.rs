@@ -409,6 +409,30 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # qui a rétréci et un journal qu'on a vidé se lisent pareil.
 # keep_days = 365
 
+[modules]
+# Ce que ce poste charge. Un module décoché n'existe pas ici : ni
+# onglet, ni outil, ni fil qui tourne — un poste de comptoir lent n'a
+# pas à faire tourner le réseau d'officines pour le poste du bureau.
+# Le reste de l'application ne se charge qu'à l'ouverture de ce qui le
+# montre. Options › Modules.
+#
+# reseau : le réseau d'officines (réseau ouvert, DHT, carte, officines
+#   appairées) ; les postes de l'officine restent.
+# patients : la messagerie des patients (passerelle, voie directe,
+#   relais, tableau).
+# comptes : les comptes et les actualités.
+# gestion : caisse, recettes, statistiques, campagne de vaccination,
+#   console, documents imprimés.
+# reseau = true
+# patients = true
+# comptes = true
+# gestion = true
+#
+# Le script de démarrage (Rhai), lancé à l'ouverture d'une session sur
+# ce que lit la console, en lecture seule : il ne peut rien écrire ni
+# rien faire sortir. Ce qu'il rend s'affiche dans la console.
+# demarrage = ""
+
 # [prevention]
 # Les sujets d'un rendez-vous de prévention. Il n'a pas de thème — on en
 # couvre plusieurs dans la même séance —, et ce sont ces sujets qu'on
@@ -440,6 +464,7 @@ pub struct Config {
     pub bureau: BureauConfig,
     pub audit: AuditConfig,
     pub prescribers: PrescribersConfig,
+    pub modules: ModulesConfig,
     /// **Le fichier n'a pas pu se lire** : l'erreur, et rien n'est
     /// réécrit tant qu'elle reste. Une faute de frappe dans
     /// `config.toml` donnait les valeurs par défaut, que le premier
@@ -447,6 +472,108 @@ pub struct Config {
     /// chemin de la base compris.
     #[serde(skip)]
     pub unreadable: Option<String>,
+}
+
+/// **Ce que ce poste charge** — voir le modèle ci-dessus. Un module
+/// décoché n'existe pas sur ce poste : ni onglet, ni outil, ni fil.
+#[derive(Deserialize, Serialize, Clone, PartialEq, Debug)]
+#[serde(default)]
+pub struct ModulesConfig {
+    pub reseau: bool,
+    pub patients: bool,
+    pub comptes: bool,
+    pub gestion: bool,
+    /// Le script de démarrage : lancé à l'ouverture d'une session sur le
+    /// même instantané que la console, en lecture seule.
+    pub demarrage: String,
+}
+
+impl Default for ModulesConfig {
+    fn default() -> Self {
+        // Tout chargé : une configuration d'avant les modules garde
+        // tout ce qu'elle avait.
+        Self {
+            reseau: true,
+            patients: true,
+            comptes: true,
+            gestion: true,
+            demarrage: String::new(),
+        }
+    }
+}
+
+/// Les modules qu'un poste peut ne pas charger.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Module {
+    /// Le réseau d'officines : réseau ouvert, DHT, carte, officines
+    /// appairées. Les postes de l'officine restent.
+    Reseau,
+    /// La messagerie des patients : la passerelle, la voie directe, les
+    /// relais, le tableau.
+    Patients,
+    /// Les comptes et les actualités.
+    Comptes,
+    /// La gestion : caisse, recettes, statistiques, campagne, console,
+    /// documents imprimés.
+    Gestion,
+}
+
+impl Module {
+    pub const ALL: [Module; 4] = [
+        Module::Reseau,
+        Module::Patients,
+        Module::Comptes,
+        Module::Gestion,
+    ];
+}
+
+/// Les modules chargés par ce processus, un bit chacun dans l'ordre de
+/// [`Module::ALL`] : ce que l'interface consulte sans porter la
+/// configuration (`loaded`). Posé au lancement et à chaque
+/// enregistrement des options (`load_modules`).
+static LOADED: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0b1111);
+
+/// Retenir ce que ce poste charge.
+pub fn load_modules(m: &ModulesConfig) {
+    LOADED.store(bits_of(m), std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Ce module est-il chargé par ce poste ?
+pub fn loaded(m: Module) -> bool {
+    holds(LOADED.load(std::sync::atomic::Ordering::Relaxed), m)
+}
+
+fn bits_of(m: &ModulesConfig) -> u8 {
+    Module::ALL
+        .iter()
+        .enumerate()
+        .filter(|(_, x)| m.on(**x))
+        .fold(0u8, |b, (i, _)| b | 1 << i)
+}
+
+fn holds(bits: u8, m: Module) -> bool {
+    let i = Module::ALL.iter().position(|x| *x == m).unwrap_or(0);
+    bits & (1 << i) != 0
+}
+
+impl ModulesConfig {
+    pub fn on(&self, m: Module) -> bool {
+        match m {
+            Module::Reseau => self.reseau,
+            Module::Patients => self.patients,
+            Module::Comptes => self.comptes,
+            Module::Gestion => self.gestion,
+        }
+    }
+
+    pub fn set(&mut self, m: Module, on: bool) {
+        match m {
+            Module::Reseau => self.reseau = on,
+            Module::Patients => self.patients = on,
+            Module::Comptes => self.comptes = on,
+            Module::Gestion => self.gestion = on,
+        }
+    }
 }
 
 /// L'annuaire des prescripteurs — voir `src/prescribers.rs` et le
@@ -2595,6 +2722,39 @@ mod tests {
         let silent: Config = toml::from_str("[ui]\ntext_scale = 1.25\n").unwrap();
         assert_eq!(silent.audit.keep_days, 365);
         assert!(CONFIG_TEMPLATE.contains("[audit]"));
+    }
+
+    /// **Les modules** : tous chargés par défaut et par une configuration
+    /// d'avant eux ; chacun se décoche seul, et le script de démarrage
+    /// se relit tel qu'écrit.
+    #[test]
+    fn every_module_is_loaded_unless_this_post_unchecks_it() {
+        let all = Config::default().modules;
+        assert!(Module::ALL.iter().all(|m| all.on(*m)));
+        assert!(all.demarrage.is_empty());
+        let silent: Config = toml::from_str("[ui]\ntext_scale = 1.25\n").unwrap();
+        assert_eq!(silent.modules, all);
+        assert!(CONFIG_TEMPLATE.contains("[modules]"));
+        let cfg: Config = toml::from_str(
+            "[modules]\nreseau = false\ngestion = false\ndemarrage = \"print(1);\"\n",
+        )
+        .unwrap();
+        let m = &cfg.modules;
+        assert!(!m.on(Module::Reseau) && !m.on(Module::Gestion));
+        assert!(m.on(Module::Patients) && m.on(Module::Comptes));
+        assert_eq!(m.demarrage, "print(1);");
+        // Chaque module a son bit, et lui seul.
+        for one in Module::ALL {
+            let mut only = ModulesConfig::default();
+            for other in Module::ALL {
+                only.set(other, other == one);
+            }
+            let bits = bits_of(&only);
+            assert_eq!(bits.count_ones(), 1);
+            assert!(Module::ALL.iter().all(|x| holds(bits, *x) == (*x == one)));
+        }
+        let back: Config = toml::from_str(&toml::to_string(&cfg).unwrap()).unwrap();
+        assert_eq!(back.modules, cfg.modules);
     }
 
     /// **Aucune adresse d'annuaire n'est livrée**, et c'est la
