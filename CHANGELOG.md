@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.444.0] - 2026-10-23
+
 ### Added
 
 - **A quality register** (« Qualité » tab, « Aller à… » › « Registre qualité », Gestion module): non-conformities — dispensing errors, supplier, cold chain, complaints, equipment, hygiene, documents — from declaration (what, immediate action, external declaration) through analysis (severity × likelihood = criticity, cause and its family) and corrective/preventive actions (who, by when, done) to an effectiveness check and closure. The stage is read from what is written, never set by hand; closing needs the analysis, every action done and their effect confirmed. Overdue actions show in the header and the status bar. Prints a record (`nonconformite`) and the yearly review (`revue_qualite`); the register travels between posts with the files, and every write is compare-and-set against what was shown.
