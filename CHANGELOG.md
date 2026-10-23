@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.443.0] - 2026-10-23
+
 ### Added
 
 - **Options is a work tab.** The settings were a window over the screen, greying out what they set; they now open as a tab beside the others (the toolbar's « Options », « Aller à… », the tools that led to a page), keep what was typed while you switch tabs, and close with « Fermer » or the tab's cross.
