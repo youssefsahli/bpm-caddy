@@ -6366,6 +6366,15 @@ struct Session {
     /// next frame.
     #[cfg(feature = "sync")]
     posts_auto_tried: bool,
+    /// Whether this process serves the officine from this base — the
+    /// posts, the door, the network, the patients' messages
+    /// ([`Db::hold_service`]): one computer at a time on a shared file.
+    /// `None` until first asked.
+    #[cfg(feature = "sync")]
+    service_held: Option<bool>,
+    /// When the lease is next renewed or asked for.
+    #[cfg(feature = "sync")]
+    service_next: Instant,
     /// What the automatic synchronisation last said; `true` is a failure.
     #[cfg(feature = "sync")]
     posts_status: Option<(bool, String)>,
@@ -7450,6 +7459,10 @@ impl Session {
             posts_auto: None,
             #[cfg(feature = "sync")]
             posts_auto_tried: false,
+            #[cfg(feature = "sync")]
+            service_held: None,
+            #[cfg(feature = "sync")]
+            service_next: Instant::now(),
             #[cfg(feature = "sync")]
             posts_status: None,
             #[cfg(feature = "sync")]
@@ -9659,6 +9672,37 @@ impl Session {
         }
     }
 
+    /// How often the service lease is renewed: three times within
+    /// [`crate::db::SERVICE_FOR`].
+    #[cfg(feature = "sync")]
+    const SERVICE_EVERY: Duration = Duration::from_secs(30);
+
+    /// **Does this process serve the officine from this base?** The
+    /// posts, the door, the DHT, the network and the patients' messages
+    /// run on one computer at a time when several open the same file on
+    /// a shared drive; the others only show what it stores. A renewal
+    /// refused by a busy base keeps the last answer.
+    #[cfg(feature = "sync")]
+    fn serves(&mut self) -> bool {
+        let now = Instant::now();
+        if now < self.service_next {
+            return self.service_held.unwrap_or(false);
+        }
+        self.service_next = now + Self::SERVICE_EVERY;
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX));
+        if let Ok(held) = self.db.hold_service(crate::db::process_token(), secs) {
+            if !held && self.service_held != Some(false) {
+                self.log_connection(false, tr("conn_service_elsewhere"));
+            } else if held && self.service_held == Some(false) {
+                self.log_connection(false, tr("conn_service_here"));
+            }
+            self.service_held = Some(held);
+        }
+        self.service_held.unwrap_or(false)
+    }
+
     /// Relire ce que compte la marque des connexions dans la barre
     /// d'état : les autres postes, le réseau, les officines jointes
     /// aujourd'hui — trois lectures courtes.
@@ -10006,10 +10050,10 @@ impl Session {
             }
             return;
         }
-        let r = &config.reseau;
-        if !r.automatique || !config.modules.reseau {
+        if !config.reseau.automatique || !config.modules.reseau || !self.serves() {
             return;
         }
+        let r = &config.reseau;
         let now = Instant::now();
         let due = self.net_next.is_none_or(|at| now >= at);
         if !due {
@@ -10115,7 +10159,14 @@ impl Session {
     /// base : le témoin de SQLite bouge pour toute autre connexion.
     #[cfg(feature = "sync")]
     fn poll_posts(&mut self, ctx: &egui::Context, config: &Config) {
-        if !self.posts_auto_tried {
+        let serves = self.serves();
+        if !serves && self.posts_auto.is_some() {
+            // Another computer on this file took the lease: this one
+            // stalled past it. Started again if it comes back.
+            self.stop_posts_auto();
+            self.posts_auto_tried = false;
+        }
+        if serves && !self.posts_auto_tried {
             self.posts_auto_tried = true;
             self.start_posts_auto(config);
             // La marque seulement : la vue des connexions se relit
@@ -14953,9 +15004,10 @@ impl Session {
     /// le réglage de l'officine, et ce qu'il dit.
     #[cfg(feature = "sync")]
     fn poll_pchat(&mut self, config: &Config) {
-        // La messagerie des patients non chargée : rien ne se lit, rien
-        // n'attend — et ce qui attendait s'arrête.
-        if !config.modules.patients {
+        // La messagerie des patients non chargée, ou servie par un autre
+        // ordinateur de ce fichier : rien ne se lit, rien n'attend — et ce
+        // qui attendait s'arrête.
+        if !config.modules.patients || !self.serves() {
             if self.pchat_wait.take().is_some() {
                 self.pchat_unreachable = None;
                 self.pchat_page = None;
@@ -97913,7 +97965,7 @@ impl App {
         if let State::Unlocked(s) = &mut self.state {
             s.stop_posts_auto();
             let p = &self.config.postes;
-            if p.a_la_fermeture && s.db.sync_post().is_some() {
+            if p.a_la_fermeture && s.service_held == Some(true) && s.db.sync_post().is_some() {
                 if let Some(path) = s.db.path() {
                     let folder = p.dossier.trim();
                     let (tx, _rx) = std::sync::mpsc::channel();
@@ -97939,7 +97991,7 @@ impl App {
         #[cfg(feature = "sync")]
         if let State::Unlocked(s) = &self.state {
             let r = &self.config.reseau;
-            if r.a_la_fermeture && self.config.modules.reseau {
+            if r.a_la_fermeture && s.service_held == Some(true) && self.config.modules.reseau {
                 if let Some(path) = s.db.path() {
                     let in_network = s.db.setting("net_trousseau").is_some();
                     let folder = r.dossier.trim();
@@ -97962,6 +98014,11 @@ impl App {
                         );
                     }
                 }
+            }
+            // Le bail rendu : l'ordinateur suivant sur ce fichier prend le
+            // service à son prochain renouvellement, sans attendre.
+            if s.service_held == Some(true) {
+                let _ = s.db.release_service(crate::db::process_token());
             }
         }
     }

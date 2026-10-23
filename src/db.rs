@@ -42841,6 +42841,26 @@ const AT_NOW: &str = "strftime('%Y-%m-%d %H:%M:%f', 'now')";
 const NET_GEN_BUMP: &str = "INSERT INTO net_journal_gen (k, n) VALUES (0, 1)
      ON CONFLICT(k) DO UPDATE SET n = n + 1";
 
+/// Combien de secondes un bail de service muet tient encore
+/// ([`Db::hold_service`]) : trois renouvellements manqués.
+pub const SERVICE_FOR: i64 = 90;
+
+/// Ce processus, pour le bail de service : tiré une fois au lancement.
+pub fn process_token() -> &'static str {
+    static TOKEN: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    TOKEN.get_or_init(|| {
+        use std::hash::{BuildHasher, Hasher};
+        let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+        h.write_u32(std::process::id());
+        h.write_u128(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos()),
+        );
+        format!("{:016x}", h.finish())
+    })
+}
+
 fn write_tx(conn: &Connection) -> rusqlite::Result<rusqlite::Transaction<'_>> {
     rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
 }
@@ -58791,6 +58811,43 @@ impl Db {
             .ok()
     }
 
+    /// **Un seul processus sert l'officine depuis une base partagée.**
+    /// Sur un lecteur réseau, chaque ordinateur qui ouvre le fichier
+    /// lançait ses propres fils — les postes, la porte des officines, la
+    /// DHT, le réseau, la messagerie des patients — et tous écrivaient
+    /// dans le même fichier : au-delà des cinq secondes de
+    /// `busy_timeout`, chaque écran recevait « database is locked ». Le
+    /// service se tient par un bail dans `sync_local` (la ligne ne voyage
+    /// pas et ne fait relire aucun écran) : `me` le prend s'il est libre,
+    /// à lui, ou muet depuis plus de [`SERVICE_FOR`] secondes. Rend s'il
+    /// le tient maintenant.
+    pub fn hold_service(&self, me: &str, now: i64) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "INSERT INTO sync_local (key, value) VALUES ('service', ?1 || ' ' || ?2)
+                 ON CONFLICT (key) DO UPDATE SET value = excluded.value
+                 WHERE substr(value, 1, length(?1) + 1) = ?1 || ' '
+                    OR CAST(substr(value, instr(value, ' ') + 1) AS INTEGER) < ?2 - ?3",
+                rusqlite::params![me, now, SERVICE_FOR],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Rendre le bail, à la fermeture : le poste suivant le prend sans
+    /// attendre qu'il expire.
+    pub fn release_service(&self, me: &str) -> Result<(), String> {
+        self.conn
+            .execute(
+                "DELETE FROM sync_local WHERE key = 'service'
+                 AND substr(value, 1, length(?1) + 1) = ?1 || ' '",
+                [me],
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
     pub fn set_sync_local(&self, key: &str, value: &str) -> Result<(), String> {
         self.conn
             .execute(
@@ -59854,6 +59911,35 @@ mod tests {
     /// suite, sans `busy_timeout` — c'est ce que la première moitié
     /// montre. Immédiates (`write_tx`), la seconde attend la première et
     /// passe. Et la base n'en ouvre plus d'autres : `db.rs` est relu.
+    /// **Une base partagée n'a qu'un ordinateur de service** : le
+    /// premier tient le bail en le renouvelant, l'autre attend ; muet
+    /// au-delà de `SERVICE_FOR` ou rendu, il passe au second.
+    #[test]
+    fn one_process_serves_a_shared_base_at_a_time() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-service-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("shared.db");
+        let a = Db::open(&path, "secret").unwrap();
+        let b = Db::open(&path, "secret").unwrap();
+        assert!(a.hold_service("aaaa", 1000).unwrap());
+        assert!(!b.hold_service("bbbb", 1010).unwrap());
+        assert!(a.hold_service("aaaa", 1030).unwrap());
+        // Un préfixe du jeton ne suffit pas.
+        assert!(!b.hold_service("aaa", 1040).unwrap());
+        assert!(!b.hold_service("bbbb", 1030 + SERVICE_FOR).unwrap());
+        assert!(b.hold_service("bbbb", 1031 + SERVICE_FOR).unwrap());
+        assert!(!a.hold_service("aaaa", 1032 + SERVICE_FOR).unwrap());
+        // Rendu par un autre que son tenant : rien ne change.
+        a.release_service("aaaa").unwrap();
+        assert!(!a.hold_service("aaaa", 1033 + SERVICE_FOR).unwrap());
+        b.release_service("bbbb").unwrap();
+        assert!(a.hold_service("aaaa", 1034 + SERVICE_FOR).unwrap());
+        assert_ne!(process_token(), "");
+        assert_eq!(process_token(), process_token());
+    }
+
     /// **Le registre qualité, de poste à poste** : une écriture se mesure
     /// à la ligne affichée, et une non-conformité retirée emporte ses
     /// actions.

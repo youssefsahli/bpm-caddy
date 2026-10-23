@@ -2234,6 +2234,13 @@ de mot de passe redemande l'actuel, puis rechiffre les trois ; les
 autres postes sur la même base doivent alors être déverrouillés avec le
 nouveau.
 
+**Une base sur un partage, plusieurs ordinateurs.** Un seul ordinateur à
+la fois sert l'officine : les échanges avec les autres postes, la porte
+des officines, le réseau et la messagerie des patients tournent chez lui,
+et les autres affichent ce qu'il range — le journal des connexions le
+dit. Fermé ou muet depuis une minute et demie, un autre reprend. Une
+synchronisation lancée à la main part de n'importe lequel.
+
 Une base dont le chemin est écrit dans `config.toml` et qui n'est pas
 là (partage non monté, chemin mal tapé) n'est jamais créée seule au
 déverrouillage : l'écran le dit, et c'est en retapant le mot de passe

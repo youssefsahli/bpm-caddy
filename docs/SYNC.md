@@ -462,6 +462,20 @@ propre clé dans `settings` (`net_trousseau`), qui ne scelle que
 `Stream::Reseau` : les deux clés n'ouvrent rien l'une de l'autre, et un
 test le vérifie sur les octets (`the_posts_key_and_the_network_key_open_nothing_of_each_other`).
 
+**Un fichier partagé, un seul processus de service.** Plusieurs
+ordinateurs peuvent ouvrir la même base sur un lecteur réseau ; chacun
+lançait alors ses propres fils (postes, porte des officines, DHT,
+réseau, messagerie des patients), tous écrivant dans le même fichier, et
+au-delà des cinq secondes de `busy_timeout` chaque écran recevait
+« database is locked ». Le service se tient désormais par un bail dans
+`sync_local` (clé `service`, « jeton instant ») : `Db::hold_service` le
+prend s'il est libre, déjà à ce processus (`db::process_token`) ou muet
+depuis `SERVICE_FOR` (90 s) ; `Session::serves` le renouvelle toutes les
+30 s, `poll_posts`, `poll_net_auto` et `poll_pchat` ne lancent rien sans
+lui, la fermeture le rend (`release_service`). Une synchronisation
+demandée à la main part de n'importe quel ordinateur
+(`one_process_serves_a_shared_base_at_a_time`).
+
 ### 7.2 Ligne ou opération : l'opération, champ par champ
 
 `src/replica.rs` tient la liste des tables qui voyagent (`TABLES`, avec
