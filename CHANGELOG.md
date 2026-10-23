@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.445.0] - 2026-10-24
+
 ### Fixed
 
 - **« database is locked » on every computer of a base kept on a shared drive.** Each computer opening the file started its own posts sync, officine door, DHT, network sync and patient messaging, and all of them wrote to the one file; past the five-second wait, every screen got the error. One process now serves the officine at a time, under a lease in the base (`Db::hold_service`, renewed every 30 s, taken over after 90 s of silence, handed back at close); the other computers show what it stores and say so in the connections log. Manual syncs still run from any computer.
