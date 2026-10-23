@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A quality register** (« Qualité » tab, « Aller à… » › « Registre qualité », Gestion module): non-conformities — dispensing errors, supplier, cold chain, complaints, equipment, hygiene, documents — from declaration (what, immediate action, external declaration) through analysis (severity × likelihood = criticity, cause and its family) and corrective/preventive actions (who, by when, done) to an effectiveness check and closure. The stage is read from what is written, never set by hand; closing needs the analysis, every action done and their effect confirmed. Overdue actions show in the header and the status bar. Prints a record (`nonconformite`) and the yearly review (`revue_qualite`); the register travels between posts with the files, and every write is compare-and-set against what was shown.
+- **A one-shot transmission sheet** (« Aller à… » › « Fiche de transmission », its own tab): a recipient (physician, nurse, nursing home, another pharmacy, the team, the patient) and their name — the open file's physician in one click — a subject, a message, « Urgent », room for the answer, and optionally the open file with the treatments ticked. « Imprimer » opens it as a PDF under the officine's letterhead, signed by the post's initials; nothing is stored, by design. Template `liaison`.
+- **Opening labels for multidose vials** (Campagne › lots): « Étiquette » on an open vial prints what goes on it — product, lot, opened at (and by whom), use before — and « Étiquettes des flacons ouverts » prints one for every vial still in date. Each post prints on its label printer's roll (57 × 32 mm, one per page) or on an A4 sheet of three columns by eight (Options › Interface, `[ui] flacon_etiquettes`); both layouts are templates (`flacon`, `flacons`). A vial past its time gets no label.
+
 ## [0.443.0] - 2026-10-23
 
 ### Added

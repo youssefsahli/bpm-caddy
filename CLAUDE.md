@@ -36,7 +36,8 @@ line in that test.
   `ordonnance`, `entretien`, `selfcheck`, `compression`, `nutrition`,
   `protections`, `conseils`, `couverture` = what a delivered box
   covers), officine tools (`campagne` = the winter
-  vaccination campaign, `shipped` = fingerprints of reworded shipped
+  vaccination campaign, `qualite` = the quality register (non-conformities,
+  their actions, the yearly review), `shipped` = fingerprints of reworded shipped
   text),
   (`ordonnancier` + `vigilance` = stupéfiants register, `caisse`,
   `planning`, `agenda`, `location`, `prescribers`, `annuaire`,

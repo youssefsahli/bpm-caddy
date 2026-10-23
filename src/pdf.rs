@@ -5795,6 +5795,36 @@ pub const DOCS: &[Doc] = &[
         markers: MARKERS_SURVEILLANCE,
         default: DEFAULT_SURVEILLANCE_TEMPLATE,
     },
+    Doc {
+        key: "nonconformite",
+        label: "tpl_target_nonconformite",
+        markers: MARKERS_NONCONFORMITE,
+        default: DEFAULT_NONCONFORMITE_TEMPLATE,
+    },
+    Doc {
+        key: "revue_qualite",
+        label: "tpl_target_revue_qualite",
+        markers: MARKERS_REVUE_QUALITE,
+        default: DEFAULT_REVUE_QUALITE_TEMPLATE,
+    },
+    Doc {
+        key: "liaison",
+        label: "tpl_target_liaison",
+        markers: MARKERS_LIAISON,
+        default: DEFAULT_LIAISON_TEMPLATE,
+    },
+    Doc {
+        key: "flacon",
+        label: "tpl_target_flacon",
+        markers: MARKERS_FLACON,
+        default: DEFAULT_FLACON_TEMPLATE,
+    },
+    Doc {
+        key: "flacons",
+        label: "tpl_target_flacons",
+        markers: MARKERS_FLACON,
+        default: DEFAULT_FLACONS_TEMPLATE,
+    },
 ];
 
 const MARKERS_FICHE: &[&str] = &[
@@ -5970,6 +6000,67 @@ pub fn preview_doc(key: &str, template: &str) -> Result<PathBuf, String> {
 ///
 /// Elles ne sont pas vides : un modèle validé sur des chaînes vides
 /// compile toujours, et se casse à la première vraie impression.
+/// Une non-conformité d'exemple : toutes les parties remplies, deux
+/// actions, et un libellé hostile.
+fn sample_nc_paper() -> NcPaper {
+    NcPaper {
+        title: "Inversion de dosage #[x] \"lot\"".to_owned(),
+        declared: "02/03/2026 par CL".to_owned(),
+        kind: "Erreur de délivrance".to_owned(),
+        stage: "Close".to_owned(),
+        description: "Lévothyrox 100 µg délivré à la place de 75 µg, vu au contrôle.".to_owned(),
+        immediate: "Boîte reprise au comptoir, patient prévenu.".to_owned(),
+        declaration: String::new(),
+        severity: "3 — majeure".to_owned(),
+        likelihood: "2 — rare".to_owned(),
+        criticity: "6 (modérée)".to_owned(),
+        cause_kind: "Matériel, rangement".to_owned(),
+        cause: "Deux dosages rangés côte à côte.".to_owned(),
+        actions: vec![
+            NcPaperAction {
+                kind: "Corrective".to_owned(),
+                what: "Séparer les dosages dans le tiroir".to_owned(),
+                owner: "MB".to_owned(),
+                due: "10/03/2026".to_owned(),
+                done: "08/03/2026".to_owned(),
+            },
+            NcPaperAction {
+                kind: "Préventive".to_owned(),
+                what: "Étiquette de couleur par dosage".to_owned(),
+                owner: "CL".to_owned(),
+                due: "20/03/2026".to_owned(),
+                done: String::new(),
+            },
+        ],
+        effective: "Efficace".to_owned(),
+        verification: "Aucune inversion depuis.".to_owned(),
+        closed: "02/04/2026 par CL".to_owned(),
+    }
+}
+
+fn sample_review_paper() -> ReviewPaper {
+    ReviewPaper {
+        year: "2026".to_owned(),
+        figures: vec![
+            ("Déclarées".to_owned(), "12".to_owned()),
+            ("Closes".to_owned(), "9".to_owned()),
+        ],
+        by_kind: vec![
+            ("Erreur de délivrance".to_owned(), 5),
+            ("Chaîne du froid #[x]".to_owned(), 2),
+        ],
+        by_level: vec![("Faible".to_owned(), 4), ("Élevée".to_owned(), 1)],
+        by_cause: vec![("Méthode".to_owned(), 3)],
+        list: vec![[
+            "02/03/2026".to_owned(),
+            "Erreur de délivrance".to_owned(),
+            "Inversion de dosage".to_owned(),
+            "Close".to_owned(),
+            "6".to_owned(),
+        ]],
+    }
+}
+
 /// Une feuille de couverture d'exemple : une boîte délivrée, une rupture,
 /// une délivrance prévue, un alignement, et un libellé hostile.
 fn sample_couverture() -> CouverturePaper {
@@ -7481,6 +7572,43 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
             },
             &pharmacy,
         ),
+        "nonconformite" => nonconformite_values(&sample_nc_paper(), &pharmacy),
+        "revue_qualite" => revue_qualite_values(&sample_review_paper(), &pharmacy),
+        "liaison" => liaison_values(
+            &LiaisonSheet {
+                to_kind: "Médecin".to_owned(),
+                to_name: "Dr Martin #[x]".to_owned(),
+                subject: "Somnolence depuis l'introduction de la mirtazapine".to_owned(),
+                message: "Mme Dupont signale une somnolence marquée le matin.\n\nPouvez-vous réévaluer l'heure de prise ?".to_owned(),
+                urgent: true,
+                answer: true,
+                patient: Some((patient.full_name(), born_on(&patient.birth_date))),
+                treats: vec!["Mirtazapine 15 mg".to_owned(), "Amlodipine 5 mg".to_owned()],
+                from: pharmacy.pharmacist.clone(),
+                date: "23/10/2026".to_owned(),
+            },
+            &pharmacy,
+        ),
+        "flacon" | "flacons" => vial_values(
+            key,
+            &[
+                VialLabel {
+                    product: "Comirnaty JN.1 #[x] \"lot\"".to_owned(),
+                    lot: "FL25-208".to_owned(),
+                    opened: "23/10/2026 à 9 h 05".to_owned(),
+                    until: "21 h 05".to_owned(),
+                    operator: "CL".to_owned(),
+                },
+                VialLabel {
+                    product: "Comirnaty JN.1".to_owned(),
+                    lot: "GH7731".to_owned(),
+                    opened: "23/10/2026 à 14 h 30".to_owned(),
+                    until: "24/10/2026 2 h 30".to_owned(),
+                    operator: String::new(),
+                },
+            ],
+            &pharmacy.name,
+        ),
         // L'ordonnance : son aperçu montre les deux mentions remplies,
         // pour qu'on voie où les siennes tomberaient.
         _ => vec![
@@ -8271,6 +8399,570 @@ pub fn open_labels(
             &label_sheet_values(data, pharmacy),
         ),
         "etiquettes",
+    )
+}
+
+/// **La fiche d'une non-conformité** : ce qui s'est passé, son analyse,
+/// ses actions et sa clôture — ce qu'on range au classeur qualité ou
+/// qu'on montre à l'inspection.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct NcPaper {
+    pub title: String,
+    /// « 23/10/2026 par CL ».
+    pub declared: String,
+    pub kind: String,
+    pub stage: String,
+    pub description: String,
+    pub immediate: String,
+    pub declaration: String,
+    pub severity: String,
+    pub likelihood: String,
+    pub criticity: String,
+    pub cause_kind: String,
+    pub cause: String,
+    pub actions: Vec<NcPaperAction>,
+    pub effective: String,
+    pub verification: String,
+    /// Vide tant qu'elle est ouverte.
+    pub closed: String,
+}
+
+/// Une action, en français.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct NcPaperAction {
+    pub kind: String,
+    pub what: String,
+    pub owner: String,
+    pub due: String,
+    pub done: String,
+}
+
+const MARKERS_NONCONFORMITE: &[&str] = &[
+    "{{PHARMACY_NAME}}",
+    "{{TITLE}}",
+    "{{DECLARED}}",
+    "{{KIND}}",
+    "{{STAGE}}",
+    "{{DESCRIPTION}}",
+    "{{IMMEDIATE}}",
+    "{{DECLARATION}}",
+    "{{SEVERITY}}",
+    "{{LIKELIHOOD}}",
+    "{{CRITICITY}}",
+    "{{CAUSE_KIND}}",
+    "{{CAUSE}}",
+    "{{ACTIONS}}",
+    "{{EFFECTIVE}}",
+    "{{VERIFICATION}}",
+    "{{CLOSED}}",
+];
+
+const DEFAULT_NONCONFORMITE_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 1.8cm)
+#set text(size: 10pt, lang: "fr", hyphenate: true)
+#set par(justify: true)
+#let sec(t) = block(above: 5mm, below: 2mm)[#text(11pt, weight: "bold")[#t] #v(-2mm) #line(length: 100%, stroke: 0.5pt)]
+#let row(k, v) = [#text(weight: "bold")[#k] #v \ ]
+
+#grid(columns: (1fr, auto),
+  [#text(15pt, weight: "bold")[Fiche de non-conformité]],
+  [#align(right)[{{PHARMACY_NAME}}]],
+)
+#v(2mm)
+#text(12pt)[{{TITLE}}]
+
+#sec[Déclaration]
+#row[Déclarée le :][{{DECLARED}}]
+#row[Type :][{{KIND}}]
+#row[Étape :][{{STAGE}}]
+#row[Déclarée au-dehors :][{{DECLARATION}}]
+#v(1mm)
+#text(weight: "bold")[Description] \
+{{DESCRIPTION}}
+#v(1mm)
+#text(weight: "bold")[Action immédiate] \
+{{IMMEDIATE}}
+
+#sec[Analyse]
+#row[Gravité :][{{SEVERITY}}]
+#row[Fréquence :][{{LIKELIHOOD}}]
+#row[Criticité :][{{CRITICITY}}]
+#row[Famille de cause :][{{CAUSE_KIND}}]
+#v(1mm)
+#text(weight: "bold")[Cause] \
+{{CAUSE}}
+
+#sec[Actions]
+{{ACTIONS}}
+
+#sec[Vérification et clôture]
+#row[Efficacité :][{{EFFECTIVE}}]
+#v(1mm)
+{{VERIFICATION}}
+#v(1mm)
+#row[Close le :][{{CLOSED}}]
+
+#v(1fr)
+#grid(columns: (1fr, 1fr), column-gutter: 8mm,
+  [Visa du pharmacien responsable \ #box(width: 100%, height: 1.8cm, stroke: 0.6pt)],
+  [Date \ #box(width: 100%, height: 1.8cm, stroke: 0.6pt)],
+)
+"##;
+
+/// Un texte de la fiche, ou un tiret quand il n'y a rien : un champ vide
+/// sur une fiche qualité doit se voir vide, pas disparaître.
+fn or_dash(v: &str) -> String {
+    let v = v.trim();
+    if v.is_empty() {
+        "#\"—\"".to_owned()
+    } else {
+        format!("#{}", typst_str(v))
+    }
+}
+
+fn nonconformite_values(p: &NcPaper, pharmacy: &PharmacyConfig) -> Vec<(&'static str, String)> {
+    let actions = if p.actions.is_empty() {
+        or_dash("")
+    } else {
+        let mut t = String::from(
+            "#table(columns: (auto, 1fr, auto, auto, auto), inset: 4pt, stroke: 0.4pt,\n  [*Type*], [*Action*], [*Qui*], [*Échéance*], [*Faite le*],\n",
+        );
+        for a in &p.actions {
+            t.push_str(&format!(
+                "  [#{}], [#{}], [#{}], [#{}], [#{}],\n",
+                typst_str(&a.kind),
+                typst_str(&a.what),
+                typst_str(&a.owner),
+                typst_str(&a.due),
+                typst_str(&a.done)
+            ));
+        }
+        t.push(')');
+        t
+    };
+    vec![
+        (
+            "{{PHARMACY_NAME}}",
+            format!("#{}", typst_str(&pharmacy.name)),
+        ),
+        ("{{TITLE}}", or_dash(&p.title)),
+        ("{{DECLARED}}", or_dash(&p.declared)),
+        ("{{KIND}}", or_dash(&p.kind)),
+        ("{{STAGE}}", or_dash(&p.stage)),
+        ("{{DESCRIPTION}}", or_dash(&p.description)),
+        ("{{IMMEDIATE}}", or_dash(&p.immediate)),
+        ("{{DECLARATION}}", or_dash(&p.declaration)),
+        ("{{SEVERITY}}", or_dash(&p.severity)),
+        ("{{LIKELIHOOD}}", or_dash(&p.likelihood)),
+        ("{{CRITICITY}}", or_dash(&p.criticity)),
+        ("{{CAUSE_KIND}}", or_dash(&p.cause_kind)),
+        ("{{CAUSE}}", or_dash(&p.cause)),
+        ("{{ACTIONS}}", actions),
+        ("{{EFFECTIVE}}", or_dash(&p.effective)),
+        ("{{VERIFICATION}}", or_dash(&p.verification)),
+        ("{{CLOSED}}", or_dash(&p.closed)),
+    ]
+}
+
+/// La fiche d'une non-conformité.
+pub fn open_nonconformite(
+    paper: &NcPaper,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        fill(
+            &template_source("nonconformite", template_path)?,
+            &nonconformite_values(paper, pharmacy),
+        ),
+        "nonconformite",
+    )
+}
+
+/// **La revue qualité de l'année** : les chiffres, les répartitions, et
+/// la liste des non-conformités déclarées.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ReviewPaper {
+    pub year: String,
+    /// (libellé, valeur) — déjà en français.
+    pub figures: Vec<(String, String)>,
+    pub by_kind: Vec<(String, usize)>,
+    pub by_level: Vec<(String, usize)>,
+    pub by_cause: Vec<(String, usize)>,
+    /// Date, type, objet, étape, criticité.
+    pub list: Vec<[String; 5]>,
+}
+
+const MARKERS_REVUE_QUALITE: &[&str] = &[
+    "{{PHARMACY_NAME}}",
+    "{{YEAR}}",
+    "{{FIGURES}}",
+    "{{BY_KIND}}",
+    "{{BY_LEVEL}}",
+    "{{BY_CAUSE}}",
+    "{{LIST}}",
+];
+
+const DEFAULT_REVUE_QUALITE_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 1.8cm)
+#set text(size: 10pt, lang: "fr", hyphenate: true)
+#let sec(t) = block(above: 5mm, below: 2mm)[#text(11pt, weight: "bold")[#t] #v(-2mm) #line(length: 100%, stroke: 0.5pt)]
+
+#grid(columns: (1fr, auto),
+  [#text(15pt, weight: "bold")[Revue qualité {{YEAR}}]],
+  [#align(right)[{{PHARMACY_NAME}}]],
+)
+
+#sec[Bilan]
+{{FIGURES}}
+
+#grid(columns: (1fr, 1fr, 1fr), column-gutter: 5mm,
+  [#sec[Par type] {{BY_KIND}}],
+  [#sec[Par criticité] {{BY_LEVEL}}],
+  [#sec[Par cause] {{BY_CAUSE}}],
+)
+
+#sec[Non-conformités de l'année]
+{{LIST}}
+
+#v(1fr)
+#grid(columns: (1fr, 1fr), column-gutter: 8mm,
+  [Revue faite le \ #box(width: 100%, height: 1.5cm, stroke: 0.6pt)],
+  [Visa du pharmacien titulaire \ #box(width: 100%, height: 1.5cm, stroke: 0.6pt)],
+)
+"##;
+
+fn revue_qualite_values(p: &ReviewPaper, pharmacy: &PharmacyConfig) -> Vec<(&'static str, String)> {
+    let pairs = |rows: &[(String, String)]| {
+        let mut t = String::from("#table(columns: (1fr, auto), inset: 3pt, stroke: 0.3pt,\n");
+        for (k, v) in rows {
+            t.push_str(&format!("  [#{}], [#{}],\n", typst_str(k), typst_str(v)));
+        }
+        t.push(')');
+        t
+    };
+    let counts = |rows: &[(String, usize)]| {
+        pairs(
+            &rows
+                .iter()
+                .map(|(k, v)| (k.clone(), v.to_string()))
+                .collect::<Vec<_>>(),
+        )
+    };
+    let list = if p.list.is_empty() {
+        "#\"—\"".to_owned()
+    } else {
+        let mut t = String::from(
+            "#table(columns: (auto, auto, 1fr, auto, auto), inset: 3pt, stroke: 0.3pt,\n  [*Date*], [*Type*], [*Objet*], [*Étape*], [*Crit.*],\n",
+        );
+        for row in &p.list {
+            t.push_str("  ");
+            for cell in row {
+                t.push_str(&format!("[#{}], ", typst_str(cell)));
+            }
+            t.push('\n');
+        }
+        t.push(')');
+        t
+    };
+    vec![
+        (
+            "{{PHARMACY_NAME}}",
+            format!("#{}", typst_str(&pharmacy.name)),
+        ),
+        ("{{YEAR}}", format!("#{}", typst_str(&p.year))),
+        ("{{FIGURES}}", pairs(&p.figures)),
+        ("{{BY_KIND}}", counts(&p.by_kind)),
+        ("{{BY_LEVEL}}", counts(&p.by_level)),
+        ("{{BY_CAUSE}}", counts(&p.by_cause)),
+        ("{{LIST}}", list),
+    ]
+}
+
+/// La revue qualité d'une année.
+pub fn open_quality_review(
+    paper: &ReviewPaper,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        fill(
+            &template_source("revue_qualite", template_path)?,
+            &revue_qualite_values(paper, pharmacy),
+        ),
+        &format!("revue_qualite_{}", paper.year),
+    )
+}
+
+/// **La fiche de transmission** : une information à faire passer, une
+/// fois, à qui que ce soit — un médecin, une infirmière, un EHPAD, une
+/// autre officine, l'équipe, le patient. Rien n'en est gardé : elle se
+/// tape, s'imprime, et c'est tout.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LiaisonSheet {
+    /// « Médecin », « Infirmier(ère) »… — déjà en français.
+    pub to_kind: String,
+    /// Le nom du destinataire ; vide, la fiche dit seulement à qui.
+    pub to_name: String,
+    pub subject: String,
+    pub message: String,
+    pub urgent: bool,
+    /// Une place pour la réponse, sous le message.
+    pub answer: bool,
+    /// Le patient dont il s'agit : nom et date de naissance en français.
+    pub patient: Option<(String, String)>,
+    /// Les traitements cochés, tels qu'ils s'écrivent.
+    pub treats: Vec<String>,
+    /// Qui écrit (la signature des initiales).
+    pub from: String,
+    /// Déjà en français.
+    pub date: String,
+}
+
+const MARKERS_LIAISON: &[&str] = &[
+    "{{PHARMACY_NAME}}",
+    "{{PHARMACY_ADDRESS}}",
+    "{{PHARMACY_PHONE}}",
+    "{{DATE}}",
+    "{{TO}}",
+    "{{URGENT}}",
+    "{{SUBJECT}}",
+    "{{PATIENT}}",
+    "{{MESSAGE}}",
+    "{{ANSWER}}",
+    "{{FROM}}",
+];
+
+const DEFAULT_LIAISON_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 2cm)
+#set text(size: 11pt, lang: "fr", hyphenate: true)
+#set par(justify: true)
+
+#grid(columns: (1fr, auto),
+  [#text(weight: "bold", size: 13pt)[{{PHARMACY_NAME}}] \
+   {{PHARMACY_ADDRESS}} \
+   {{PHARMACY_PHONE}}],
+  [#align(right)[À l'attention de \ #text(weight: "bold")[{{TO}}]]],
+)
+#v(6mm)
+#grid(columns: (1fr, auto),
+  [#text(15pt, weight: "bold")[Fiche de transmission]],
+  [#align(right)[Le {{DATE}}]],
+)
+{{URGENT}}
+#v(2mm)
+#line(length: 100%, stroke: 0.6pt)
+#v(2mm)
+#text(weight: "bold")[Objet :] {{SUBJECT}}
+{{PATIENT}}
+#v(4mm)
+{{MESSAGE}}
+{{ANSWER}}
+#v(1fr)
+#align(right)[{{FROM}}
+#v(2mm)
+#box(width: 6.5cm, height: 2.2cm, stroke: 0.7pt)]
+"##;
+
+fn liaison_values(data: &LiaisonSheet, pharmacy: &PharmacyConfig) -> Vec<(&'static str, String)> {
+    let t = |v: &str| format!("#{}", typst_str(v));
+    let to = match (data.to_kind.trim(), data.to_name.trim()) {
+        (kind, "") => kind.to_owned(),
+        ("", name) => name.to_owned(),
+        (kind, name) => format!("{name} ({})", kind.to_lowercase()),
+    };
+    let urgent = if data.urgent {
+        format!(
+            "#v(2mm)\n#box(stroke: 1pt, inset: (x: 6pt, y: 3pt))[#text(weight: \"bold\")[{}]]",
+            t(crate::strings::tr("liaison_pdf_urgent"))
+        )
+    } else {
+        String::new()
+    };
+    let patient = match &data.patient {
+        Some((name, born)) => {
+            let mut out = format!(
+                "\\\n#text(weight: \"bold\")[{}] {}",
+                t(crate::strings::tr("liaison_pdf_patient")),
+                t(&if born.is_empty() {
+                    name.clone()
+                } else {
+                    crate::strings::trn("liaison_pdf_born", &[name, born])
+                })
+            );
+            if !data.treats.is_empty() {
+                out.push_str(&format!(
+                    "\n#v(2mm)\n#text(weight: \"bold\")[{}]\n",
+                    t(crate::strings::tr("liaison_pdf_treats"))
+                ));
+                for d in &data.treats {
+                    out.push_str(&format!("- {}\n", t(d)));
+                }
+            }
+            out
+        }
+        None => String::new(),
+    };
+    // Un paragraphe par ligne vide : le message s'imprime comme il a
+    // été tapé, sans devenir un seul bloc.
+    let message = data
+        .message
+        .split("\n\n")
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map(t)
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    let answer = if data.answer {
+        format!(
+            "#v(6mm)\n#text(weight: \"bold\")[{}]\n#v(1mm)\n#box(width: 100%, height: 5cm, stroke: 0.7pt)",
+            t(crate::strings::tr("liaison_pdf_answer"))
+        )
+    } else {
+        String::new()
+    };
+    vec![
+        ("{{PHARMACY_NAME}}", t(&pharmacy.name)),
+        ("{{PHARMACY_ADDRESS}}", t(&pharmacy.address)),
+        ("{{PHARMACY_PHONE}}", t(&pharmacy.phone)),
+        ("{{DATE}}", t(&data.date)),
+        ("{{TO}}", t(&to)),
+        ("{{URGENT}}", urgent),
+        ("{{SUBJECT}}", t(data.subject.trim())),
+        ("{{PATIENT}}", patient),
+        ("{{MESSAGE}}", message),
+        ("{{ANSWER}}", answer),
+        ("{{FROM}}", t(&data.from)),
+    ]
+}
+
+/// La fiche de transmission, telle qu'elle a été tapée.
+pub fn open_liaison(
+    data: &LiaisonSheet,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        fill(
+            &template_source("liaison", template_path)?,
+            &liaison_values(data, pharmacy),
+        ),
+        "transmission",
+    )
+}
+
+/// **L'étiquette d'un flacon multidose ouvert** : ce qui se colle sur
+/// le flacon à la première ponction, pour que la personne qui le
+/// reprend à 17 h sache, sans chercher, s'il est encore utilisable.
+/// Aucun patient : un flacon sert plusieurs personnes.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct VialLabel {
+    /// La spécialité, telle qu'écrite sur la boîte.
+    pub product: String,
+    pub lot: String,
+    /// Déjà en français : « 23/10/2026 à 9 h 05 ».
+    pub opened: String,
+    /// L'heure limite d'utilisation, en français.
+    pub until: String,
+    /// Les initiales de qui l'a ouvert.
+    pub operator: String,
+}
+
+const MARKERS_FLACON: &[&str] = &["{{PHARMACY_NAME}}", "{{LABELS}}"];
+
+/// Les deux modèles partagent l'étiquette elle-même (`etiquette`) ;
+/// seule la page change. Les valeurs arrivent en littéraux Typst
+/// (`typst_str`), en mode code : un numéro de lot ne peut pas casser la
+/// compilation.
+macro_rules! vial_label_fn {
+    () => {
+        r##"
+#let officine = {{PHARMACY_NAME}}
+#let etiquette(produit, lot, ouvert, limite, qui) = block(width: 100%, height: 100%, inset: marge, clip: true)[
+  #set par(leading: 0.45em)
+  #text(10.5pt, weight: "bold")[#produit]
+  #h(1fr) #text(8pt)[Lot #lot] \
+  #v(0.6mm)
+  #text(8.5pt)[Ouvert le #ouvert #if qui != "" [(#qui)]] \
+  #text(11pt, weight: "bold")[À utiliser avant #limite] \
+  #v(0.6mm)
+  #text(7pt)[#officine]
+]
+"##
+    };
+}
+
+/// Le rouleau : une étiquette par page, à la taille d'une étiquette
+/// d'imprimante courante (57 × 32 mm).
+const DEFAULT_FLACON_TEMPLATE: &str = concat!(
+    r##"
+#set page(width: 57mm, height: 32mm, margin: 0.5mm)
+#set text(lang: "fr", hyphenate: false)
+#let marge = 1.5mm
+"##,
+    vial_label_fn!(),
+    r##"
+{{LABELS}}
+"##
+);
+
+/// La planche A4 : trois colonnes sur huit, de 70 × 36 mm.
+const DEFAULT_FLACONS_TEMPLATE: &str = concat!(
+    r##"
+#set page(paper: "a4", margin: (x: 0mm, y: 4.5mm))
+#set text(lang: "fr", hyphenate: false)
+#let marge = 4mm
+"##,
+    vial_label_fn!(),
+    r##"
+#grid(columns: (70mm, 70mm, 70mm), rows: 36mm,
+{{LABELS}})
+"##
+);
+
+fn vial_values(key: &str, labels: &[VialLabel], pharmacy: &str) -> Vec<(&'static str, String)> {
+    let call = |l: &VialLabel| {
+        format!(
+            "etiquette({}, {}, {}, {}, {})",
+            typst_str(&l.product),
+            typst_str(&l.lot),
+            typst_str(&l.opened),
+            typst_str(&l.until),
+            typst_str(&l.operator)
+        )
+    };
+    let body = if key == "flacons" {
+        // Des cellules de la grille, en mode code.
+        labels.iter().map(|l| format!("  {},\n", call(l))).collect()
+    } else {
+        // Une page par étiquette.
+        labels
+            .iter()
+            .map(|l| format!("#{}", call(l)))
+            .collect::<Vec<_>>()
+            .join("\n#pagebreak()\n")
+    };
+    vec![
+        ("{{PHARMACY_NAME}}", typst_str(pharmacy)),
+        ("{{LABELS}}", body),
+    ]
+}
+
+/// Les étiquettes des flacons ouverts : sur le rouleau (`flacon`) ou sur
+/// une planche A4 (`flacons`), selon ce que ce poste imprime.
+pub fn open_vial_labels(
+    labels: &[VialLabel],
+    on_sheet: bool,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    let key = if on_sheet { "flacons" } else { "flacon" };
+    compile_and_open(
+        fill(
+            &template_source(key, template_path)?,
+            &vial_values(key, labels, &pharmacy.name),
+        ),
+        key,
     )
 }
 
@@ -9811,6 +10503,113 @@ mod tests {
                     std::path::Path::new(&dir).join("etiquettes_exemple.pdf"),
                     &pdf,
                 );
+            }
+        }
+    }
+
+    /// **La fiche de transmission** : ce qui est coché s'imprime, ce qui
+    /// ne l'est pas n'y laisse pas de titre vide, et rien de ce qui est
+    /// tapé n'est du code Typst.
+    #[test]
+    fn a_transmission_sheet_prints_what_was_ticked_and_nothing_else() {
+        let pharmacy = PharmacyConfig {
+            name: "Pharmacie des Lilas".to_owned(),
+            ..Default::default()
+        };
+        let full = LiaisonSheet {
+            to_kind: "Médecin".to_owned(),
+            to_name: "Dr Martin".to_owned(),
+            subject: "Objet #eval \"x\"".to_owned(),
+            message: "Premier paragraphe.\n\nSecond paragraphe.".to_owned(),
+            urgent: true,
+            answer: true,
+            patient: Some(("Jeanne Dupont".to_owned(), "02/03/1941".to_owned())),
+            treats: vec!["Mirtazapine 15 mg".to_owned()],
+            from: "C. Lambert, pharmacien".to_owned(),
+            date: "23/10/2026".to_owned(),
+        };
+        let bare = LiaisonSheet {
+            to_kind: "Équipe".to_owned(),
+            subject: "Livraison".to_owned(),
+            ..LiaisonSheet::default()
+        };
+        for (name, sheet) in [("liaison", &full), ("liaison_nue", &bare)] {
+            let source = fill(DEFAULT_LIAISON_TEMPLATE, &liaison_values(sheet, &pharmacy));
+            assert!(!source.contains("{{"), "{name} : un marqueur reste");
+            assert!(!source.contains("#eval \"x\")"), "rien n'est du code");
+            let doc: PagedDocument = typst::compile(&PdfWorld::new(source.clone()))
+                .output
+                .unwrap_or_else(|e| panic!("{name} : {}", format_diagnostics(&e)));
+            assert_eq!(doc.pages.len(), 1, "{name} : une page");
+            let said = |key: &'static str| source.contains(&typst_str(crate::strings::tr(key)));
+            let ticked = sheet.patient.is_some();
+            assert_eq!(said("liaison_pdf_patient"), ticked, "{name}");
+            assert_eq!(said("liaison_pdf_treats"), ticked, "{name}");
+            assert_eq!(said("liaison_pdf_answer"), sheet.answer, "{name}");
+            assert_eq!(said("liaison_pdf_urgent"), sheet.urgent, "{name}");
+            if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+                if let Ok(pdf) = typst_pdf::pdf(&doc, &typst_pdf::PdfOptions::default()) {
+                    let _ = std::fs::write(
+                        std::path::Path::new(&dir).join(format!("{name}_exemple.pdf")),
+                        &pdf,
+                    );
+                }
+            }
+        }
+        // À un destinataire sans nom, la fiche dit à qui ; nommé, les deux.
+        let to = |s: &LiaisonSheet| {
+            liaison_values(s, &pharmacy)
+                .into_iter()
+                .find(|(k, _)| *k == "{{TO}}")
+                .map(|(_, v)| v)
+                .unwrap_or_default()
+        };
+        assert!(to(&full).contains("Dr Martin (médecin)"));
+        assert!(to(&bare).contains("Équipe"));
+    }
+
+    /// **L'étiquette de flacon** : une page par étiquette sur le
+    /// rouleau, toutes sur une page de la planche, et rien de ce qui est
+    /// tapé n'est du code Typst.
+    #[test]
+    fn vial_labels_print_one_per_roll_page_and_all_on_one_sheet() {
+        let labels = [
+            VialLabel {
+                product: "Comirnaty #eval \"x\"".to_owned(),
+                lot: "FL25-208".to_owned(),
+                opened: "23/10/2026 à 9 h 05".to_owned(),
+                until: "21 h 05".to_owned(),
+                operator: "CL".to_owned(),
+            },
+            VialLabel {
+                product: "Comirnaty".to_owned(),
+                lot: "GH7731".to_owned(),
+                opened: "23/10/2026 à 14 h 30".to_owned(),
+                until: "24/10/2026 2 h 30".to_owned(),
+                operator: String::new(),
+            },
+        ];
+        for (key, template, pages) in [
+            ("flacon", DEFAULT_FLACON_TEMPLATE, 2),
+            ("flacons", DEFAULT_FLACONS_TEMPLATE, 1),
+        ] {
+            let source = fill(template, &vial_values(key, &labels, "Pharmacie des Lilas"));
+            assert!(!source.contains("{{"), "{key} : un marqueur reste");
+            assert!(
+                !source.contains("#eval \"x\")"),
+                "{key} : rien n'est du code"
+            );
+            let doc: PagedDocument = typst::compile(&PdfWorld::new(source))
+                .output
+                .unwrap_or_else(|e| panic!("{key} : {}", format_diagnostics(&e)));
+            assert_eq!(doc.pages.len(), pages, "{key}");
+            if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+                if let Ok(pdf) = typst_pdf::pdf(&doc, &typst_pdf::PdfOptions::default()) {
+                    let _ = std::fs::write(
+                        std::path::Path::new(&dir).join(format!("{key}_exemple.pdf")),
+                        &pdf,
+                    );
+                }
             }
         }
     }

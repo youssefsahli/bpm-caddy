@@ -61,6 +61,10 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # on compte le tiroir, on lit la recette, et il n'est plus question
 # d'écart. Ce qui est déjà rangé n'est pas effacé.
 # caisse_expected = true
+# Les étiquettes d'ouverture des flacons multidoses (Campagne) : « rouleau »,
+# une étiquette par page pour l'imprimante d'étiquettes de ce poste, ou
+# « a4 », une planche de trois colonnes sur huit.
+# flacon_etiquettes = "rouleau"
 
 [billing]
 # Honoraires en euros, tels que le mémo « Aide à la facturation » de
@@ -1783,6 +1787,11 @@ pub struct UiConfig {
     /// — parce que celui qui veut voir plus d'un coup n'est pas celui
     /// qui veut des lettres plus petites.
     pub monograph: String,
+    /// Ce sur quoi ce poste imprime l'étiquette d'ouverture d'un flacon
+    /// multidose : `"rouleau"` (par défaut, une étiquette par page, pour
+    /// l'imprimante d'étiquettes) ou `"a4"` (une planche). Par poste :
+    /// c'est l'imprimante branchée ici qui décide.
+    pub flacon_etiquettes: String,
     /// La dernière version dont ce poste a montré les nouveautés. Vide :
     /// aucune encore — la version en cours se montre une fois.
     pub seen_notes: String,
@@ -1810,6 +1819,7 @@ impl Default for UiConfig {
             operator: String::new(),
             caisse_expected: true,
             monograph: "feuille".to_owned(),
+            flacon_etiquettes: "rouleau".to_owned(),
             seen_notes: String::new(),
         }
     }
@@ -2185,6 +2195,12 @@ impl Config {
             .dir
             .clone()
             .unwrap_or_else(|| Self::path().with_file_name("modeles"))
+    }
+
+    /// L'étiquette de flacon se tire sur une planche A4 plutôt que sur
+    /// le rouleau. Tout ce qui n'est pas « a4 » est le rouleau.
+    pub fn vial_labels_on_sheet(&self) -> bool {
+        self.ui.flacon_etiquettes.trim().eq_ignore_ascii_case("a4")
     }
 
     /// The yearly quota for an act kind (0 = no rule).

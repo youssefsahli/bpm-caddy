@@ -1159,6 +1159,15 @@ d'un flacon multidose : la ligne donne l'heure limite
 d'utilisation, 12 heures plus tard, et le temps restant. La spécialité
 et le délai se règlent dans le sujet de la campagne.
 
+« Étiquette », sur un flacon ouvert, imprime ce qui se colle dessus :
+la spécialité, le lot, l'heure d'ouverture et les initiales, et
+l'heure limite. « Étiquettes des flacons ouverts », en tête des lots,
+les imprime toutes d'un coup. Ce poste les tire sur le rouleau de
+l'imprimante d'étiquettes, une par page, ou sur une planche A4 de
+trois colonnes sur huit : Options › Interface, « Étiquettes de
+flacon ». Les deux mises en page se modifient dans Modèles. Un flacon
+dont le délai est passé n'a pas d'étiquette.
+
 Pour un sujet qui n'est pas un vaccin, la ligne ouvre le dossier,
 « Fait ailleurs » remplace « Vacciné ailleurs », et « Rendez-vous »
 planifie l'acte du sujet. Une campagne sans vaccin n'a ni lots, ni
@@ -2080,6 +2089,59 @@ fermer quitte toujours.
 **Ce que cela change** : la base reste ouverte tant que le poste est en
 service, et sa clé en mémoire — c'est ce qui lui permet de répondre.
 Écran verrouillé, rien n'en est affiché. Quitter (ou décocher) la ferme.
+
+# Qualité
+
+« Aller à… » › « Registre qualité » ouvre l'onglet Qualité (module
+Gestion) : les **non-conformités** de l'officine — une erreur de
+délivrance, rattrapée ou non, une livraison abîmée, la chaîne du froid
+rompue, une réclamation, un appareil en panne — de leur déclaration à
+leur clôture. Le registre vaut pour tous les postes de l'officine.
+
+« Nouvelle non-conformité » ouvre une fiche à droite :
+
+- **Déclaration** : la date, les initiales, le type, l'objet en une
+  ligne, la description, l'action immédiate (ce qui a été fait sur le
+  moment), et une déclaration faite au-dehors (pharmacovigilance,
+  matériovigilance, fournisseur…).
+- **Analyse** : la gravité et la fréquence, de 1 à 4 ; leur produit est
+  la criticité — faible jusqu'à 3, modérée jusqu'à 8, élevée au-delà.
+  Puis la famille de cause et la cause elle-même.
+- **Actions**, une fois la fiche enregistrée : corrective (supprimer la
+  cause) ou préventive (qu'elle ne revienne pas), qui la mène, pour
+  quand. « Faite » la date du jour ; une action dont l'échéance est
+  passée est marquée en retard, et la barre d'état le dit.
+- **Vérification et clôture** : les actions ont-elles été efficaces, et
+  ce que la vérification a montré. « Clore » n'est possible qu'une fois
+  l'analyse faite, toutes les actions faites et leur efficacité
+  constatée ; une action jugée pas efficace demande une nouvelle action,
+  pas une clôture. Sans action, le constat écrit suffit.
+
+L'étape (déclarée, analysée, en action, à vérifier, close) n'est jamais
+choisie à la main : elle se lit dans ce qui est écrit. La liste montre
+les non-conformités ouvertes, toutes ou les closes. « Imprimer la fiche »
+sort la fiche enregistrée pour le classeur qualité ; « Imprimer la revue »
+sort le bilan de l'année choisie — combien, par type, par criticité, par
+cause, les actions faites, faites en retard et en retard, et la liste.
+« Supprimer » retire une fiche saisie par erreur ; une vraie
+non-conformité se clôt, elle ne se supprime pas.
+
+# Fiche de transmission
+
+« Aller à… » › « Fiche de transmission » ouvre l'onglet Transmission :
+une information à faire passer **une fois**, à un médecin, une
+infirmière, un EHPAD, une autre pharmacie, l'équipe ou le patient.
+Choisir le destinataire, écrire son nom (« Médecin du dossier » reprend
+celui du dossier ouvert), l'objet et le message ; une ligne vide sépare
+deux paragraphes. « Urgent » l'écrit en tête, « Place pour la réponse »
+réserve un cadre sous le message.
+
+Un dossier ouvert peut être joint : son nom, sa date de naissance et les
+traitements cochés s'impriment. « Imprimer » ouvre la fiche en PDF, à
+l'en-tête de l'officine, signée des initiales du poste (ou de celles
+tapées). **Rien n'est enregistré** : ni dans le dossier, ni dans la
+base. « Effacer » vide la fiche pour la suivante. La mise en page se
+modifie dans Modèles (« Fiche de transmission »).
 
 # Caisse
 

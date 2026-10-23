@@ -383,6 +383,7 @@ mod tests {
             include_str!("maintenance.rs"),
             include_str!("graph.rs"),
             include_str!("ordonnancier.rs"),
+            include_str!("qualite.rs"),
             include_str!("scans.rs"),
             include_str!("vigilance.rs"),
             include_str!("codebar.rs"),

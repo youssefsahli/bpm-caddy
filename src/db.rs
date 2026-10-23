@@ -781,6 +781,35 @@ CREATE TABLE IF NOT EXISTS vial_openings (
     opened_min  INTEGER NOT NULL DEFAULT 0,
     operator    TEXT NOT NULL DEFAULT ''
 );
+-- Le registre qualité : les non-conformités et leurs actions
+-- (`qualite.rs`). L'étape n'y est pas : elle se lit dans ce qui est écrit.
+CREATE TABLE IF NOT EXISTS nonconformites (
+    id           INTEGER PRIMARY KEY,
+    declared_on  TEXT NOT NULL,
+    declared_by  TEXT NOT NULL DEFAULT '',
+    kind         TEXT NOT NULL DEFAULT '',
+    title        TEXT NOT NULL DEFAULT '',
+    description  TEXT NOT NULL DEFAULT '',
+    immediate    TEXT NOT NULL DEFAULT '',
+    severity     INTEGER NOT NULL DEFAULT 0,
+    likelihood   INTEGER NOT NULL DEFAULT 0,
+    cause_kind   TEXT NOT NULL DEFAULT '',
+    cause        TEXT NOT NULL DEFAULT '',
+    declaration  TEXT NOT NULL DEFAULT '',
+    effective    INTEGER NOT NULL DEFAULT 0,
+    verification TEXT NOT NULL DEFAULT '',
+    closed_on    TEXT NOT NULL DEFAULT '',
+    closed_by    TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS nc_actions (
+    id          INTEGER PRIMARY KEY,
+    nc_id       INTEGER NOT NULL REFERENCES nonconformites(id),
+    preventive  INTEGER NOT NULL DEFAULT 0,
+    what        TEXT NOT NULL DEFAULT '',
+    owner       TEXT NOT NULL DEFAULT '',
+    due_on      TEXT NOT NULL DEFAULT '',
+    done_on     TEXT NOT NULL DEFAULT ''
+);
 -- Les appels de la campagne : qui a été appelé, pour quel vaccin, quelle
 -- saison (« 2026-2027 ») et avec quelle issue (`campagne::Outcome`). Une
 -- ligne par appel, jamais réécrite : la liste lit le dernier.
@@ -1714,6 +1743,34 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE dispositifs ADD COLUMN origin TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE checklists ADD COLUMN origin TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE cascades ADD COLUMN origin TEXT NOT NULL DEFAULT ''",
+    // Le registre qualité — voir `SCHEMA`.
+    "CREATE TABLE IF NOT EXISTS nonconformites (
+        id           INTEGER PRIMARY KEY,
+        declared_on  TEXT NOT NULL,
+        declared_by  TEXT NOT NULL DEFAULT '',
+        kind         TEXT NOT NULL DEFAULT '',
+        title        TEXT NOT NULL DEFAULT '',
+        description  TEXT NOT NULL DEFAULT '',
+        immediate    TEXT NOT NULL DEFAULT '',
+        severity     INTEGER NOT NULL DEFAULT 0,
+        likelihood   INTEGER NOT NULL DEFAULT 0,
+        cause_kind   TEXT NOT NULL DEFAULT '',
+        cause        TEXT NOT NULL DEFAULT '',
+        declaration  TEXT NOT NULL DEFAULT '',
+        effective    INTEGER NOT NULL DEFAULT 0,
+        verification TEXT NOT NULL DEFAULT '',
+        closed_on    TEXT NOT NULL DEFAULT '',
+        closed_by    TEXT NOT NULL DEFAULT ''
+    )",
+    "CREATE TABLE IF NOT EXISTS nc_actions (
+        id          INTEGER PRIMARY KEY,
+        nc_id       INTEGER NOT NULL REFERENCES nonconformites(id),
+        preventive  INTEGER NOT NULL DEFAULT 0,
+        what        TEXT NOT NULL DEFAULT '',
+        owner       TEXT NOT NULL DEFAULT '',
+        due_on      TEXT NOT NULL DEFAULT '',
+        done_on     TEXT NOT NULL DEFAULT ''
+    )",
     // La campagne de vaccination — voir `SCHEMA`.
     "CREATE TABLE IF NOT EXISTS vial_openings (
         id          INTEGER PRIMARY KEY,
@@ -42128,6 +42185,36 @@ pub(crate) const STARTER_DRUGS: &[(&str, &str, &str, &str)] = &[
     ),
 ];
 
+/// Les colonnes d'une non-conformité, sans l'identifiant, **écrites une
+/// fois** : la lecture, l'écriture et le compare-and-set les prennent
+/// toutes ici, dans cet ordre, et [`nc_values`] les suit.
+const NC_COLUMNS: &str = "declared_on, declared_by, kind, title, description, immediate, \
+     severity, likelihood, cause_kind, cause, declaration, effective, verification, closed_on, \
+     closed_by";
+const NC_FIELDS: usize = 15;
+
+/// Les valeurs d'une non-conformité dans l'ordre de [`NC_COLUMNS`].
+fn nc_values(n: &crate::qualite::NonConformite) -> Vec<rusqlite::types::Value> {
+    use rusqlite::types::Value::{Integer, Text};
+    vec![
+        Text(n.declared_on.clone()),
+        Text(n.declared_by.clone()),
+        Text(n.kind.clone()),
+        Text(n.title.clone()),
+        Text(n.description.clone()),
+        Text(n.immediate.clone()),
+        Integer(n.severity),
+        Integer(n.likelihood),
+        Text(n.cause_kind.clone()),
+        Text(n.cause.clone()),
+        Text(n.declaration.clone()),
+        Integer(n.effective),
+        Text(n.verification.clone()),
+        Text(n.closed_on.clone()),
+        Text(n.closed_by.clone()),
+    ]
+}
+
 pub struct Db {
     conn: Connection,
     /// Les octets des pièces numérisées, dans leur **propre fichier
@@ -45918,6 +46005,8 @@ impl Db {
             "DELETE FROM vaccine_lots",
             "DELETE FROM vial_openings",
             "DELETE FROM campaigns",
+            "DELETE FROM nc_actions",
+            "DELETE FROM nonconformites",
             "DELETE FROM patient_travel",
             "DELETE FROM patient_messages",
             "DELETE FROM patient_chat_keys",
@@ -51854,6 +51943,226 @@ impl Db {
             .execute(
                 "DELETE FROM vial_openings WHERE id = ?1 AND lot = ?2 AND opened_on = ?3 AND opened_min = ?4",
                 rusqlite::params![v.id, &v.lot, &v.opened_on, v.opened_min],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Les non-conformités, la plus récemment déclarée d'abord.
+    pub fn nonconformites(&self) -> Result<Vec<crate::qualite::NonConformite>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(&format!(
+                "SELECT id, {NC_COLUMNS} FROM nonconformites ORDER BY declared_on DESC, id DESC"
+            ))
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(crate::qualite::NonConformite {
+                    id: r.get(0)?,
+                    declared_on: r.get(1)?,
+                    declared_by: r.get(2)?,
+                    kind: r.get(3)?,
+                    title: r.get(4)?,
+                    description: r.get(5)?,
+                    immediate: r.get(6)?,
+                    severity: r.get(7)?,
+                    likelihood: r.get(8)?,
+                    cause_kind: r.get(9)?,
+                    cause: r.get(10)?,
+                    declaration: r.get(11)?,
+                    effective: r.get(12)?,
+                    verification: r.get(13)?,
+                    closed_on: r.get(14)?,
+                    closed_by: r.get(15)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Déclarer une non-conformité ; rend son identifiant.
+    pub fn insert_nonconformite(&self, n: &crate::qualite::NonConformite) -> Result<i64, String> {
+        let next = next_id("nonconformites");
+        let marks: Vec<String> = (1..=NC_FIELDS).map(|i| format!("?{i}")).collect();
+        self.conn
+            .execute(
+                &format!(
+                    "INSERT INTO nonconformites (id, {NC_COLUMNS}) VALUES ({next}, {})",
+                    marks.join(", ")
+                ),
+                rusqlite::params_from_iter(nc_values(n)),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Récrire une non-conformité, compare-and-set sur **toute** la ligne
+    /// affichée : un autre poste qui a coté, expliqué ou clos entre-temps
+    /// n'est pas écrasé.
+    pub fn update_nonconformite(
+        &self,
+        n: &crate::qualite::NonConformite,
+        expected: &crate::qualite::NonConformite,
+    ) -> Result<bool, String> {
+        let cols: Vec<&str> = NC_COLUMNS.split(", ").collect();
+        let set: Vec<String> = cols
+            .iter()
+            .enumerate()
+            .map(|(i, c)| format!("{c} = ?{}", i + 1))
+            .collect();
+        let was: Vec<String> = cols
+            .iter()
+            .enumerate()
+            .map(|(i, c)| format!("{c} = ?{}", NC_FIELDS + i + 2))
+            .collect();
+        let mut values = nc_values(n);
+        values.push(rusqlite::types::Value::Integer(expected.id));
+        values.extend(nc_values(expected));
+        let changed = self
+            .conn
+            .execute(
+                &format!(
+                    "UPDATE nonconformites SET {} WHERE id = ?{} AND {}",
+                    set.join(", "),
+                    NC_FIELDS + 1,
+                    was.join(" AND ")
+                ),
+                rusqlite::params_from_iter(values),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Retirer une non-conformité saisie par erreur, et ses actions,
+    /// compare-and-set sur la ligne affichée.
+    pub fn delete_nonconformite(
+        &self,
+        expected: &crate::qualite::NonConformite,
+    ) -> Result<bool, String> {
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
+        let cols: Vec<&str> = NC_COLUMNS.split(", ").collect();
+        let was: Vec<String> = cols
+            .iter()
+            .enumerate()
+            .map(|(i, c)| format!("{c} = ?{}", i + 2))
+            .collect();
+        let mut values = vec![rusqlite::types::Value::Integer(expected.id)];
+        values.extend(nc_values(expected));
+        // Les actions d'abord : elles nomment la non-conformité, et la
+        // clé étrangère refuse un parent retiré avant ses enfants. Si la
+        // ligne affichée n'est plus celle de la base, la transaction est
+        // abandonnée et les actions restent.
+        tx.execute("DELETE FROM nc_actions WHERE nc_id = ?1", [expected.id])
+            .map_err(|e| e.to_string())?;
+        let changed = tx
+            .execute(
+                &format!(
+                    "DELETE FROM nonconformites WHERE id = ?1 AND {}",
+                    was.join(" AND ")
+                ),
+                rusqlite::params_from_iter(values),
+            )
+            .map_err(|e| e.to_string())?;
+        if changed != 1 {
+            return Ok(false);
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+
+    /// Toutes les actions, dans l'ordre où elles ont été décidées.
+    pub fn nc_actions(&self) -> Result<Vec<crate::qualite::Action>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, nc_id, preventive, what, owner, due_on, done_on
+                 FROM nc_actions ORDER BY nc_id, id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(crate::qualite::Action {
+                    id: r.get(0)?,
+                    nc_id: r.get(1)?,
+                    preventive: r.get::<_, i64>(2)? != 0,
+                    what: r.get(3)?,
+                    owner: r.get(4)?,
+                    due_on: r.get(5)?,
+                    done_on: r.get(6)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    pub fn insert_nc_action(&self, a: &crate::qualite::Action) -> Result<i64, String> {
+        self.conn
+            .execute(
+                &format!(
+                    "INSERT INTO nc_actions (id, nc_id, preventive, what, owner, due_on, done_on)
+                     VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6)",
+                    next = next_id("nc_actions")
+                ),
+                rusqlite::params![
+                    a.nc_id,
+                    i64::from(a.preventive),
+                    &a.what,
+                    &a.owner,
+                    &a.due_on,
+                    &a.done_on
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Récrire une action, compare-and-set sur la ligne affichée.
+    pub fn update_nc_action(
+        &self,
+        a: &crate::qualite::Action,
+        expected: &crate::qualite::Action,
+    ) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE nc_actions SET preventive = ?1, what = ?2, owner = ?3, due_on = ?4, done_on = ?5
+                 WHERE id = ?6 AND nc_id = ?7 AND preventive = ?8 AND what = ?9 AND owner = ?10
+                   AND due_on = ?11 AND done_on = ?12",
+                rusqlite::params![
+                    i64::from(a.preventive),
+                    &a.what,
+                    &a.owner,
+                    &a.due_on,
+                    &a.done_on,
+                    expected.id,
+                    expected.nc_id,
+                    i64::from(expected.preventive),
+                    &expected.what,
+                    &expected.owner,
+                    &expected.due_on,
+                    &expected.done_on,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Retirer une action, compare-and-set sur la ligne affichée.
+    pub fn delete_nc_action(&self, expected: &crate::qualite::Action) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "DELETE FROM nc_actions WHERE id = ?1 AND nc_id = ?2 AND what = ?3 AND owner = ?4
+                   AND due_on = ?5 AND done_on = ?6",
+                rusqlite::params![
+                    expected.id,
+                    expected.nc_id,
+                    &expected.what,
+                    &expected.owner,
+                    &expected.due_on,
+                    &expected.done_on,
+                ],
             )
             .map_err(|e| e.to_string())?;
         Ok(changed == 1)
@@ -59545,6 +59854,75 @@ mod tests {
     /// suite, sans `busy_timeout` — c'est ce que la première moitié
     /// montre. Immédiates (`write_tx`), la seconde attend la première et
     /// passe. Et la base n'en ouvre plus d'autres : `db.rs` est relu.
+    /// **Le registre qualité, de poste à poste** : une écriture se mesure
+    /// à la ligne affichée, et une non-conformité retirée emporte ses
+    /// actions.
+    #[test]
+    fn the_quality_register_writes_against_what_was_shown() {
+        use crate::qualite::{Action, NonConformite};
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-qualite-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("shared.db");
+        let a = Db::open(&path, "secret").unwrap();
+        let b = Db::open(&path, "secret").unwrap();
+        let shown = NonConformite {
+            declared_on: "2026-10-23".to_owned(),
+            declared_by: "CL".to_owned(),
+            kind: "froid".to_owned(),
+            title: "Réfrigérateur à 11 °C".to_owned(),
+            ..NonConformite::default()
+        };
+        let id = a.insert_nonconformite(&shown).unwrap();
+        let shown = NonConformite { id, ..shown };
+        assert_eq!(a.nonconformites().unwrap(), vec![shown.clone()]);
+
+        // L'autre poste cote la gravité ; celui-ci, qui ne l'a pas vu,
+        // se fait refuser.
+        let theirs = NonConformite {
+            severity: 3,
+            likelihood: 2,
+            ..shown.clone()
+        };
+        assert!(b.update_nonconformite(&theirs, &shown).unwrap());
+        let mine = NonConformite {
+            cause: "Porte mal fermée".to_owned(),
+            ..shown.clone()
+        };
+        assert!(!a.update_nonconformite(&mine, &shown).unwrap());
+        assert_eq!(a.nonconformites().unwrap(), vec![theirs.clone()]);
+
+        let act = Action {
+            nc_id: id,
+            what: "Alarme de porte".to_owned(),
+            owner: "MB".to_owned(),
+            due_on: "2026-11-01".to_owned(),
+            ..Action::default()
+        };
+        let aid = a.insert_nc_action(&act).unwrap();
+        let act = Action { id: aid, ..act };
+        assert_eq!(a.nc_actions().unwrap(), vec![act.clone()]);
+        let done = Action {
+            done_on: "2026-10-30".to_owned(),
+            ..act.clone()
+        };
+        assert!(b.update_nc_action(&done, &act).unwrap());
+        assert!(!a.update_nc_action(&act, &act).unwrap(), "périmée");
+
+        assert!(
+            !a.delete_nonconformite(&shown).unwrap(),
+            "périmée : rien ne part"
+        );
+        assert_eq!(a.nc_actions().unwrap().len(), 1);
+        assert!(a.delete_nonconformite(&theirs).unwrap());
+        assert!(a.nonconformites().unwrap().is_empty());
+        assert!(
+            a.nc_actions().unwrap().is_empty(),
+            "ses actions partent avec elle"
+        );
+    }
+
     #[test]
     fn a_second_writer_waits_instead_of_failing_at_once() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-immediate-{}", std::process::id()));
@@ -71391,6 +71769,19 @@ mod tests {
                 },
             )
             .unwrap();
+        }
+        // Le registre qualité : une non-conformité à chaque étape.
+        let today = db.today_iso().unwrap();
+        let (ncs, actions) = crate::qualite::demo(&today);
+        for nc in &ncs {
+            let id = db.insert_nonconformite(nc).unwrap();
+            for a in actions.iter().filter(|a| a.nc_id == nc.id) {
+                db.insert_nc_action(&crate::qualite::Action {
+                    nc_id: id,
+                    ..a.clone()
+                })
+                .unwrap();
+            }
         }
     }
 

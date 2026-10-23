@@ -2049,6 +2049,8 @@ fn help_title_for(
         MainView::Options => "Options",
         MainView::Caisse | MainView::CaisseHistory => "Caisse",
         MainView::Ddi => "Croisement",
+        MainView::Liaison => "Fiche de transmission",
+        MainView::Qualite => "Qualité",
         MainView::UiTexts => "Documents imprimés",
         MainView::Checklists => "Listes de contrôle",
         MainView::Cascades => "Récepteurs et cascades",
@@ -3163,6 +3165,13 @@ enum MainView {
     /// base — et on lit ce qu'elle dit d'elle-même. C'est la question du
     /// téléphone : « le médecin veut ajouter ça, ça passe ? »
     Ddi,
+    /// **La fiche de transmission** : une information à faire passer une
+    /// fois, à qui que ce soit, imprimée et jamais gardée
+    /// (`App::liaison_view`).
+    Liaison,
+    /// **Le registre qualité** : les non-conformités, de leur déclaration
+    /// à leur clôture (`App::qualite_view`, `qualite.rs`).
+    Qualite,
     /// Tous les textes de l'interface, au même endroit : ce qui est
     /// livré, ce que l'officine a réécrit, et ce qui attend une
     /// relecture.
@@ -3224,6 +3233,8 @@ impl MainView {
             MainView::Caisse => "caisse",
             MainView::CaisseHistory => "caisses",
             MainView::Ddi => "ddi",
+            MainView::Liaison => "fiche_transmission",
+            MainView::Qualite => "qualite",
             MainView::UiTexts => "libelles",
             MainView::Checklists => "listes",
             MainView::Cascades => "cascades",
@@ -3255,6 +3266,8 @@ impl MainView {
             "caisse" => Some(MainView::Caisse),
             "caisses" => Some(MainView::CaisseHistory),
             "ddi" => Some(MainView::Ddi),
+            "fiche_transmission" => Some(MainView::Liaison),
+            "qualite" => Some(MainView::Qualite),
             "libelles" => Some(MainView::UiTexts),
             "listes" => Some(MainView::Checklists),
             "cascades" => Some(MainView::Cascades),
@@ -3366,6 +3379,10 @@ enum WorkTab {
     Caisse,
     /// Le croisement d'une liste de médicaments.
     Ddi,
+    /// La fiche de transmission.
+    Liaison,
+    /// Le registre qualité.
+    Qualite,
     /// Les textes de l'interface.
     UiTexts,
     /// Les listes de contrôle.
@@ -3432,6 +3449,8 @@ enum Tool {
     Libelles,
     Listes,
     Croisement,
+    Transmission,
+    Qualite,
     TrodLines,
     Modeles,
     Options,
@@ -3465,6 +3484,8 @@ impl Tool {
             Tool::Libelles => "libelles",
             Tool::Listes => "listes",
             Tool::Croisement => "croisement",
+            Tool::Transmission => "transmission",
+            Tool::Qualite => "qualite",
             Tool::TrodLines => "trod",
             Tool::Modeles => "modeles",
             Tool::Options => "options",
@@ -3481,7 +3502,7 @@ impl Tool {
         Tool::ALL.into_iter().find(|t| t.key() == key)
     }
 
-    const ALL: [Tool; 25] = [
+    const ALL: [Tool; 27] = [
         Tool::Trame,
         Tool::Planning,
         Tool::Reseau,
@@ -3498,6 +3519,8 @@ impl Tool {
         Tool::Libelles,
         Tool::Listes,
         Tool::Croisement,
+        Tool::Transmission,
+        Tool::Qualite,
         Tool::TrodLines,
         Tool::Modeles,
         Tool::Options,
@@ -3527,6 +3550,8 @@ impl Tool {
             Tool::Libelles => tr("tool_libelles"),
             Tool::Listes => tr("tool_listes"),
             Tool::Croisement => tr("tool_croisement"),
+            Tool::Transmission => tr("tool_transmission"),
+            Tool::Qualite => tr("tool_qualite"),
             Tool::TrodLines => tr("tool_trod"),
             Tool::Modeles => tr("tool_modeles"),
             Tool::Options => tr("tool_options"),
@@ -3559,6 +3584,8 @@ impl Tool {
             Tool::Libelles => tr("tool_libelles_purpose"),
             Tool::Listes => tr("tool_listes_purpose"),
             Tool::Croisement => tr("tool_croisement_purpose"),
+            Tool::Transmission => tr("tool_transmission_purpose"),
+            Tool::Qualite => tr("tool_qualite_purpose"),
             Tool::TrodLines => tr("tool_trod_purpose"),
             Tool::Modeles => tr("tool_modeles_purpose"),
             Tool::Options => tr("tool_options_purpose"),
@@ -3591,6 +3618,308 @@ impl Tool {
     }
 }
 
+/// **L'étiquette d'un flacon ouvert**, ce qu'elle imprime : l'heure de
+/// la première ponction et l'heure limite, à la française. `None` : le
+/// flacon a passé son délai — une étiquette sur un flacon à éliminer
+/// dirait le contraire de ce qu'il faut faire.
+fn vial_label(
+    lot: &crate::campagne::Lot,
+    v: &crate::campagne::Vial,
+    hours: u32,
+    today: &str,
+    now_min: i64,
+) -> Option<crate::pdf::VialLabel> {
+    use crate::campagne::hm;
+    let (day, at, left) = crate::campagne::vial_left(v, hours, today, now_min)?;
+    if left < 0 {
+        return None;
+    }
+    Some(crate::pdf::VialLabel {
+        product: lot.product.trim().to_owned(),
+        lot: lot.lot.trim().to_owned(),
+        opened: trn(
+            "camp_vial_label_opened",
+            &[&db::format_french_date(&v.opened_on), &hm(v.opened_min)],
+        ),
+        until: if day == v.opened_on {
+            hm(at)
+        } else {
+            format!("{} {}", db::format_french_date(&day), hm(at))
+        },
+        operator: v.operator.trim().to_owned(),
+    })
+}
+
+/// Le libellé d'un type de non-conformité ; un type inconnu (écrit par
+/// une version plus récente) se lit « Autre », comme la revue le compte.
+fn qual_kind_label(kind: &str) -> &'static str {
+    match kind {
+        "dispensation" => tr("qual_kind_dispensation"),
+        "fournisseur" => tr("qual_kind_fournisseur"),
+        "froid" => tr("qual_kind_froid"),
+        "reclamation" => tr("qual_kind_reclamation"),
+        "materiel" => tr("qual_kind_materiel"),
+        "hygiene" => tr("qual_kind_hygiene"),
+        "documentaire" => tr("qual_kind_documentaire"),
+        _ => tr("qual_kind_autre"),
+    }
+}
+
+/// Le libellé d'une famille de cause ; vide : non dite.
+fn qual_cause_label(cause: &str) -> &'static str {
+    match cause {
+        "methode" => tr("qual_cause_methode"),
+        "main_oeuvre" => tr("qual_cause_main_oeuvre"),
+        "materiel" => tr("qual_cause_materiel"),
+        "matiere" => tr("qual_cause_matiere"),
+        "milieu" => tr("qual_cause_milieu"),
+        "autre" => tr("qual_cause_autre"),
+        _ => tr("qual_cause_none"),
+    }
+}
+
+fn qual_severity_label(v: i64) -> &'static str {
+    match v {
+        1 => tr("qual_sev_1"),
+        2 => tr("qual_sev_2"),
+        3 => tr("qual_sev_3"),
+        4 => tr("qual_sev_4"),
+        _ => tr("qual_sev_0"),
+    }
+}
+
+fn qual_likelihood_label(v: i64) -> &'static str {
+    match v {
+        1 => tr("qual_lik_1"),
+        2 => tr("qual_lik_2"),
+        3 => tr("qual_lik_3"),
+        4 => tr("qual_lik_4"),
+        _ => tr("qual_lik_0"),
+    }
+}
+
+fn qual_effective_label(v: i64) -> &'static str {
+    match v {
+        1 => tr("qual_effective_1"),
+        2 => tr("qual_effective_2"),
+        _ => tr("qual_effective_0"),
+    }
+}
+
+/// La fiche d'une non-conformité, telle que la base la porte — jamais
+/// ce qui est tapé et pas encore enregistré : le papier fait foi.
+fn nc_paper(
+    nc: &crate::qualite::NonConformite,
+    actions: &[crate::qualite::Action],
+) -> crate::pdf::NcPaper {
+    use crate::qualite;
+    let date = |iso: &str| {
+        if iso.trim().is_empty() {
+            String::new()
+        } else {
+            db::format_french_date(iso)
+        }
+    };
+    let by = |on: &str, who: &str| {
+        if who.trim().is_empty() {
+            date(on)
+        } else {
+            trn("qual_pdf_on_by", &[&date(on), &who.trim()])
+        }
+    };
+    crate::pdf::NcPaper {
+        title: nc.title.trim().to_owned(),
+        declared: by(&nc.declared_on, &nc.declared_by),
+        kind: qual_kind_label(&nc.kind).to_owned(),
+        stage: tr(qualite::stage(nc, actions).label_key()).to_owned(),
+        description: nc.description.trim().to_owned(),
+        immediate: nc.immediate.trim().to_owned(),
+        declaration: nc.declaration.trim().to_owned(),
+        severity: qual_severity_label(nc.severity).to_owned(),
+        likelihood: qual_likelihood_label(nc.likelihood).to_owned(),
+        criticity: qualite::criticity(nc)
+            .map(|c| trn("qual_crit", &[&c, &tr(qualite::Level::of(c).label_key())]))
+            .unwrap_or_else(|| tr("qual_crit_none").to_owned()),
+        cause_kind: qual_cause_label(&nc.cause_kind).to_owned(),
+        cause: nc.cause.trim().to_owned(),
+        actions: qualite::actions_of(nc.id, actions)
+            .into_iter()
+            .map(|a| crate::pdf::NcPaperAction {
+                kind: if a.preventive {
+                    tr("qual_action_preventive")
+                } else {
+                    tr("qual_action_corrective")
+                }
+                .to_owned(),
+                what: a.what.trim().to_owned(),
+                owner: a.owner.trim().to_owned(),
+                due: date(&a.due_on),
+                done: date(&a.done_on),
+            })
+            .collect(),
+        effective: qual_effective_label(nc.effective).to_owned(),
+        verification: nc.verification.trim().to_owned(),
+        closed: if nc.closed_on.trim().is_empty() {
+            String::new()
+        } else {
+            by(&nc.closed_on, &nc.closed_by)
+        },
+    }
+}
+
+/// La revue annuelle, mise en mots pour le papier.
+fn review_paper(
+    r: &crate::qualite::Review,
+    ncs: &[crate::qualite::NonConformite],
+    actions: &[crate::qualite::Action],
+) -> crate::pdf::ReviewPaper {
+    use crate::qualite;
+    let n = |v: usize| v.to_string();
+    let mut figures = vec![
+        (tr("qual_rev_total").to_owned(), n(r.total)),
+        (tr("qual_rev_closed").to_owned(), n(r.closed)),
+        (tr("qual_rev_open").to_owned(), n(r.total - r.closed)),
+        (
+            tr("qual_rev_days").to_owned(),
+            r.mean_days_to_close
+                .map(|d| trf("qual_rev_days_n", d))
+                .unwrap_or_else(|| "—".to_owned()),
+        ),
+        (tr("qual_rev_actions").to_owned(), n(r.actions)),
+        (tr("qual_rev_preventive").to_owned(), n(r.preventive)),
+        (tr("qual_rev_done").to_owned(), n(r.actions_done)),
+        (tr("qual_rev_done_late").to_owned(), n(r.actions_done_late)),
+        (tr("qual_rev_late").to_owned(), n(r.actions_late)),
+        (tr("qual_rev_outside").to_owned(), n(r.declared_outside)),
+    ];
+    figures.retain(|(_, v)| !v.is_empty());
+    let mut by_cause: Vec<(String, usize)> = r
+        .by_cause
+        .iter()
+        .map(|(k, v)| (qual_cause_label(k).to_owned(), *v))
+        .collect();
+    by_cause.push((tr("qual_cause_none").to_owned(), r.cause_unknown));
+    let list = ncs
+        .iter()
+        .filter(|nc| nc.declared_on.get(..4) == Some(r.year.to_string().as_str()))
+        .rev()
+        .map(|nc| {
+            [
+                db::format_french_date(&nc.declared_on),
+                qual_kind_label(&nc.kind).to_owned(),
+                nc.title.trim().to_owned(),
+                tr(qualite::stage(nc, actions).label_key()).to_owned(),
+                qualite::criticity(nc)
+                    .map(|c| c.to_string())
+                    .unwrap_or_default(),
+            ]
+        })
+        .collect();
+    crate::pdf::ReviewPaper {
+        year: r.year.to_string(),
+        figures,
+        by_kind: r
+            .by_kind
+            .iter()
+            .map(|(k, v)| (qual_kind_label(k).to_owned(), *v))
+            .collect(),
+        by_level: [
+            "qual_level_low",
+            "qual_level_mid",
+            "qual_level_high",
+            "qual_crit_none",
+        ]
+        .iter()
+        .zip(r.by_level)
+        .map(|(k, v)| (tr(k).to_owned(), v))
+        .collect(),
+        by_cause,
+        list,
+    }
+}
+
+/// À qui une fiche de transmission s'adresse : les clés de chaîne, dans
+/// l'ordre du choix. La première est le médecin, que le dossier ouvert
+/// sait nommer.
+const LIAISON_TO: [&str; 7] = [
+    "liaison_to_medecin",
+    "liaison_to_infirmier",
+    "liaison_to_ehpad",
+    "liaison_to_pharmacie",
+    "liaison_to_equipe",
+    "liaison_to_patient",
+    "liaison_to_autre",
+];
+
+/// **Le registre qualité à l'écran.** Les lignes lues de la base, la
+/// non-conformité ouverte telle qu'elle est tapée et telle qu'elle a été
+/// lue — l'écriture se mesure à la seconde —, et l'action en préparation.
+#[derive(Default)]
+struct QualiteState {
+    loaded: bool,
+    ncs: Vec<crate::qualite::NonConformite>,
+    actions: Vec<crate::qualite::Action>,
+    board: crate::qualite::Board,
+    /// 0 : ouvertes ; 1 : toutes ; 2 : closes.
+    filter: usize,
+    edit: Option<NcEdit>,
+    /// L'action en préparation sous la fiche ouverte.
+    new_action: crate::qualite::Action,
+    new_due: String,
+    /// L'année de la revue ; 0 : l'année en cours.
+    review_year: i32,
+    confirm_delete: bool,
+    note: Option<String>,
+}
+
+/// La non-conformité ouverte : ce qui est tapé, ce qui a été lu, et la
+/// date telle qu'on l'écrit.
+struct NcEdit {
+    draft: crate::qualite::NonConformite,
+    shown: crate::qualite::NonConformite,
+    date: String,
+    error: Option<String>,
+}
+
+impl NcEdit {
+    fn of(nc: &crate::qualite::NonConformite) -> Self {
+        NcEdit {
+            draft: nc.clone(),
+            shown: nc.clone(),
+            date: db::format_french_date(&nc.declared_on),
+            error: None,
+        }
+    }
+
+    fn dirty(&self) -> bool {
+        self.draft != self.shown || self.date != db::format_french_date(&self.shown.declared_on)
+    }
+}
+
+/// **La fiche de transmission telle qu'elle est tapée.** Elle ne vit
+/// que dans la session : la personne a choisi qu'une transmission
+/// ponctuelle ne se garde pas — elle s'imprime, et c'est tout.
+#[derive(Default)]
+struct LiaisonForm {
+    /// Un rang de [`LIAISON_TO`].
+    to: usize,
+    to_name: String,
+    subject: String,
+    message: String,
+    urgent: bool,
+    answer: bool,
+    /// Le dossier ouvert joint à la fiche.
+    patient: bool,
+    /// Pour quel dossier les traitements ont été cochés : un autre
+    /// dossier ouvert ne garde pas les cases du précédent.
+    treats_for: Option<i64>,
+    /// Les traitements cochés, par identifiant de fiche.
+    treats: Vec<i64>,
+    /// Les initiales de qui signe ; vides, celles du poste.
+    from: String,
+    note: Option<String>,
+}
+
 /// **Le module dont relève un onglet** ; `None` : le cœur, toujours
 /// chargé. Un onglet d'un module que ce poste ne charge pas n'existe pas
 /// ici : ni dans la rangée, ni dans « Aller à… », ni rouvert au
@@ -3605,6 +3934,7 @@ fn tab_module(tab: &WorkTab) -> Option<crate::config::Module> {
         | WorkTab::Stats
         | WorkTab::Campagne
         | WorkTab::Script
+        | WorkTab::Qualite
         | WorkTab::UiTexts => Module::Gestion,
         _ => return None,
     })
@@ -3616,7 +3946,7 @@ fn tool_module(tool: Tool) -> Option<crate::config::Module> {
     Some(match tool {
         Tool::Reseau => Module::Reseau,
         Tool::Tableau => Module::Patients,
-        Tool::Facturation | Tool::Libelles => Module::Gestion,
+        Tool::Facturation | Tool::Libelles | Tool::Qualite => Module::Gestion,
         _ => return None,
     })
 }
@@ -5920,6 +6250,9 @@ struct Session {
     /// la barre d'état en dit, et son empreinte — un clic l'ouvre sur la
     /// carte.
     near_news: Option<(Instant, String, String)>,
+    /// La fiche de transmission en cours de frappe : elle ne vit que là,
+    /// et rien n'en est gardé une fois imprimée.
+    liaison: LiaisonForm,
     /// What the journal says about the open card.
     drug_supply: DrugSupply,
     drug_supply_key: Option<(i64, u64, String)>,
@@ -6536,6 +6869,8 @@ struct Session {
     show_dispositifs: bool,
     /// La campagne de vaccination.
     camp: CampagneState,
+    /// Le registre qualité : ce que la base porte, la fiche ouverte.
+    qual: QualiteState,
     /// Doses inscrites aux carnets aujourd'hui, pour la barre d'état ;
     /// relu par `refresh_dashboard` et après chaque dose notée.
     vacc_today: usize,
@@ -7055,6 +7390,7 @@ impl Session {
             rupt_view: None,
             net_news: None,
             near_news: None,
+            liaison: LiaisonForm::default(),
             drug_supply: DrugSupply::default(),
             drug_supply_key: None,
             subst_form: None,
@@ -7296,6 +7632,7 @@ impl Session {
             insulin_target: 1.2,
             show_dispositifs: false,
             camp: CampagneState::default(),
+            qual: QualiteState::default(),
             vacc_today: 0,
             show_conseil: false,
             show_couverture: false,
@@ -7455,6 +7792,8 @@ impl Session {
             MainView::Options => WorkTab::Options,
             MainView::Caisse | MainView::CaisseHistory => WorkTab::Caisse,
             MainView::Ddi => WorkTab::Ddi,
+            MainView::Liaison => WorkTab::Liaison,
+            MainView::Qualite => WorkTab::Qualite,
             MainView::UiTexts => WorkTab::UiTexts,
             MainView::Checklists => WorkTab::Checklists,
             MainView::Cascades => WorkTab::Cascades,
@@ -7523,6 +7862,13 @@ impl Session {
             }
             WorkTab::Ddi => {
                 self.view = MainView::Ddi;
+            }
+            WorkTab::Liaison => {
+                self.view = MainView::Liaison;
+            }
+            WorkTab::Qualite => {
+                self.reload_qualite();
+                self.view = MainView::Qualite;
             }
             WorkTab::UiTexts => {
                 self.view = MainView::UiTexts;
@@ -8473,6 +8819,8 @@ impl Session {
             Tool::Listes => self.activate_tab(&WorkTab::Checklists),
             Tool::Cascades => self.activate_tab(&WorkTab::Cascades),
             Tool::Croisement => self.activate_tab(&WorkTab::Ddi),
+            Tool::Transmission => self.activate_tab(&WorkTab::Liaison),
+            Tool::Qualite => self.activate_tab(&WorkTab::Qualite),
             // L'angine d'abord : l'éditeur change de protocole dans sa
             // propre fenêtre.
             Tool::TrodLines => {
@@ -8982,6 +9330,11 @@ impl Session {
     /// Ce que cette liste laisse dehors est aussi important que ce
     /// qu'elle contient — voir [`Self::sync_if_others_wrote`].
     fn resync(&mut self) {
+        // Le registre qualité relu ; la fiche en cours de frappe garde
+        // ce qu'elle avait lu, et s'enregistrera contre.
+        if self.qual.loaded {
+            self.reload_qualite();
+        }
         // Le stock de lots a pu changer ailleurs.
         self.vacc_lot_warn = None;
         // Une table corrigée sur un autre poste se marque aussi.
@@ -10995,6 +11348,8 @@ impl Session {
             WorkTab::Registres => tr("tab_registres").to_owned(),
             WorkTab::Explorer => tr("tab_explorer").to_owned(),
             WorkTab::Ddi => tr("tab_ddi").to_owned(),
+            WorkTab::Liaison => tr("tab_liaison").to_owned(),
+            WorkTab::Qualite => tr("tab_qualite").to_owned(),
             WorkTab::UiTexts => tr("tab_libelles").to_owned(),
             WorkTab::Checklists => tr("tab_listes").to_owned(),
             WorkTab::Cascades => tr("tab_cascades").to_owned(),
@@ -15926,6 +16281,21 @@ impl Session {
         self.watch_stale = false;
     }
 
+    /// Le registre qualité relu de la base, et ce que l'en-tête et la
+    /// barre d'état en disent. Deux tables de quelques centaines de
+    /// lignes au plus : relues entières.
+    fn reload_qualite(&mut self) {
+        match (self.db.nonconformites(), self.db.nc_actions()) {
+            (Ok(ncs), Ok(actions)) => {
+                self.qual.board = crate::qualite::board(&ncs, &actions, &self.today);
+                self.qual.ncs = ncs;
+                self.qual.actions = actions;
+            }
+            (Err(e), _) | (_, Err(e)) => self.error = Some(e),
+        }
+        self.qual.loaded = true;
+    }
+
     fn refresh_dashboard(&mut self) {
         let months = self.cycle_months;
         match self.db.interview_summaries(months) {
@@ -15941,6 +16311,11 @@ impl Session {
         self.agenda_week = self.db.week_dates(self.agenda_offset).unwrap_or_default();
         self.recent = self.db.recent_patients(6).unwrap_or_default();
         self.vacc_today = self.db.vaccinations_on(&self.today).unwrap_or(0);
+        // Les actions en retard du registre qualité : la barre d'état le
+        // dit, quand ce poste charge la gestion.
+        if crate::config::loaded(crate::config::Module::Gestion) {
+            self.reload_qualite();
+        }
         // Not the call list: it reads the whole base and runs three rule
         // engines over every file on it — the biology's eighty-seven,
         // the revue's fifty-five and the forty-six surveillances. That
@@ -23570,6 +23945,47 @@ impl App {
                         // screenshots without a reader and without a
                         // real patient's card.
                         Ok("vitale") => session.read_vitale(&config),
+                        // La fiche remplie, un dossier joint : ce qu'on
+                        // regarde, c'est le formulaire plein et la liste
+                        // des traitements à cocher.
+                        // Le registre de la base de démonstration
+                        // (`qualite::demo`), la non-conformité en action
+                        // ouverte à droite.
+                        Ok("qualite") => {
+                            session.refresh_dashboard();
+                            session.reload_qualite();
+                            let q = &mut session.qual;
+                            q.filter = 1;
+                            q.edit = q
+                                .ncs
+                                .iter()
+                                .find(|n| {
+                                    crate::qualite::stage(n, &q.actions)
+                                        == crate::qualite::Stage::EnAction
+                                })
+                                .map(NcEdit::of);
+                            session.view = MainView::Qualite;
+                        }
+                        Ok("fiche_transmission") => {
+                            if let Some(p) = session
+                                .patients
+                                .iter()
+                                .find(|p| !p.physician.trim().is_empty())
+                                .or(session.patients.first())
+                                .cloned()
+                            {
+                                session.open_patient(p);
+                            }
+                            session.liaison = LiaisonForm {
+                                subject: "Somnolence depuis l'introduction du traitement".to_owned(),
+                                message: "Le patient signale une somnolence marquée le matin.\n\nPouvez-vous réévaluer l'heure de prise ?".to_owned(),
+                                urgent: true,
+                                answer: true,
+                                patient: session.viewing.is_some(),
+                                ..LiaisonForm::default()
+                            };
+                            session.view = MainView::Liaison;
+                        }
                         // No hook: reopen where the last session was
                         // left. The hooks are for screenshots and the
                         // e2e run, and they must keep the last word.
@@ -24676,7 +25092,15 @@ impl App {
                             // Une cascade nomme des molécules : le dock
                             // des médicaments est celui qui les ouvre.
                             | MainView::Cascades => Self::nav_drugs(ui, session, focus),
+                            // La fiche de transmission joint le dossier
+                            // ouvert : le dock des dossiers est celui qui
+                            // l'ouvre.
+                            // Le registre qualité ne trie ni dossiers ni
+                            // fiches ; le dock des dossiers reste celui du
+                            // comptoir.
                             MainView::Dashboard
+                            | MainView::Liaison
+                            | MainView::Qualite
                             | MainView::Search
                             // Les connexions ne trient rien : le dock
                             // qu'on avait devant soi reste.
@@ -26479,6 +26903,14 @@ impl App {
             }
             if session.view == MainView::Ddi {
                 Self::ddi_view(ui, session);
+                return;
+            }
+            if session.view == MainView::Liaison {
+                Self::liaison_view(ui, session, &operator, &config);
+                return;
+            }
+            if session.view == MainView::Qualite {
+                Self::qualite_view(ui, session, &operator, &config);
                 return;
             }
             if session.view == MainView::UiTexts {
@@ -53132,6 +53564,929 @@ impl App {
         format!("{name} ×")
     }
 
+    /// **Le registre qualité** : les non-conformités à gauche, celle qui
+    /// est ouverte à droite — sa déclaration, son analyse, ses actions,
+    /// sa vérification et sa clôture —, et en tête ce qui attend.
+    fn qualite_view(ui: &mut egui::Ui, session: &mut Session, operator: &str, config: &Config) {
+        use crate::qualite::{self, Stage};
+        if !session.qual.loaded {
+            session.reload_qualite();
+        }
+        let body = motif::visible_rect(ui);
+        let dim = |t: &str| egui::RichText::new(t).color(motif::text_dim());
+        let today = session.today.clone();
+        let year_now: i32 = today.get(..4).and_then(|y| y.parse().ok()).unwrap_or(0);
+        let mut new_nc = false;
+        let mut open_nc: Option<i64> = None;
+        let mut save = false;
+        let mut cancel = false;
+        let mut close_nc = false;
+        let mut reopen = false;
+        let mut delete = false;
+        let mut print_nc = false;
+        let mut print_review = false;
+        let mut add_action = false;
+        let mut action_done: Option<(qualite::Action, bool)> = None;
+        let mut action_drop: Option<qualite::Action> = None;
+
+        // --- L'en-tête : ce qui attend, et les commandes ----------------
+        let years = qualite::years(&session.qual.ncs, &today);
+        if session.qual.review_year == 0 {
+            session.qual.review_year = year_now;
+        }
+        let filters: Vec<(usize, String)> =
+            ["qual_filter_open", "qual_filter_all", "qual_filter_closed"]
+                .iter()
+                .enumerate()
+                .map(|(i, k)| (i, tr(k).to_owned()))
+                .collect();
+        let year_options: Vec<(i32, String)> = years.iter().map(|y| (*y, y.to_string())).collect();
+        let b = session.qual.board;
+        let summary = trn("qual_board", &[&b.open, &b.high, &b.late, &b.to_check]);
+        let filter_w = motif::select_width(ui, filters.iter().map(|(_, l)| l.as_str()));
+        let year_w = motif::select_width(ui, year_options.iter().map(|(_, l)| l.as_str()));
+        let ctrl = Self::wrapped_rows_of(
+            ui,
+            body.width() - 24.0,
+            [
+                Self::button_width(ui, tr("qual_new")),
+                filter_w,
+                Self::widest(ui, 11.0, std::iter::once(tr("qual_review"))),
+                year_w,
+                Self::button_width(ui, tr("qual_review_print")),
+            ]
+            .into_iter(),
+        );
+        // La phrase des comptes **mesurée** à la largeur où elle
+        // s'écrit : à 1024x700 en texte 1,6 elle prend deux lignes, et
+        // une bande qui lui en comptait une cachait « Imprimer la revue »
+        // sous son pli.
+        let said = ui
+            .fonts(|f| {
+                f.layout(
+                    summary.clone(),
+                    egui::TextStyle::Body.resolve(ui.style()),
+                    motif::text(),
+                    body.width() - 24.0,
+                )
+            })
+            .rows
+            .len()
+            .max(1) as f32;
+        let chrome = motif::panel_chrome(ui, true);
+        let gap = ui.spacing().item_spacing.y;
+        let line = ui.text_style_height(&egui::TextStyle::Body);
+        let head = chrome
+            + whole_rows(
+                // Une part plus large que les autres bandes : la phrase y
+                // prend deux lignes à l'échelle 1,6, et les commandes en
+                // dessous ne sont pas une queue qu'on peut cacher.
+                (body.height() * 0.42 - chrome - said * line).max(Self::row_height(ui)),
+                Self::row_height(ui),
+                gap,
+                ctrl,
+            )
+            + said * line
+            + gap;
+        let rows = motif::split_rows(body, &[head, 0.0], 6.0);
+        motif::panel(ui, rows[0], Some(tr("qual_title")), |ui| {
+            let inner = ui.max_rect();
+            motif::inside(ui, inner, |ui| {
+                ui.spacing_mut().scroll.floating = false;
+                egui::ScrollArea::vertical()
+                    .id_salt("qual_head")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        let color = if b.late > 0 || b.high > 0 {
+                            motif::warn()
+                        } else {
+                            motif::text_dim()
+                        };
+                        ui.label(egui::RichText::new(&summary).color(color));
+                        ui.horizontal_wrapped(|ui| {
+                            if motif::button(ui, tr("qual_new"))
+                                .on_hover_text(tr("qual_new_tooltip"))
+                                .clicked()
+                            {
+                                new_nc = true;
+                            }
+                            motif::select(
+                                ui,
+                                "qual_filter",
+                                filter_w,
+                                &mut session.qual.filter,
+                                &filters,
+                            );
+                            ui.label(dim(tr("qual_review")));
+                            motif::select(
+                                ui,
+                                "qual_year",
+                                year_w,
+                                &mut session.qual.review_year,
+                                &year_options,
+                            );
+                            if motif::button(ui, tr("qual_review_print"))
+                                .on_hover_text(tr("qual_review_print_tooltip"))
+                                .clicked()
+                            {
+                                print_review = true;
+                            }
+                        });
+                    });
+            });
+        });
+
+        // --- La liste et la fiche ---------------------------------------
+        // Côte à côte quand la place le permet, l'une sur l'autre sinon :
+        // la bascule se dit en caractères, comme partout ici.
+        let area = rows[1];
+        let side = area.width() >= chars_wide(ui, 70.0);
+        let (list_rect, detail_rect) = if side {
+            let w = (area.width() * 0.36)
+                .max(chars_wide(ui, 24.0))
+                .min(area.width() * 0.5);
+            let l = egui::Rect::from_min_max(area.min, egui::pos2(area.left() + w, area.bottom()));
+            let r = egui::Rect::from_min_max(egui::pos2(l.right() + 6.0, area.top()), area.max);
+            (l, r)
+        } else {
+            let parts = motif::split_rows(area, &[area.height() * 0.35, 0.0], 6.0);
+            (parts[0], parts[1])
+        };
+        let selected = session.qual.edit.as_ref().map(|e| e.draft.id);
+        let shown: Vec<&qualite::NonConformite> = session
+            .qual
+            .ncs
+            .iter()
+            .filter(|n| {
+                let closed = qualite::stage(n, &session.qual.actions) == Stage::Close;
+                match session.qual.filter {
+                    0 => !closed,
+                    2 => closed,
+                    _ => true,
+                }
+            })
+            .collect();
+        let list_title = trf("qual_list", shown.len());
+        motif::panel(ui, list_rect, Some(list_title.as_str()), |ui| {
+            ui.spacing_mut().scroll.floating = false;
+            egui::ScrollArea::vertical()
+                .id_salt("qual_list")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    if shown.is_empty() {
+                        ui.add(egui::Label::new(dim(tr("qual_none"))).wrap());
+                    }
+                    for n in &shown {
+                        let st = qualite::stage(n, &session.qual.actions);
+                        let title = if n.title.trim().is_empty() {
+                            tr("qual_untitled")
+                        } else {
+                            n.title.trim()
+                        };
+                        let crit = qualite::criticity(n)
+                            .map(|c| trf("qual_crit_short", c))
+                            .unwrap_or_default();
+                        let secondary = [
+                            db::format_french_date(&n.declared_on),
+                            qual_kind_label(&n.kind).to_owned(),
+                            tr(st.label_key()).to_owned(),
+                            crit,
+                        ]
+                        .into_iter()
+                        .filter(|p| !p.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(" · ");
+                        if motif::list_row_pair(ui, title, &secondary, selected == Some(n.id), 0.0)
+                            .clicked()
+                        {
+                            open_nc = Some(n.id);
+                        }
+                    }
+                });
+        });
+
+        let detail_title = match &session.qual.edit {
+            Some(e) if e.draft.id == 0 => tr("qual_detail_new").to_owned(),
+            Some(e) => tr(qualite::stage(&e.shown, &session.qual.actions).label_key()).to_owned(),
+            None => tr("qual_detail").to_owned(),
+        };
+        let actions_all = session.qual.actions.clone();
+        motif::panel(ui, detail_rect, Some(detail_title.as_str()), |ui| {
+            ui.spacing_mut().scroll.floating = false;
+            egui::ScrollArea::vertical()
+                .id_salt("qual_detail")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    let q = &mut session.qual;
+                    let Some(e) = q.edit.as_mut() else {
+                        ui.add(egui::Label::new(dim(tr("qual_pick"))).wrap());
+                        return;
+                    };
+                    let wide = ui.available_width();
+                    let narrow = |ui: &egui::Ui, chars: f32| chars_wide(ui, chars).min(wide);
+                    let closed = !e.shown.closed_on.trim().is_empty();
+                    let d = &mut e.draft;
+
+                    motif::section(ui, tr("qual_sec_declaration"));
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(dim(tr("qual_date")));
+                        motif::field(
+                            ui,
+                            narrow(ui, 11.0),
+                            egui::TextEdit::singleline(&mut e.date),
+                        );
+                        ui.label(dim(tr("qual_by")));
+                        motif::field(
+                            ui,
+                            narrow(ui, 6.0),
+                            egui::TextEdit::singleline(&mut d.declared_by),
+                        );
+                        ui.label(dim(tr("qual_kind")));
+                        let kinds: Vec<(String, String)> = qualite::KINDS
+                            .iter()
+                            .map(|k| ((*k).to_owned(), qual_kind_label(k).to_owned()))
+                            .collect();
+                        let w = motif::select_width(ui, kinds.iter().map(|(_, l)| l.as_str()));
+                        motif::select(ui, "qual_kind", w, &mut d.kind, &kinds);
+                    });
+                    ui.label(dim(tr("qual_what")));
+                    motif::field(
+                        ui,
+                        wide,
+                        egui::TextEdit::singleline(&mut d.title)
+                            .hint_text(motif::hint(tr("qual_what_hint"))),
+                    );
+                    ui.label(dim(tr("qual_description")));
+                    motif::area(
+                        ui,
+                        egui::vec2(wide, Self::row_height(ui) * 3.0),
+                        egui::TextEdit::multiline(&mut d.description)
+                            .hint_text(motif::hint(tr("qual_description_hint"))),
+                    );
+                    ui.label(dim(tr("qual_immediate")));
+                    motif::area(
+                        ui,
+                        egui::vec2(wide, Self::row_height(ui) * 2.0),
+                        egui::TextEdit::multiline(&mut d.immediate)
+                            .hint_text(motif::hint(tr("qual_immediate_hint"))),
+                    );
+                    ui.label(dim(tr("qual_declaration")));
+                    motif::field(
+                        ui,
+                        wide,
+                        egui::TextEdit::singleline(&mut d.declaration)
+                            .hint_text(motif::hint(tr("qual_declaration_hint"))),
+                    );
+
+                    motif::section(ui, tr("qual_sec_analysis"));
+                    ui.horizontal_wrapped(|ui| {
+                        let scale = |label: fn(i64) -> &'static str| -> Vec<(i64, String)> {
+                            (0..=qualite::SCALE)
+                                .map(|v| (v, label(v).to_owned()))
+                                .collect()
+                        };
+                        let sev = scale(qual_severity_label);
+                        let lik = scale(qual_likelihood_label);
+                        ui.label(dim(tr("qual_severity")));
+                        let w = motif::select_width(ui, sev.iter().map(|(_, l)| l.as_str()));
+                        motif::select(ui, "qual_sev", w, &mut d.severity, &sev);
+                        ui.label(dim(tr("qual_likelihood")));
+                        let w = motif::select_width(ui, lik.iter().map(|(_, l)| l.as_str()));
+                        motif::select(ui, "qual_lik", w, &mut d.likelihood, &lik);
+                    });
+                    match qualite::criticity(d) {
+                        Some(c) => {
+                            let level = qualite::Level::of(c);
+                            let (pict, color) = match level {
+                                qualite::Level::Elevee => (motif::Pict::Stop, motif::alert()),
+                                qualite::Level::Moderee => (motif::Pict::Warn, motif::warn()),
+                                qualite::Level::Faible => (motif::Pict::Check, motif::accent()),
+                            };
+                            ui.horizontal(|ui| {
+                                let side = motif::pt(ui, 10.0);
+                                let (sq, _) = ui.allocate_exact_size(
+                                    egui::vec2(side, side),
+                                    egui::Sense::hover(),
+                                );
+                                motif::pictogram(ui.painter(), sq, pict, color);
+                                ui.label(
+                                    egui::RichText::new(trn(
+                                        "qual_crit",
+                                        &[&c, &tr(level.label_key())],
+                                    ))
+                                    .color(color),
+                                );
+                            });
+                        }
+                        None => {
+                            ui.label(dim(tr("qual_crit_none")));
+                        }
+                    }
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(dim(tr("qual_cause_kind")));
+                        let mut causes: Vec<(String, String)> =
+                            vec![(String::new(), tr("qual_cause_none").to_owned())];
+                        causes.extend(
+                            qualite::CAUSES
+                                .iter()
+                                .map(|k| ((*k).to_owned(), qual_cause_label(k).to_owned())),
+                        );
+                        let w = motif::select_width(ui, causes.iter().map(|(_, l)| l.as_str()));
+                        motif::select(ui, "qual_cause_kind", w, &mut d.cause_kind, &causes);
+                    });
+                    ui.label(dim(tr("qual_cause")));
+                    motif::area(
+                        ui,
+                        egui::vec2(wide, Self::row_height(ui) * 2.0),
+                        egui::TextEdit::multiline(&mut d.cause)
+                            .hint_text(motif::hint(tr("qual_cause_hint"))),
+                    );
+
+                    motif::section(ui, tr("qual_sec_actions"));
+                    if d.id == 0 {
+                        ui.label(dim(tr("qual_actions_after_save")));
+                    } else {
+                        let mine = qualite::actions_of(d.id, &actions_all);
+                        if mine.is_empty() {
+                            ui.label(dim(tr("qual_actions_none")));
+                        }
+                        for a in mine {
+                            ui.horizontal_wrapped(|ui| {
+                                let kind = if a.preventive {
+                                    tr("qual_action_preventive")
+                                } else {
+                                    tr("qual_action_corrective")
+                                };
+                                ui.label(dim(kind));
+                                ui.label(a.what.as_str());
+                                if !a.owner.trim().is_empty() {
+                                    ui.label(dim(&trf("qual_action_owner", a.owner.trim())));
+                                }
+                                let state = if qualite::done(a) {
+                                    egui::RichText::new(trf(
+                                        "qual_action_done_on",
+                                        db::format_french_date(&a.done_on),
+                                    ))
+                                    .color(motif::accent())
+                                } else if qualite::overdue(a, &today) {
+                                    egui::RichText::new(trf(
+                                        "qual_action_late",
+                                        db::format_french_date(&a.due_on),
+                                    ))
+                                    .color(motif::alert())
+                                } else if !a.due_on.trim().is_empty() {
+                                    dim(&trf("qual_action_due", db::format_french_date(&a.due_on)))
+                                } else {
+                                    dim(tr("qual_action_no_due"))
+                                };
+                                ui.label(state);
+                                if !closed {
+                                    let (label, done) = if qualite::done(a) {
+                                        (tr("qual_action_undo"), false)
+                                    } else {
+                                        (tr("qual_action_mark_done"), true)
+                                    };
+                                    if motif::button(ui, label).clicked() {
+                                        action_done = Some((a.clone(), done));
+                                    }
+                                    if motif::button(ui, tr("qual_action_drop"))
+                                        .on_hover_text(tr("qual_action_drop_tooltip"))
+                                        .clicked()
+                                    {
+                                        action_drop = Some(a.clone());
+                                    }
+                                }
+                            });
+                        }
+                        if !closed {
+                            ui.add_space(4.0);
+                            ui.label(dim(tr("qual_action_add_title")));
+                            let na = &mut q.new_action;
+                            ui.horizontal_wrapped(|ui| {
+                                let kinds = [
+                                    (false, tr("qual_action_corrective").to_owned()),
+                                    (true, tr("qual_action_preventive").to_owned()),
+                                ];
+                                let w =
+                                    motif::select_width(ui, kinds.iter().map(|(_, l)| l.as_str()));
+                                motif::select(
+                                    ui,
+                                    "qual_action_kind",
+                                    w,
+                                    &mut na.preventive,
+                                    &kinds,
+                                );
+                                motif::field(
+                                    ui,
+                                    narrow(ui, 30.0),
+                                    egui::TextEdit::singleline(&mut na.what)
+                                        .hint_text(motif::hint(tr("qual_action_what_hint"))),
+                                );
+                                motif::field(
+                                    ui,
+                                    narrow(ui, 6.0),
+                                    egui::TextEdit::singleline(&mut na.owner)
+                                        .hint_text(motif::hint(tr("qual_action_owner_hint"))),
+                                );
+                                motif::field(
+                                    ui,
+                                    narrow(ui, 11.0),
+                                    egui::TextEdit::singleline(&mut q.new_due)
+                                        .hint_text(motif::hint(tr("qual_action_due_hint"))),
+                                );
+                                if ui
+                                    .add_enabled_ui(!na.what.trim().is_empty(), |ui| {
+                                        motif::button(ui, tr("qual_action_add"))
+                                    })
+                                    .inner
+                                    .clicked()
+                                {
+                                    add_action = true;
+                                }
+                            });
+                        }
+                    }
+
+                    motif::section(ui, tr("qual_sec_check"));
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(dim(tr("qual_effective")));
+                        let eff: Vec<(i64, String)> = (0..=2)
+                            .map(|v| (v, qual_effective_label(v).to_owned()))
+                            .collect();
+                        let w = motif::select_width(ui, eff.iter().map(|(_, l)| l.as_str()));
+                        motif::select(ui, "qual_effective", w, &mut d.effective, &eff);
+                    });
+                    ui.label(dim(tr("qual_verification")));
+                    motif::area(
+                        ui,
+                        egui::vec2(wide, Self::row_height(ui) * 2.0),
+                        egui::TextEdit::multiline(&mut d.verification)
+                            .hint_text(motif::hint(tr("qual_verification_hint"))),
+                    );
+                    if closed {
+                        ui.label(
+                            egui::RichText::new(trn(
+                                "qual_closed_on",
+                                &[
+                                    &db::format_french_date(&e.shown.closed_on),
+                                    &e.shown.closed_by,
+                                ],
+                            ))
+                            .color(motif::accent()),
+                        );
+                    }
+
+                    ui.add_space(6.0);
+                    let dirty = e.dirty();
+                    let titled = !e.draft.title.trim().is_empty();
+                    ui.horizontal_wrapped(|ui| {
+                        if ui
+                            .add_enabled_ui((dirty || e.draft.id == 0) && titled, |ui| {
+                                motif::button(ui, tr("qual_save"))
+                            })
+                            .inner
+                            .clicked()
+                        {
+                            save = true;
+                        }
+                        if motif::button(ui, tr("qual_cancel")).clicked() {
+                            cancel = true;
+                        }
+                        if e.draft.id != 0 {
+                            if closed {
+                                if motif::button(ui, tr("qual_reopen"))
+                                    .on_hover_text(tr("qual_reopen_tooltip"))
+                                    .clicked()
+                                {
+                                    reopen = true;
+                                }
+                            } else {
+                                let why = qualite::cannot_close(&e.draft, &actions_all);
+                                let r = ui
+                                    .add_enabled_ui(why.is_none(), |ui| {
+                                        motif::button(ui, tr("qual_close"))
+                                    })
+                                    .inner;
+                                let r = match why {
+                                    Some(k) => r.on_disabled_hover_text(tr(k)),
+                                    None => r.on_hover_text(tr("qual_close_tooltip")),
+                                };
+                                if r.clicked() {
+                                    close_nc = true;
+                                }
+                            }
+                            if motif::button(ui, tr("qual_print"))
+                                .on_hover_text(tr("qual_print_tooltip"))
+                                .clicked()
+                            {
+                                print_nc = true;
+                            }
+                            let label = if q.confirm_delete {
+                                tr("qual_delete_confirm")
+                            } else {
+                                tr("qual_delete")
+                            };
+                            if motif::button(ui, label)
+                                .on_hover_text(tr("qual_delete_tooltip"))
+                                .clicked()
+                            {
+                                if q.confirm_delete {
+                                    delete = true;
+                                } else {
+                                    q.confirm_delete = true;
+                                }
+                            }
+                        }
+                    });
+                    if let Some(err) = &e.error {
+                        ui.colored_label(motif::alert(), err.as_str());
+                    }
+                    if let Some(note) = &q.note {
+                        ui.label(dim(note.as_str()));
+                    }
+                });
+        });
+
+        // --- Ce qui a été demandé ---------------------------------------
+        let q = &mut session.qual;
+        if new_nc || open_nc.is_some() {
+            if q.edit.as_ref().is_some_and(NcEdit::dirty) {
+                if let Some(e) = q.edit.as_mut() {
+                    e.error = Some(tr("qual_unsaved").to_owned());
+                }
+            } else {
+                q.confirm_delete = false;
+                q.note = None;
+                q.new_action = qualite::Action::default();
+                q.new_due.clear();
+                q.edit = if new_nc {
+                    let n = qualite::NonConformite {
+                        declared_on: today.clone(),
+                        declared_by: operator.trim().to_owned(),
+                        kind: qualite::KINDS[0].to_owned(),
+                        ..qualite::NonConformite::default()
+                    };
+                    Some(NcEdit::of(&n))
+                } else {
+                    q.ncs.iter().find(|n| Some(n.id) == open_nc).map(NcEdit::of)
+                };
+            }
+        }
+        if cancel {
+            q.confirm_delete = false;
+            q.edit = match q.edit.as_ref() {
+                Some(e) if e.draft.id != 0 && e.dirty() => {
+                    q.ncs.iter().find(|n| n.id == e.shown.id).map(NcEdit::of)
+                }
+                _ => None,
+            };
+        }
+        if close_nc || reopen {
+            if let Some(e) = q.edit.as_mut() {
+                if close_nc {
+                    e.draft.closed_on = today.clone();
+                    e.draft.closed_by = operator.trim().to_owned();
+                } else {
+                    e.draft.closed_on.clear();
+                    e.draft.closed_by.clear();
+                }
+                save = true;
+            }
+        }
+        if save {
+            if let Some(e) = q.edit.as_mut() {
+                match db::parse_french_date(&e.date, year_now.max(0) as u32, db::YearHint::Past) {
+                    Err(err) => e.error = Some(err),
+                    Ok(iso) => {
+                        e.draft.declared_on = iso;
+                        e.draft.title = e.draft.title.trim().to_owned();
+                        let draft = e.draft.clone();
+                        let written = if draft.id == 0 {
+                            session.db.insert_nonconformite(&draft).map(Some)
+                        } else {
+                            session
+                                .db
+                                .update_nonconformite(&draft, &e.shown)
+                                .map(|ok| ok.then_some(draft.id))
+                        };
+                        match written {
+                            Ok(Some(id)) => {
+                                session.reload_qualite();
+                                let q = &mut session.qual;
+                                q.edit = q.ncs.iter().find(|n| n.id == id).map(NcEdit::of);
+                                q.note = Some(tr("qual_saved").to_owned());
+                            }
+                            Ok(None) => {
+                                session.stale("qual_stale");
+                                session.reload_qualite();
+                                // Ce qui est tapé reste ; la prochaine
+                                // écriture se mesure à ce que la base porte.
+                                let q = &mut session.qual;
+                                let fresh = q.ncs.iter().find(|n| n.id == draft.id).cloned();
+                                match (q.edit.as_mut(), fresh) {
+                                    (Some(e), Some(f)) => e.shown = f,
+                                    _ => q.edit = None,
+                                }
+                            }
+                            Err(err) => session.error = Some(err),
+                        }
+                    }
+                }
+            }
+        }
+        let q = &mut session.qual;
+        if add_action {
+            if let Some(nc) = q.edit.as_ref().map(|e| e.draft.id).filter(|id| *id != 0) {
+                let due = if q.new_due.trim().is_empty() {
+                    Ok(String::new())
+                } else {
+                    db::parse_french_date(&q.new_due, year_now.max(0) as u32, db::YearHint::Future)
+                };
+                match due {
+                    Err(err) => {
+                        if let Some(e) = q.edit.as_mut() {
+                            e.error = Some(err);
+                        }
+                    }
+                    Ok(due_on) => {
+                        let a = qualite::Action {
+                            nc_id: nc,
+                            what: q.new_action.what.trim().to_owned(),
+                            owner: q.new_action.owner.trim().to_owned(),
+                            due_on,
+                            ..q.new_action.clone()
+                        };
+                        match session.db.insert_nc_action(&a) {
+                            Ok(_) => {
+                                let q = &mut session.qual;
+                                q.new_action = qualite::Action {
+                                    preventive: a.preventive,
+                                    ..qualite::Action::default()
+                                };
+                                q.new_due.clear();
+                                session.reload_qualite();
+                            }
+                            Err(err) => session.error = Some(err),
+                        }
+                    }
+                }
+            }
+        }
+        if let Some((a, done)) = action_done {
+            let next = qualite::Action {
+                done_on: if done { today.clone() } else { String::new() },
+                ..a.clone()
+            };
+            match session.db.update_nc_action(&next, &a) {
+                Ok(true) => {}
+                Ok(false) => session.stale("qual_stale"),
+                Err(err) => session.error = Some(err),
+            }
+            session.reload_qualite();
+        }
+        if let Some(a) = action_drop {
+            match session.db.delete_nc_action(&a) {
+                Ok(true) => {}
+                Ok(false) => session.stale("qual_stale"),
+                Err(err) => session.error = Some(err),
+            }
+            session.reload_qualite();
+        }
+        if delete {
+            let shown = session.qual.edit.as_ref().map(|e| e.shown.clone());
+            if let Some(shown) = shown {
+                match session.db.delete_nonconformite(&shown) {
+                    Ok(true) => {
+                        session.qual.edit = None;
+                        session.qual.note = Some(tr("qual_deleted").to_owned());
+                    }
+                    Ok(false) => session.stale("qual_stale"),
+                    Err(err) => session.error = Some(err),
+                }
+                session.qual.confirm_delete = false;
+                session.reload_qualite();
+            }
+        }
+        if print_nc {
+            if let Some(e) = &session.qual.edit {
+                let paper = nc_paper(&e.shown, &session.qual.actions);
+                if let Err(err) = crate::pdf::open_nonconformite(
+                    &paper,
+                    &config.pharmacy,
+                    &config.doc_template_path("nonconformite"),
+                ) {
+                    session.error = Some(err);
+                }
+            }
+        }
+        if print_review {
+            let q = &session.qual;
+            let review = qualite::review(q.review_year, &q.ncs, &q.actions, &today);
+            let paper = review_paper(&review, &q.ncs, &q.actions);
+            if let Err(err) = crate::pdf::open_quality_review(
+                &paper,
+                &config.pharmacy,
+                &config.doc_template_path("revue_qualite"),
+            ) {
+                session.error = Some(err);
+            }
+        }
+    }
+
+    /// **La fiche de transmission** : à qui, quoi, et le dossier si l'on
+    /// veut, puis « Imprimer ». Un seul panneau qui défile : un
+    /// formulaire n'a rien à carver, et il tient ainsi à toutes les
+    /// tailles.
+    fn liaison_view(ui: &mut egui::Ui, session: &mut Session, operator: &str, config: &Config) {
+        let body = motif::visible_rect(ui);
+        let dim = |t: &str| egui::RichText::new(t).color(motif::text_dim());
+        let mut print = false;
+        let mut clear = false;
+        let open: Option<(i64, String, String, String)> = session.viewing.as_ref().map(|p| {
+            (
+                p.id,
+                p.full_name(),
+                db::format_french_date(&p.birth_date),
+                p.physician.trim().to_owned(),
+            )
+        });
+        let treats: Vec<(i64, String)> = session
+            .patient_treats
+            .iter()
+            .map(|d| (d.id, d.name.clone()))
+            .collect();
+        let f = &mut session.liaison;
+        // Un autre dossier ouvert : ses cases à lui, toutes cochées — ce
+        // qu'on transmet porte d'ordinaire sur le traitement en cours.
+        if f.treats_for != open.as_ref().map(|o| o.0) {
+            f.treats_for = open.as_ref().map(|o| o.0);
+            f.treats = treats.iter().map(|(id, _)| *id).collect();
+            if open.is_none() {
+                f.patient = false;
+            }
+        }
+        motif::panel(ui, body, Some(tr("liaison_title")), |ui| {
+            ui.spacing_mut().scroll.floating = false;
+            egui::ScrollArea::vertical()
+                .id_salt("liaison")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.label(dim(tr("liaison_hint")));
+                    ui.add_space(4.0);
+                    // **Le libellé au-dessus de sa case**, pas dans une
+                    // grille : à 1024x700 en texte 1,6, la rangée du
+                    // destinataire s'enroule et une cellule de `Grid`
+                    // centre son libellé sur la hauteur — « Message »
+                    // tombait au pied de sa case.
+                    let wide = ui.available_width();
+                    let narrow = |ui: &egui::Ui, chars: f32| chars_wide(ui, chars).min(wide);
+                    ui.label(dim(tr("liaison_to")));
+                    ui.horizontal_wrapped(|ui| {
+                        let options: Vec<(usize, String)> = LIAISON_TO
+                            .iter()
+                            .enumerate()
+                            .map(|(i, k)| (i, tr(k).to_owned()))
+                            .collect();
+                        let w = motif::select_width(ui, options.iter().map(|(_, l)| l.as_str()));
+                        motif::select(ui, "liaison_to", w, &mut f.to, &options);
+                        motif::field(
+                            ui,
+                            narrow(ui, 24.0),
+                            egui::TextEdit::singleline(&mut f.to_name)
+                                .hint_text(motif::hint(tr("liaison_to_name_hint"))),
+                        );
+                        if let Some((_, _, _, physician)) = &open {
+                            if f.to == 0
+                                && !physician.is_empty()
+                                && f.to_name.trim() != physician
+                                && motif::button(ui, tr("liaison_to_physician"))
+                                    .on_hover_text(physician.as_str())
+                                    .clicked()
+                            {
+                                f.to_name = physician.clone();
+                            }
+                        }
+                    });
+                    ui.add_space(4.0);
+                    ui.label(dim(tr("liaison_subject")));
+                    motif::field(
+                        ui,
+                        wide,
+                        egui::TextEdit::singleline(&mut f.subject)
+                            .hint_text(motif::hint(tr("liaison_subject_hint"))),
+                    );
+                    ui.add_space(4.0);
+                    ui.label(dim(tr("liaison_message")));
+                    motif::area(
+                        ui,
+                        egui::vec2(wide, Self::row_height(ui) * 7.0),
+                        egui::TextEdit::multiline(&mut f.message)
+                            .hint_text(motif::hint(tr("liaison_message_hint"))),
+                    );
+                    ui.add_space(4.0);
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(dim(tr("liaison_from")));
+                        motif::field(
+                            ui,
+                            narrow(ui, 8.0),
+                            egui::TextEdit::singleline(&mut f.from)
+                                .hint_text(motif::hint(operator)),
+                        );
+                    });
+                    ui.add_space(4.0);
+                    motif::checkbox(ui, &mut f.urgent, tr("liaison_urgent"));
+                    motif::checkbox(ui, &mut f.answer, tr("liaison_answer"))
+                        .on_hover_text(tr("liaison_answer_tooltip"));
+                    match &open {
+                        Some((_, name, _, _)) => {
+                            motif::checkbox(ui, &mut f.patient, trf("liaison_patient", name))
+                                .on_hover_text(tr("liaison_patient_tooltip"));
+                            if f.patient && !treats.is_empty() {
+                                ui.indent("liaison_treats", |ui| {
+                                    ui.label(dim(tr("liaison_treats")));
+                                    for (id, label) in &treats {
+                                        let mut on = f.treats.contains(id);
+                                        if motif::checkbox(ui, &mut on, label.as_str()).changed() {
+                                            if on {
+                                                f.treats.push(*id);
+                                            } else {
+                                                f.treats.retain(|t| t != id);
+                                            }
+                                        }
+                                    }
+                                });
+                            }
+                        }
+                        None => {
+                            ui.label(dim(tr("liaison_no_patient")));
+                        }
+                    }
+                    ui.add_space(6.0);
+                    let empty = f.subject.trim().is_empty() && f.message.trim().is_empty();
+                    ui.horizontal_wrapped(|ui| {
+                        if ui
+                            .add_enabled_ui(!empty, |ui| motif::button(ui, tr("liaison_print")))
+                            .inner
+                            .on_hover_text(tr("liaison_print_tooltip"))
+                            .clicked()
+                        {
+                            print = true;
+                        }
+                        if motif::button(ui, tr("liaison_clear")).clicked() {
+                            clear = true;
+                        }
+                    });
+                    if let Some(note) = &f.note {
+                        ui.label(dim(note.as_str()));
+                    }
+                });
+        });
+        if clear {
+            session.liaison = LiaisonForm::default();
+            return;
+        }
+        if !print {
+            return;
+        }
+        let f = &session.liaison;
+        let initials = if f.from.trim().is_empty() {
+            operator.trim()
+        } else {
+            f.from.trim()
+        };
+        let sheet = crate::pdf::LiaisonSheet {
+            to_kind: tr(LIAISON_TO[f.to.min(LIAISON_TO.len() - 1)]).to_owned(),
+            to_name: f.to_name.trim().to_owned(),
+            subject: f.subject.trim().to_owned(),
+            message: f.message.trim().to_owned(),
+            urgent: f.urgent,
+            answer: f.answer,
+            patient: open
+                .as_ref()
+                .filter(|_| f.patient)
+                .map(|(_, name, born, _)| (name.clone(), born.clone())),
+            treats: if f.patient {
+                treats
+                    .iter()
+                    .filter(|(id, _)| f.treats.contains(id))
+                    .map(|(_, n)| n.clone())
+                    .collect()
+            } else {
+                Vec::new()
+            },
+            from: config.pharmacy.signature_for(initials),
+            date: db::format_french_date(&session.today),
+        };
+        match crate::pdf::open_liaison(
+            &sheet,
+            &config.pharmacy,
+            &config.doc_template_path("liaison"),
+        ) {
+            Ok(_) => session.liaison.note = Some(tr("liaison_printed").to_owned()),
+            Err(e) => session.error = Some(e),
+        }
+    }
+
     fn ddi_view(ui: &mut egui::Ui, session: &mut Session) {
         let body = motif::visible_rect(ui);
         // La bande de composition : ce qu'on croise, et d'où ça vient.
@@ -64650,8 +66005,25 @@ impl App {
         let mut delete_lot: Option<(i64, String)> = None;
         let mut open_vial: Option<String> = None;
         let mut close_vial: Option<crate::campagne::Vial> = None;
+        let mut print_vials: Option<Vec<crate::pdf::VialLabel>> = None;
         let now_min = i64::from(session.now_minutes);
         let today = session.today.clone();
+        // Les flacons ouverts encore utilisables, une étiquette chacun :
+        // ce que « Étiquettes des flacons ouverts » imprime d'un coup.
+        let open_labels: Vec<crate::pdf::VialLabel> = session
+            .camp
+            .lots
+            .iter()
+            .filter_map(|lot| {
+                let hours = campaign.vial_hours(lot)?;
+                let v = session
+                    .camp
+                    .vials
+                    .iter()
+                    .find(|v| campagne::norm_lot(&v.lot) == campagne::norm_lot(&lot.lot))?;
+                vial_label(lot, v, hours, &today, now_min)
+            })
+            .collect();
         if lots_rect.is_positive() {
             motif::panel(ui, lots_rect, Some(tr("camp_lots_title")), |ui| {
                 // Le formulaire d'abord : c'est à la réception d'un carton
@@ -64662,9 +66034,21 @@ impl App {
                 // reste du temps.
                 let form_open = session.camp.form_open || session.camp.lots.is_empty();
                 if !form_open {
-                    if motif::button(ui, tr("camp_lot_receive")).clicked() {
-                        session.camp.form_open = true;
-                    }
+                    ui.horizontal_wrapped(|ui| {
+                        if motif::button(ui, tr("camp_lot_receive")).clicked() {
+                            session.camp.form_open = true;
+                        }
+                        if !open_labels.is_empty()
+                            && motif::button(ui, tr("camp_vial_labels_all"))
+                                .on_hover_text(trf(
+                                    "camp_vial_labels_all_tooltip",
+                                    open_labels.len(),
+                                ))
+                                .clicked()
+                        {
+                            print_vials = Some(open_labels.clone());
+                        }
+                    });
                 } else {
                     ui.horizontal_wrapped(|ui| {
                         // Les vaccins de la campagne d'abord, puis le reste du
@@ -64887,6 +66271,18 @@ impl App {
                                                 .size(motif::pt(ui, 11.0))
                                                 .color(color),
                                         );
+                                        if left >= 0 {
+                                            if let Some(label) =
+                                                vial_label(lot, v, hours, &today, now_min)
+                                            {
+                                                if motif::button(ui, tr("camp_vial_label"))
+                                                    .on_hover_text(tr("camp_vial_label_tooltip"))
+                                                    .clicked()
+                                                {
+                                                    print_vials = Some(vec![label]);
+                                                }
+                                            }
+                                        }
                                         if motif::button(ui, tr("camp_vial_close"))
                                             .on_hover_text(tr("camp_vial_close_tooltip"))
                                             .clicked()
@@ -65042,6 +66438,18 @@ impl App {
             match session.db.open_vial(&v) {
                 Ok(_) => reload = true,
                 Err(e) => session.error = Some(e),
+            }
+        }
+        if let Some(labels) = print_vials {
+            let on_sheet = config.vial_labels_on_sheet();
+            let key = if on_sheet { "flacons" } else { "flacon" };
+            if let Err(e) = crate::pdf::open_vial_labels(
+                &labels,
+                on_sheet,
+                &config.pharmacy,
+                &config.doc_template_path(key),
+            ) {
+                session.error = Some(e);
             }
         }
         if let Some(v) = close_vial {
@@ -92592,6 +94000,14 @@ impl eframe::App for App {
                 .filter(|s| s.state.awaits_billing())
                 .count();
             let unread_msgs = session.unread_total();
+            // Les actions qualité en retard : seulement là où la gestion
+            // est chargée — ailleurs, l'onglet qu'elle ouvrirait n'existe
+            // pas.
+            let quality_late = if crate::config::loaded(crate::config::Module::Gestion) {
+                session.qual.board.late
+            } else {
+                0
+            };
             let operator = self.operator.trim().to_owned();
             // Un autre poste vient d'écrire et les listes ont été
             // relues : la bande le dit quelques secondes, puis s'efface.
@@ -92715,6 +94131,33 @@ impl eframe::App for App {
                             motif::accent(),
                             tr("status_messages_tooltip"),
                             WorkTab::Messages,
+                        );
+                    }
+                    // **Seulement s'il reste la place**, avant ce que la
+                    // droite de la barre écrit (la base, la marque des
+                    // connexions) : à 1024x700 en texte 1,6 la barre est
+                    // déjà pleine, et la marque se dessinait par-dessus.
+                    let right_needs = {
+                        let font = egui::FontId::proportional(motif::pt(ui, 11.0));
+                        let w = |t: String| {
+                            ui.painter()
+                                .layout_no_wrap(t, font.clone(), motif::text())
+                                .size()
+                                .x
+                        };
+                        w(trf("lock_db_path", &db_file))
+                            + motif::pt(ui, 10.0)
+                            + ui.spacing().item_spacing.x * 4.0
+                            + 14.0
+                            + w(trf("status_quality_late", quality_late))
+                    };
+                    if quality_late > 0 && ui.available_width() > right_needs {
+                        flag(
+                            ui,
+                            trf("status_quality_late", quality_late),
+                            motif::warn(),
+                            tr("status_quality_late_tooltip"),
+                            WorkTab::Qualite,
                         );
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -92912,6 +94355,8 @@ impl eframe::App for App {
                     | MainView::Caisse
                     | MainView::CaisseHistory
                     | MainView::Ddi
+                    | MainView::Liaison
+                    | MainView::Qualite
                     | MainView::UiTexts
                     | MainView::Checklists
                     | MainView::Cascades => {
@@ -95000,6 +96445,30 @@ impl App {
                                 tr("opts_caisse_expected"),
                             )
                             .on_hover_text(tr("opts_caisse_expected_tooltip"));
+                            // Par poste : c'est l'imprimante branchée ici
+                            // qui décide du papier.
+                            ui.horizontal(|ui| {
+                                ui.label(dim(tr("opts_vial_labels")))
+                                    .on_hover_text(tr("opts_vial_labels_tooltip"));
+                                let options = [
+                                    ("rouleau".to_owned(), tr("opts_vial_labels_roll").to_owned()),
+                                    ("a4".to_owned(), tr("opts_vial_labels_sheet").to_owned()),
+                                ];
+                                let w = motif::select_width(
+                                    ui,
+                                    options.iter().map(|(_, l)| l.as_str()),
+                                );
+                                let mut pick = if editor.cfg.vial_labels_on_sheet() {
+                                    "a4".to_owned()
+                                } else {
+                                    "rouleau".to_owned()
+                                };
+                                if motif::select(ui, "opts_vial_labels", w, &mut pick, &options)
+                                    .changed()
+                                {
+                                    editor.cfg.ui.flacon_etiquettes = pick;
+                                }
+                            });
                         }
                         if page == OptionsPage::Database {
                             motif::section(ui, tr("opts_db"));
