@@ -751,6 +751,12 @@ pub struct PostesConfig {
     /// aucune adresse de l'officine. Allumé par défaut, comme au-dessus.
     #[serde(rename = "se_faire_relayer_patients")]
     pub relais_patients: bool,
+    /// **Attendre au rendez-vous** (`punch.rs`) : ce poste attend dans
+    /// l'essaim de son groupe sur les trackers WebTorrent publics, et un
+    /// téléphone de l'équipe que rien d'autre ne mène à lui l'y appelle,
+    /// puis les deux percent leurs box. Rien ne s'ouvre sur la box ; allumé
+    /// par défaut.
+    pub rendez_vous: bool,
 }
 
 impl Default for PostesConfig {
@@ -764,6 +770,7 @@ impl Default for PostesConfig {
             internet: false,
             relais: true,
             relais_patients: true,
+            rendez_vous: true,
         }
     }
 }

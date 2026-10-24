@@ -97,7 +97,7 @@ pub use link::Link;
 pub use meter::{Meter, Refusal, Report, Signal};
 pub use seal::{Hash, Record, Stream, MAX_PAYLOAD};
 pub use session::{drive, drive_any, Intent, Session, Step};
-pub use wire::Frame;
+pub use wire::{Frame, MAX_WIRE};
 
 /// Everything this crate can refuse to do, as a reason and never as a
 /// sentence.

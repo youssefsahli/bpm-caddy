@@ -1456,10 +1456,20 @@ impl Net {
             .filter_map(|a| usable_announced(a))
             .take(RELAY_TRIES)
             .collect();
-        if relays.is_empty() {
-            return Ok(None);
+        let mut said = if relays.is_empty() {
+            Ok(None)
+        } else {
+            self.sync_relayed_at(db, device, &relays, patience)
+        };
+        // No relay led to it: the rendez-vous, where it may wait with both
+        // boxes punched through (`punch.rs`).
+        if !matches!(said, Ok(Some(_))) {
+            match self.sync_met(db, device, patience) {
+                Ok(Some(who)) => said = Ok(Some(who)),
+                Err(e) if said.is_ok() => said = Err(e),
+                _ => {}
+            }
         }
-        let said = self.sync_relayed_at(db, device, &relays, patience);
         if let Ok(mut t) = TRIED.lock() {
             let m = t.get_or_insert_with(Default::default);
             m.retain(|_, at| at.elapsed() < RELAY_BACKOFF);
@@ -1510,6 +1520,44 @@ impl Net {
             }
         }
         Err(last)
+    }
+
+    /// **Joindre une officine du réseau au rendez-vous** : dans l'essaim
+    /// de son nom de relais pour ce réseau ([`meeting_swarms`], chez elle),
+    /// sur les trackers publics, puis le perçage des deux box. Un essaim où
+    /// personne n'attend est dit aussitôt par les trackers.
+    fn sync_met(
+        &mut self,
+        db: &Db,
+        device: &str,
+        patience: Duration,
+    ) -> Result<Option<String>, String> {
+        self.sync_met_by(db, device, |swarm| {
+            crate::punch::dial(swarm, &crate::punch::local_v4(), patience)
+        })
+    }
+
+    /// [`Net::sync_met`], percé par `dial` (le vrai rendez-vous, ou un
+    /// test) dans l'essaim qu'il reçoit.
+    fn sync_met_by(
+        &mut self,
+        db: &Db,
+        device: &str,
+        dial: impl FnOnce(&str) -> Result<crate::punch::PunchedLink, String>,
+    ) -> Result<Option<String>, String> {
+        let Some(trousseau) = self.trousseau.clone() else {
+            return Ok(None);
+        };
+        if self.open {
+            return Ok(None);
+        }
+        let group = crate::relay::officine_group(&hex(&trousseau.name().bytes()), device);
+        let link = dial(&crate::punch::swarm(&group))?.with_deadline(DIAL_BOUND);
+        match self.sync_over(db, link, &trousseau) {
+            Ok(Some(who)) if who == device => Ok(Some(who)),
+            Ok(_) => Err(dial_reason("Handshake")),
+            Err(e) => Err(e),
+        }
     }
 
     fn sync_over<L: bpm_sync::Link>(
@@ -1836,6 +1884,19 @@ pub fn relay_waits(db: &Db, most: usize) -> Vec<(String, String)> {
     out
 }
 
+/// **Les essaims où cette officine attend au rendez-vous** : un par
+/// réseau fermé, sous son nom de relais pour ce réseau — qu'une officine
+/// qui ne la joint nulle part y appelle (`Net::sync_met`).
+pub fn meeting_swarms(db: &Db) -> Vec<String> {
+    let Ok(me) = device_hex(db) else {
+        return Vec::new();
+    };
+    closed_networks(db)
+        .into_iter()
+        .map(|(_, name)| crate::punch::swarm(&crate::relay::officine_group(&name, &me)))
+        .collect()
+}
+
 /// Les adresses de relais offertes par les officines du réseau.
 pub fn offered_relays(db: &Db) -> Vec<String> {
     let mut out: Vec<String> = db
@@ -1906,6 +1967,10 @@ pub struct Diagnosis {
     pub doors: Vec<DoorTry>,
     /// `None` hors du réseau ouvert : aucune porte n'y est demandée.
     pub own: Option<crate::dht::OwnDoor>,
+    /// Ce que la box fait d'une prise UDP, demandé à deux serveurs STUN
+    /// (`punch::gather`) : ce que le rendez-vous peut percer. `None` : pas
+    /// demandé.
+    pub punch: Option<crate::punch::Mapping>,
 }
 
 /// Une porte d'officine essayée.
@@ -1991,6 +2056,7 @@ pub fn diagnose(db: &Db) -> Diagnosis {
     };
     let web = std::thread::spawn(move || opens("github.com:443", Duration::from_secs(5)));
     let dht = std::thread::spawn(|| crate::dht::Finder::start(None).is_ok_and(|f| f.reachable()));
+    let punch = std::thread::spawn(crate::punch::probe);
     let doors: Vec<_> = diagnosis_targets(db)
         .into_iter()
         .map(|(name, address)| {
@@ -2012,6 +2078,7 @@ pub fn diagnose(db: &Db) -> Diagnosis {
         dht: dht.join().unwrap_or(false),
         doors: doors.into_iter().filter_map(|t| t.join().ok()).collect(),
         own: crate::dht::own_door(),
+        punch: punch.join().ok(),
     }
 }
 
@@ -2063,6 +2130,12 @@ pub fn diagnosis_lines(d: &Diagnosis) -> Vec<(bool, String)> {
         )),
         Some(OwnDoor::Written(at)) => out.push((false, trf("diag_mine_written", at))),
         Some(OwnDoor::Closed(port)) => out.push((true, trf("diag_mine_closed", port))),
+        None => {}
+    }
+    match d.punch {
+        Some(m) if m.symmetric => out.push((true, tr("diag_punch_symmetric").to_owned())),
+        Some(m) if m.public.is_some() => out.push((false, tr("diag_punch_ok").to_owned())),
+        Some(_) => out.push((true, tr("diag_punch_mute").to_owned())),
         None => {}
     }
     let by_web = d.doors.iter().filter(|t| !t.door && t.web).count();
@@ -4332,6 +4405,41 @@ mod tests {
         (done(), done())
     }
 
+    /// **Deux officines qu'on ne joint pas se parlent au rendez-vous** :
+    /// A attend dans l'essaim de son nom de relais pour leur réseau, B l'y
+    /// appelle — le même essaim des deux côtés —, et la poignée de main dit
+    /// que c'est bien A. Jamais par le réseau ouvert.
+    #[test]
+    fn two_unreachable_officines_meet_at_the_rendezvous() {
+        let (dir_a, _sa, a) = officine("meet-a");
+        let (dir_b, _sb, b) = officine("meet-b");
+        pair(&dir_a, &dir_b, "");
+        let a_dev = device_hex(&a).unwrap();
+        let waits = meeting_swarms(&a);
+        let (by_b, by_a) = crate::punch::loopback_pair(TALK_PATIENCE);
+        let path_a = dir_a.join("net.db");
+        let waiting = std::thread::spawn(move || {
+            let db = Db::open(&path_a, "secret").unwrap();
+            let mut link = by_a;
+            answer(&db, &mut link)
+        });
+        let mut nb = Net::load(&b).unwrap();
+        let mut asked = String::new();
+        let met = nb.sync_met_by(&b, &a_dev, |swarm| {
+            asked = swarm.to_owned();
+            Ok(by_b)
+        });
+        assert_eq!(met, Ok(Some(a_dev.clone())));
+        assert!(waits.contains(&asked), "{asked} hors de {waits:?}");
+        assert!(waiting.join().unwrap().is_ok());
+        join_open(&b, "2026-10-21").unwrap();
+        let mut open = Net::load_network(&b, &open_id()).unwrap();
+        assert_eq!(
+            open.sync_met_by(&b, &a_dev, |_| Err("appelé".into())),
+            Ok(None)
+        );
+    }
+
     /// **Deux officines qu'on ne joint pas se parlent par un relais** :
     /// A n'écoute nulle part, elle attend au relais sous son nom ; B, qui
     /// ne la joint à aucune adresse, la demande au relais — et la
@@ -4818,6 +4926,7 @@ mod tests {
                 posts_internet: false,
                 relay_port: 0,
                 posts_relay: false,
+                posts_meet: false,
                 relay_patients: false,
                 web_door: false,
             },
@@ -4919,6 +5028,7 @@ mod tests {
             dht: false,
             doors: vec![door(false, true), door(false, false)],
             own: None,
+            punch: None,
         };
         let lines = diagnosis_lines(&hospital);
         assert_eq!(lines.len(), 5, "{lines:?}");
@@ -4955,8 +5065,37 @@ mod tests {
             dht: true,
             doors: vec![door(true, false)],
             own: None,
+            punch: None,
         };
         assert_eq!(last(&home), (false, trn("diag_doors_ok", &[&1, &1])));
+        // What the box does to a UDP socket: said before the verdict.
+        let public = Some("82.64.1.2:40000".parse().unwrap());
+        for (m, key, bad) in [
+            (
+                crate::punch::Mapping {
+                    public,
+                    symmetric: false,
+                },
+                "diag_punch_ok",
+                false,
+            ),
+            (
+                crate::punch::Mapping {
+                    public,
+                    symmetric: true,
+                },
+                "diag_punch_symmetric",
+                true,
+            ),
+            (crate::punch::Mapping::default(), "diag_punch_mute", true),
+        ] {
+            let lines = diagnosis_lines(&Diagnosis {
+                punch: Some(m),
+                ..home.clone()
+            });
+            assert_eq!(lines[lines.len() - 2], (bad, tr(key).to_owned()));
+            assert_eq!(lines.last(), Some(&last(&home)));
+        }
         assert!(
             !last(&Diagnosis {
                 doors: vec![],

@@ -84,7 +84,7 @@ pub struct Offered {
 pub type OfferSlot = Arc<Mutex<Option<mpsc::Sender<Offered>>>>;
 
 /// Vingt caractères tirés au hasard : un identifiant de pair ou d'offre.
-fn draw_id() -> String {
+pub(crate) fn draw_id() -> String {
     use std::hash::{BuildHasher, Hasher};
     let mut out = String::new();
     while out.len() < 20 {
@@ -380,7 +380,12 @@ impl Ws {
 /// directe en cours (`slot`), sa réponse revient au tracker. `up` compte
 /// les trackers où le poste attend en ce moment.
 pub fn spawn(box_id: &str, slot: OfferSlot, stop: Arc<AtomicBool>, up: Arc<AtomicUsize>) {
-    let swarm = swarm(box_id);
+    spawn_swarm(swarm(box_id), slot, stop, up);
+}
+
+/// **Attendre dans un essaim** donné : celui d'une boîte ([`spawn`]), ou
+/// celui d'un groupe de postes (`punch.rs`).
+pub fn spawn_swarm(swarm: String, slot: OfferSlot, stop: Arc<AtomicBool>, up: Arc<AtomicUsize>) {
     for url in TRACKERS {
         let (swarm, slot, stop, up) = (
             swarm.clone(),
@@ -462,6 +467,101 @@ fn wait_in(mut ws: Ws, swarm: &str, slot: &OfferSlot, stop: &AtomicBool) {
     let _ = ws.send(0x8, &[]);
 }
 
+/// L'annonce d'une offre dans l'essaim : ce que la page publie, et un
+/// téléphone qui cherche son poste (`punch::dial`).
+pub fn offer_announce(swarm: &str, peer: &str, offer_id: &str, sdp: &str) -> String {
+    serde_json::json!({
+        "action": "announce", "info_hash": swarm, "peer_id": peer, "numwant": 1,
+        "uploaded": 0, "downloaded": 0, "left": 1, "event": "started",
+        "offers": [{ "offer_id": offer_id, "offer": { "type": "offer", "sdp": sdp } }],
+    })
+    .to_string()
+}
+
+/// La réponse à l'offre `offer_id`, quand c'est elle que dit le tracker.
+pub fn answered(text: &str, swarm: &str, offer_id: &str) -> Option<String> {
+    let m: serde_json::Value = serde_json::from_str(text).ok()?;
+    if m.get("info_hash")?.as_str()? != swarm || m.get("offer_id")?.as_str()? != offer_id {
+        return None;
+    }
+    let a = m.get("answer")?;
+    if a.get("type")?.as_str()? != "answer" {
+        return None;
+    }
+    a.get("sdp")?.as_str().map(str::to_owned)
+}
+
+/// Combien de postes attendent dans l'essaim, d'après la réponse du
+/// tracker à une annonce (`complete` : ceux qui n'attendent rien d'autre).
+fn waiting_in(text: &str, swarm: &str) -> Option<u64> {
+    let m: serde_json::Value = serde_json::from_str(text).ok()?;
+    if m.get("info_hash")?.as_str()? != swarm || m.get("offer_id").is_some() {
+        return None;
+    }
+    m.get("complete")?.as_u64()
+}
+
+/// **Publier une offre et attendre sa réponse**, à tous les trackers à la
+/// fois : la première qui revient, dans `bound`. `None` : aucun tracker,
+/// ou personne n'attend dans l'essaim — dit aussitôt quand chaque tracker
+/// répond que l'essaim est vide, sans attendre `bound`.
+pub fn offer(swarm: &str, sdp: &str, bound: Duration) -> Option<String> {
+    // Each tracker says once: its answer, or `None` (nobody there, gone,
+    // or out of time).
+    let (tx, rx) = mpsc::channel::<Option<String>>();
+    let done = Arc::new(AtomicBool::new(false));
+    let until = Instant::now() + bound;
+    for url in TRACKERS {
+        let (tx, done, swarm, sdp) = (
+            tx.clone(),
+            Arc::clone(&done),
+            swarm.to_owned(),
+            sdp.to_owned(),
+        );
+        std::thread::spawn(move || {
+            let said = (|| {
+                let mut ws = Ws::connect(url).ok()?;
+                let (me, offer_id) = (draw_id(), draw_id());
+                ws.send(0x1, offer_announce(&swarm, &me, &offer_id, &sdp).as_bytes())
+                    .ok()?;
+                let mut got = None;
+                while Instant::now() < until && !done.load(Ordering::SeqCst) {
+                    match ws.next_text() {
+                        Ok(Some(t)) => {
+                            if waiting_in(&t, &swarm) == Some(0) {
+                                break;
+                            }
+                            if let Some(a) = answered(&t, &swarm, &offer_id) {
+                                got = Some(a);
+                                break;
+                            }
+                        }
+                        Ok(None) => {}
+                        Err(_) => break,
+                    }
+                }
+                let _ = ws.send(0x8, &[]);
+                got
+            })();
+            let _ = tx.send(said);
+        });
+    }
+    drop(tx);
+    let mut got = None;
+    for _ in TRACKERS {
+        match rx.recv_timeout(until.saturating_duration_since(Instant::now())) {
+            Ok(Some(a)) => {
+                got = Some(a);
+                break;
+            }
+            Ok(None) => {}
+            Err(_) => break,
+        }
+    }
+    done.store(true, Ordering::SeqCst);
+    got
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -541,6 +641,15 @@ mod tests {
             serde_json::from_str(&answer(&s, "me", "them", "o1", "v=0")).unwrap();
         assert_eq!(a["to_peer_id"], "them");
         assert_eq!(a["answer"]["type"], "answer");
+        assert_eq!(
+            waiting_in(
+                r#"{"action":"announce","interval":120,"info_hash":"S","complete":0,"incomplete":1}"#,
+                "S"
+            ),
+            Some(0)
+        );
+        assert_eq!(waiting_in(r#"{"info_hash":"S","complete":2}"#, "T"), None);
+        assert_eq!(waiting_in(&offer, &s), None);
         let n: serde_json::Value = serde_json::from_str(&announce(&s, "me", true)).unwrap();
         assert_eq!(n["event"], "started");
         assert_eq!(n["offers"].as_array().map(Vec::len), Some(0));

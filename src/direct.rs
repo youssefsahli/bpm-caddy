@@ -477,7 +477,7 @@ pub(crate) fn stun_mapped(buf: &[u8], txid: &[u8; 12]) -> Option<SocketAddr> {
 }
 
 /// Douze octets tirés au hasard : l'identifiant d'une demande STUN.
-fn txid() -> [u8; 12] {
+pub(crate) fn txid() -> [u8; 12] {
     use std::hash::{BuildHasher, Hasher};
     let mut out = [0u8; 12];
     for part in out.chunks_mut(8) {

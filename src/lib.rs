@@ -79,6 +79,8 @@ pub mod planning;
 pub mod postes;
 pub mod prescribers;
 pub mod protections;
+#[cfg(feature = "sync")]
+pub mod punch;
 pub mod qualite;
 #[cfg(feature = "sync")]
 pub mod reach;

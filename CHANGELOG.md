@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Team phones reach their post with no box to open** (`src/punch.rs`). A post waits in its group's swarm on the public WebTorrent trackers (`[postes] rendez_vous`, on by default); a phone that reaches it on neither the Wi-Fi nor a published address calls it there, each side learns from a public STUN server what its box gives it, and both punch through. The group's ordinary conversation then runs over a WebRTC data channel, end to end as over a socket: the handshake proves each side, the tracker sees addresses only. Tried before the relays; a post publishes that it waits (`rendez-vous` in its line), and an empty swarm is said at once by the trackers, not waited for.
+- **Officines of a closed network meet the same way** when no address and no relay leads from one to the other: the officine's answering post waits in one swarm per closed network, under its relay name for that network; the other calls there after the relays (`Net::sync_met`). Never through the open network.
+- **« Tester la connexion » says whether the box can be punched through**: two STUN servers asked from one socket — the same public port (the rendezvous works), two different ones (symmetric NAT: a relay or an open port is needed), or no answer (UDP blocked).
+
 ## [0.446.0] - 2026-10-24
 
 ### Added

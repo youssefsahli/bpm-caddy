@@ -622,6 +622,27 @@ pub fn with_relays(text: &str, relays: &[String]) -> String {
     out.join(",")
 }
 
+/// La marque d'un poste qui **attend au rendez-vous** de son groupe
+/// (`punch.rs`) : un téléphone qui ne le joint nulle part l'y appelle.
+pub const MEET_TAG: &str = "rendez-vous";
+
+/// Ajouter à une ligne publiée, ou en retirer, la marque du rendez-vous.
+pub fn with_meeting(text: &str, meeting: bool) -> String {
+    let mut out: Vec<&str> = text
+        .split(',')
+        .filter(|a| !a.trim().is_empty() && a.trim() != MEET_TAG)
+        .collect();
+    if meeting {
+        out.push(MEET_TAG);
+    }
+    out.join(",")
+}
+
+/// Le poste de cette ligne attend-il au rendez-vous ?
+pub fn meets(text: &str) -> bool {
+    text.split(',').any(|a| a.trim() == MEET_TAG)
+}
+
 /// Les relais d'une ligne publiée — lus avec la même méfiance que les
 /// adresses.
 pub fn relays(text: &str) -> Vec<String> {

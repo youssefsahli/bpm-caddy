@@ -1105,6 +1105,47 @@ sont (`relay::tests`, `a_phone_reaches_its_desktop_through_a_relay`,
 `a_relay_offer_and_a_relay_request_cross_the_network`). Un seul poste
 par officine devrait relayer : l'offre est un réglage de l'officine.
 
+### 7.9 bis Le rendez-vous percé
+
+Pour l'officine qu'aucun chemin ne rend joignable **et dont personne ne
+touche la box** : ce que la page du patient fait avec un poste
+(`rendezvous.rs`, § 7.11), entre deux programmes à nous (`src/punch.rs`).
+Le poste attend dans l'**essaim de son groupe** sur les trackers
+WebTorrent publics (`punch::swarm`, vingt chiffres tirés du nom du
+groupe ; `[postes] rendez_vous`, allumé par défaut) et le dit dans sa
+ligne de `sync_posts` (`rendez-vous`, `reach::MEET_TAG`). Le téléphone
+qui ne le joint ni sur le Wi-Fi ni à une adresse publiée ouvre une prise
+par adresse IPv4, demande à deux serveurs STUN ce que sa box lui donne,
+publie une offre WebRTC (ICE complet, ses candidats hôte et réfléchis)
+dans l'essaim, et le poste répond de prises neuves, de même. Les deux
+envoient leurs vérifications ICE en même temps : chaque box s'ouvre à
+l'autre. Sur le canal de données, chaque message de la conversation
+(§ 5) passe précédé de sa longueur, en morceaux de 16 Kio, au plus
+`MAX_WIRE` : `PunchedLink` est un `Link` comme `TcpLink`, et la poignée
+de main prouve de chaque côté qui parle — le tracker, qui pourrait
+substituer les descriptions, n'obtiendrait qu'une poignée de main manquée.
+
+Bornes du poste : douze offres par minute, quatre ouvertures à la fois,
+une conversation remise à la fois au fil des postes (sous les mêmes
+bornes que les relais), dix minutes et 90 s de silence par conversation.
+Le tracker dit, à l'annonce d'une offre, combien attendent dans l'essaim
+(`complete`) : un essaim vide se dit aussitôt, sans attendre les quinze
+secondes de réponse.
+
+**Les officines aussi** : le poste qui répond aux officines attend dans
+un essaim par réseau fermé, sous son nom de relais pour ce réseau
+(`network::meeting_swarms`, `relay::officine_group`) ; une officine qui
+ne la joint à aucune adresse ni par un relais l'y appelle
+(`Net::sync_met`, sous le même délai d'une demi-heure que les relais).
+Jamais par le réseau ouvert. `two_unreachable_officines_meet_at_the_rendezvous`,
+`a_phone_reaches_its_desktop_through_a_punched_channel`.
+
+**Ce qui ne passe pas** : deux box qui changent de port à chaque
+destinataire (NAT symétrique). `punch::gather` le reconnaît — deux
+serveurs STUN qui voient deux ports — et « Tester la connexion » le dit
+(`Diagnosis::punch`). Un réseau qui bloque l'UDP vers Internet ne perce
+pas non plus. Restent le relais (§ 7.9) et le port ouvert.
+
 ### 7.10 Le répertoire des officines
 
 Pour les officines qui ne se sont **pas appairées** : une carte où

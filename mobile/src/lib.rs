@@ -574,7 +574,11 @@ impl Caddy {
                 .into_iter()
                 .filter(|r| !tried.contains(&format!("relais:{r}")))
                 .collect();
-            if ways.is_empty() && relays.is_empty() {
+            // The rendez-vous, once per sync: any post of the group
+            // waiting there is as good (`punch.rs`).
+            let meets = bpm_caddy::reach::meets(&p.reach)
+                && !tried.iter().any(|t| t == bpm_caddy::reach::MEET_TAG);
+            if ways.is_empty() && relays.is_empty() && !meets {
                 continue;
             }
             targets += 1;
@@ -588,6 +592,26 @@ impl Caddy {
                         break;
                     }
                     Err(e) => last = format!("{address} ({})", bpm_caddy::strings::plain_error(&e)),
+                }
+            }
+            if let (false, true, Some(group)) = (ok, meets, posts.group_hex()) {
+                tried.push(bpm_caddy::reach::MEET_TAG.to_owned());
+                let said = bpm_caddy::punch::dial(
+                    &bpm_caddy::punch::swarm(&group),
+                    &bpm_caddy::punch::local_v4(),
+                    TALK,
+                )
+                .map(|l| l.with_deadline(RELAYED_BOUND))
+                .and_then(|mut link| posts.sync_over(&db, &mut link));
+                match said {
+                    Ok(()) => ok = true,
+                    Err(e) => {
+                        last = format!(
+                            "{} ({})",
+                            bpm_caddy::strings::tr("punch_meeting"),
+                            bpm_caddy::strings::plain_error(&e)
+                        )
+                    }
                 }
             }
             if let (false, Some(group)) = (ok, posts.group_hex()) {

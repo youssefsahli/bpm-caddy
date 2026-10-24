@@ -49,7 +49,9 @@ line in that test.
   `relay` (the stateless relay between an unreachable post and a phone,
   and in UDP a patient's page), `rendezvous` (a patient's page and a post
   nothing reaches meet through public WebTorrent trackers and STUN, then
-  punch through both boxes)
+  punch through both boxes; `punch` does the same between our own
+  programs — a team phone and its post, two officines of a closed
+  network — and carries the sync conversation over the data channel)
   and `repertoire` (the directory an officine hosts: who appears on the
   map, signed, and what each shares), `patientchat` (the patient
   messaging protocol, WebCrypto-compatible; the patient page itself is

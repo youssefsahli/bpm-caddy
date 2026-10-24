@@ -1567,6 +1567,9 @@ pub struct OfficineSide {
     /// **Se faire relayer** (`[postes] relais`) : attendre aux relais que
     /// les officines du réseau offrent.
     pub posts_relay: bool,
+    /// **Attendre au rendez-vous** (`[postes] rendez_vous`) : dans l'essaim
+    /// du groupe, sur les trackers publics (`punch.rs`).
+    pub posts_meet: bool,
     /// **Relayer aussi les patients** (`[reseau] relais_patients`) : le
     /// relais tient aussi, en UDP, la voie directe des pages.
     pub relay_patients: bool,
@@ -1608,7 +1611,30 @@ const KNOCKS_PER_MINUTE: usize = 6;
 
 /// Ce qu'on remet à un répondeur : la conversation, et l'adresse d'où
 /// elle vient — tenue pour « en cours » jusqu'à ce qu'il ait fini.
-type Knock = (bpm_sync::link::TcpLink, std::net::IpAddr);
+type Knock = (Brought, std::net::IpAddr);
+
+/// **Une conversation que la porte n'a pas ouverte elle-même** : par un
+/// relais, ou percée au rendez-vous (`punch.rs`) — répondue pareil.
+pub(crate) enum Brought {
+    Tcp(bpm_sync::link::TcpLink),
+    Punched(crate::punch::PunchedLink),
+}
+
+impl bpm_sync::Link for Brought {
+    fn send(&mut self, message: &[u8]) -> bpm_sync::Result<()> {
+        match self {
+            Brought::Tcp(l) => l.send(message),
+            Brought::Punched(l) => l.send(message),
+        }
+    }
+
+    fn recv(&mut self) -> bpm_sync::Result<Vec<u8>> {
+        match self {
+            Brought::Tcp(l) => l.recv(),
+            Brought::Punched(l) => l.recv(),
+        }
+    }
+}
 
 /// Les adresses dont une conversation est en cours.
 type BusyIps = std::sync::Arc<std::sync::Mutex<std::collections::HashSet<std::net::IpAddr>>>;
@@ -1864,12 +1890,32 @@ fn auto(
     // officine du réseau qui ne la joint nulle part l'y demande
     // (`Net::sync_relayed`). Seulement le poste qui répond aux officines.
     let waiting_officine = side.posts_relay && answers.is_some();
+    // **Et au rendez-vous**, dans l'essaim de chaque réseau fermé
+    // (`network::meeting_swarms`), relu chaque minute.
+    let officine_meeting = side.posts_meet && answers.is_some();
+    let mut officine_met: Vec<(String, std::sync::Arc<std::sync::atomic::AtomicBool>)> = Vec::new();
     type Wait = (String, String);
     let mut officine_waited: Vec<(Wait, std::sync::Arc<std::sync::atomic::AtomicBool>)> =
         Vec::new();
     // One conversation handed over at a time: a waiter that finds the
     // hand-off full waits for the fil to take it, rather than piling up.
     let (relayed_tx, relayed_rx) = std::sync::mpsc::sync_channel::<bpm_sync::link::TcpLink>(1);
+    // **Au rendez-vous** : un téléphone de l'équipe que rien d'autre ne
+    // mène ici l'appelle par les trackers publics, et les deux box se
+    // percent (`punch.rs`). Une conversation remise à la fois, comme aux
+    // relais.
+    let meeting = side.posts_meet && group.is_some();
+    let (punched_tx, punched_rx) = std::sync::mpsc::sync_channel::<crate::punch::PunchedLink>(1);
+    if let (true, Some(g)) = (meeting, group.as_ref()) {
+        crate::punch::serve(
+            crate::punch::swarm(g),
+            std::sync::Arc::clone(&relay_stop),
+            punched_tx,
+            TALK_PATIENCE,
+        );
+        published = true;
+        db.set_post_reach(&posts.device_hex(), &crate::reach::with_meeting("", true))?;
+    }
     let mut relays_waited: Vec<(String, std::sync::Arc<std::sync::atomic::AtomicBool>)> =
         Vec::new();
     let mut relayed_talks: Vec<Instant> = Vec::new();
@@ -1915,13 +1961,16 @@ fn auto(
             published = true;
             db.set_post_reach(
                 &me,
-                &crate::reach::with_relays(&direct_reach, &relay_names(&relays_waited)),
+                &crate::reach::with_meeting(
+                    &crate::reach::with_relays(&direct_reach, &relay_names(&relays_waited)),
+                    meeting,
+                ),
             )?;
         }
         // Once a minute: what the relay accepts, where it can be reached,
         // and the relays this post waits at.
         let mut relay_tick = false;
-        if (serving || waiting_relays || waiting_officine)
+        if (serving || waiting_relays || waiting_officine || officine_meeting)
             && relay_read.is_none_or(|t| t.elapsed() >= RELAY_EVERY)
         {
             relay_read = Some(Instant::now());
@@ -2004,7 +2053,10 @@ fn auto(
                 published = true;
                 db.set_post_reach(
                     &me,
-                    &crate::reach::with_relays(&direct_reach, &relay_names(&relays_waited)),
+                    &crate::reach::with_meeting(
+                        &crate::reach::with_relays(&direct_reach, &relay_names(&relays_waited)),
+                        meeting,
+                    ),
                 )?;
             }
         }
@@ -2059,7 +2111,7 @@ fn auto(
                                     bpm_sync::link::TcpLink::new(stream, TALK_PATIENCE)
                                 {
                                     let knock = (
-                                        link.with_deadline(ANSWER_BOUND),
+                                        Brought::Tcp(link.with_deadline(ANSWER_BOUND)),
                                         std::net::IpAddr::from(std::net::Ipv4Addr::UNSPECIFIED),
                                     );
                                     if let Err(std::sync::mpsc::TrySendError::Disconnected(_)) =
@@ -2080,6 +2132,50 @@ fn auto(
                 });
             }
         }
+        if let (true, Some((give, _))) = (officine_meeting && relay_tick, &answers) {
+            let swarms = crate::network::meeting_swarms(&db);
+            officine_met.retain(|(s, stop)| {
+                let kept = swarms.contains(s);
+                if !kept {
+                    stop.store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+                kept
+            });
+            for swarm in swarms {
+                if officine_met.iter().any(|(s, _)| *s == swarm) {
+                    continue;
+                }
+                let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+                officine_met.push((swarm.clone(), std::sync::Arc::clone(&stop)));
+                // Stopped with this swarm, or with the fil.
+                let either = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+                let (met_tx, met_rx) = std::sync::mpsc::sync_channel(1);
+                crate::punch::serve(swarm, std::sync::Arc::clone(&either), met_tx, TALK_PATIENCE);
+                let (give, all) = (give.clone(), std::sync::Arc::clone(&relay_stop));
+                std::thread::spawn(move || loop {
+                    let stopped = stop.load(std::sync::atomic::Ordering::SeqCst)
+                        || all.load(std::sync::atomic::Ordering::SeqCst);
+                    if stopped {
+                        either.store(true, std::sync::atomic::Ordering::SeqCst);
+                        return;
+                    }
+                    // Handed over only to an answerer that is free, as from
+                    // a relay; `punch::serve` already bounds the offers.
+                    if let Ok(link) = met_rx.recv_timeout(Duration::from_millis(500)) {
+                        let knock = (
+                            Brought::Punched(link.with_deadline(ANSWER_BOUND)),
+                            std::net::IpAddr::from(std::net::Ipv4Addr::UNSPECIFIED),
+                        );
+                        if let Err(std::sync::mpsc::TrySendError::Disconnected(_)) =
+                            give.try_send(knock)
+                        {
+                            either.store(true, std::sync::atomic::Ordering::SeqCst);
+                            return;
+                        }
+                    }
+                });
+            }
+        }
         if let Ok((router, offer)) = offer_rx.try_recv() {
             relay_mapped |= router;
             crate::network::set_relay_value(&db, crate::network::RELAY_OFFER, &offer);
@@ -2092,6 +2188,17 @@ fn auto(
             relayed_talks.retain(|at| at.elapsed() < Duration::from_secs(60));
             if relayed_talks.len() < KNOCKS_PER_MINUTE * 2 {
                 relayed_talks.push(Instant::now());
+                if posts.talk(&db, t, &mut link, false).is_ok() {
+                    talked = true;
+                }
+            }
+        }
+        // A phone met at the rendez-vous, under the same bounds.
+        if let (Ok(link), Some(t)) = (punched_rx.try_recv(), &trousseau) {
+            relayed_talks.retain(|at| at.elapsed() < Duration::from_secs(60));
+            if relayed_talks.len() < KNOCKS_PER_MINUTE * 2 {
+                relayed_talks.push(Instant::now());
+                let mut link = link.with_deadline(RELAYED_BOUND);
                 if posts.talk(&db, t, &mut link, false).is_ok() {
                     talked = true;
                 }
@@ -2170,7 +2277,7 @@ fn auto(
                     // écrit un octet de temps en temps ne tient pas la
                     // porte. Remise à un répondeur libre, ou lâchée.
                     if give
-                        .try_send((link.with_deadline(ANSWER_BOUND), ip))
+                        .try_send((Brought::Tcp(link.with_deadline(ANSWER_BOUND)), ip))
                         .is_err()
                     {
                         if let Ok(mut b) = busy_ips.lock() {
@@ -3291,13 +3398,12 @@ mod tests {
         assert!(back.iter().any(|m| m.body == "Reçu"), "{back:?}");
     }
 
-    /// **Through a relay that keeps nothing**: the desktop waits at the
-    /// relay, the phone calls it, and the ordinary conversation — end to
-    /// end, the relay holding no key — carries the phone's message.
-    #[test]
-    fn a_phone_reaches_its_desktop_through_a_relay() {
-        let (dir_a, _sa, a) = post("relay-desk");
-        let (_dir_p, _sp, phone) = post("relay-phone");
+    /// A desktop and the phone it paired, a conversation of the team on
+    /// the desktop; the desktop's base closed (its path is in the dir).
+    #[allow(clippy::type_complexity)]
+    fn desk_and_phone(tag: &str) -> (PathBuf, crate::db::Swept, crate::db::Swept, Db, i64) {
+        let (dir_a, sa, a) = post(&format!("{tag}-desk"));
+        let (_dir_p, sp, phone) = post(&format!("{tag}-phone"));
         let talk = a
             .create_conversation(
                 "u1",
@@ -3354,6 +3460,15 @@ mod tests {
             }
         }
 
+        (dir_a, sa, sp, phone, talk)
+    }
+
+    /// **Through a relay that keeps nothing**: the desktop waits at the
+    /// relay, the phone calls it, and the ordinary conversation — end to
+    /// end, the relay holding no key — carries the phone's message.
+    #[test]
+    fn a_phone_reaches_its_desktop_through_a_relay() {
+        let (dir_a, _sa, _sp, phone, talk) = desk_and_phone("relay");
         // The relay, knowing only the group's name.
         let a = Db::open(&dir_a.join("poste.db"), "secret").unwrap();
         let group = Posts::load(&a).unwrap().group_hex().unwrap();
@@ -3404,6 +3519,36 @@ mod tests {
         stop.store(true, std::sync::atomic::Ordering::SeqCst);
         let back = a.conversation_messages(talk).unwrap();
         assert!(back.iter().any(|m| m.body == "Par le relais"), "{back:?}");
+    }
+
+    /// **Through a punched channel** (`punch.rs`): the conversation of the
+    /// group runs over the data channel as over a socket, the phone's
+    /// message arrives. On the loopback, the tracker stood in for.
+    #[test]
+    fn a_phone_reaches_its_desktop_through_a_punched_channel() {
+        let (dir_a, _sa, _sp, phone, talk) = desk_and_phone("punch");
+        let (mut by_phone, mut by_desk) = crate::punch::loopback_pair(TALK_PATIENCE);
+        let path = dir_a.join("poste.db");
+        let desk = std::thread::spawn(move || {
+            let db = Db::open(&path, "secret").unwrap();
+            let mut posts = Posts::load(&db).unwrap();
+            posts.answer_over(&db, &mut by_desk).unwrap();
+            posts.absorb(&db, "2026-09-26").unwrap();
+        });
+        let conv = phone.conversations().unwrap()[0].id;
+        phone
+            .post_message(conv, "m2", "AB", "Par le rendez-vous", None, "", None)
+            .unwrap();
+        let mut pp = Posts::load(&phone).unwrap();
+        pp.publish(&phone, "2026-09-26").unwrap();
+        pp.sync_over(&phone, &mut by_phone).unwrap();
+        desk.join().unwrap();
+        let a = Db::open(&dir_a.join("poste.db"), "secret").unwrap();
+        let back = a.conversation_messages(talk).unwrap();
+        assert!(
+            back.iter().any(|m| m.body == "Par le rendez-vous"),
+            "{back:?}"
+        );
     }
 
     /// An internet address that knocks too often is let go; the local
@@ -3582,6 +3727,7 @@ mod tests {
                 posts_internet: false,
                 relay_port: 0,
                 posts_relay: false,
+                posts_meet: false,
                 relay_patients: false,
                 web_door: false,
             },

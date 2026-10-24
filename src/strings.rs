@@ -419,6 +419,8 @@ mod tests {
             // Une phrase de compte mal recopiée, dite au bureau comme au
             // téléphone.
             include_str!("compte.rs"),
+            // Ce qu'un appel au rendez-vous dit quand il échoue.
+            include_str!("punch.rs"),
             // Les erreurs des couches du dessous, dites en clair
             // (`plain_error`) : ce fichier-ci nomme leurs phrases.
             include_str!("strings.rs"),

@@ -1814,8 +1814,19 @@ adresses aux téléphones. Seuls les postes du groupe obtiennent une
 réponse. À défaut, le dossier d'échange ou des adresses saisies sur le
 téléphone.
 
-**Sans rien de joignable** (pas d'IPv6, adresse partagée par
-l'opérateur) : « Se faire relayer par le réseau » sur un poste, et une
+**Sans rien de joignable, ni rien à toucher sur la box** : le poste
+attend au **rendez-vous** de son groupe, sur des relais publics de
+signalisation (des trackers WebTorrent, qui ne voient que des adresses
+IP et ne gardent rien). Le téléphone qui ne le joint nulle part l'y
+appelle, chacun apprend d'un serveur STUN public l'adresse que sa box
+lui donne, puis les deux s'envoient leurs paquets en même temps : chaque
+box s'ouvre à l'autre, et la conversation passe en direct, chiffrée de
+bout en bout. De même entre deux officines de vos réseaux fermés qui ne
+se joignent à aucune adresse. Allumé par défaut (`[postes] rendez_vous`
+dans `config.toml`). Deux box très strictes (NAT symétrique, certains
+réseaux d'entreprise) ne se percent pas : « Tester la connexion » le dit.
+
+**Sinon** : « Se faire relayer par le réseau » sur un poste, et une
 officine amie du réseau qui coche « Relayer les téléphones des officines
 du réseau ». Le poste s'y tient en attente ; le téléphone le joint par son
 intermédiaire — et les officines de vos réseaux qui ne vous joignent à
@@ -2037,7 +2048,10 @@ ce poste : le web (port 443), la DHT (qui trouve les officines du réseau
 ouvert ; muette quand le réseau bloque l'UDP, comme souvent derrière un
 routeur tenu par un prestataire, à l'hôpital ou en entreprise), la porte
 de chaque officine connue, puis sa **porte web**, et enfin la porte de
-cette officine : ce que sa box en a ouvert. Une box qui n'ouvre rien
+cette officine : ce que sa box en a ouvert, et si elle se laisse
+**percer** — une box qui garde son port pour chaque destinataire laisse
+téléphones et patients rejoindre ce poste par rendez-vous ; une box qui
+en change (NAT symétrique) demande un relais, ou un port ouvert. Une box qui n'ouvre rien
 (UPnP coupé) laisse l'officine appeler sans être jointe ; la ligne dit
 quel port demander au prestataire de rediriger vers ce poste, à écrire
 ensuite en adresse externe (Réseau d'officines). Une officine dont la box le permet (UPnP) ouvre aussi

@@ -9669,6 +9669,7 @@ impl Session {
                 },
                 // Les relais sont ceux des officines du réseau.
                 posts_relay: reseau && config.postes.relais,
+                posts_meet: config.postes.rendez_vous,
                 relay_patients: config.modules.patients && config.reseau.relais_patients,
                 web_door: reseau && config.reseau.porte_web,
             },
