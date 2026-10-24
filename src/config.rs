@@ -675,7 +675,11 @@ pub struct ReseauConfig {
     /// **Relayer les téléphones des officines du réseau** : tenir, sur
     /// `port_relais`, un relais qui met en relation le poste injoignable
     /// d'une officine amie et le téléphone de son équipe, sans rien
-    /// garder ni rien lire (`relay.rs`). Éteint par défaut.
+    /// garder ni rien lire (`relay.rs`). Allumé par défaut depuis la
+    /// 0.446 — un téléphone d'équipe ne porte aucun patient — sous une
+    /// clé nouvelle, pour que le `false` qu'écrivait une version d'avant
+    /// ne le garde pas éteint.
+    #[serde(rename = "relayer_telephones")]
     pub relais: bool,
     pub port_relais: u16,
     /// **Relayer aussi les patients** de ces officines : leur page joint
@@ -705,7 +709,7 @@ impl Default for ReseauConfig {
             ecouter: true,
             port_ecoute: 7745,
             porte_web: true,
-            relais: false,
+            relais: true,
             port_relais: 7746,
             relais_patients: false,
             repertoire: false,
@@ -737,12 +741,15 @@ pub struct PostesConfig {
     pub internet: bool,
     /// **Se faire relayer** par les officines du réseau qui relaient : ce
     /// poste les appelle et attend qu'un téléphone de l'équipe le demande
-    /// — pour l'officine qu'aucun chemin ne rend joignable. Éteint par
-    /// défaut.
+    /// — pour l'officine qu'aucun chemin ne rend joignable. Allumé par
+    /// défaut depuis la 0.446, sous une clé nouvelle (une box qu'on ne
+    /// touche pas ne doit pas demander de cocher quoi que ce soit).
+    #[serde(rename = "se_faire_relayer")]
     pub relais: bool,
     /// **Et les patients** : la voie directe de la messagerie attend aux
     /// mêmes relais, qu'une page de patient compose quand elle ne joint
-    /// aucune adresse de l'officine. Éteint par défaut.
+    /// aucune adresse de l'officine. Allumé par défaut, comme au-dessus.
+    #[serde(rename = "se_faire_relayer_patients")]
     pub relais_patients: bool,
 }
 
@@ -755,8 +762,8 @@ impl Default for PostesConfig {
             adresses: Vec::new(),
             a_la_fermeture: true,
             internet: false,
-            relais: false,
-            relais_patients: false,
+            relais: true,
+            relais_patients: true,
         }
     }
 }

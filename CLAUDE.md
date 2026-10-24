@@ -47,7 +47,9 @@ line in that test.
   `admissible`: an op only through its table's stream), `reach` (a post
   reachable from the internet: IPv6, UPnP, published addresses) and
   `relay` (the stateless relay between an unreachable post and a phone,
-  and in UDP a patient's page)
+  and in UDP a patient's page), `rendezvous` (a patient's page and a post
+  nothing reaches meet through public WebTorrent trackers and STUN, then
+  punch through both boxes)
   and `repertoire` (the directory an officine hosts: who appears on the
   map, signed, and what each shares), `patientchat` (the patient
   messaging protocol, WebCrypto-compatible; the patient page itself is

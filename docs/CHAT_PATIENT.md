@@ -86,6 +86,33 @@ protocole. Essayé dans Firefox avec la vraie page
 (`patientpost::tests::serve_directly_for_a_browser`, `--ignored`) :
 tableau, conversation et envoi d'un message jusqu'à la base.
 
+**Le rendez-vous** (`src/rendezvous.rs`, depuis la 0.446), pour
+l'officine dont la box ne s'ouvre pas et qui n'a pas d'IPv6 publique —
+un réseau tenu par un prestataire, une box qu'on ne touche pas. Chacun
+sort vers Internet, ce que toute box laisse faire : la page et le poste
+demandent à un serveur STUN public (Google, Cloudflare) l'adresse que
+leur box leur donne — le poste depuis la prise même du port 7748, toutes
+les vingt-cinq secondes, ce qui garde aussi la traduction ouverte. Ils se
+disent ces adresses par les **trackers WebTorrent publics**
+(`tracker.openwebtorrent.com`, `tracker.webtorrent.dev`) : le poste
+attend dans l'essaim de la boîte (vingt chiffres hexadécimaux tirés du
+numéro de boîte, `rendezvous::swarm`), la page y publie une offre WebRTC
+que le tracker lui remet ; le poste répond en ICE complet, et chacun
+envoie ses paquets à l'autre en même temps, ce qui ouvre les deux box
+(« hole punching »). Le canal est alors direct. Le tracker voit des
+adresses IP et l'heure, jamais un message : il ne passe que des
+descriptions de session, sans rien garder. La page ne prend une réponse
+qu'à l'empreinte du code QR, et DTLS tient ensuite le poste à cette
+empreinte — un tracker qui répondrait à sa place n'ouvre rien ; les
+messages restent chiffrés de bout en bout par le protocole. Le code le
+dit par `&r=1`, et porte `f` même sans adresse ; la page essaie la voie
+directe par adresse et le rendez-vous en même temps, et garde le premier
+canal ouvert. L'onglet dit « Voie directe par rendez-vous » quand aucune
+adresse ne joint le poste mais qu'il attend à un tracker au moins.
+Essayé avec un vrai tracker (`rendezvous::tests`, `--ignored`) et la
+vraie page dans Firefox, le code sans adresse
+(`BPM_TEST_MEET=1`, `serve_directly_for_a_browser`).
+
 **Le tableau de l'officine** (`src/tableau.rs`, outil « Tableau de
 l'officine », Ctrl+K « garde ») : ce qu'elle affiche pour tous, par
 canal — la pharmacie de garde, les produits disponibles chez elle, ses
@@ -261,11 +288,16 @@ main, requête scellée ouverte par le poste, réponse ouverte par la page.
 
 ## Limites connues
 
-* **La voie directe demande un poste joignable** : une adresse IPv6
-  publique que la box laisse entrer, ou une box qui ouvre le port UDP
-  7748 (UPnP, PCP ou NAT-PMP, ou à la main). Une ligne derrière une traduction
-  d'opérateur (CGNAT) sans IPv6 ne se joint pas ; un téléphone sur un
-  réseau qui bloque l'UDP (certains Wi-Fi d'entreprise) non plus. Si
+* **La voie directe par adresse demande un poste joignable** : une
+  adresse IPv6 publique que la box laisse entrer, ou une box qui ouvre le
+  port UDP 7748 (UPnP, PCP ou NAT-PMP, ou à la main). Sans cela, **le
+  rendez-vous** la remplace — sauf entre deux box qui changent de port à
+  chaque destinataire (NAT symétrique : certains réseaux d'entreprise,
+  certaines traductions d'opérateur), où rien ne passe sans relais ; un
+  téléphone sur un réseau qui bloque l'UDP (certains Wi-Fi d'entreprise)
+  non plus. Le rendez-vous dépend de trackers publics tenus par d'autres
+  — deux aujourd'hui ; s'ils tombent tous, il attend qu'un revienne. Un
+  code remis avant la 0.446 ne porte pas `r=1` : un nouveau code. Si
   toutes les adresses d'une officine changent entre deux visites d'un
   patient, son code ne mène plus nulle part : un nouveau code. Sans
   adresse composable, **le relais d'une officine amie du réseau** (§ 7.9

@@ -86,6 +86,8 @@ pub mod reach;
 pub mod relay;
 pub mod release;
 pub mod renal;
+#[cfg(feature = "sync")]
+pub mod rendezvous;
 pub mod renewal;
 #[cfg(feature = "sync")]
 pub mod repertoire;

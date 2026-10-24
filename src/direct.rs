@@ -288,6 +288,9 @@ pub struct Listening {
     /// Les relais où ce poste attend, et quand chacun a tenu l'attente
     /// pour la dernière fois.
     held: Arc<std::sync::Mutex<HashMap<SocketAddr, Instant>>>,
+    /// Où remettre une offre arrivée par un tracker (`rendezvous.rs`) :
+    /// le poste y répond depuis ses prises, en ICE complet.
+    pub offers: mpsc::Sender<crate::rendezvous::Offered>,
 }
 
 impl Listening {
@@ -400,15 +403,109 @@ pub fn serve_relayed(
     let (cert, creds, flag) = (identity.dtls(), ice_creds(box_id), Arc::clone(&stop));
     let held_by = Arc::clone(&held);
     let group = group.to_owned();
-    let thread = std::thread::spawn(move || drive(ports, group, held_by, cert, creds, links, flag));
+    let (offers, offered) = mpsc::channel();
+    let thread =
+        std::thread::spawn(move || drive(ports, group, held_by, cert, creds, links, offered, flag));
     Listening {
         stop,
         thread: Some(thread),
         bound,
         held,
+        offers,
     }
 }
 
+/// Combien de temps l'adresse que la box donne à une prise vaut avant
+/// d'être redemandée au serveur STUN — ce qui garde aussi la traduction
+/// ouverte.
+const STUN_EVERY: Duration = Duration::from_secs(25);
+
+/// **Une demande de liaison STUN** (RFC 5389) : vingt octets, sans
+/// attribut, sous l'identifiant `txid`.
+pub(crate) fn stun_request(txid: [u8; 12]) -> [u8; 20] {
+    let mut out = [0u8; 20];
+    out[0..2].copy_from_slice(&[0x00, 0x01]);
+    out[4..8].copy_from_slice(&[0x21, 0x12, 0xa4, 0x42]);
+    out[8..20].copy_from_slice(&txid);
+    out
+}
+
+/// **L'adresse que la box a donnée**, lue dans la réponse d'un serveur
+/// STUN à la demande `txid` (XOR-MAPPED-ADDRESS, ou MAPPED-ADDRESS d'un
+/// vieux serveur) ; IPv4 seulement — une IPv6 publique n'a pas de box à
+/// traverser.
+pub(crate) fn stun_mapped(buf: &[u8], txid: &[u8; 12]) -> Option<SocketAddr> {
+    if buf.len() < 20
+        || buf[0..2] != [0x01, 0x01]
+        || buf[4..8] != [0x21, 0x12, 0xa4, 0x42]
+        || &buf[8..20] != txid
+    {
+        return None;
+    }
+    let mut i = 20;
+    let mut plain = None;
+    while i + 4 <= buf.len() {
+        let kind = u16::from_be_bytes([buf[i], buf[i + 1]]);
+        let len = u16::from_be_bytes([buf[i + 2], buf[i + 3]]) as usize;
+        let body = buf.get(i + 4..i + 4 + len)?;
+        if (kind == 0x0020 || kind == 0x0001) && len >= 8 && body[1] == 0x01 {
+            let (port, ip) = if kind == 0x0020 {
+                (
+                    u16::from_be_bytes([body[2], body[3]]) ^ 0x2112,
+                    [
+                        body[4] ^ 0x21,
+                        body[5] ^ 0x12,
+                        body[6] ^ 0xa4,
+                        body[7] ^ 0x42,
+                    ],
+                )
+            } else {
+                (
+                    u16::from_be_bytes([body[2], body[3]]),
+                    [body[4], body[5], body[6], body[7]],
+                )
+            };
+            let at = SocketAddr::from((ip, port));
+            if kind == 0x0020 {
+                return Some(at);
+            }
+            plain = Some(at);
+        }
+        i += 4 + ((len + 3) & !3);
+    }
+    plain
+}
+
+/// Douze octets tirés au hasard : l'identifiant d'une demande STUN.
+fn txid() -> [u8; 12] {
+    use std::hash::{BuildHasher, Hasher};
+    let mut out = [0u8; 12];
+    for part in out.chunks_mut(8) {
+        let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+        h.write_u128(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos()),
+        );
+        let v = h.finish().to_be_bytes();
+        part.copy_from_slice(&v[..part.len()]);
+    }
+    out
+}
+
+/// L'offre d'une page sans ses candidats `.local` : un navigateur cache
+/// ses adresses locales sous un nom mDNS, qui ne se résout pas ici et
+/// qu'aucun analyseur SDP n'a à lire.
+fn without_mdns(sdp: &str) -> String {
+    sdp.split("\r\n")
+        .flat_map(|l| l.split('\n'))
+        .filter(|l| !(l.starts_with("a=candidate:") && l.contains(".local ")))
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| format!("{}\r\n", l.trim_end_matches('\r')))
+        .collect()
+}
+
+#[allow(clippy::too_many_arguments)]
 fn drive(
     ports: Vec<Port>,
     group: String,
@@ -416,9 +513,31 @@ fn drive(
     cert: str0m::config::DtlsCert,
     creds: IceCreds,
     links: mpsc::Sender<Link>,
+    offered: mpsc::Receiver<crate::rendezvous::Offered>,
     stop: Arc<AtomicBool>,
 ) {
     let locals: Vec<SocketAddr> = ports.iter().map(|p| p.at).collect();
+    // **What the box gives each IPv4 socket**, asked of the public STUN
+    // servers: the address a page reached through a tracker sends to.
+    let mut stun_at: Vec<SocketAddr> = Vec::new();
+    let mut stun_next = Instant::now();
+    // Their names looked up on a thread of their own, again every ten
+    // minutes: a slow resolver never holds a conversation up.
+    let (resolved_tx, resolved) = mpsc::channel::<Vec<SocketAddr>>();
+    std::thread::spawn(move || loop {
+        let found: Vec<SocketAddr> = crate::rendezvous::STUN
+            .iter()
+            .filter_map(|h| std::net::ToSocketAddrs::to_socket_addrs(h).ok())
+            .flatten()
+            .filter(SocketAddr::is_ipv4)
+            .collect();
+        if resolved_tx.send(found).is_err() {
+            return;
+        }
+        std::thread::sleep(Duration::from_secs(600));
+    });
+    let mut asked: Vec<Option<[u8; 12]>> = vec![None; ports.len()];
+    let mut mapped: Vec<Option<SocketAddr>> = vec![None; ports.len()];
     let mut waited: Option<Instant> = None;
     // The cookie each relay gave this post's address: brought back with
     // every wait, without which none is held.
@@ -443,6 +562,27 @@ fn drive(
             waited = Some(now);
             for (p, cookie) in ports.iter().zip(&cookies).filter(|(p, _)| p.relayed) {
                 let _ = p.socket.send_to(&wait(*cookie), p.at);
+            }
+        }
+        while let Ok(found) = resolved.try_recv() {
+            if !found.is_empty() {
+                if stun_at.is_empty() {
+                    stun_next = now;
+                }
+                stun_at = found;
+            }
+        }
+        if now >= stun_next && !stun_at.is_empty() {
+            stun_next = now + STUN_EVERY;
+            for (i, p) in ports.iter().enumerate() {
+                if p.relayed || !p.at.is_ipv4() {
+                    continue;
+                }
+                let id = txid();
+                asked[i] = Some(id);
+                for server in &stun_at {
+                    let _ = p.socket.send_to(&stun_request(id), server);
+                }
             }
         }
         for (index, port) in ports.iter().enumerate() {
@@ -482,6 +622,12 @@ fn drive(
                         _ => continue,
                     }
                 } else {
+                    if stun_at.contains(&from) {
+                        if let Some(at) = asked[index].and_then(|id| stun_mapped(&buf[..n], &id)) {
+                            mapped[index] = Some(at);
+                        }
+                        continue;
+                    }
                     (from, &buf[..n])
                 };
                 let Ok(contents) = data.try_into() else {
@@ -584,6 +730,57 @@ fn drive(
                 );
                 next += 1;
             }
+        }
+        // **An offer through a tracker** (`rendezvous.rs`): answered from
+        // this post's sockets, with what the box gives them, in full ICE —
+        // this side sends its checks too, which is what opens its box to
+        // the page.
+        while let Ok(o) = offered.try_recv() {
+            let opening = peers.values().filter(|p| p.channel.is_none()).count();
+            if peers.len() >= MOST_PEERS || opening >= MOST_OPENING {
+                continue;
+            }
+            let Ok(offer) = str0m::change::SdpOffer::from_sdp_string(&without_mdns(&o.sdp)) else {
+                continue;
+            };
+            let mut rtc = RtcConfig::new().set_dtls_cert(cert.clone()).build(now);
+            let mut first = None;
+            for (i, p) in ports.iter().enumerate().filter(|(_, p)| !p.relayed) {
+                if let Ok(c) = Candidate::host(p.at, "udp") {
+                    rtc.add_local_candidate(c);
+                    first.get_or_insert(i);
+                }
+                if let Some(at) = mapped[i] {
+                    if let Ok(c) = Candidate::server_reflexive(at, p.at, "udp") {
+                        rtc.add_local_candidate(c);
+                    }
+                }
+            }
+            let Some(socket) = first else {
+                continue;
+            };
+            let Ok(answer) = rtc.sdp_api().accept_offer(offer) else {
+                continue;
+            };
+            if o.answer.send(answer.to_sdp_string()).is_err() {
+                continue;
+            }
+            let unspecified: SocketAddr = (std::net::Ipv4Addr::UNSPECIFIED, 0).into();
+            peers.insert(
+                next,
+                Peer {
+                    rtc,
+                    socket,
+                    from: unspecified,
+                    held: Arc::new(AtomicUsize::new(0)),
+                    born: now,
+                    channel: None,
+                    to_link: None,
+                    outbox: VecDeque::new(),
+                    closing: None,
+                },
+            );
+            next += 1;
         }
         while let Ok(order) = orders.try_recv() {
             match order {
@@ -955,6 +1152,128 @@ pub(crate) mod tests {
         )
         .is_none());
         assert!(links.try_recv().is_err());
+    }
+
+    /// **Une page venue par un tracker** (`rendezvous.rs`) : son offre,
+    /// la réponse du poste — qui porte l'empreinte de l'officine, celle
+    /// que la page vérifie — puis le canal, en ICE complet des deux côtés.
+    #[test]
+    fn a_page_met_through_a_tracker_opens_a_channel() {
+        let id = Identity::draw().unwrap();
+        let (tx, links) = mpsc::channel();
+        let listening = serve(loopback(), &id, BOX, tx);
+        let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+        socket.set_nonblocking(true).unwrap();
+        let local = socket.local_addr().unwrap();
+        let mut rtc = RtcConfig::new().build(Instant::now());
+        rtc.add_local_candidate(Candidate::host(local, "udp").unwrap());
+        let mut api = rtc.sdp_api();
+        let cid = api.add_channel("bpm".into());
+        let (offer, pending) = api.apply().expect("an offer");
+        // A browser's hidden local address rides along: skipped, not fatal.
+        let sdp = offer.to_sdp_string().replace(
+            "a=end-of-candidates",
+            "a=candidate:9 1 udp 2122260223 0b1c2d3e-aaaa.local 51000 typ host\r\na=end-of-candidates",
+        );
+        let (answer_tx, answer_rx) = mpsc::channel();
+        listening
+            .offers
+            .send(crate::rendezvous::Offered {
+                sdp,
+                answer: answer_tx,
+            })
+            .unwrap();
+        let answer = answer_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("an answer");
+        let expected = id
+            .fingerprint()
+            .iter()
+            .map(|b| format!("{b:02X}"))
+            .collect::<Vec<_>>()
+            .join(":");
+        assert!(answer.contains(&expected), "{answer}");
+        rtc.sdp_api()
+            .accept_answer(
+                pending,
+                str0m::change::SdpAnswer::from_sdp_string(&answer).unwrap(),
+            )
+            .unwrap();
+        let mut buf = vec![0u8; 2048];
+        let start = Instant::now();
+        let mut open = false;
+        while start.elapsed() < Duration::from_secs(10) && !open {
+            let now = Instant::now();
+            while let Ok((n, source)) = socket.recv_from(&mut buf) {
+                let input = Input::Receive(
+                    now,
+                    Receive {
+                        proto: Protocol::Udp,
+                        source,
+                        destination: local,
+                        contents: buf[..n].try_into().unwrap(),
+                    },
+                );
+                let _ = rtc.handle_input(input);
+            }
+            let _ = rtc.handle_input(Input::Timeout(now));
+            loop {
+                match rtc.poll_output().unwrap() {
+                    Output::Transmit(t) => {
+                        let _ = socket.send_to(&t.contents, t.destination);
+                    }
+                    Output::Event(Event::ChannelOpen(c, _)) if c == cid => open = true,
+                    Output::Event(_) => {}
+                    Output::Timeout(_) => break,
+                }
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(open, "le canal ne s'ouvre pas");
+        assert!(links.recv_timeout(Duration::from_secs(5)).is_ok());
+    }
+
+    #[test]
+    fn what_the_box_gives_is_read_from_a_stun_answer() {
+        let id = [7u8; 12];
+        assert_eq!(&stun_request(id)[8..], &id);
+        // 203.0.113.7:51000, XOR-mapped as a server writes it.
+        let mut r = vec![0x01, 0x01, 0x00, 0x0c, 0x21, 0x12, 0xa4, 0x42];
+        r.extend_from_slice(&id);
+        let port = 51000u16 ^ 0x2112;
+        r.extend_from_slice(&[0x00, 0x20, 0x00, 0x08, 0x00, 0x01]);
+        r.extend_from_slice(&port.to_be_bytes());
+        r.extend_from_slice(&[203 ^ 0x21, 0x12, 113 ^ 0xa4, 7 ^ 0x42]);
+        assert_eq!(
+            stun_mapped(&r, &id),
+            Some("203.0.113.7:51000".parse().unwrap())
+        );
+        // Another request's answer, or a request: nothing.
+        assert_eq!(stun_mapped(&r, &[8; 12]), None);
+        r[0] = 0x00;
+        r[1] = 0x01;
+        assert_eq!(stun_mapped(&r, &id), None);
+    }
+
+    /// **Un vrai serveur STUN** dit l'adresse que la box donne. Demande
+    /// le réseau : `--ignored`.
+    #[test]
+    #[ignore]
+    fn a_public_stun_server_says_what_the_box_gives() {
+        let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
+        socket
+            .set_read_timeout(Some(Duration::from_secs(3)))
+            .unwrap();
+        let server = std::net::ToSocketAddrs::to_socket_addrs(crate::rendezvous::STUN[0])
+            .unwrap()
+            .find(SocketAddr::is_ipv4)
+            .unwrap();
+        let id = txid();
+        socket.send_to(&stun_request(id), server).unwrap();
+        let mut buf = [0u8; 512];
+        let (n, _) = socket.recv_from(&mut buf).unwrap();
+        let at = stun_mapped(&buf[..n], &id).expect("an address");
+        assert!(at.port() != 0);
     }
 
     #[test]

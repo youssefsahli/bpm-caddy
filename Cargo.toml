@@ -95,6 +95,12 @@ base64 = { version = "0.22", optional = true }
 # (sans tokio), chiffrement en Rust pur : rien à compiler en C pour
 # Windows, macOS ou Android.
 str0m = { version = "0.24.1", default-features = false, features = ["rust-crypto"], optional = true }
+# **Le rendez-vous** (`src/rendezvous.rs`) : la page du patient et un
+# poste que rien ne rend joignable se retrouvent par les trackers
+# WebTorrent publics, en WebSocket sur TLS — rustls et ses racines, déjà
+# dans l'arbre par `ureq`, mêmes réglages (ring, sans aws-lc).
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"], optional = true }
+webpki-roots = { version = "0.26", optional = true }
 # Le réseau ouvert au-delà du réseau local : les officines se trouvent par
 # la DHT publique de BitTorrent (`src/dht.rs`) — aucun serveur à tenir.
 mainline = { version = "=8.0.1", default-features = false, features = ["node"], optional = true }
@@ -126,6 +132,8 @@ sync = [
     "dep:sha1",
     "dep:base64",
     "dep:str0m",
+    "dep:rustls",
+    "dep:webpki-roots",
     "dep:mainline",
     "dep:bip39",
     "dep:argon2",

@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Patients' messaging with a router nobody can touch** (`src/rendezvous.rs`). When no address reaches a post (no open port, no public IPv6), the patient's page and the post now meet: each asks a public STUN server what its box gives it, they pass their WebRTC descriptions through public WebTorrent trackers (the post waits in the officine's swarm, the page publishes its offer there), and both send at once so each box opens to the other. The channel is then direct; the trackers see IP addresses, never a message, and keep nothing. The page takes an answer only with the officine's fingerprint from the QR code, which DTLS then holds the post to. Codes carry `&r=1` and work with no address at all; the page tries the direct way and the meeting at once. The messaging tab says « Voie directe par rendez-vous » instead of asking for the router. Two strict boxes (symmetric NAT) still need a relay. Codes given before need renewing.
+
+### Changed
+
+- **No posts to invite on a shared file.** Computers opening the same base on a network drive already share everything: once two have met there, the connections view and the posts window say so instead of offering an invitation code; the posts window stays for pairing a phone (by scanning its QR code).
+- **Relays on by default**: a post asks the officines' relays to reach it (team phones and patients), and an officine relays team phones (no patient data) — under new keys in `config.toml`, so the `false` older versions wrote no longer holds them off. Relaying other officines' *patients* stays a separate choice (it makes the relaying officine their processor).
+
 ## [0.445.0] - 2026-10-24
 
 ### Fixed

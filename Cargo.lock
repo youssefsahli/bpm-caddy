@@ -934,6 +934,7 @@ dependencies = [
  "rfd",
  "rhai",
  "rusqlite",
+ "rustls",
  "serde",
  "serde_json",
  "sha1",
@@ -945,6 +946,7 @@ dependencies = [
  "typst-assets",
  "typst-pdf",
  "ureq",
+ "webpki-roots 0.26.11",
  "winresource",
  "zeroize",
 ]

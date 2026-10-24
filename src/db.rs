@@ -58822,6 +58822,23 @@ impl Db {
     /// à lui, ou muet depuis plus de [`SERVICE_FOR`] secondes. Rend s'il
     /// le tient maintenant.
     pub fn hold_service(&self, me: &str, now: i64) -> Result<bool, String> {
+        // **Deux processus vivants sur ce fichier : il est partagé.** Un
+        // bail d'un autre jeton, encore frais, le prouve — un bail laissé
+        // par une session plantée de ce même ordinateur a expiré.
+        let held: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT value FROM sync_local WHERE key = 'service'",
+                [],
+                |r| r.get(0),
+            )
+            .ok();
+        if let Some((who, at)) = held.as_deref().and_then(|v| v.split_once(' ')) {
+            let fresh = at.parse::<i64>().is_ok_and(|at| at >= now - SERVICE_FOR);
+            if who != me && fresh && !self.shared_file() {
+                self.set_sync_local("service_shared", "1")?;
+            }
+        }
         let changed = self
             .conn
             .execute(
@@ -58833,6 +58850,14 @@ impl Db {
             )
             .map_err(|e| e.to_string())?;
         Ok(changed == 1)
+    }
+
+    /// **Ce fichier est-il ouvert par plusieurs ordinateurs à la fois ?**
+    /// Retenu dès que deux processus vivants s'y sont croisés
+    /// ([`Db::hold_service`]) : ils partagent déjà tout, sans groupe de
+    /// postes ni code.
+    pub fn shared_file(&self) -> bool {
+        self.sync_local("service_shared").as_deref() == Some("1")
     }
 
     /// Rendre le bail, à la fermeture : le poste suivant le prend sans
@@ -59923,7 +59948,11 @@ mod tests {
         let path = dir.join("shared.db");
         let a = Db::open(&path, "secret").unwrap();
         let b = Db::open(&path, "secret").unwrap();
+        // Une session plantée de ce même ordinateur ne fait pas un
+        // fichier partagé : son bail a expiré.
+        assert!(a.hold_service("old", 800).unwrap());
         assert!(a.hold_service("aaaa", 1000).unwrap());
+        assert!(!a.shared_file());
         assert!(!b.hold_service("bbbb", 1010).unwrap());
         assert!(a.hold_service("aaaa", 1030).unwrap());
         // Un préfixe du jeton ne suffit pas.
@@ -59936,6 +59965,7 @@ mod tests {
         assert!(!a.hold_service("aaaa", 1033 + SERVICE_FOR).unwrap());
         b.release_service("bbbb").unwrap();
         assert!(a.hold_service("aaaa", 1034 + SERVICE_FOR).unwrap());
+        assert!(a.shared_file() && b.shared_file());
         assert_ne!(process_token(), "");
         assert_eq!(process_token(), process_token());
     }

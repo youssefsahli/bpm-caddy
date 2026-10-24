@@ -124,13 +124,65 @@ function hostPort(a) {
   return m ? [m[1], m[2], m[1].includes(':')] : null;
 }
 
+// **A data channel's bytes**, once open: four bytes of length, then the
+// frame, cut into messages every browser accepts. `ok` gets the stream,
+// `ko` why it never opened (`absent` after `ms`).
+function channel(pc, dc, ms, ok, ko) {
+  dc.binaryType = 'arraybuffer';
+  let buf = new Uint8Array(0);
+  const frames = [];
+  let waiter = null;
+  let opened = false;
+  const fail = (e) => {
+    if (waiter) { const w = waiter; waiter = null; w.ko(e); }
+  };
+  const give = (e) => {
+    clearTimeout(timer);
+    try { pc.close(); } catch (x) { /* closed */ }
+    ko(e);
+  };
+  const timer = setTimeout(() => { if (!opened) give(new Error('absent')); }, ms);
+  dc.onmessage = (ev) => {
+    buf = cat(buf, new Uint8Array(ev.data));
+    while (buf.length >= 4) {
+      const n = new DataView(buf.buffer, buf.byteOffset).getUint32(0);
+      if (n > 262144) { fail(new Error('trame')); return; }
+      if (buf.length < 4 + n) break;
+      const f = buf.slice(4, 4 + n);
+      buf = buf.slice(4 + n);
+      if (waiter) { const w = waiter; waiter = null; w.ok(f); } else frames.push(f);
+    }
+  };
+  dc.onclose = () => fail(new Error('fermée'));
+  dc.onopen = () => {
+    opened = true;
+    clearTimeout(timer);
+    ok({
+      send(frame) {
+        const len = new Uint8Array(4);
+        new DataView(len.buffer).setUint32(0, frame.length);
+        const all = cat(len, frame);
+        for (let i = 0; i < all.length; i += CHUNK) dc.send(all.slice(i, i + CHUNK));
+      },
+      next: () => new Promise((yes, no) => {
+        if (frames.length) yes(frames.shift());
+        else waiter = { ok: yes, ko: no };
+      }),
+      close() { try { pc.close(); } catch (e) { /* closed */ } },
+    });
+  };
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === 'failed' && !opened) give(new Error('absent'));
+  };
+  return give;
+}
+
 // **The direct way** (src/direct.rs): a WebRTC data channel to the
 // officine's posts, with no signalling server. The link carries what a
 // server would have passed: the posts' certificate fingerprint and their
 // addresses; the ICE credentials come from the box. The page writes the
 // posts' answer itself — every address a candidate, the first that
-// answers kept. Frames go as a byte stream: four bytes of length, then
-// the frame, cut into messages every browser accepts.
+// answers kept.
 function openDirect(state) {
   return new Promise((resolve, reject) => {
     const where = (state.a || []).map(hostPort).filter(Boolean);
@@ -139,54 +191,7 @@ function openDirect(state) {
       return;
     }
     const pc = new RTCPeerConnection();
-    const dc = pc.createDataChannel('bpm');
-    dc.binaryType = 'arraybuffer';
-    let buf = new Uint8Array(0);
-    const frames = [];
-    let waiter = null;
-    let opened = false;
-    const fail = (e) => {
-      if (waiter) { const w = waiter; waiter = null; w.ko(e); }
-    };
-    const timer = setTimeout(() => {
-      if (!opened) { try { pc.close(); } catch (e) { /* closed */ } reject(new Error('absent')); }
-    }, DIRECT_MS);
-    dc.onmessage = (ev) => {
-      buf = cat(buf, new Uint8Array(ev.data));
-      while (buf.length >= 4) {
-        const n = new DataView(buf.buffer, buf.byteOffset).getUint32(0);
-        if (n > 262144) { fail(new Error('trame')); return; }
-        if (buf.length < 4 + n) break;
-        const f = buf.slice(4, 4 + n);
-        buf = buf.slice(4 + n);
-        if (waiter) { const w = waiter; waiter = null; w.ok(f); } else frames.push(f);
-      }
-    };
-    dc.onclose = () => fail(new Error('fermée'));
-    dc.onopen = () => {
-      opened = true;
-      clearTimeout(timer);
-      resolve({
-        send(frame) {
-          const len = new Uint8Array(4);
-          new DataView(len.buffer).setUint32(0, frame.length);
-          const all = cat(len, frame);
-          for (let i = 0; i < all.length; i += CHUNK) dc.send(all.slice(i, i + CHUNK));
-        },
-        next: () => new Promise((ok, ko) => {
-          if (frames.length) ok(frames.shift());
-          else waiter = { ok, ko };
-        }),
-        close() { try { pc.close(); } catch (e) { /* closed */ } },
-      });
-    };
-    pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed' && !opened) {
-        clearTimeout(timer);
-        try { pc.close(); } catch (e) { /* closed */ }
-        reject(new Error('absent'));
-      }
-    };
+    const give = channel(pc, pc.createDataChannel('bpm'), DIRECT_MS, resolve, reject);
     (async () => {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
@@ -209,7 +214,111 @@ function openDirect(state) {
       });
       lines.push('a=end-of-candidates', '');
       await pc.setRemoteDescription({ type: 'answer', sdp: lines.join('\r\n') });
-    })().catch((e) => { clearTimeout(timer); try { pc.close(); } catch (x) { /* closed */ } reject(e); });
+    })().catch(give);
+  });
+}
+
+// **The meeting** (src/rendezvous.rs): when nothing reaches the posts —
+// no open box, no public IPv6 — both sides go out. The page asks public
+// STUN servers what its box gives it, and publishes its offer in the
+// officine's swarm at public WebTorrent trackers, which hand it to the
+// posts waiting there and bring their answer back; then both send at
+// once and the channel is direct. The trackers see addresses, never a
+// message; an answer counts only with the officine's fingerprint, which
+// DTLS then holds the post to.
+const TRACKERS = ['wss://tracker.openwebtorrent.com', 'wss://tracker.webtorrent.dev'];
+const STUN = ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'];
+const MEET_MS = 20000;
+
+async function swarmOf(b) {
+  const d = await crypto.subtle.digest('SHA-256', enc.encode(`bpm-caddy rendez-vous 1|${b}`));
+  return hex(new Uint8Array(d).slice(0, 10));
+}
+
+// Twenty characters, as a tracker wants a peer or an offer named.
+function drawId() {
+  return hex(random(10));
+}
+
+// The offer once the browser has found its addresses (or after a while:
+// what it has found by then).
+function gathered(pc, ms) {
+  return new Promise((ok) => {
+    if (pc.iceGatheringState === 'complete') { ok(); return; }
+    const t = setTimeout(ok, ms);
+    pc.addEventListener('icegatheringstatechange', () => {
+      if (pc.iceGatheringState === 'complete') { clearTimeout(t); ok(); }
+    });
+  });
+}
+
+function openMet(state) {
+  return new Promise((resolve, reject) => {
+    if (!state.f || !state.r || !window.RTCPeerConnection || !window.WebSocket) {
+      reject(new Error('pas de rendez-vous'));
+      return;
+    }
+    const pc = new RTCPeerConnection({ iceServers: STUN.map((urls) => ({ urls })) });
+    const sockets = [];
+    const hangUp = () => sockets.forEach((ws) => { try { ws.close(); } catch (e) { /* closed */ } });
+    const give = channel(pc, pc.createDataChannel('bpm'), MEET_MS,
+      (t) => { hangUp(); resolve(t); },
+      (e) => { hangUp(); reject(e); });
+    (async () => {
+      await pc.setLocalDescription(await pc.createOffer());
+      await gathered(pc, 3000);
+      const sdp = pc.localDescription.sdp;
+      const swarm = await swarmOf(state.b);
+      const me = drawId();
+      const offerId = drawId();
+      const want = b64urlToHex(state.f);
+      let answered = false;
+      for (const url of TRACKERS) {
+        let ws;
+        try { ws = new WebSocket(url); } catch (e) { continue; }
+        sockets.push(ws);
+        ws.onerror = () => {};
+        ws.onopen = () => ws.send(JSON.stringify({
+          action: 'announce', info_hash: swarm, peer_id: me, numwant: 1,
+          uploaded: 0, downloaded: 0, left: 1, event: 'started',
+          offers: [{ offer_id: offerId, offer: { type: 'offer', sdp } }],
+        }));
+        ws.onmessage = async (ev) => {
+          let m;
+          try { m = JSON.parse(ev.data); } catch (e) { return; }
+          if (answered || m.info_hash !== swarm || m.offer_id !== offerId) return;
+          if (!m.answer || m.answer.type !== 'answer' || typeof m.answer.sdp !== 'string') return;
+          const fp = /a=fingerprint:sha-256 ([0-9A-Fa-f:]+)/.exec(m.answer.sdp);
+          if (!fp || fp[1].toUpperCase() !== want) return;
+          answered = true;
+          try {
+            await pc.setRemoteDescription({ type: 'answer', sdp: m.answer.sdp });
+          } catch (e) {
+            answered = false;
+          }
+        };
+      }
+    })().catch(give);
+  });
+}
+
+// The direct way and the meeting at once: the first channel open is
+// kept, the other closed when it opens too.
+function openNear(state) {
+  const tries = [openDirect, openMet].map((open) => open(state));
+  return new Promise((resolve, reject) => {
+    let left = tries.length;
+    let won = false;
+    let absent = false;
+    tries.forEach((p) => p.then((t) => {
+      if (won) { t.close(); return; }
+      won = true;
+      resolve(t);
+    }, (e) => {
+      absent = absent || e.message === 'absent';
+      left -= 1;
+      if (!left && !won) reject(new Error(absent ? 'absent' : 'injoignable'));
+    }));
   });
 }
 
@@ -249,10 +358,11 @@ function openGateway(state) {
   });
 }
 
-// The direct way first, then the gateway. Nobody on either: absent.
-// `ways` narrows it: the board comes by the direct way only — nothing
-// on a gateway proves it came from the officine.
-async function reach(state, ways = [openDirect, openGateway]) {
+// The direct way (or the meeting) first, then the gateway. Nobody on
+// either: absent. `ways` narrows it: the board never comes through a
+// gateway — nothing there proves it came from the officine; a channel
+// held to the officine's fingerprint does.
+async function reach(state, ways = [openNear, openGateway]) {
   let absent = false;
   for (const open of ways) {
     try {
@@ -318,7 +428,7 @@ async function talk(state, request) {
 
 // **The officine's board** (src/tableau.rs), for anyone: no key.
 async function fetchBoard(state) {
-  const t = await reach(state, [openDirect]);
+  const t = await reach(state, [openNear]);
   try {
     return await within(TALK_MS, (async () => {
       t.send(BOARD);
@@ -387,9 +497,10 @@ function fromLink() {
   const way = {
     f: /^[A-Za-z0-9_-]{43}$/.test(f) ? f : '',
     a,
+    r: p.get('r') === '1',
     p: /^(\[[0-9a-f:]+\]|[a-z0-9.-]+)(:[0-9]{1,5})?$/.test(g) ? g : '',
   };
-  const reachable = (way.f && way.a.length) || way.p;
+  const reachable = (way.f && (way.a.length || way.r)) || way.p;
   // The board's code: no key, the board only — on a phone, or on a
   // screen in the window (`e`).
   if (p.get('t') === '1') return reachable ? { b, board: true, screen: p.get('e') === '1', ...way } : null;
@@ -587,7 +698,7 @@ async function boardOnly(link) {
   $('ecrire').hidden = true;
   $('fil').hidden = true;
   $('sur').textContent = 'Informations';
-  const view = { b: link.b, f: link.f, a: link.a };
+  const view = { b: link.b, f: link.f, a: link.a, r: link.r };
   let shown = false;
   const read = async () => {
     try {
@@ -636,8 +747,9 @@ async function start() {
     // all went stale.
     state.p = link.p;
     state.f = link.f;
+    state.r = link.r;
     state.a = addresses([...link.a, ...(state.a || []).filter((x) => !link.a.includes(x))]);
-  } else if (kept && kept.b && kept.k && ((kept.f && kept.a && kept.a.length) || kept.p)) {
+  } else if (kept && kept.b && kept.k && ((kept.f && ((kept.a && kept.a.length) || kept.r)) || kept.p)) {
     state = kept;
   } else {
     say('Ouvrez cette page en scannant le code remis par votre pharmacie.', true);

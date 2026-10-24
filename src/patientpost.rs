@@ -17,7 +17,7 @@
 //! dossiers.
 
 use std::net::IpAddr;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 
@@ -66,6 +66,10 @@ pub enum Event {
         public: Vec<String>,
         bound: Vec<String>,
     },
+    /// À combien de trackers ce poste attend les pages en ce moment
+    /// (`rendezvous.rs`) : plus d'un zéro, une page le joint sans box
+    /// ouverte.
+    Met(usize),
 }
 
 /// **La voie directe d'un poste** : l'identité de l'officine, le port, et
@@ -79,6 +83,10 @@ pub struct Direct {
     /// (`[postes] relais`, `relay.rs`) : une page y joint ce poste quand
     /// aucune de ses adresses ne se compose.
     pub relays: bool,
+    /// **Attendre aussi aux trackers** (`rendezvous.rs`) : une page
+    /// rejoint ce poste par eux quand rien ne le rend joignable. Éteint
+    /// dans les essais, qui ne sortent pas sur Internet.
+    pub rendezvous: bool,
 }
 
 /// Les relais où attendre, et le groupe de postes sous lequel : relus de
@@ -547,6 +555,19 @@ fn listen_direct(
     }
     let mut listening: Option<(Vec<IpAddr>, direct::Listening)> = None;
     let mut waiting_at: Option<(String, Vec<std::net::SocketAddr>)> = None;
+    // **The trackers**, for as long as this listening: each offer they
+    // hand over goes to the direct way of the moment.
+    let offers: crate::rendezvous::OfferSlot = Arc::default();
+    let met = Arc::new(AtomicUsize::new(0));
+    if d.rendezvous {
+        crate::rendezvous::spawn(
+            &box_id,
+            Arc::clone(&offers),
+            Arc::clone(&stop),
+            Arc::clone(&met),
+        );
+    }
+    let mut met_said = usize::MAX;
     while !stop.load(Ordering::SeqCst) {
         let wanted = relays.lock().ok().and_then(|r| r.clone());
         // Where to listen: this machine's address on the officine's
@@ -587,6 +608,9 @@ fn listen_direct(
                 && std::time::Instant::now() < until
             {
                 std::thread::sleep(Duration::from_millis(50));
+            }
+            if let Ok(mut o) = offers.lock() {
+                *o = Some(l.offers.clone());
             }
             listening = Some((ips.clone(), l));
             waiting_at = wanted;
@@ -652,6 +676,11 @@ fn listen_direct(
             // setting turned on or off): at once, not at the next pass.
             if relays.lock().is_ok_and(|r| *r != waiting_at) {
                 break;
+            }
+            let now_met = met.load(Ordering::SeqCst);
+            if now_met != met_said {
+                met_said = now_met;
+                let _ = events_tx.send(Event::Met(now_met));
             }
             std::thread::sleep(Duration::from_millis(500));
         }
@@ -883,6 +912,7 @@ mod tests {
                 port: 0,
                 at: Some(vec!["127.0.0.1".parse().unwrap()]),
                 relays: false,
+                rendezvous: false,
             }),
         );
         let at = loop {
@@ -938,6 +968,8 @@ mod tests {
     /// two links — the patient's and the board's — and answers for eighty
     /// seconds (`--ignored --nocapture`, then open them; Firefox needs
     /// `media.peerconnection.ice.loopback` to reach 127.0.0.1).
+    /// `BPM_TEST_MEET=1`: the links carry no address, and the post waits at
+    /// the public trackers — the page meets it there (`rendezvous.rs`).
     #[test]
     #[ignore]
     fn serve_directly_for_a_browser() {
@@ -1036,6 +1068,7 @@ mod tests {
         let secret = "5b".repeat(32);
         let box_id = patientchat::box_of_secret(&secret).unwrap();
         let identity = direct::Identity::draw().unwrap();
+        let meet = std::env::var("BPM_TEST_MEET").is_ok_and(|v| v == "1");
         let waiting = spawn(
             path.clone(),
             "secret".into(),
@@ -1051,11 +1084,16 @@ mod tests {
                 port: 17748,
                 at: Some(vec![ip]),
                 relays: false,
+                rendezvous: meet,
             }),
         );
         let reach = patientchat::Reach {
             fingerprint: direct::fingerprint_text(&identity.fingerprint()),
-            addresses: vec![std::net::SocketAddr::new(ip, 17748).to_string()],
+            addresses: if meet {
+                Vec::new()
+            } else {
+                vec![std::net::SocketAddr::new(ip, 17748).to_string()]
+            },
             gateway: String::new(),
         };
         let local = |l: String| l.replace(&patientchat::page_url(), "http://127.0.0.1:18755/");

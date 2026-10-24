@@ -311,10 +311,18 @@ l'officine. **La voie directe** (cochée) suffit : chaque poste en
 service écoute à ses adresses publiques — son IPv6, ou la box qui lui
 ouvre le port UDP 7748 (UPnP, PCP ou NAT-PMP) — et la page le joint en WebRTC. L'onglet
 dit si ce poste est joignable ; un poste qui ne l'est pas laisse répondre
-les autres, et le code porte les adresses de tous. Si aucun ne l'est,
-ouvrir ce port dans la box, passer par le relais d'une officine amie
-(« Se faire relayer par le réseau », « Y compris la messagerie des
-patients », Options › Base), ou régler une passerelle.
+les autres, et le code porte les adresses de tous.
+
+**Sans box à ouvrir** : quand rien ne joint les postes, la page et le
+poste se donnent **rendez-vous** par des relais publics de
+signalisation (des trackers WebTorrent), qui ne voient que des adresses
+et ne gardent rien ; puis le canal est direct entre eux, toujours
+chiffré de bout en bout. Rien à régler : l'onglet dit « Voie directe
+par rendez-vous ». Deux box très strictes (certains réseaux
+d'entreprise) ne se joignent pas ainsi : passer alors par le relais
+d'une officine amie (« Se faire relayer par le réseau », Options ›
+Base, coché d'office), ou régler une passerelle. Un code remis avant
+la 0.446 ne connaît pas le rendez-vous : en donner un nouveau.
 
 **Une passerelle**, facultative, est un serveur que l'officine tient ou
 choisit (son adresse, dans la même fenêtre) : elle sert de second

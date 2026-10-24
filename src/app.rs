@@ -6348,6 +6348,9 @@ struct Session {
     /// a trouvées en dernier ; `None` tant qu'il n'a rien dit.
     #[cfg(feature = "sync")]
     pchat_direct_at: Option<(Vec<String>, Vec<String>)>,
+    /// À combien de trackers ce poste attend les pages (`rendezvous.rs`).
+    #[cfg(feature = "sync")]
+    pchat_met: usize,
     /// Comment une page joint l'officine (`pchat_reach`), relu avec le
     /// réglage et quand le fil a dit ses adresses — jamais à chaque image.
     #[cfg(feature = "sync")]
@@ -6375,6 +6378,10 @@ struct Session {
     /// When the lease is next renewed or asked for.
     #[cfg(feature = "sync")]
     service_next: Instant,
+    /// Several computers open this very file ([`Db::shared_file`]): they
+    /// share everything already, and no posts group is offered.
+    #[cfg(feature = "sync")]
+    shared_file: bool,
     /// What the automatic synchronisation last said; `true` is a failure.
     #[cfg(feature = "sync")]
     posts_status: Option<(bool, String)>,
@@ -7452,6 +7459,8 @@ impl Session {
             #[cfg(feature = "sync")]
             pchat_direct_at: None,
             #[cfg(feature = "sync")]
+            pchat_met: 0,
+            #[cfg(feature = "sync")]
             pchat_reach_cache: crate::patientchat::Reach::default(),
             #[cfg(feature = "sync")]
             posts_window: None,
@@ -7463,6 +7472,8 @@ impl Session {
             service_held: None,
             #[cfg(feature = "sync")]
             service_next: Instant::now(),
+            #[cfg(feature = "sync")]
+            shared_file: false,
             #[cfg(feature = "sync")]
             posts_status: None,
             #[cfg(feature = "sync")]
@@ -9700,6 +9711,7 @@ impl Session {
             }
             self.service_held = Some(held);
         }
+        self.shared_file = self.db.shared_file();
         self.service_held.unwrap_or(false)
     }
 
@@ -15012,6 +15024,7 @@ impl Session {
                 self.pchat_unreachable = None;
                 self.pchat_page = None;
                 self.pchat_direct_at = None;
+                self.pchat_met = 0;
             }
             return;
         }
@@ -15052,6 +15065,7 @@ impl Session {
             self.pchat_unreachable = None;
             self.pchat_page = None;
             self.pchat_direct_at = None;
+            self.pchat_met = 0;
             if let (Some(c), Some(path)) = (want, self.db.path()) {
                 let direct =
                     c.0.direct
@@ -15061,6 +15075,7 @@ impl Session {
                             port: crate::direct::DEFAULT_PORT,
                             at: None,
                             relays: config.postes.relais && config.postes.relais_patients,
+                            rendezvous: true,
                         });
                 let w = crate::patientpost::spawn(
                     path,
@@ -15086,6 +15101,7 @@ impl Session {
                         self.pchat_direct_at = Some((public, bound));
                         refresh_reach = true;
                     }
+                    crate::patientpost::Event::Met(n) => self.pchat_met = n,
                 }
             }
         }
@@ -28899,6 +28915,16 @@ impl App {
                     .len()
                     .min(crate::patientchat::LINK_ADDRESSES);
                 match session.pchat_direct_at.as_ref().map(|(public, _)| public) {
+                    // Nothing reaches this post, but it waits at the
+                    // trackers: a page meets it there.
+                    Some(here) if here.is_empty() && session.pchat_met > 0 => {
+                        ui.label(
+                            egui::RichText::new(trf("pchat_direct_met", session.pchat_met))
+                                .size(motif::pt(ui, 10.5))
+                                .color(motif::text_dim()),
+                        )
+                        .on_hover_text(tr("pchat_direct_met_tooltip"));
+                    }
                     Some(here) if here.is_empty() => {
                         let key = if everywhere > 0 {
                             "pchat_direct_not_here"
@@ -82158,6 +82184,7 @@ impl App {
             let mut settle: Option<(i64, bool)> = None;
             let mut open_card: Option<i64> = None;
             let peers = session.posts_peers.clone();
+            let shared_file = session.shared_file;
             let auto_on = session.posts_auto.is_some() && config.postes.automatique;
             let posts_status = session.posts_status.clone();
             let net_status = session.net_status.clone();
@@ -82211,6 +82238,10 @@ impl App {
                                     trf("conn_alone_invited", &h.address),
                                     tr("conn_alone_enter_code"),
                                 )
+                            } else if shared_file {
+                                // Les ordinateurs de ce fichier n'ont rien à
+                                // relier ; la fenêtre reste pour un téléphone.
+                                (tr("conn_shared_file").to_owned(), tr("posts_open"))
                             } else if !group.is_empty() {
                                 (tr("conn_alone_group").to_owned(), tr("posts_open"))
                             } else {
@@ -84010,6 +84041,8 @@ impl App {
                                     )
                                     .wrap(),
                                 );
+                            } else if session.shared_file {
+                                guide(ui, tr("posts_guide_shared").to_owned());
                             } else if !group_online.is_empty() {
                                 guide(ui, trf("posts_guide_group", group_online.join(", ")));
                             } else {

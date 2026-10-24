@@ -295,17 +295,24 @@ pub struct Reach {
 pub const LINK_ADDRESSES: usize = 6;
 
 impl Reach {
-    /// Le fragment qui le dit : `f`, `a` (séparées par des virgules), `p`.
+    /// Le fragment qui le dit : `f`, `a` (séparées par des virgules), `r`,
+    /// `p`. **`r=1` : le rendez-vous** (`rendezvous.rs`) — les postes
+    /// attendent la page aux trackers publics ; la voie directe tient
+    /// alors sans aucune adresse, d'où `f` seul quand il n'y en a pas.
     fn fragment(&self) -> String {
         let mut out = String::new();
-        if !self.fingerprint.is_empty() && !self.addresses.is_empty() {
+        if !self.fingerprint.is_empty() {
+            out.push_str(&format!("&f={}", self.fingerprint));
             let a: Vec<&str> = self
                 .addresses
                 .iter()
                 .map(String::as_str)
                 .take(LINK_ADDRESSES)
                 .collect();
-            out.push_str(&format!("&f={}&a={}", self.fingerprint, a.join(",")));
+            if !a.is_empty() {
+                out.push_str(&format!("&a={}", a.join(",")));
+            }
+            out.push_str("&r=1");
         }
         let host = gateway_host(&self.gateway);
         if !host.is_empty() {
@@ -1065,13 +1072,16 @@ mod tests {
             l.contains(&format!("&f={}&a=203.0.113.0:7748,", "F".repeat(43))),
             "{l}"
         );
-        assert!(l.ends_with("203.0.113.5:7748&p=chat.example.fr"), "{l}");
-        // A fingerprint without an address is no way at all.
-        let none = Reach {
+        assert!(l.ends_with("203.0.113.5:7748&r=1&p=chat.example.fr"), "{l}");
+        // A fingerprint without an address is still a way: the posts wait
+        // for the page at the trackers (`rendezvous.rs`).
+        let met = Reach {
             fingerprint: "F".repeat(43),
             ..Default::default()
         };
-        assert!(!none.any());
+        assert!(met.any());
+        assert!(link(&met, &id, &key).ends_with(&format!("&f={}&r=1", "F".repeat(43))));
+        assert!(!Reach::default().any());
         assert!(both.any() && gateway.any());
         // The board's code carries no key.
         let b = board_link(&both, &id, true);
