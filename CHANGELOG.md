@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.446.0] - 2026-10-24
+
 ### Added
 
 - **Patients' messaging with a router nobody can touch** (`src/rendezvous.rs`). When no address reaches a post (no open port, no public IPv6), the patient's page and the post now meet: each asks a public STUN server what its box gives it, they pass their WebRTC descriptions through public WebTorrent trackers (the post waits in the officine's swarm, the page publishes its offer there), and both send at once so each box opens to the other. The channel is then direct; the trackers see IP addresses, never a message, and keep nothing. The page takes an answer only with the officine's fingerprint from the QR code, which DTLS then holds the post to. Codes carry `&r=1` and work with no address at all; the page tries the direct way and the meeting at once. The messaging tab says « Voie directe par rendez-vous » instead of asking for the router. Two strict boxes (symmetric NAT) still need a relay. Codes given before need renewing.
