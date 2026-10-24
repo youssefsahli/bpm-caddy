@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.447.0] - 2026-10-24
+
 ### Added
 
 - **The network's web proxy is used** (`src/proxy.rs`). On a hospital or company network that only lets the web out through a proxy, nothing of the network reached anywhere: the app opened its connections by hand and knew no proxy. It now finds one — `[reseau] proxy` (Options › Base, « aucun » to do without), then `HTTPS_PROXY` and the like, then the system's setting (Windows: Internet Settings in the registry; macOS: `scutil --proxy`) — and tunnels through it (`CONNECT`, user and password in Basic) to port 443: the rendez-vous trackers, officines' web doors, the release check, and the launcher's update. The proxy sees whom one talks to, never what is said. A PAC script or a proxy wanting a Windows login (NTLM, Kerberos) is not crossed; Options shows which proxy is used, and « Tester la connexion » whether a tunnel gets through.
