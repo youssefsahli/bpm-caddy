@@ -687,7 +687,7 @@ pub const CATALOGUE: &[Analyte] = &[
         high: None,
         critical_low: Some(15.0),
         critical_high: None,
-        note: "C'est le chiffre qui commande l'adaptation des doses : au-dessous de 60 mL/min une bonne part de l'ordonnance se relit, au-dessous de 30 plusieurs molécules sortent.",
+        note: "C'est le chiffre qui commande l'adaptation des doses : au-dessous de 60 mL/min une bonne part de l'ordonnance se relit, au-dessous de 30, plusieurs molécules ne sont plus utilisables.",
     },
     Analyte {
         code: "CREAT",
@@ -707,7 +707,7 @@ pub const CATALOGUE: &[Analyte] = &[
         high: Some(5.0),
         critical_low: Some(3.0),
         critical_high: Some(6.0),
-        note: "Le potassium se surveille par ce qui l'entoure : IEC, sartans, spironolactone et AINS le montent, diurétiques de l'anse et thiazidiques le descendent.",
+        note: "La kaliémie se surveille au regard des traitements associés : IEC, sartans, spironolactone et AINS le montent, diurétiques de l'anse et thiazidiques le descendent.",
     },
     Analyte {
         code: "NA",
@@ -1043,7 +1043,7 @@ pub const CATALOGUE: &[Analyte] = &[
         high: None,
         critical_low: None,
         critical_high: None,
-        note: "Le « bon » cholestérol, et le seul dont on souhaite qu'il monte. Aucun traitement ne le cible utilement : c'est le LDL qui se traite, et le HDL bas se corrige par l'activité physique, l'arrêt du tabac et la perte de poids.",
+        note: "Le « bon » cholestérol, et le seul dont une hausse est souhaitée. Aucun traitement ne le cible utilement : c'est le LDL qui se traite, et le HDL bas se corrige par l'activité physique, l'arrêt du tabac et la perte de poids.",
     },
     Analyte {
         code: "HCO3",
@@ -1123,7 +1123,7 @@ pub const CATALOGUE: &[Analyte] = &[
         high: None,
         critical_low: None,
         critical_high: Some(1.5),
-        note: "La seule mesure de l'effet d'une héparine de bas poids moléculaire. Elle ne se fait pas en routine : elle sert quand le rein est mauvais, le poids extrême, ou qu'un saignement pose la question de l'accumulation. Le prélèvement se fait quatre heures après l'injection, et le résultat n'est pas interprétable à un autre moment.",
+        note: "La seule mesure de l'effet d'une héparine de bas poids moléculaire. Elle ne se fait pas en routine : elle sert quand la fonction rénale est altérée, le poids extrême, ou qu'un saignement pose la question de l'accumulation. Le prélèvement se fait quatre heures après l'injection, et le résultat n'est pas interprétable à un autre moment.",
     },
     Analyte {
         code: "UREE",
@@ -1143,7 +1143,7 @@ pub const CATALOGUE: &[Analyte] = &[
         high: Some(100.0),
         critical_low: Some(20.0),
         critical_high: None,
-        note: "C'est l'autre face de l'INR, et c'est celle que les laboratoires français impriment : le TP baisse quand l'INR monte. Sous AVK on lit l'INR et rien d'autre ; hors AVK, un TP bas explore le foie et la vitamine K.",
+        note: "C'est l'autre face de l'INR, et c'est celle que les laboratoires français impriment : le TP baisse quand l'INR monte. Sous AVK, seul l'INR se lit ; hors AVK, un TP bas explore le foie et la vitamine K.",
     },
     Analyte {
         code: "CT",
@@ -1203,7 +1203,7 @@ pub const CATALOGUE: &[Analyte] = &[
         high: Some(120.0),
         critical_low: None,
         critical_high: None,
-        note: "Ils disent si la moelle répond. Une anémie avec des réticulocytes bas traduit une moelle qui ne produit pas (carence ou toxicité médicamenteuse) ; avec des réticulocytes hauts, c'est une perte ou une destruction, et on cherche un saignement ou une hémolyse.",
+        note: "Ils disent si la moelle répond. Une anémie avec des réticulocytes bas traduit une moelle qui ne produit pas (carence ou toxicité médicamenteuse) ; avec des réticulocytes hauts, c'est une perte ou une destruction : rechercher un saignement ou une hémolyse.",
     },
     Analyte {
         code: "LDH",
@@ -1213,7 +1213,7 @@ pub const CATALOGUE: &[Analyte] = &[
         high: Some(250.0),
         critical_low: None,
         critical_high: None,
-        note: "Élevée partout où des cellules se cassent : hémolyse, infarctus, tumeur, muscle. Isolée, elle n'est pas spécifique ; avec une haptoglobine effondrée et des réticulocytes hauts, c'est une hémolyse.",
+        note: "Élevée dès qu'il y a lyse cellulaire : hémolyse, infarctus, tumeur, muscle. Isolée, elle n'est pas spécifique ; avec une haptoglobine effondrée et des réticulocytes hauts, c'est une hémolyse.",
     },
     Analyte {
         code: "HAPTO",
@@ -1266,7 +1266,7 @@ const RULES: &[Rule] = &[
         threshold: 1.5,
         needs: &["héparine", "héparine non fractionnée", "calciparine"],
         severity: Severity::Warn,
-        text: "TCA en dessous de la zone curative sous héparine non fractionnée : l'anticoagulation est insuffisante et le risque est celui de la thrombose qu'on traite. La dose se réajuste sur avis du prescripteur.",
+        text: "TCA en dessous de la zone curative sous héparine non fractionnée : l'anticoagulation est insuffisante et le risque est celui de la thrombose traitée. La dose se réajuste sur avis du prescripteur.",
     },
     Rule {
         code: "RETIC",
@@ -1678,7 +1678,7 @@ const RULES: &[Rule] = &[
         threshold: 3.0,
         needs: &["pril ", "IEC", "sartan", "gliflozine", "dapagliflozine", "empagliflozine"],
         severity: Severity::Warn,
-        text: "Albuminurie sous IEC, sartan ou gliflozine : ces molécules sont le traitement, pas la cause. Une créatinine qui monte de moins de 30 % à l'instauration est attendue et ne fait pas arrêter ; c'est au-delà qu'on rappelle le prescripteur.",
+        text: "Albuminurie sous IEC, sartan ou gliflozine : ces molécules sont le traitement, pas la cause. Une créatinine qui monte de moins de 30 % à l'instauration est attendue et ne fait pas arrêter ; au-delà, le prescripteur est à recontacter.",
     },
     Rule {
         code: "RAC",
@@ -1936,7 +1936,7 @@ const RULES: &[Rule] = &[
         threshold: 9.0,
         needs: &[],
         severity: Severity::Warn,
-        text: "HbA1c au-dessus de 9 % : au-delà de tous les objectifs, y compris le plus relâché, celui du sujet âgé malade, chez qui l'on vise seulement le confort. Entre 7 et 9 %, rien n'est dit ici : la cible se lit sur le dossier et non sur le compte rendu, et un même chiffre est un échec chez l'un et un bon résultat chez l'autre.",
+        text: "HbA1c au-dessus de 9 % : au-delà de tous les objectifs, y compris le plus relâché, celui du sujet âgé malade, chez qui seul le confort est visé. Entre 7 et 9 %, rien n'est dit ici : la cible se lit sur le dossier et non sur le compte rendu, et un même chiffre est un échec chez l'un et un bon résultat chez l'autre.",
     },
     Rule {
         code: "LDL",
@@ -2074,7 +2074,7 @@ const RULES: &[Rule] = &[
         threshold: 0.1,
         needs: &["amiodarone"],
         severity: Severity::Alert,
-        text: "Thyrotoxicose induite par l'amiodarone : elle apparaît après des années de traitement comme jusqu'à plusieurs mois après son arrêt, la demi-vie d'élimination se comptant en semaines. Elle se révèle souvent par la reprise du trouble du rythme qu'on traitait, par un amaigrissement ou par une agitation prise pour autre chose. T4 libre et T3 libre pour trancher, avis spécialisé avant tout renouvellement ; entre 0,1 et 0,4 mUI/L, contrôler plutôt que conclure. L'arrêt ne suffit pas à la régler et ne se décide pas au comptoir.",
+        text: "Thyrotoxicose induite par l'amiodarone : elle apparaît après des années de traitement comme jusqu'à plusieurs mois après son arrêt, la demi-vie d'élimination se comptant en semaines. Elle se révèle souvent par la reprise du trouble du rythme traité, par un amaigrissement ou par une agitation prise pour autre chose. T4 libre et T3 libre pour trancher, avis spécialisé avant tout renouvellement ; entre 0,1 et 0,4 mUI/L, contrôler plutôt que conclure. L'arrêt ne suffit pas à la régler et ne se décide pas au comptoir.",
     },
     Rule {
         code: "TSH",
@@ -2095,7 +2095,7 @@ const RULES: &[Rule] = &[
         threshold: 20.0,
         needs: &["gliflozine", "dapagliflozine", "empagliflozine", "SGLT2"],
         severity: Severity::Alert,
-        text: "Réserve alcaline basse sous gliflozine : acidocétose à glycémie normale, où le patient contrôle son sucre, le trouve correct, et s'aggrave. Ce sont les corps cétoniques qu'il faut mesurer, jamais la seule glycémie. Nausées, vomissements, anorexie, douleurs abdominales, difficulté à respirer, confusion ou asthénie inhabituelle : arrêt du traitement et avis en urgence. Les circonstances déclenchantes s'expliquent d'avance, leur connaissance étant la prévention : jeûne, régime très pauvre en glucides, infection aiguë, vomissements, diarrhée, déshydratation, alcool, réduction brutale de l'insuline, chirurgie lourde. Dans toutes, la gliflozine se suspend.",
+        text: "Réserve alcaline basse sous gliflozine : acidocétose à glycémie normale, où le patient contrôle sa glycémie, la trouve correcte, et s'aggrave. Ce sont les corps cétoniques qu'il faut mesurer, jamais la seule glycémie. Nausées, vomissements, anorexie, douleurs abdominales, difficulté à respirer, confusion ou asthénie inhabituelle : arrêt du traitement et avis en urgence. Les circonstances déclenchantes s'expliquent d'avance, leur connaissance étant la prévention : jeûne, régime très pauvre en glucides, infection aiguë, vomissements, diarrhée, déshydratation, alcool, réduction brutale de l'insuline, chirurgie lourde. Dans toutes, la gliflozine se suspend.",
     },
     Rule {
         code: "LDL",

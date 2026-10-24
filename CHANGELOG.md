@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The wording reads as a health professional writes.** A pass over the 4 538 interface strings, the 47 printed documents and the printed clinical phrases, against one register (ANSM, HAS, Ordre): about 530 strings, 32 template passages and 57 phrases reworded. Action tooltips start with the verb (« Imprimer… », « Enregistrer… »); « le dossier ouvert », not « le patient ouvert »; « LGO » for the pharmacy software; « saisir », not « taper »; notices of a change made elsewhere all read « … modifié sur un autre poste : … actualisé(e) »; colloquial turns, « on », and the software's own images (« porte », « percée », « se sème », « filet ») give way to what the officine needs to know. Letters to prescribers keep their correspondence conventions; patient handouts address the patient as « vous » in plain words and send them back to their pharmacist or doctor; records (registre, procès-verbal, non-conformité) use regulatory wording (« Aucune rature n'est portée au registre », « Visa du pharmacien titulaire », « Date de péremption », « N° de lot », « Vaccinateur »). No figure, threshold, molecule, caveat or privacy statement changed. Four labels changed with the manual: « Créer la phrase », « Ajouter un jour », « Absent ce jour », « Absence » (planning on the phone); « Suivi des entretiens » on the dashboard. Phrases an officine had rewritten are shown for re-reading, as for any reworded shipped phrase.
+- **« À propos » no longer claims two connections in all**: it lists what connects (version check and prescribers' directory on a click, the launcher at opening, posts, network and patient messaging as set in Options), and that no patient data goes to the officines' network.
+
 ## [0.447.0] - 2026-10-24
 
 ### Added

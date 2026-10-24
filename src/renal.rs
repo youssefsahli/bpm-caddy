@@ -1585,7 +1585,7 @@ pub const TABLE: &[Adaptation] = &[
             Step {
                 below: 60,
                 level: Level::Reduce,
-                conduct: "Entre 15 et 60 : la dose réduite, une fois par jour.",
+                conduct: "Entre 15 et 60 : dose réduite, une fois par jour.",
             },
             Step {
                 below: 15,
@@ -1620,7 +1620,7 @@ pub const TABLE: &[Adaptation] = &[
         steps: &[Step {
             below: 30,
             level: Level::Reduce,
-            conduct: "Entre 15 et 29, hors hémodialyse : la dose de départ réduite de moitié, effets indésirables surveillés.",
+            conduct: "Entre 15 et 29, hors hémodialyse : dose de départ réduite de moitié, effets indésirables surveillés.",
         }],
         source: "RCP Nubeqa",
     },
@@ -1762,7 +1762,7 @@ pub const TABLE: &[Adaptation] = &[
             Step {
                 below: 50,
                 level: Level::Contraindicated,
-                conduct: "Au-dessous de 50 : non recommandé : la palipéridone s'accumule et la forme retard ne peut être retirée.",
+                conduct: "Au-dessous de 50 : non recommandé ; la palipéridone s'accumule et la forme retard ne peut être retirée.",
             },
         ],
         source: "RCP Trevicta",

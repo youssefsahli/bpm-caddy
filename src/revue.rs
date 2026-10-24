@@ -737,7 +737,7 @@ const RULES: &[Rule] = &[
         ),
         severity: Severity::Alert,
         title: "Deux anticoagulants",
-        detail: "Deux anticoagulants ensemble hors relais organisé : le risque hémorragique s'additionne sans bénéfice. Un relais héparine-AVK se chevauche quelques jours et c'est écrit sur l'ordonnance ; en dehors de ce cas, appeler le prescripteur avant de délivrer.",
+        detail: "Deux anticoagulants ensemble hors relais organisé : le risque hémorragique s'additionne sans bénéfice. Un relais héparine-AVK se chevauche quelques jours et figure sur l'ordonnance ; en dehors de ce cas, appeler le prescripteur avant de délivrer.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -1253,7 +1253,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Warn,
         title: "Quinolone ou cycline + cations",
-        detail: "Le cation chélate l'antibiotique dans l'estomac et l'absorption tombe de moitié ou plus : la cure est inefficace, et l'échec peut être pris pour une résistance. Le lait, les pansements gastriques et les compléments en font partie, et aucun n'est sur l'ordonnance. Deux heures avant ou quatre heures après, et le demander explicitement au patient.",
+        detail: "Le cation chélate l'antibiotique dans l'estomac et l'absorption diminue de moitié ou plus : la cure est inefficace, et l'échec peut être pris pour une résistance. Le lait, les pansements gastriques et les compléments en font partie, et aucun n'est sur l'ordonnance. Deux heures avant ou quatre heures après, et le demander explicitement au patient.",
     },
     Rule {
         kind: Kind::Combination(&[

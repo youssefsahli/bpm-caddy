@@ -1807,9 +1807,9 @@ Android d'un membre de l'équipe — sur le téléphone, onglet Poste,
 « Scanner le code » lit le code QR affiché, ou saisir le code : il lit les fiches, l'agenda, le
 planning et la messagerie, écrit à l'équipe, ajoute ou retire une
 entrée d'agenda, corrige une fiche. Au planning, un appui long sur un
-poste le change pour ce jour seul — d'autres heures, ou « Pas là ce
-jour » — sans toucher à la trame, et « Un jour de plus » pose un jour
-travaillé aux initiales du téléphone. « Une absence » pose un congé,
+poste le change pour ce jour seul — d'autres heures, ou « Absent ce
+jour » — sans toucher à la trame, et « Ajouter un jour » pose un jour
+travaillé aux initiales du téléphone. « Absence » pose un congé,
 un arrêt, une formation ou une récupération du premier au dernier jour,
 comme le planning d'un poste ; elle se modifie ensuite sur un poste. Il ne reçoit jamais la clé des
 dossiers, du registre, de la caisse ni des réglages : il transporte ces
@@ -1926,7 +1926,7 @@ d'une officine à l'autre.
 **Créer un compte.** Un nom (ce que les autres verront), un rôle, un
 RPPS et une officine facultatifs, et un **code** pour ce poste (huit
 caractères au moins, pas seulement des chiffres : la base que toute
-l'équipe ouvre le garde), tapé deux fois. « Tirer la phrase » montre
+l'équipe ouvre le garde), tapé deux fois. « Créer la phrase » montre
 **douze mots** : recopiez-les sur papier, dans l'ordre. Ils **sont** le
 compte — personne ne peut les retrouver, et sans eux un code oublié ou
 un poste perdu perd le compte. Le compte n'est créé qu'une fois un des

@@ -808,7 +808,7 @@ mod tests {
             &Summary::default(),
             &Conformity::default(),
         );
-        assert_eq!(text.matches("Rien sur la période.").count(), 2);
+        assert_eq!(text.matches("Aucun élément sur la période.").count(), 2);
         assert!(text.contains("Rien à signaler."));
         // Et aucune section n'est suivie de rien : après chaque titre
         // il y a au moins une ligne qui parle.

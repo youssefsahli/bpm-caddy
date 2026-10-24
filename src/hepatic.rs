@@ -648,7 +648,7 @@ pub const TABLE: &[Adaptation] = &[
         needs: &["domperidone"],
         label: "Dompéridone",
         steps: &[
-            step(Mild, Watch, "La dose la plus faible, et pas plus longtemps qu'il ne faut."),
+            step(Mild, Watch, "La dose la plus faible, pendant la durée la plus courte possible."),
             step(
                 Moderate,
                 Contraindicated,

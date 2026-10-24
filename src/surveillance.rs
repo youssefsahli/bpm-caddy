@@ -506,7 +506,7 @@ pub const WATCHES: &[Watch] = &[
         needs: &["antidiabétique", "metformine", "insuline", "gliclazide", "glimépiride", "sitagliptine", "dapagliflozine", "empagliflozine", "sémaglutide", "dulaglutide", "sulfamide hypoglycémiant", "glinide", "gliptine", "GLP-1", "alpha-glucosidase", "tirzépatide"],
         code: "HBA1C",
         every_months: 3,
-        why: "L'HbA1c reflète les trois derniers mois : tous les trois mois tant que la cible n'est pas tenue, tous les six mois ensuite. La cible se personnalise : 7 % ne convient pas à tous les patients.",
+        why: "L'HbA1c reflète les trois derniers mois : tous les trois mois tant que la cible n'est pas atteinte, tous les six mois ensuite. La cible se personnalise : 7 % ne convient pas à tous les patients.",
         never: &[],
     },
     Watch {
@@ -521,7 +521,7 @@ pub const WATCHES: &[Watch] = &[
         needs: &["lévothyroxine", "lévothyrox", "hormone thyroïdienne", "L-thyroxine"],
         code: "TSH",
         every_months: 12,
-        why: "TSH six à huit semaines après toute modification de dose ou tout changement de spécialité, puis une fois par an quand l'équilibre tient.",
+        why: "TSH six à huit semaines après toute modification de dose ou tout changement de spécialité, puis une fois par an quand l'équilibre est obtenu.",
         never: &[],
     },
     Watch {
@@ -730,7 +730,7 @@ pub const WATCHES: &[Watch] = &[
         needs: &["hypolipémiant", "vastatine", "ézétimibe", "fibrate", "bempédoïque", "évolocumab", "alirocumab"],
         code: "CT",
         every_months: 12,
-        why: "Le bilan lipidique complet une fois par an quand la cible est tenue : il renseigne aussi sur l'observance.",
+        why: "Le bilan lipidique complet une fois par an quand la cible est atteinte : il renseigne aussi sur l'observance.",
         never: &[],
     },
     Watch {
@@ -830,7 +830,7 @@ pub const WATCHES: &[Watch] = &[
         needs: &["carbimazole", "thiamazole", "propylthiouracile", "benzylthiouracile", "antithyroïdien"],
         code: "T4L",
         every_months: 3,
-        why: "Sous antithyroïdien la TSH reste freinée des mois après que l'hormone est revenue à sa place : lue seule elle fait surdoser. C'est la T4 libre qui dit l'équilibre, et c'est elle qu'on demande.",
+        why: "Sous antithyroïdien la TSH reste freinée des mois après que l'hormone est revenue à sa place : lue seule elle fait surdoser. C'est la T4 libre qui dit l'équilibre, et c'est elle qui est à demander.",
         never: &[],
     },
     Watch {

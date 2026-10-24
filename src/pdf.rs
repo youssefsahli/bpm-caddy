@@ -88,7 +88,7 @@ const DEFAULT_TEMPLATE: &str = r#"
 #sec[Traitements connus à l'officine]
 {{TREATMENTS}}
 
-#sec[À couvrir pendant l'entretien]
+#sec[Points à aborder au cours de l'entretien]
 {{CHECKLIST}}
 
 {{KIND_TABLE}}
@@ -129,9 +129,9 @@ const DEFAULT_CR_TEMPLATE: &str = r#"
 #v(4mm)
 Docteur,
 
-Dans le cadre d'un accompagnement à l'officine ({{KIND}}), nous avons reçu
-votre patient(e) {{PATIENT_NAME}}. Vous trouverez ci-dessous les éléments
-issus de cet échange.
+Dans le cadre d'un accompagnement pharmaceutique ({{KIND}}), nous avons reçu
+à l'officine votre patient(e) {{PATIENT_NAME}}. Vous trouverez ci-dessous les
+éléments recueillis à cette occasion.
 
 #v(2mm)
 #text(weight: "bold")[Traitements connus à l'officine :]
@@ -1444,16 +1444,16 @@ const DEFAULT_INFIRMIER_TEMPLATE: &str = r##"
 #set page(paper: "a4", margin: 1.6cm)
 #set text(size: 12pt, lang: "fr", hyphenate: true)
 
-#align(center)[#text(17pt, weight: "bold")[Plan de prises]]
+#align(center)[#text(17pt, weight: "bold")[Plan de prise]]
 #v(1mm)
-#align(center)[#text(11pt)[{{PATIENT_NAME}} — remis le {{DATE}}]]
+#align(center)[#text(11pt)[{{PATIENT_NAME}} — établi le {{DATE}}]]
 #align(center)[#text(10pt)[{{NURSE}}]]
 #v(5mm)
 
 {{SHEET}}
 
 #v(5mm)
-#text(10pt)[Votre pharmacie : {{PHARMACY_NAME}} — {{PHARMACY_PHONE}}]
+#text(10pt)[Pharmacie dispensatrice : {{PHARMACY_NAME}} — {{PHARMACY_PHONE}}]
 {{MENTION}}
 "##;
 
@@ -1689,10 +1689,11 @@ en bout entre votre téléphone et la pharmacie.
 #align(center)[#text(7pt, fill: luma(90))[{{LINK}}]]
 #v(4mm)
 
-- *Ce n'est pas un service d'urgence.* La pharmacie lit vos messages quand
-  elle est ouverte. En cas d'urgence, appelez le 15 (ou le 112).
-- *Ce code est à vous.* Il donne accès à votre conversation : ne le
-  confiez pas. Perdu ? Demandez-en un nouveau, l'ancien sera fermé.
+- *Ce n'est pas un service d'urgence.* La pharmacie lit vos messages
+  pendant ses heures d'ouverture. En cas d'urgence, appelez le 15 (ou le 112).
+- *Ce code vous est personnel.* Il donne accès à votre conversation : ne le
+  communiquez à personne. En cas de perte, demandez-en un nouveau à la
+  pharmacie ; l'ancien sera désactivé.
 
 #v(1fr)
 #text(9pt, fill: luma(90))[{{PATIENT_NAME}} — remis le {{DATE}}]
@@ -1790,7 +1791,7 @@ const DEFAULT_CONVERSATION_TEMPLATE: &str = r##"
 #v(4mm)
 
 #table(columns: (auto, auto, 1fr), inset: 6pt, stroke: 0.5pt,
-  [*Date*], [*De*], [*Message*],
+  [*Date*], [*Auteur*], [*Message*],
 {{ROWS}})
 
 #v(1fr)
@@ -2646,7 +2647,7 @@ const DEFAULT_APPELS_TEMPLATE: &str = r##"
 {{ROWS}})
 
 #v(4mm)
-#text(9pt, style: "italic")[Liste établie le {{DATE}} d'après l'état de la base ; à réimprimer à chaque usage.]
+#text(9pt, style: "italic")[Liste établie le {{DATE}} d'après les dossiers à cette date ; à réimprimer avant chaque utilisation.]
 "##;
 
 fn call_list_values(
@@ -2749,7 +2750,7 @@ const DEFAULT_DESTRUCTION_TEMPLATE: &str = r##"
 #v(4mm)
 #text(9pt)[Le pharmacien : #box(width: 6cm, stroke: (bottom: 0.5pt))   Le témoin : #box(width: 6cm, stroke: (bottom: 0.5pt))]
 #v(3mm)
-#text(9pt, style: "italic")[Les quantités ci-dessus sont celles du compte « à détruire » du registre : retours de patients non réintégrés au stock délivrable. La destruction se porte au registre ligne par ligne, en citant le numéro du présent procès-verbal. Un stupéfiant rapporté ne se redélivre jamais.]
+#text(9pt, style: "italic")[Les quantités ci-dessus correspondent au compte « à détruire » du registre : retours de patients, non réintégrés au stock délivrable. La destruction est inscrite au registre ligne par ligne, avec le numéro du présent procès-verbal. Un stupéfiant rapporté par un patient n'est jamais redélivré.]
 "##;
 
 fn destruction_list_values(
@@ -2805,7 +2806,7 @@ const DEFAULT_CONTROLE_TEMPLATE: &str = r##"
 #v(6mm)
 #text(9pt)[Compté par : #box(width: 5cm, stroke: (bottom: 0.5pt))   Le : #box(width: 3cm, stroke: (bottom: 0.5pt))   Signature : #box(width: 4cm, stroke: (bottom: 0.5pt))]
 #v(3mm)
-#text(9pt, style: "italic")[Tout écart entre le comptage et le registre est porté au registre par une ligne d'inventaire, avec son explication. Le registre ne se rature pas.]
+#text(9pt, style: "italic")[Tout écart entre le comptage et le registre est inscrit au registre par une ligne d'inventaire, accompagnée de sa justification. Aucune rature n'est portée au registre.]
 "##;
 
 fn stock_check_values(
@@ -3044,7 +3045,7 @@ const DEFAULT_REGISTRE_TEMPLATE: &str = r##"
 {{ROWS}})
 
 #v(4mm)
-#text(8pt, style: "italic")[{{COUNT}} ligne(s) au registre, comptées en {{UNIT}}. Aucune ligne n'est raturée : une ligne annulée reste imprimée, barrée, et la ligne d'annulation qui la désigne en inverse l'effet sur le stock. Un inventaire *fixe* le solde au lieu de s'y ajouter : lorsqu'un comptage a trouvé un écart, les colonnes ne s'additionnent plus au solde final. Deux soldes : les retours de patients sont justifiés ici, ne sont jamais redélivrés et restent au compte « à détruire » jusqu'au procès-verbal. Le nom du patient figure dans le dossier dont le numéro est indiqué ci-dessus.]
+#text(8pt, style: "italic")[{{COUNT}} ligne(s) au registre, quantités exprimées en {{UNIT}}. Aucune ligne n'est raturée : une ligne annulée reste imprimée, barrée, et la ligne d'annulation qui s'y rapporte en annule l'effet sur le stock. Un inventaire *fixe* le solde au lieu de s'y ajouter : lorsqu'un comptage a trouvé un écart, la somme des colonnes ne correspond plus au solde final. Deux soldes sont tenus : les retours de patients sont tracés ici, ne sont jamais redélivrés et restent au compte « à détruire » jusqu'au procès-verbal de destruction. Le nom du patient figure dans le dossier dont le numéro est indiqué ci-dessus.]
 "##;
 
 /// Ce que l'ordonnancier d'une année imprime.
@@ -5262,7 +5263,7 @@ const DEFAULT_VACCINATION_TEMPLATE: &str = r##"
   columns: (auto, 1fr, auto, auto, auto, auto, 1fr),
   inset: 6pt,
   stroke: 0.6pt,
-  [*Date*], [*Vaccin*], [*Dose*], [*Lot*], [*Site*], [*Par*], [*Remarque*],
+  [*Date*], [*Vaccin*], [*Dose*], [*N° de lot*], [*Site*], [*Vaccinateur*], [*Remarque*],
 {{ROWS}})
 {{MENTION}}
 "##;
@@ -5411,7 +5412,7 @@ const DEFAULT_FACTURATION_TEMPLATE: &str = r##"
 #v(4mm)
 #text(weight: "bold")[{{COUNT}} acte(s) — total {{TOTAL}}]
 #v(3mm)
-#text(9pt)[Prestation facturée en tiers payant, indépendamment de tout code CIP, aux prix TTC. Une seule pharmacie accompagne un patient : celle qui a débuté la séquence annuelle perçoit la rémunération.]
+#text(9pt)[Prestations facturées en tiers payant, indépendamment de tout code CIP, aux prix TTC. Un patient n'est accompagné que par une pharmacie : celle qui a débuté la séquence annuelle perçoit la rémunération.]
 {{RENTALS}}
 "##;
 
@@ -7900,7 +7901,7 @@ const DEFAULT_CAISSES_TEMPLATE: &str = r##"
 
 #v(4mm)
 #block(width: 100%, stroke: 0.4pt, inset: 6pt)[
-  #text(weight: "bold")[Sur la période] \
+  #text(weight: "bold")[Synthèse de la période] \
   {{DAYS}} \
   Recette encaissée : {{TAKINGS}} \
   {{GAP}} \
@@ -7908,7 +7909,7 @@ const DEFAULT_CAISSES_TEMPLATE: &str = r##"
 ]
 
 #v(3mm)
-#text(8pt, style: "italic")[Un recomptage ajoute une seconde ligne : les deux figurent ici, seule la dernière entre dans les totaux. Tout écart est noté et justifié, sans modification du comptage.]
+#text(8pt, style: "italic")[Un recomptage ajoute une seconde ligne pour la même soirée : les deux comptages sont conservés, seul le plus récent entre dans les totaux. Tout écart est noté et justifié, sans modification du comptage.]
 "##;
 
 fn caisse_history_values(
@@ -8101,7 +8102,7 @@ const DEFAULT_ECRASER_TEMPLATE: &str = r##"
 
 #table(columns: (auto, auto, 1fr), inset: 5pt, stroke: 0.4pt,
   align: (left, left, left),
-  [*Traitement*], [*Réponse*], [*Motif et alternative*],
+  [*Traitement*], [*Avis*], [*Motif et alternative*],
 {{ROWS}})
 
 #v(4mm)
@@ -8110,7 +8111,7 @@ const DEFAULT_ECRASER_TEMPLATE: &str = r##"
 ]
 
 #v(3mm)
-#text(8pt, style: "italic")[Cette feuille reprend les résumés des caractéristiques des produits et la liste nationale des médicaments écrasables. Elle ne remplace pas l'avis du prescripteur : un traitement non écrasable se remplace, sur son accord.]
+#text(8pt, style: "italic")[Cette feuille reprend les résumés des caractéristiques des produits et la liste nationale des médicaments écrasables. Elle ne remplace pas l'avis du prescripteur : le remplacement d'un traitement non écrasable se fait avec son accord.]
 "##;
 
 const MARKERS_PLANNING: &[&str] = &[
@@ -8141,7 +8142,7 @@ const DEFAULT_PLANNING_TEMPLATE: &str = r##"
 #text(9pt)[Total de la semaine : *{{TOTAL}}*]
 
 #v(3mm)
-#text(8pt, style: "italic")[Un poste dont la fin n'a pas été notée s'écrit « 9 h–… » et n'entre pas dans le total : « 34 h 15 +1 » signifie 34 h 15 et un poste sans heure de fin. Un total « — » signifie qu'aucune heure n'est connue, et non zéro heure. Une garde qui franchit minuit est comptée en entier au jour qui la commence.]
+#text(8pt, style: "italic")[Un poste sans heure de fin renseignée est noté « 9 h–… » et n'est pas compté dans le total : « 34 h 15 +1 » se lit 34 h 15, plus un poste sans heure de fin. Un total « — » indique qu'aucun horaire n'est renseigné, et non zéro heure. Une garde qui se prolonge au-delà de minuit est comptée en entier sur le jour où elle commence.]
 "##;
 
 fn crush_values(
@@ -8475,7 +8476,7 @@ const DEFAULT_NONCONFORMITE_TEMPLATE: &str = r##"
 #row[Déclarée le :][{{DECLARED}}]
 #row[Type :][{{KIND}}]
 #row[Étape :][{{STAGE}}]
-#row[Déclarée au-dehors :][{{DECLARATION}}]
+#row[Déclaration externe :][{{DECLARATION}}]
 #v(1mm)
 #text(weight: "bold")[Description] \
 {{DESCRIPTION}}
@@ -8496,7 +8497,7 @@ const DEFAULT_NONCONFORMITE_TEMPLATE: &str = r##"
 {{ACTIONS}}
 
 #sec[Vérification et clôture]
-#row[Efficacité :][{{EFFECTIVE}}]
+#row[Efficacité des actions :][{{EFFECTIVE}}]
 #v(1mm)
 {{VERIFICATION}}
 #v(1mm)
@@ -8504,7 +8505,7 @@ const DEFAULT_NONCONFORMITE_TEMPLATE: &str = r##"
 
 #v(1fr)
 #grid(columns: (1fr, 1fr), column-gutter: 8mm,
-  [Visa du pharmacien responsable \ #box(width: 100%, height: 1.8cm, stroke: 0.6pt)],
+  [Visa du pharmacien titulaire \ #box(width: 100%, height: 1.8cm, stroke: 0.6pt)],
   [Date \ #box(width: 100%, height: 1.8cm, stroke: 0.6pt)],
 )
 "##;
@@ -8613,7 +8614,7 @@ const DEFAULT_REVUE_QUALITE_TEMPLATE: &str = r##"
   [#align(right)[{{PHARMACY_NAME}}]],
 )
 
-#sec[Bilan]
+#sec[Bilan chiffré]
 {{FIGURES}}
 
 #grid(columns: (1fr, 1fr, 1fr), column-gutter: 5mm,
@@ -8622,12 +8623,12 @@ const DEFAULT_REVUE_QUALITE_TEMPLATE: &str = r##"
   [#sec[Par cause] {{BY_CAUSE}}],
 )
 
-#sec[Non-conformités de l'année]
+#sec[Non-conformités déclarées dans l'année]
 {{LIST}}
 
 #v(1fr)
 #grid(columns: (1fr, 1fr), column-gutter: 8mm,
-  [Revue faite le \ #box(width: 100%, height: 1.5cm, stroke: 0.6pt)],
+  [Revue réalisée le \ #box(width: 100%, height: 1.5cm, stroke: 0.6pt)],
   [Visa du pharmacien titulaire \ #box(width: 100%, height: 1.5cm, stroke: 0.6pt)],
 )
 "##;
@@ -9001,11 +9002,11 @@ const DEFAULT_SURVEILLANCE_TEMPLATE: &str = r##"
 
 #table(columns: (auto, 1.1fr, auto, auto, 1.4fr, auto), inset: 5pt, stroke: 0.5pt,
   align: (center, left, left, left, left, left),
-  [], [*Analyse*], [*Rythme*], [*Dernier*], [*Motif*], [*Résultat*],
+  [], [*Analyse*], [*Fréquence*], [*Dernier contrôle*], [*Motif*], [*Résultat*],
 {{ROWS}})
 
 #v(5mm)
-#text(9pt)[Feuille établie le {{DATE}} par {{PHARMACY_NAME}} d'après les traitements portés au dossier. Elle ne remplace ni la prescription du médecin ni le compte rendu du laboratoire.]
+#text(9pt)[Feuille établie le {{DATE}} par {{PHARMACY_NAME}} d'après les traitements enregistrés dans votre dossier. Elle ne remplace ni la prescription de votre médecin ni le compte rendu du laboratoire. Pour toute question, adressez-vous à votre pharmacien ou à votre médecin.]
 #v(2mm)
 {{MENTION}}
 "##;
@@ -9155,22 +9156,22 @@ const DEFAULT_TROD_TEMPLATE: &str = r##"
   )
 ]
 
-#sec[Signes qui orientent vers le médecin, sans tester]
+#sec[Signes d'orientation vers le médecin, sans réalisation du test]
 {{SIGNS}}
 
 {{SCORE}}
 
-#sec[Test]
+#sec[Réalisation du test]
 #grid(columns: (1fr, 1fr), row-gutter: 3mm, column-gutter: 6mm,
   [Test utilisé : #blank(1fr)], [N° de lot : #blank(1fr)],
-  [Péremption : #blank(1fr)], [Heure de lecture : #blank(1fr)],
+  [Date de péremption : #blank(1fr)], [Heure de lecture : #blank(1fr)],
 )
 #v(2mm)
 {{READINGS}}
 #v(1mm)
 {{RESULT}}
 
-#sec[Conduite]
+#sec[Conduite à tenir]
 #grid(columns: (1fr, 1fr), column-gutter: 6mm,
   [#text(weight: "bold")[Test positif] #v(1mm) {{POSITIVE}}],
   [#text(weight: "bold")[Test négatif] #v(1mm) {{NEGATIVE}}],
@@ -9569,13 +9570,13 @@ const DEFAULT_VACCIN_TEMPLATE: &str = r##"
   )
 ]
 
-#sec[Avant l'injection : une réponse « oui » est à instruire avant de vacciner]
+#sec[Avant l'injection : toute réponse « oui » est à évaluer avant de vacciner]
 {{QUESTIONS}}
 
 #sec[Vaccin administré]
 #grid(columns: (1fr, 1fr), row-gutter: 3mm, column-gutter: 6mm,
   [Vaccin : #blank(1fr)], [Dose : #blank(1fr)],
-  [N° de lot : #blank(1fr)], [Péremption : #blank(1fr)],
+  [N° de lot : #blank(1fr)], [Date de péremption : #blank(1fr)],
   [Voie : #h(1mm) #tick #h(1mm) IM #h(4mm) #tick #h(1mm) SC], [Heure : #blank(1fr)],
   [Site : #h(1mm) #tick #h(1mm) deltoïde gauche #h(4mm) #tick #h(1mm) deltoïde droit], [Autre site : #blank(1fr)],
 )
