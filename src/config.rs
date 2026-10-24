@@ -695,6 +695,11 @@ pub struct ReseauConfig {
     /// qui en écrivent l'adresse.
     pub repertoire: bool,
     pub port_repertoire: u16,
+    /// **Le proxy web** (`proxy.rs`) : vide, celui du système ou de
+    /// l'environnement ; « aucun », s'en passer ; sinon son adresse
+    /// (`http://[nom:mot@]hôte:port`). Ce poste-ci : un poste du réseau
+    /// de l'hôpital, un autre à la maison.
+    pub proxy: String,
 }
 
 impl Default for ReseauConfig {
@@ -713,6 +718,7 @@ impl Default for ReseauConfig {
             port_relais: 7746,
             relais_patients: false,
             repertoire: false,
+            proxy: String::new(),
             port_repertoire: 7747,
         }
     }
@@ -757,6 +763,39 @@ pub struct PostesConfig {
     /// puis les deux percent leurs box. Rien ne s'ouvre sur la box ; allumé
     /// par défaut.
     pub rendez_vous: bool,
+}
+
+/// **Un dossier qu'un service en ligne synchronise** (OneDrive, Dropbox,
+/// Google Drive, iCloud…), reconnu au nom d'un de ses dossiers : le nom du
+/// service, ou rien. Le dossier d'échange des postes porte leur journal,
+/// patients compris : chiffré, mais hébergé chez un tiers — ce que le
+/// cadre de l'hébergement des données de santé encadre. Celui du réseau
+/// d'officines ne porte aucun patient.
+pub fn cloud_drive(path: &str) -> Option<&'static str> {
+    const SERVICES: [(&str, &str); 14] = [
+        ("onedrive", "OneDrive"),
+        ("dropbox", "Dropbox"),
+        ("google drive", "Google Drive"),
+        ("googledrive", "Google Drive"),
+        ("my drive", "Google Drive"),
+        ("mon drive", "Google Drive"),
+        ("icloud drive", "iCloud Drive"),
+        ("iclouddrive", "iCloud Drive"),
+        ("mobile documents", "iCloud Drive"),
+        ("pcloud drive", "pCloud"),
+        ("nextcloud", "Nextcloud"),
+        ("owncloud", "ownCloud"),
+        ("proton drive", "Proton Drive"),
+        ("mega", "MEGA"),
+    ];
+    path.split(['/', '\\'])
+        .map(|c| c.trim().to_lowercase())
+        .find_map(|c| {
+            SERVICES.iter().find_map(|(k, name)| {
+                let rest = c.strip_prefix(k)?;
+                (rest.is_empty() || rest.starts_with([' ', '-', '_', '('])).then_some(*name)
+            })
+        })
 }
 
 impl Default for PostesConfig {
@@ -2478,6 +2517,24 @@ impl Layout {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_folder_a_cloud_service_syncs_is_recognised() {
+        use super::cloud_drive;
+        assert_eq!(
+            cloud_drive(r"C:\Users\ph\OneDrive - Pharmacie B\Échange"),
+            Some("OneDrive")
+        );
+        assert_eq!(cloud_drive("/home/ph/Dropbox/bpm"), Some("Dropbox"));
+        assert_eq!(cloud_drive(r"G:\Mon Drive\bpm"), Some("Google Drive"));
+        assert_eq!(
+            cloud_drive("/Users/ph/Library/Mobile Documents/com~apple~CloudDocs/bpm"),
+            Some("iCloud Drive")
+        );
+        assert_eq!(cloud_drive(r"\\serveur\partage\bpm"), None);
+        assert_eq!(cloud_drive("/home/ph/megaphone/bpm"), None);
+        assert_eq!(cloud_drive(""), None);
+    }
+
     use super::*;
 
     fn op(i: &str, name: &str) -> Operator {

@@ -638,6 +638,34 @@ pub fn with_meeting(text: &str, meeting: bool) -> String {
     out.join(",")
 }
 
+/// Le préfixe de **l'identité au réseau d'officines** d'un poste : chaque
+/// poste a sa base, donc la sienne ; dite ici, les autres postes du
+/// groupe savent que c'est la leur (`network::own_posts`).
+pub const NETWORK_TAG: &str = "reseau:";
+
+/// Mettre dans une ligne publiée l'identité au réseau de ce poste (en
+/// remplaçant celle d'avant), ou l'en retirer.
+pub fn with_network(text: &str, device: Option<&str>) -> String {
+    let mut out: Vec<String> = text
+        .split(',')
+        .map(str::trim)
+        .filter(|a| !a.is_empty() && !a.starts_with(NETWORK_TAG))
+        .map(str::to_owned)
+        .collect();
+    if let Some(d) = device.filter(|d| d.len() == 64 && d.bytes().all(|b| b.is_ascii_hexdigit())) {
+        out.push(format!("{NETWORK_TAG}{}", d.to_ascii_lowercase()));
+    }
+    out.join(",")
+}
+
+/// L'identité au réseau que dit une ligne publiée.
+pub fn network_of(text: &str) -> Option<String> {
+    text.split(',')
+        .filter_map(|a| a.trim().strip_prefix(NETWORK_TAG))
+        .find(|d| d.len() == 64 && d.bytes().all(|b| b.is_ascii_hexdigit()))
+        .map(str::to_ascii_lowercase)
+}
+
 /// Le poste de cette ligne attend-il au rendez-vous ?
 pub fn meets(text: &str) -> bool {
     text.split(',').any(|a| a.trim() == MEET_TAG)
@@ -673,6 +701,21 @@ pub fn addresses(text: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_line_says_the_posts_network_identity_once() {
+        let d = "AB".repeat(32);
+        let line = with_network("82.64.1.2:7743,rendez-vous", Some(&d));
+        assert_eq!(network_of(&line), Some("ab".repeat(32)));
+        assert_eq!(addresses(&line), vec!["82.64.1.2:7743"]);
+        assert!(meets(&line));
+        let again = with_network(&line, Some(&"cd".repeat(32)));
+        assert_eq!(again.matches(NETWORK_TAG).count(), 1);
+        assert_eq!(network_of(&again), Some("cd".repeat(32)));
+        assert_eq!(network_of(&with_network(&line, None)), None);
+        assert_eq!(network_of(&with_network("", Some("pas-hex"))), None);
+        assert_eq!(network_of("reseau:zz"), None);
+    }
 
     /// Ce que `ifconfig` dit sous macOS : une adresse temporaire, une
     /// dépréciée, une stable (`secured`), une de lien local.

@@ -136,23 +136,34 @@ fn app_dir() -> PathBuf {
 /// `motif::set_theme` on the classic palette, which is what it does with
 /// an unknown key anyway.
 fn configured_theme() -> Option<String> {
+    theme_in(&configuration()?)
+}
+
+/// The application's `config.toml`, as text.
+fn configuration() -> Option<String> {
     let path = dirs::config_dir()?.join("bpm-caddy").join("config.toml");
-    theme_in(&std::fs::read_to_string(path).ok()?)
+    std::fs::read_to_string(path).ok()
 }
 
 /// The `[ui] theme` of a configuration file, or nothing.
 fn theme_in(text: &str) -> Option<String> {
-    let mut in_ui = false;
+    value_in(text, "ui", "theme")
+}
+
+/// One `key = "value"` of one `[section]` of a configuration file.
+fn value_in(text: &str, section: &str, key: &str) -> Option<String> {
+    let mut inside = false;
+    let header = format!("[{section}]");
     for line in text.lines() {
         let line = line.trim();
         if line.starts_with('[') {
-            in_ui = line == "[ui]";
+            inside = line == header;
             continue;
         }
-        if !in_ui {
+        if !inside {
             continue;
         }
-        if let Some(value) = line.strip_prefix("theme") {
+        if let Some(value) = line.strip_prefix(key) {
             let value = value.trim_start();
             if let Some(value) = value.strip_prefix('=') {
                 return Some(value.trim().trim_matches('"').to_owned());
@@ -160,6 +171,106 @@ fn theme_in(text: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// **Le proxy web** par lequel chercher la mise à jour, comme l'application
+/// le cherche (`src/proxy.rs`, dont ceci est le court résumé : le lanceur
+/// ne dépend pas d'elle) : `[reseau] proxy` de sa configuration (« aucun »
+/// pour s'en passer), sinon les variables d'environnement (lues par
+/// `ureq`), sinon le réglage du système — Windows : le registre d'Internet
+/// Settings ; macOS : `scutil --proxy`. Une URL que `ureq` prend.
+fn system_proxy() -> Option<String> {
+    let run = |cmd: &str, args: &[&str]| {
+        std::process::Command::new(cmd)
+            .args(args)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+    };
+    if cfg!(windows) {
+        let text = run(
+            "reg",
+            &[
+                "query",
+                r"HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings",
+            ],
+        )?;
+        proxy_in_registry(&text)
+    } else if cfg!(target_os = "macos") {
+        proxy_in_scutil(&run("scutil", &["--proxy"])?)
+    } else {
+        None
+    }
+}
+
+/// `ProxyServer` quand `ProxyEnable` vaut 1 : `hôte:port`, ou celui de
+/// `https=` (sinon `http=`) d'un réglage par protocole.
+fn proxy_in_registry(text: &str) -> Option<String> {
+    let value = |name: &str| {
+        text.lines().find_map(|l| {
+            let mut parts = l.split_whitespace();
+            (parts.next()? == name).then(|| parts.nth(1).map(str::to_owned))?
+        })
+    };
+    if value("ProxyEnable")? != "0x1" {
+        return None;
+    }
+    let server = value("ProxyServer")?;
+    if !server.contains('=') {
+        return Some(server);
+    }
+    let by = |p: &str| {
+        server.split(';').find_map(|part| {
+            let (k, v) = part.split_once('=')?;
+            k.trim()
+                .eq_ignore_ascii_case(p)
+                .then(|| v.trim().to_owned())
+        })
+    };
+    by("https").or_else(|| by("http"))
+}
+
+/// Le proxy HTTPS (sinon HTTP) allumé que dit `scutil --proxy`.
+fn proxy_in_scutil(text: &str) -> Option<String> {
+    let value = |name: &str| {
+        text.lines().find_map(|l| {
+            let (k, v) = l.split_once(':')?;
+            (k.trim() == name).then(|| v.trim().to_owned())
+        })
+    };
+    [
+        ("HTTPSEnable", "HTTPSProxy", "HTTPSPort"),
+        ("HTTPEnable", "HTTPProxy", "HTTPPort"),
+    ]
+    .into_iter()
+    .find_map(|(on, host, port)| {
+        (value(on).as_deref() == Some("1"))
+            .then(|| Some(format!("{}:{}", value(host)?, value(port)?)))?
+    })
+}
+
+/// Le proxy à prendre, d'après la configuration écrite `written` : `None`
+/// pour « aucun », ou pour laisser `ureq` lire l'environnement.
+fn chosen_proxy(written: Option<&str>, system: impl FnOnce() -> Option<String>) -> Option<String> {
+    match written.map(str::trim) {
+        Some(w) if w.eq_ignore_ascii_case("aucun") => None,
+        Some(w) if !w.is_empty() => Some(w.to_owned()),
+        _ if [
+            "HTTPS_PROXY",
+            "https_proxy",
+            "ALL_PROXY",
+            "all_proxy",
+            "HTTP_PROXY",
+            "http_proxy",
+        ]
+        .iter()
+        .any(|k| std::env::var_os(k).is_some()) =>
+        {
+            None
+        }
+        _ => system(),
+    }
 }
 
 fn bin_path() -> PathBuf {
@@ -279,7 +390,20 @@ fn latest_release() -> Result<(ureq::Agent, serde_json::Value, String), Box<dyn 
     // pharmacy at startup even though an installed copy is ready to run.
     // The read timeout is per read() call, so slow-but-progressing
     // downloads are fine while genuine stalls fail fast.
-    let agent = ureq::AgentBuilder::new()
+    let written = configuration().and_then(|c| value_in(&c, "reseau", "proxy"));
+    let mut builder = ureq::AgentBuilder::new();
+    let off = written
+        .as_deref()
+        .is_some_and(|w| w.trim().eq_ignore_ascii_case("aucun"));
+    if !off {
+        builder = builder.try_proxy_from_env(true);
+    }
+    if let Some(p) =
+        chosen_proxy(written.as_deref(), system_proxy).and_then(|p| ureq::Proxy::new(p).ok())
+    {
+        builder = builder.proxy(p);
+    }
+    let agent = builder
         .timeout_connect(Duration::from_secs(10))
         .timeout_read(Duration::from_secs(30))
         .user_agent("bpm-caddy-launcher")
@@ -833,6 +957,27 @@ fn main() -> eframe::Result {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_proxy_is_found_where_the_application_finds_it() {
+        use super::*;
+        let reg = "    ProxyEnable    REG_DWORD    0x1\r\n    ProxyServer    REG_SZ    http=p:8080;https=s:8443\r\n";
+        assert_eq!(proxy_in_registry(reg).as_deref(), Some("s:8443"));
+        assert_eq!(proxy_in_registry(&reg.replace("0x1", "0x0")), None);
+        let mac = "  HTTPEnable : 1\n  HTTPPort : 3128\n  HTTPProxy : p.chu.fr\n";
+        assert_eq!(proxy_in_scutil(mac).as_deref(), Some("p.chu.fr:3128"));
+        let conf = "[ui]\ntheme = \"nuit\"\n[reseau]\nproxy = \"http://w:1\"\n";
+        assert_eq!(
+            value_in(conf, "reseau", "proxy").as_deref(),
+            Some("http://w:1")
+        );
+        assert_eq!(theme_in(conf).as_deref(), Some("nuit"));
+        assert_eq!(chosen_proxy(Some("aucun"), || Some("s:1".into())), None);
+        assert_eq!(
+            chosen_proxy(Some("w:2"), || Some("s:1".into())).as_deref(),
+            Some("w:2")
+        );
+    }
+
     /// Une paire de clés et une signature **au format de minisign**
     /// (pré-haché BLAKE2b-512, commentaire signé), faites ici comme la
     /// commande les fait : ce que `verify_update` lit en vrai.

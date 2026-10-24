@@ -46,7 +46,8 @@ line in that test.
   `replica` (what travels between posts, field-by-field apply, and
   `admissible`: an op only through its table's stream), `reach` (a post
   reachable from the internet: IPv6, UPnP, published addresses) and
-  `relay` (the stateless relay between an unreachable post and a phone,
+  `proxy` (the network's web proxy, found and tunnelled through to
+  443: trackers, web doors, release check), `relay` (the stateless relay between an unreachable post and a phone,
   and in UDP a patient's page), `rendezvous` (a patient's page and a post
   nothing reaches meet through public WebTorrent trackers and STUN, then
   punch through both boxes; `punch` does the same between our own

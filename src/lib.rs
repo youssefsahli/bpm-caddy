@@ -79,6 +79,7 @@ pub mod planning;
 pub mod postes;
 pub mod prescribers;
 pub mod protections;
+pub mod proxy;
 #[cfg(feature = "sync")]
 pub mod punch;
 pub mod qualite;

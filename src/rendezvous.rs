@@ -277,12 +277,10 @@ impl Ws {
             None => (host_port, 443),
         };
         let config = tls_config().ok_or("TLS indisponible")?;
-        let addr = std::net::ToSocketAddrs::to_socket_addrs(&(host, port))
-            .map_err(|e| e.to_string())?
-            .next()
-            .ok_or("adresse introuvable")?;
-        let tcp = TcpStream::connect_timeout(&addr, Duration::from_secs(10))
-            .map_err(|e| e.to_string())?;
+        // Through the web proxy when there is one (`proxy.rs`): on a
+        // network that only lets the web out, the trackers are still met.
+        let tcp =
+            crate::proxy::dial(host, port, Duration::from_secs(10)).map_err(|e| e.to_string())?;
         tcp.set_read_timeout(Some(Duration::from_secs(10)))
             .map_err(|e| e.to_string())?;
         let name =

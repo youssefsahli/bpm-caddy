@@ -703,6 +703,20 @@ y circule ce qu'une officine dit à toutes. Ce qui protège :
   identifiant reçu est préfixé de l'auteur (`o<16 hex>:`) : une inconnue
   ne signe pas du nom d'une autre, ne prend pas la place d'un numéro
   d'une autre — ni de celle-ci —, ne retire pas ce qu'elle n'a pas écrit.
+- **Les autres postes de l'officine n'en sont pas** : chaque poste a sa
+  base, donc son identité au réseau (`net_seed`, hors des écritures qui
+  voyagent). Chacun la dit dans sa ligne de `sync_posts` (`reseau:<hex>`,
+  `reach::NETWORK_TAG`, gardée à la fermeture) ; `network::own_posts` les
+  lit, et le réseau ouvert ne les inscrit pas (`add_open_member`), retire
+  celles déjà entrées (`forget_own_posts`), ne compose ni ne montre celles
+  qui s'annoncent sur le réseau local, ni celles que la DHT trouve.
+  `another_post_of_the_officine_is_kept_out_of_the_open_network`.
+- **Le nom se dit seul** (`{"t":"nom","officine":…}`) dès qu'il change,
+  une fois par nom et par réseau (`nom:<rang>:<nom>`, `name_to_say`) :
+  il ne voyageait qu'avec l'enregistrement suivant. `seen_as` lit le
+  dernier enregistrement qui en porte un ; un nom donné ici (`name`)
+  passe devant, et l'écran propose de le quitter quand l'officine signe
+  autrement. `a_renamed_officine_is_heard_under_its_new_name`.
 - **Ce qui y part est dépouillé** : ni note ni initiales aux ruptures,
   pas d'initiales aux versions, ni listes de contrôle, ni adresse, ni
   relais. Une adresse annoncée n'y est pas lue : on ne compose que là où
@@ -746,6 +760,19 @@ par un prestataire coupe souvent l'UPnP, et la ligne dit quel port lui
 faire rediriger). Sans
 officine connue ni DHT, un poste ainsi enfermé n'en trouve aucune de
 lui-même : « Joindre » par une adresse, ou le dossier d'échange.
+
+**Derrière un proxy web** (`src/proxy.rs`) : le seul chemin qui sorte
+d'un réseau d'hôpital ou d'entreprise est souvent son proxy, que le
+navigateur prend sans qu'on y pense et qu'une connexion ouverte à la main
+ne connaît pas. Trouvé dans l'ordre : `[reseau] proxy` (« aucun » pour
+s'en passer), les variables d'environnement, le réglage du système
+(registre d'Internet Settings sous Windows, `scutil --proxy` sous macOS ;
+ni PAC ni WPAD). Ce qui le traverse, par un tunnel `CONNECT` vers le port
+443 : les trackers du rendez-vous (`rendezvous::Ws`, par lui d'abord),
+la porte web d'une officine quand l'appel direct échoue
+(`network::through_proxy`), la recherche de version et le lanceur
+(`ureq`). Le proxy voit l'adresse, jamais le contenu. « Tester la
+connexion » dit le proxy trouvé et si un tunnel vers le web passe.
 
 **Le journal se lit une fois par processus** (`network::cached_journal`) :
 décoder et vérifier chaque enregistrement coûte des secondes pour le

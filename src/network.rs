@@ -643,6 +643,18 @@ impl Net {
                 done.push(key);
             }
         }
+        // **Le nom**, dit dès qu'il change : il ne voyageait qu'avec le
+        // prochain enregistrement, et une officine qui se renommait restait
+        // lue sous l'ancien nom tant qu'elle ne publiait rien. Numéroté :
+        // revenir à un nom d'avant le redit.
+        if let Some(key) = name_to_say(&already, officine) {
+            let payload = serde_json::json!({ "t": "nom", "officine": clean_name(officine) })
+                .to_string()
+                .into_bytes();
+            if self.seal_one(trousseau, &payload) {
+                done.push(key);
+            }
+        }
         // **Les comptes** : la dernière version de chaque élément, telle
         // que son compte l'a signée — l'officine la passe sans la lire, et
         // ce qui est scellé ne s'ouvre que chez ses lecteurs. **Seulement
@@ -1305,6 +1317,7 @@ impl Net {
         let me = self.device.id();
         let today = db.today_iso().unwrap_or_default();
         forget_quiet_open_members(db, &today)?;
+        forget_own_posts(db)?;
         let members: std::collections::HashSet<String> = db
             .net_members(&self.id)?
             .into_iter()
@@ -1404,7 +1417,11 @@ impl Net {
                 // attentes entières à chaque synchronisation.
                 Some(web) => match bpm_sync::link::dial(&web, patience.min(WEB_DOOR_PATIENCE)) {
                     Ok(link) => (link, web),
-                    Err(_) => return Err(format!("{e:?}")),
+                    // Through the network's web proxy, which lets 443 out.
+                    Err(_) => match through_proxy(&web, patience) {
+                        Some(link) => (link, web),
+                        None => return Err(format!("{e:?}")),
+                    },
                 },
                 None => return Err(format!("{e:?}")),
             },
@@ -1884,6 +1901,44 @@ pub fn relay_waits(db: &Db, most: usize) -> Vec<(String, String)> {
     out
 }
 
+/// **Le nom à redire**, s'il a changé depuis le dernier dit dans ce
+/// réseau : la clé `nom:<rang>:<nom>` qui le marquera dit, ou rien.
+fn name_to_say(already: &std::collections::HashSet<String>, officine: &str) -> Option<String> {
+    let name = clean_name(officine);
+    if name.is_empty() {
+        return None;
+    }
+    let last = already
+        .iter()
+        .filter_map(|k| {
+            let (rank, said) = k.strip_prefix("nom:")?.split_once(':')?;
+            Some((rank.parse::<u64>().ok()?, said.to_owned()))
+        })
+        .max_by_key(|(rank, _)| *rank);
+    match last {
+        Some((_, said)) if said == name => None,
+        Some((rank, _)) => Some(format!("nom:{}:{name}", rank + 1)),
+        None => Some(format!("nom:0:{name}")),
+    }
+}
+
+/// **Une porte web par le proxy** du réseau (`proxy.rs`), quand il y en a
+/// un : un tunnel `CONNECT` vers `ip:443`, puis la conversation comme sur
+/// une connexion directe — chiffrée de bout en bout, le proxy ne voit que
+/// l'adresse.
+fn through_proxy(web: &str, patience: Duration) -> Option<bpm_sync::link::TcpLink> {
+    let proxy = crate::proxy::current()?;
+    let at: std::net::SocketAddr = web.trim().parse().ok()?;
+    let stream = crate::proxy::connect(
+        &proxy,
+        &at.ip().to_string(),
+        at.port(),
+        patience.min(WEB_DOOR_PATIENCE),
+    )
+    .ok()?;
+    bpm_sync::link::TcpLink::new(stream, patience).ok()
+}
+
 /// **Les essaims où cette officine attend au rendez-vous** : un par
 /// réseau fermé, sous son nom de relais pour ce réseau — qu'une officine
 /// qui ne la joint nulle part y appelle (`Net::sync_met`).
@@ -1971,6 +2026,8 @@ pub struct Diagnosis {
     /// (`punch::gather`) : ce que le rendez-vous peut percer. `None` : pas
     /// demandé.
     pub punch: Option<crate::punch::Mapping>,
+    /// Le proxy web trouvé, et si un tunnel par lui mène au web.
+    pub proxy: Option<(String, bool)>,
 }
 
 /// Une porte d'officine essayée.
@@ -2055,6 +2112,13 @@ pub fn diagnose(db: &Db) -> Diagnosis {
             .is_ok_and(|mut all| all.any(|a| TcpStream::connect_timeout(&a, patience).is_ok()))
     };
     let web = std::thread::spawn(move || opens("github.com:443", Duration::from_secs(5)));
+    let proxy = std::thread::spawn(|| {
+        crate::proxy::current().map(|p| {
+            let through =
+                crate::proxy::connect(&p, "github.com", 443, Duration::from_secs(5)).is_ok();
+            (p.shown(), through)
+        })
+    });
     let dht = std::thread::spawn(|| crate::dht::Finder::start(None).is_ok_and(|f| f.reachable()));
     let punch = std::thread::spawn(crate::punch::probe);
     let doors: Vec<_> = diagnosis_targets(db)
@@ -2073,8 +2137,11 @@ pub fn diagnose(db: &Db) -> Diagnosis {
             })
         })
         .collect();
+    let proxy = proxy.join().ok().flatten();
     Diagnosis {
-        web: web.join().unwrap_or(false),
+        // The web gets out through the proxy too: what a browser does.
+        web: web.join().unwrap_or(false) || proxy.as_ref().is_some_and(|(_, t)| *t),
+        proxy,
         dht: dht.join().unwrap_or(false),
         doors: doors.into_iter().filter_map(|t| t.join().ok()).collect(),
         own: crate::dht::own_door(),
@@ -2087,7 +2154,21 @@ pub fn diagnose(db: &Db) -> Diagnosis {
 /// puis ce qu'il faut en retenir.
 pub fn diagnosis_lines(d: &Diagnosis) -> Vec<(bool, String)> {
     use crate::strings::{tr, trf, trn};
-    let mut out = vec![
+    let mut out = Vec::new();
+    if let Some((at, through)) = &d.proxy {
+        out.push((
+            !through,
+            trf(
+                if *through {
+                    "diag_proxy_ok"
+                } else {
+                    "diag_proxy_refused"
+                },
+                at,
+            ),
+        ));
+    }
+    out.extend([
         (
             !d.web,
             tr(if d.web {
@@ -2106,7 +2187,7 @@ pub fn diagnosis_lines(d: &Diagnosis) -> Vec<(bool, String)> {
             })
             .to_owned(),
         ),
-    ];
+    ]);
     for t in &d.doors {
         let key = match (t.door, t.web) {
             (true, _) => "diag_door_ok",
@@ -2301,7 +2382,10 @@ pub fn in_open(db: &Db) -> bool {
 /// elle est nouvelle.
 pub fn add_open_member(db: &Db, device: &str, day: &str, direct: bool) -> Result<bool, String> {
     let id = open_id();
-    if unhex::<32>(device).is_none() || ignored(db).contains(&ignore_key(&id, device)) {
+    if unhex::<32>(device).is_none()
+        || ignored(db).contains(&ignore_key(&id, device))
+        || own_posts(db).contains(&device.to_ascii_lowercase())
+    {
         return Ok(false);
     }
     let members = db.net_members(&id)?;
@@ -2326,6 +2410,39 @@ pub fn add_open_member(db: &Db, device: &str, day: &str, direct: bool) -> Result
     }
     db.add_net_peer_member(&id, device, "", day, false)?;
     Ok(true)
+}
+
+/// **Les autres postes de cette officine**, par leur identité au réseau :
+/// chacun a sa base, donc la sienne, et la publie dans sa ligne de postes
+/// (`reach::NETWORK_TAG`). Les mêmes murs : ni membres du réseau ouvert,
+/// ni voisines à composer, ni officines à montrer.
+pub fn own_posts(db: &Db) -> std::collections::HashSet<String> {
+    let me = db
+        .setting("net_seed")
+        .and_then(|s| unhex::<32>(&s))
+        .map(|s| hex(&Device::from_seed(s).id().0));
+    db.sync_posts()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|p| p.left_on.is_empty() && !p.companion)
+        .filter_map(|p| crate::reach::network_of(&p.reach))
+        .filter(|d| Some(d) != me.as_ref())
+        .collect()
+}
+
+/// **Retirer du réseau ouvert les autres postes de cette officine** qui y
+/// étaient entrés avant de se dire siens. Rend combien.
+pub fn forget_own_posts(db: &Db) -> Result<usize, String> {
+    let own = own_posts(db);
+    let id = open_id();
+    let mut n = 0;
+    for p in db.net_members(&id)? {
+        if own.contains(&p.device.to_ascii_lowercase()) {
+            db.remove_net_membership(&id, &p.device)?;
+            n += 1;
+        }
+    }
+    Ok(n)
 }
 
 /// Combien de jours une officine du réseau ouvert reste inscrite sans
@@ -2918,6 +3035,9 @@ fn dial_open_at(
     if !in_open(db) {
         return Err(tr("net_err_no_network").to_owned());
     }
+    if expected.is_some_and(|d| own_posts(db).contains(&d.to_ascii_lowercase())) {
+        return Err(tr("net_err_own_post").to_owned());
+    }
     let mut net = Net::load_network(db, &open_id())?;
     let me = hex(&net.device.id().0);
     let sent = net.publish(db, officine)?;
@@ -2929,6 +3049,10 @@ fn dial_open_at(
         (Some(a), None) if a != me => a,
         _ => return Err(dial_reason("Handshake")),
     };
+    // Found in the DHT, and one of this officine's own posts.
+    if own_posts(db).contains(&device) {
+        return Err(tr("net_err_own_post").to_owned());
+    }
     let device = device.as_str();
     add_open_member(db, device, &db.today_iso().unwrap_or_default(), true)?;
     let key = reached_key(device);
@@ -4147,8 +4271,8 @@ mod tests {
         a.update_drug_by(&after, &before, "CL", false).unwrap();
 
         let mut na = Net::load(&a).unwrap();
-        // Trois enregistrements, et l'annonce de la clé de boîte.
-        assert_eq!(na.publish(&a, "Pharmacie du Centre").unwrap(), 4);
+        // Trois enregistrements, l'annonce de la clé de boîte et le nom.
+        assert_eq!(na.publish(&a, "Pharmacie du Centre").unwrap(), 5);
         assert_eq!(
             na.publish(&a, "Pharmacie du Centre").unwrap(),
             0,
@@ -4164,7 +4288,7 @@ mod tests {
         }
 
         let mut nb = Net::load(&b).unwrap();
-        assert_eq!(nb.exchange_folder(&b, &folder).unwrap(), 4);
+        assert_eq!(nb.exchange_folder(&b, &folder).unwrap(), 5);
         assert_eq!(nb.absorb(&b).unwrap(), 1);
         let tried = crate::ruptures::tried(&b.supply_events().unwrap(), "Diprosone");
         assert_eq!(tried.len(), 1);
@@ -4188,12 +4312,12 @@ mod tests {
         // Relu : rien de neuf.
         assert_eq!(nb.absorb(&b).unwrap(), 0);
         // **Et B sait qui lui a écrit, combien, et depuis quand** : le nom
-        // sous lequel A signe, ses quatre enregistrements (la clé de
-        // boîte comprise), des nouvelles datées — arrivées par le dossier,
-        // sans conversation directe.
+        // sous lequel A signe, ses cinq enregistrements (la clé de boîte
+        // et le nom compris), des nouvelles datées — arrivées par le
+        // dossier, sans conversation directe.
         let peer = &b.net_peers().unwrap()[0];
         assert_eq!(peer.seen_as, "Pharmacie du Centre");
-        assert_eq!(peer.received, 4);
+        assert_eq!(peer.received, 5);
         assert!(!peer.last_heard.is_empty(), "des nouvelles datées");
         assert!(
             peer.last_ok.is_empty() && peer.last_try.is_empty(),
@@ -4634,6 +4758,54 @@ mod tests {
         }
     }
 
+    /// **Une officine qui se renomme est lue sous son nouveau nom** dès la
+    /// synchronisation suivante, sans rien publier d'autre ; le même nom
+    /// ne se redit pas, un nom d'avant si.
+    #[test]
+    fn a_renamed_officine_is_heard_under_its_new_name() {
+        let (dir_a, _sa, a) = officine("rename-a");
+        let (dir_b, _sb, b) = officine("rename-b");
+        Net::create(&a).unwrap();
+        drop((a, b));
+        pair(&dir_a, &dir_b, "");
+        let a = Db::open(&dir_a.join("net.db"), "secret").unwrap();
+        let b = Db::open(&dir_b.join("net.db"), "secret").unwrap();
+        let folder = dir_a.join("echange");
+        std::fs::create_dir_all(&folder).unwrap();
+        let a_dev = device_hex(&a).unwrap();
+        let heard = |name: &str| {
+            let mut net_a = Net::load(&a).unwrap();
+            let said = net_a.publish(&a, name).unwrap();
+            net_a.exchange_folder(&a, &folder).unwrap();
+            let mut net_b = Net::load(&b).unwrap();
+            net_b.exchange_folder(&b, &folder).unwrap();
+            net_b.absorb(&b).unwrap();
+            let seen = b
+                .net_peers()
+                .unwrap()
+                .into_iter()
+                .find(|p| p.device == a_dev)
+                .map(|p| p.seen_as)
+                .unwrap_or_default();
+            (said, seen)
+        };
+        assert_eq!(heard("Pharmacie de la Gare").1, "Pharmacie de la Gare");
+        let (said, seen) = heard("Pharmacie Centrale");
+        assert_eq!((said, seen.as_str()), (1, "Pharmacie Centrale"));
+        assert_eq!(
+            heard("Pharmacie Centrale").0,
+            0,
+            "le même nom ne se redit pas"
+        );
+        assert_eq!(
+            heard("Pharmacie de la Gare"),
+            (1, "Pharmacie de la Gare".into())
+        );
+        let none = std::collections::HashSet::new();
+        assert_eq!(name_to_say(&none, "  "), None);
+        assert_eq!(name_to_say(&none, "A").as_deref(), Some("nom:0:A"));
+    }
+
     /// **Une officine présentée par le réseau** : A a fait entrer B, B a
     /// fait entrer C. A ne connaît pas C, mais ce que C écrit lui arrive
     /// par le journal : la carte le propose sous le nom que C écrit, A ne
@@ -5029,6 +5201,7 @@ mod tests {
             doors: vec![door(false, true), door(false, false)],
             own: None,
             punch: None,
+            proxy: None,
         };
         let lines = diagnosis_lines(&hospital);
         assert_eq!(lines.len(), 5, "{lines:?}");
@@ -5066,8 +5239,19 @@ mod tests {
             doors: vec![door(true, false)],
             own: None,
             punch: None,
+            proxy: None,
         };
         assert_eq!(last(&home), (false, trn("diag_doors_ok", &[&1, &1])));
+        // The web proxy, said first: through it, or refused.
+        let proxied = diagnosis_lines(&Diagnosis {
+            proxy: Some(("p.chu.fr:3128".into(), false)),
+            ..home.clone()
+        });
+        assert_eq!(
+            proxied[0],
+            (true, trf("diag_proxy_refused", "p.chu.fr:3128"))
+        );
+        assert_eq!(proxied.last(), Some(&last(&home)));
         // What the box does to a UDP socket: said before the verdict.
         let public = Some("82.64.1.2:40000".parse().unwrap());
         for (m, key, bad) in [

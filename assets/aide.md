@@ -1666,7 +1666,19 @@ adresse, la dernière connexion directe réussie, ou, en rouge, l'heure du
 dernier échec et sa raison : pas de réponse à l'adresse (poste éteint,
 port fermé ou adresse hors d'atteinte), officine qui n'est pas celle
 appairée, ou clé de réseau différente. Le nom sous lequel elle signe sert
-d'invite au champ du nom. « Essayer », à côté d'une officine à adresse,
+d'invite au champ du nom : laissé vide, on suit ses changements de nom.
+Une officine à qui on a donné un nom ici et qui signe désormais sous un
+autre propose « Prendre son nom ».
+
+**Les autres postes de l'officine** ne paraissent pas au réseau ouvert :
+reliés en postes, ils se reconnaissent, et ne se montrent ni ne se
+composent comme des officines.
+
+**Se renommer.** « Renommer… », à côté du nom de cette officine en tête
+de la fenêtre du réseau, ouvre Options › Officine. Le nouveau nom part
+à la synchronisation suivante, même sans rien d'autre à envoyer, et les
+autres officines le lisent aussitôt ; un nom déjà porté par une autre
+se lit avec l'empreinte. « Essayer », à côté d'une officine à adresse,
 contacte cette officine seule et indique aussitôt si elle répond, sans
 synchroniser les autres.
 
@@ -1825,6 +1837,24 @@ bout en bout. De même entre deux officines de vos réseaux fermés qui ne
 se joignent à aucune adresse. Allumé par défaut (`[postes] rendez_vous`
 dans `config.toml`). Deux box très strictes (NAT symétrique, certains
 réseaux d'entreprise) ne se percent pas : « Tester la connexion » le dit.
+
+**Derrière un proxy web** (hôpital, entreprise : rien ne sort que par
+lui) : l'application le trouve d'elle-même — réglage du système sous
+Windows et macOS, ou variables d'environnement — ou on l'écrit dans
+Options › Base, « Proxy web » (`http://nom:mot@hôte:port`, ou « aucun »).
+Les trackers du rendez-vous, la porte web des officines et la recherche
+de mise à jour passent alors par lui ; le proxy voit à qui l'on parle,
+jamais ce qui se dit. Un proxy à connexion Windows (NTLM) ou à script
+PAC ne se traverse pas. Le rendez-vous, lui, demande l'UDP : derrière un
+proxy seul, le téléphone de l'équipe synchronise par ses données
+mobiles (relais ou rendez-vous depuis la 4G) ou au retour sur le Wi-Fi.
+
+**Le cas désespéré** : deux officines dont les réseaux ne laissent
+sortir que le web se parlent par un **dossier d'échange** que synchronise
+un service en ligne (OneDrive, Dropbox, Google Drive…), dont le logiciel
+passe le proxy : le réseau d'officines n'y dépose que des
+enregistrements scellés, sans patient. Pas le dossier d'échange des
+postes : leur journal porte les patients, et Options le signale.
 
 **Sinon** : « Se faire relayer par le réseau » sur un poste, et une
 officine amie du réseau qui coche « Relayer les téléphones des officines
@@ -2048,7 +2078,8 @@ ce poste : le web (port 443), la DHT (qui trouve les officines du réseau
 ouvert ; muette quand le réseau bloque l'UDP, comme souvent derrière un
 routeur tenu par un prestataire, à l'hôpital ou en entreprise), la porte
 de chaque officine connue, puis sa **porte web**, et enfin la porte de
-cette officine : ce que sa box en a ouvert, et si elle se laisse
+cette officine : ce que sa box en a ouvert, le proxy web s'il y en a un
+(et s'il laisse passer), et si elle se laisse
 **percer** — une box qui garde son port pour chaque destinataire laisse
 téléphones et patients rejoindre ce poste par rendez-vous ; une box qui
 en change (NAT symétrique) demande un relais, ou un port ouvert. Une box qui n'ouvre rien

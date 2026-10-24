@@ -1913,8 +1913,20 @@ fn auto(
             punched_tx,
             TALK_PATIENCE,
         );
+    }
+    // What this post publishes from the start: whether it waits at the
+    // rendez-vous, and its identity on the officines' network — so the
+    // other posts know it for theirs and never take it for another
+    // officine (`network::own_posts`).
+    if group.is_some() {
         published = true;
-        db.set_post_reach(&posts.device_hex(), &crate::reach::with_meeting("", true))?;
+        db.set_post_reach(
+            &posts.device_hex(),
+            &crate::reach::with_network(
+                &crate::reach::with_meeting("", meeting),
+                my_officine.as_deref(),
+            ),
+        )?;
     }
     let mut relays_waited: Vec<(String, std::sync::Arc<std::sync::atomic::AtomicBool>)> =
         Vec::new();
@@ -1931,6 +1943,10 @@ fn auto(
         .checked_sub(Duration::from_secs(3600))
         .unwrap_or_else(Instant::now);
     let (mut last_beacon, mut last_talk, mut last_folder) = (long_ago, long_ago, long_ago);
+    // The other posts of the group, by their identity on the network:
+    // read again each minute.
+    let mut own_posts = crate::network::own_posts(&db);
+    let mut own_read = Instant::now();
     loop {
         let mut now_asked = false;
         match pokes.try_recv() {
@@ -1939,6 +1955,10 @@ fn auto(
             Err(std::sync::mpsc::TryRecvError::Empty) => {}
         }
         let mut talked = false;
+        if own_read.elapsed() >= Duration::from_secs(60) {
+            own_read = Instant::now();
+            own_posts = crate::network::own_posts(&db);
+        }
         if internet && reach_looked.is_none_or(|t| t.elapsed() >= REACH_EVERY) {
             reach_looked = Some(Instant::now());
             let tx = reach_tx.clone();
@@ -1961,9 +1981,12 @@ fn auto(
             published = true;
             db.set_post_reach(
                 &me,
-                &crate::reach::with_meeting(
-                    &crate::reach::with_relays(&direct_reach, &relay_names(&relays_waited)),
-                    meeting,
+                &crate::reach::with_network(
+                    &crate::reach::with_meeting(
+                        &crate::reach::with_relays(&direct_reach, &relay_names(&relays_waited)),
+                        meeting,
+                    ),
+                    my_officine.as_deref(),
                 ),
             )?;
         }
@@ -2053,9 +2076,12 @@ fn auto(
                 published = true;
                 db.set_post_reach(
                     &me,
-                    &crate::reach::with_meeting(
-                        &crate::reach::with_relays(&direct_reach, &relay_names(&relays_waited)),
-                        meeting,
+                    &crate::reach::with_network(
+                        &crate::reach::with_meeting(
+                            &crate::reach::with_relays(&direct_reach, &relay_names(&relays_waited)),
+                            meeting,
+                        ),
+                        my_officine.as_deref(),
                     ),
                 )?;
             }
@@ -2313,7 +2339,10 @@ fn auto(
             while let Ok((n, from)) = u.recv_from(&mut buf) {
                 let text = std::str::from_utf8(&buf[..n]).ok();
                 if let Some(o) = text.and_then(|t| crate::network::heard_officine(t, from.ip())) {
-                    let mine = my_officine.as_deref() == Some(o.device.as_str());
+                    // This officine, or another of its posts: never an
+                    // officine to show or to dial.
+                    let mine = my_officine.as_deref() == Some(o.device.as_str())
+                        || own_posts.contains(&o.device);
                     // **La première adresse tient** jusqu'à ce qu'elle se
                     // taise : une annonce venue d'ailleurs sous la même
                     // identité ne détourne pas l'invitation d'une voisine.
@@ -2569,7 +2598,8 @@ fn auto(
     // it published go with it too, so a phone does not dial a door
     // nobody holds.
     if published {
-        let _ = db.set_post_reach(&me, "");
+        // Its identity on the network stays: the post is still ours.
+        let _ = db.set_post_reach(&me, &crate::reach::with_network("", my_officine.as_deref()));
     }
     if mapped {
         crate::reach::close_mapping(port);
@@ -3519,6 +3549,43 @@ mod tests {
         stop.store(true, std::sync::atomic::Ordering::SeqCst);
         let back = a.conversation_messages(talk).unwrap();
         assert!(back.iter().any(|m| m.body == "Par le relais"), "{back:?}");
+    }
+
+    /// **Another post of this officine is never another officine** on the
+    /// open network: each post has its own base, so its own identity
+    /// there, and says it in its line (`reach::NETWORK_TAG`). One that had
+    /// come in before is taken out; it does not come back; this post's
+    /// own identity is not counted.
+    #[test]
+    fn another_post_of_the_officine_is_kept_out_of_the_open_network() {
+        let (_dir, _s, a) = post("own-posts");
+        Posts::load(&a)
+            .unwrap()
+            .found(&a, "Comptoir 1", "2026-10-24")
+            .unwrap();
+        let desk = Posts::load(&a).unwrap().device_hex();
+        crate::network::join_open(&a, "2026-10-24").unwrap();
+        let other = "ab".repeat(32);
+        let open = crate::network::open_id();
+        assert!(crate::network::add_open_member(&a, &other, "2026-10-24", true).unwrap());
+        a.set_post_reach(&desk, &crate::reach::with_network("", Some(&other)))
+            .unwrap();
+        assert!(crate::network::own_posts(&a).contains(&other));
+        assert_eq!(crate::network::forget_own_posts(&a).unwrap(), 1);
+        assert!(!a
+            .net_members(&open)
+            .unwrap()
+            .iter()
+            .any(|p| p.device == other));
+        assert!(!crate::network::add_open_member(&a, &other, "2026-10-24", true).unwrap());
+        assert!(crate::network::dial_open(&a, &other, "127.0.0.1:9", "P").is_err());
+        let me = crate::network::device_hex(&a).unwrap();
+        a.set_post_reach(&desk, &crate::reach::with_network("", Some(&me)))
+            .unwrap();
+        assert!(
+            crate::network::own_posts(&a).is_empty(),
+            "soi-même n'y est pas"
+        );
     }
 
     /// **Through a punched channel** (`punch.rs`): the conversation of the

@@ -21972,6 +21972,11 @@ impl App {
     pub fn new() -> Self {
         let mut config = Config::load();
         crate::config::load_modules(&config.modules);
+        crate::proxy::set_written(&config.reseau.proxy);
+        // The system's proxy asked off the painting thread, once.
+        std::thread::spawn(|| {
+            let _ = crate::proxy::current();
+        });
         // A first launch with nothing written down and nothing where the
         // default would be: look where an installed copy actually puts
         // its base — the launcher's directory, or beside a portable
@@ -84663,6 +84668,7 @@ impl App {
         // (device, what was typed, what the list showed)
         type PeerEdit = (String, (String, String), (String, String));
         let mut save_peer: Option<PeerEdit> = None;
+        let mut rename_self = false;
         let mut peer_stale = false;
         let mut remove_peer: Option<String> = None;
         let mut open_folder_options = false;
@@ -84712,8 +84718,27 @@ impl App {
                             }
                             return;
                         };
-                        ui.label(trf("net_you", &sum.groups))
+                        // **Le nom sous lequel cette officine signe**, et de
+                        // quoi le changer d'un geste : les autres le lisent
+                        // à leur synchronisation suivante.
+                        ui.horizontal_wrapped(|ui| {
+                            let name = config.pharmacy.name.trim();
+                            ui.label(trf(
+                                "net_you",
+                                if name.is_empty() {
+                                    sum.groups.clone()
+                                } else {
+                                    format!("{name} ({})", sum.groups)
+                                },
+                            ))
                             .on_hover_text(tr("net_you_tooltip"));
+                            if motif::button(ui, tr("net_rename_self"))
+                                .on_hover_text(tr("net_rename_self_tooltip"))
+                                .clicked()
+                            {
+                                rename_self = true;
+                            }
+                        });
                         // **Les réseaux de l'officine**, un onglet chacun, et
                         // de quoi en créer un de plus — un lien avec une
                         // seule officine est un réseau à deux.
@@ -84976,6 +85001,23 @@ impl App {
                                         .hint_text(motif::hint(tr("net_peer_address_hint"))),
                                 );
                                 let changed = edit.0 != p.name || edit.1 != p.address;
+                                // Named here, and it now signs under another
+                                // name: one gesture to read it under its own.
+                                if let Some(own) = claim
+                                    .as_deref()
+                                    .filter(|c| !p.name.trim().is_empty() && *c != p.name.trim())
+                                {
+                                    if motif::button(ui, tr("net_peer_take_claim"))
+                                        .on_hover_text(trf("net_peer_take_claim_tooltip", own))
+                                        .clicked()
+                                    {
+                                        save_peer = Some((
+                                            p.device.clone(),
+                                            (String::new(), p.address.clone()),
+                                            (p.name.clone(), p.address.clone()),
+                                        ));
+                                    }
+                                }
                                 if motif::button_enabled(ui, tr("form_save"), changed).clicked() {
                                     save_peer = Some((
                                         p.device.clone(),
@@ -85282,6 +85324,7 @@ impl App {
         if reread_net {
             w.reread(&session.db);
         }
+        let rename_now = rename_self && w.job.is_none();
         if close && w.job.is_none() {
             session.net_window = None;
         }
@@ -85293,6 +85336,12 @@ impl App {
         }
         if open_folder_options {
             session.open_options = Some(OptionsPage::Database);
+        }
+        // Its name is the officine's, written where the rest of it is: the
+        // page opens, and the window gives it the room.
+        if rename_now {
+            session.open_options = Some(OptionsPage::Pharmacy);
+            session.net_window = None;
         }
     }
 
@@ -95951,6 +96000,35 @@ impl App {
                                 )
                                 .on_hover_text(tr("opts_reseau_web_door_tooltip"));
                             });
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(dim(tr("opts_reseau_proxy")));
+                                motif::field(
+                                    ui,
+                                    chars_wide(ui, 34.0),
+                                    egui::TextEdit::singleline(&mut editor.cfg.reseau.proxy)
+                                        .hint_text(motif::hint(tr("opts_reseau_proxy_hint"))),
+                                )
+                                .on_hover_text(tr("opts_reseau_proxy_tooltip"));
+                            });
+                            // The system's is asked once per process
+                            // (`proxy::system`), primed at start.
+                            ui.label(dim(
+                                &match crate::proxy::resolved(&editor.cfg.reseau.proxy) {
+                                    Some(p) => trf(
+                                        "opts_reseau_proxy_found",
+                                        format!(
+                                            "{} ({})",
+                                            p.shown(),
+                                            tr(match p.source {
+                                                crate::proxy::Source::Written => "proxy_written",
+                                                crate::proxy::Source::Environment => "proxy_env",
+                                                crate::proxy::Source::System => "proxy_system",
+                                            })
+                                        ),
+                                    ),
+                                    None => tr("opts_reseau_proxy_none").to_owned(),
+                                },
+                            ));
                             let r = &editor.cfg.reseau;
                             if r.port_ecoute == r.port || r.port_ecoute == editor.cfg.postes.port {
                                 ui.label(
@@ -96093,6 +96171,18 @@ impl App {
                                             .hint_text(motif::hint(tr("opts_reseau_folder_hint"))),
                                     );
                                 });
+                                if let Some(service) =
+                                    crate::config::cloud_drive(&editor.cfg.postes.dossier)
+                                {
+                                    ui.label(
+                                        egui::RichText::new(trf(
+                                            "opts_postes_folder_cloud",
+                                            service,
+                                        ))
+                                        .size(motif::pt(ui, 10.5))
+                                        .color(motif::alert()),
+                                    );
+                                }
                                 ui.horizontal_wrapped(|ui| {
                                     ui.label(dim(tr("opts_postes_addresses")));
                                     let mut typed = editor.cfg.postes.adresses.join(", ");
@@ -97758,6 +97848,7 @@ impl App {
             // Live-apply everything except the database path (restart).
             let before = std::mem::replace(&mut self.config, cfg);
             crate::config::load_modules(&self.config.modules);
+            crate::proxy::set_written(&self.config.reseau.proxy);
             // **Ce qui s'ouvre au démarrage s'applique tout de suite** :
             // la forme de la fenêtre est retenue dans `layout.toml` et
             // l'emporte au lancement suivant, si bien qu'une case décochée
