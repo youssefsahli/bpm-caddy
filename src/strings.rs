@@ -1206,9 +1206,9 @@ livre = "Une phrase qui n'est plus livrée"
             ("goto_kind_text", "les textes imprimés"),
         ];
         let sentence = AIDE
-            .split("« Aller à… » cherche partout")
+            .split("« Chercher… » cherche partout")
             .nth(1)
-            .expect("la phrase du « Aller à… » a disparu du manuel")
+            .expect("la phrase du « Chercher… » a disparu du manuel")
             .split("\n\n")
             .next()
             .unwrap_or_default()
@@ -1223,7 +1223,7 @@ livre = "Une phrase qui n'est plus livrée"
             );
             assert!(
                 sentence.contains(said),
-                "« Aller à… » cherche {key} et le manuel ne dit pas « {said} »"
+                "« Chercher… » cherche {key} et le manuel ne dit pas « {said} »"
             );
         }
         let known: usize = shipped()

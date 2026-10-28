@@ -255,7 +255,11 @@ fn names_no_patient(nom: &str) -> bool {
 ///
 /// `target` est la ligne qu'une annulation annule ; `patient` le nom et
 /// le prénom du dossier d'une délivrance.
-pub fn row_of(m: &StupMove, target: Option<&StupMove>, patient: Option<(&str, &str)>) -> Option<Row> {
+pub fn row_of(
+    m: &StupMove,
+    target: Option<&StupMove>,
+    patient: Option<(&str, &str)>,
+) -> Option<Row> {
     let row = |side, units: f64, who: &str, prenom: &str, ordo: String| Row {
         side,
         day: m.happened_on.clone(),
@@ -283,15 +287,33 @@ pub fn row_of(m: &StupMove, target: Option<&StupMove>, patient: Option<(&str, &s
             };
             Some(row(Side::S, m.quantity, nom, prenom, ordo))
         }
-        Kind::Perte => Some(row(Side::S, m.quantity, tr("stc_word_perte"), "", String::new())),
-        Kind::Peremption => Some(row(Side::S, m.quantity, tr("stc_word_perime"), "", String::new())),
+        Kind::Perte => Some(row(
+            Side::S,
+            m.quantity,
+            tr("stc_word_perte"),
+            "",
+            String::new(),
+        )),
+        Kind::Peremption => Some(row(
+            Side::S,
+            m.quantity,
+            tr("stc_word_perime"),
+            "",
+            String::new(),
+        )),
         Kind::Inventaire => {
             let gap = m.quantity - m.expected;
             if gap.abs() < 1e-9 {
                 None
             } else {
                 let side = if gap > 0.0 { Side::E } else { Side::S };
-                Some(row(side, gap.abs(), tr("stc_word_inventaire"), "", String::new()))
+                Some(row(
+                    side,
+                    gap.abs(),
+                    tr("stc_word_inventaire"),
+                    "",
+                    String::new(),
+                ))
             }
         }
         Kind::Annulation => {
@@ -413,10 +435,18 @@ pub fn plan(ours: &[Ours], theirs: &[Line]) -> Plan {
 /// Ce qu'une ligne du classeur devient dans le registre de BPM-Caddy.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Taken {
-    Entree { supplier: String },
+    Entree {
+        supplier: String,
+    },
     /// Le nom sert à retrouver le dossier, puis il est oublié.
-    Sortie { ordo_no: i64, nom: String, prenom: String },
-    Perte { remark: String },
+    Sortie {
+        ordo_no: i64,
+        nom: String,
+        prenom: String,
+    },
+    Perte {
+        remark: String,
+    },
 }
 
 /// Pourquoi une ligne du classeur n'entre pas dans le registre.
@@ -452,7 +482,9 @@ pub fn import_of(l: &Line) -> Result<(String, f64, Taken), Refusal> {
     if !l.units.is_finite() || l.units <= 0.0 {
         return Err(Refusal::Quantity);
     }
-    let who = format!("{} {}", l.nom.trim(), l.prenom.trim()).trim().to_owned();
+    let who = format!("{} {}", l.nom.trim(), l.prenom.trim())
+        .trim()
+        .to_owned();
     match Side::of(&l.kind).ok_or(Refusal::Kind)? {
         Side::E => Ok((day, l.units, Taken::Entree { supplier: who })),
         Side::S => {
@@ -515,7 +547,10 @@ pub fn suggest<'a>(label: &str, products: &'a [Product]) -> Option<&'a Product> 
         .iter()
         .filter_map(|p| {
             let theirs = fold(&format!("{} {}", p.label, p.specialite));
-            let shared = words.iter().filter(|w| theirs.split(' ').any(|t| t == **w)).count();
+            let shared = words
+                .iter()
+                .filter(|w| theirs.split(' ').any(|t| t == **w))
+                .count();
             // Le premier mot (la spécialité) et le dosage doivent y être.
             let first = words.first().is_some_and(|w| theirs.contains(w));
             let dose = words
@@ -572,7 +607,9 @@ pub fn shown_label(p: &Product) -> String {
 }
 
 fn line_said(l: &Line) -> String {
-    let who = format!("{} {}", l.nom.trim(), l.prenom.trim()).trim().to_owned();
+    let who = format!("{} {}", l.nom.trim(), l.prenom.trim())
+        .trim()
+        .to_owned();
     let mut out = format!(
         "{} — {} {}",
         if l.date_text.trim().is_empty() {
@@ -696,7 +733,11 @@ pub fn sync(db: &Db, bridge: &dyn Bridge, today: &str, preview: bool) -> Result<
             }
         }
         // Les lignes du classeur, dans l'ordre des jours.
-        let mut incoming: Vec<&Line> = decided.import.iter().map(|i| &theirs.movements[*i]).collect();
+        let mut incoming: Vec<&Line> = decided
+            .import
+            .iter()
+            .map(|i| &theirs.movements[*i])
+            .collect();
         incoming.sort_by(|a, b| a.date.cmp(&b.date));
         for l in incoming {
             let refuse = |reason: String| Refused {
@@ -793,7 +834,10 @@ pub fn sync(db: &Db, bridge: &dyn Bridge, today: &str, preview: bool) -> Result<
                 report.exported += 1;
                 *exported_effect.entry(stup_id).or_insert(0.0) += effect;
             } else {
-                let label = products.get(&stup_id).map(|p| p.label.clone()).unwrap_or_default();
+                let label = products
+                    .get(&stup_id)
+                    .map(|p| p.label.clone())
+                    .unwrap_or_default();
                 let line = db
                     .stup_moves(stup_id)?
                     .iter()
@@ -827,7 +871,10 @@ pub fn sync(db: &Db, bridge: &dyn Bridge, today: &str, preview: bool) -> Result<
         };
         let stock = stock + exported_effect.get(&stup_id).copied().unwrap_or(0.0);
         if !same_units(*ours, stock) {
-            let label = products.get(&stup_id).map(|p| p.label.clone()).unwrap_or_default();
+            let label = products
+                .get(&stup_id)
+                .map(|p| p.label.clone())
+                .unwrap_or_default();
             report.gaps.push((label, *ours, stock));
         }
     }
@@ -869,7 +916,12 @@ pub fn find_program(written: &str) -> Option<PathBuf> {
     } else {
         candidates.push(PathBuf::from("/opt/stupcontrol/bin/StupControl"));
         if let Ok(home) = std::env::var("HOME") {
-            candidates.push(Path::new(&home).join("StupControl").join("bin").join("StupControl"));
+            candidates.push(
+                Path::new(&home)
+                    .join("StupControl")
+                    .join("bin")
+                    .join("StupControl"),
+            );
         }
     }
     candidates.into_iter().find(|p| p.exists())
@@ -889,7 +941,11 @@ impl Program {
         answer
     }
 
-    fn call_in(&self, dir: &Path, mut request: serde_json::Value) -> Result<serde_json::Value, String> {
+    fn call_in(
+        &self,
+        dir: &Path,
+        mut request: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
         if !self.config.trim().is_empty() {
             request["config"] = serde_json::Value::String(self.config.trim().to_owned());
         }
@@ -1033,7 +1089,11 @@ mod tests {
         let r = row_of(&count, None, None).unwrap();
         assert_eq!((r.side, r.units), (Side::S, 2.0));
         count.expected = 18.0;
-        assert_eq!(row_of(&count, None, None), None, "un comptage juste n'écrit rien");
+        assert_eq!(
+            row_of(&count, None, None),
+            None,
+            "un comptage juste n'écrit rien"
+        );
 
         let mut undo = mv(6, Kind::Annulation, "2026-03-06", 0.0);
         undo.cancels = 2;
@@ -1044,17 +1104,33 @@ mod tests {
         );
 
         for kind in [Kind::Retour, Kind::Destruction, Kind::DestructionPerimes] {
-            assert_eq!(row_of(&mv(7, kind, "2026-03-07", 3.0), None, None), None, "{kind:?}");
+            assert_eq!(
+                row_of(&mv(7, kind, "2026-03-07", 3.0), None, None),
+                None,
+                "{kind:?}"
+            );
         }
         let mut undo_return = mv(8, Kind::Annulation, "2026-03-08", 0.0);
         undo_return.cancels = 7;
         assert_eq!(
-            row_of(&undo_return, Some(&mv(7, Kind::Retour, "2026-03-07", 3.0)), None),
+            row_of(
+                &undo_return,
+                Some(&mv(7, Kind::Retour, "2026-03-07", 3.0)),
+                None
+            ),
             None
         );
     }
 
-    fn ours(id: i64, side: Side, day: &str, units: f64, who: &str, ordo: &str, linked: bool) -> Ours {
+    fn ours(
+        id: i64,
+        side: Side,
+        day: &str,
+        units: f64,
+        who: &str,
+        ordo: &str,
+        linked: bool,
+    ) -> Ours {
         Ours {
             id,
             row: Row {
@@ -1106,15 +1182,25 @@ mod tests {
         ];
         let p = plan(&mine, &theirs);
         assert_eq!(p.pairs.len(), 1);
-        assert_eq!(p.import.len(), 1, "la seconde boîte reçue est une seconde réception");
+        assert_eq!(
+            p.import.len(),
+            1,
+            "la seconde boîte reçue est une seconde réception"
+        );
     }
 
     #[test]
     fn a_spreadsheet_line_becomes_a_register_line_or_says_why_not() {
         let (day, q, t) = import_of(&line("E", "2026-03-02", 28.0, "OCP", "", "")).unwrap();
         assert_eq!((day.as_str(), q), ("2026-03-02", 28.0));
-        assert_eq!(t, Taken::Entree { supplier: "OCP".into() });
-        let (_, _, t) = import_of(&line("S", "2026-03-03", 7.0, "Dupont", "Albert", "18412")).unwrap();
+        assert_eq!(
+            t,
+            Taken::Entree {
+                supplier: "OCP".into()
+            }
+        );
+        let (_, _, t) =
+            import_of(&line("S", "2026-03-03", 7.0, "Dupont", "Albert", "18412")).unwrap();
         assert!(matches!(t, Taken::Sortie { ordo_no: 18412, .. }));
         let (_, _, t) = import_of(&line("S", "2026-03-03", 1.0, "Casse", "", "")).unwrap();
         assert!(matches!(t, Taken::Perte { .. }));
@@ -1165,7 +1251,11 @@ mod tests {
         let products = vec![
             product("skenan.ods|skenan 20 lp", "SKENAN 20 LP", "SKENAN 20 LP"),
             product("skenan.ods|skenan 10 oro", "SKENAN 10 ORO", "SKENAN 10 ORO"),
-            product("methadone.ods|methadone 10 mg", "Méthadone 10 mg", "Méthadone 10 mg"),
+            product(
+                "methadone.ods|methadone 10 mg",
+                "Méthadone 10 mg",
+                "Méthadone 10 mg",
+            ),
         ];
         assert_eq!(
             suggest("Skenan LP 10 mg", &products).map(|p| p.key.as_str()),
@@ -1244,7 +1334,9 @@ mod tests {
     #[test]
     fn both_registers_end_up_holding_the_same_lines_and_a_second_pass_does_nothing() {
         let (_swept, db) = officine("both");
-        let stup = db.add_stupefiant(0, "Méthadone 10 mg", "gélule", 0.0).unwrap();
+        let stup = db
+            .add_stupefiant(0, "Méthadone 10 mg", "gélule", 0.0)
+            .unwrap();
         db.set_stupcontrol_map(stup, KEY).unwrap();
         db.set_stup_setting(SINCE_KEY, "2026-03-01").unwrap();
         let dupont = db.add_patient("Dupont", "Albert", "1950-01-01").unwrap();
@@ -1291,7 +1383,12 @@ mod tests {
         let sent = fake.added.borrow().clone();
         assert_eq!(sent.len(), 1);
         assert_eq!(
-            (sent[0].kind.as_str(), sent[0].nom.as_str(), sent[0].prenom.as_str(), sent[0].ordo.as_str()),
+            (
+                sent[0].kind.as_str(),
+                sent[0].nom.as_str(),
+                sent[0].prenom.as_str(),
+                sent[0].ordo.as_str()
+            ),
             ("S", "Dupont", "Albert", "18412")
         );
         // Celle du classeur est inscrite, rattachée au seul dossier du nom,
@@ -1304,7 +1401,11 @@ mod tests {
         let again = sync(&db, &fake, "2026-03-11", false).unwrap();
         assert_eq!((again.imported, again.exported), (0, 0));
         assert_eq!(again.paired, 3);
-        assert_eq!(again.refused.len(), 1, "le refus reste dit tant qu'il n'est pas réglé");
+        assert_eq!(
+            again.refused.len(),
+            1,
+            "le refus reste dit tant qu'il n'est pas réglé"
+        );
         assert_eq!(db.stup_moves(stup).unwrap().len(), moves.len());
     }
 
@@ -1313,7 +1414,9 @@ mod tests {
     #[test]
     fn a_line_the_spreadsheet_refused_goes_again_next_time() {
         let (_swept, db) = officine("refused");
-        let stup = db.add_stupefiant(0, "Méthadone 10 mg", "gélule", 0.0).unwrap();
+        let stup = db
+            .add_stupefiant(0, "Méthadone 10 mg", "gélule", 0.0)
+            .unwrap();
         db.set_stupcontrol_map(stup, KEY).unwrap();
         db.set_stup_setting(SINCE_KEY, "2026-03-01").unwrap();
         let mut entree = mv(0, Kind::Entree, "2026-03-02", 28.0);
@@ -1339,7 +1442,9 @@ mod tests {
     #[test]
     fn a_balance_gap_is_said_and_left_alone() {
         let (_swept, db) = officine("gap");
-        let stup = db.add_stupefiant(0, "Méthadone 10 mg", "gélule", 0.0).unwrap();
+        let stup = db
+            .add_stupefiant(0, "Méthadone 10 mg", "gélule", 0.0)
+            .unwrap();
         db.set_stupcontrol_map(stup, KEY).unwrap();
         db.set_stup_setting(SINCE_KEY, "2026-03-01").unwrap();
         let mut p = product(KEY, "Méthadone 10 mg", "Méthadone 10 mg");
@@ -1351,14 +1456,21 @@ mod tests {
         };
         let r = sync(&db, &fake, "2026-03-10", false).unwrap();
         assert_eq!(r.gaps, vec![("Méthadone 10 mg".to_owned(), 0.0, 21.0)]);
-        assert!(db.stup_moves(stup).unwrap().is_empty(), "aucun inventaire inventé");
+        assert!(
+            db.stup_moves(stup).unwrap().is_empty(),
+            "aucun inventaire inventé"
+        );
     }
 
     #[test]
     fn a_spreadsheet_product_is_designated_by_one_followed_product_only() {
         let (_swept, db) = officine("twice");
-        let a = db.add_stupefiant(0, "Méthadone 10 mg", "gélule", 0.0).unwrap();
-        let b = db.add_stupefiant(0, "Méthadone 10 mg (EG)", "gélule", 0.0).unwrap();
+        let a = db
+            .add_stupefiant(0, "Méthadone 10 mg", "gélule", 0.0)
+            .unwrap();
+        let b = db
+            .add_stupefiant(0, "Méthadone 10 mg (EG)", "gélule", 0.0)
+            .unwrap();
         db.set_stupcontrol_map(a, KEY).unwrap();
         assert!(db.set_stupcontrol_map(b, KEY).is_err());
         db.set_stupcontrol_map(a, "").unwrap();
@@ -1402,7 +1514,9 @@ mod tests {
             patience: Duration::from_secs(120),
         };
         assert_eq!(program.ping().unwrap().data_dir, data.to_string_lossy());
-        let stup = db.add_stupefiant(0, "Méthadone 10 mg", "gélule", 0.0).unwrap();
+        let stup = db
+            .add_stupefiant(0, "Méthadone 10 mg", "gélule", 0.0)
+            .unwrap();
         db.set_stupcontrol_map(stup, KEY).unwrap();
         db.set_stup_setting(SINCE_KEY, "2025-03-01").unwrap();
         let dupont = db.add_patient("Dupont", "Albert", "1950-01-01").unwrap();
@@ -1423,11 +1537,19 @@ mod tests {
         let p = read.products.iter().find(|p| p.key == KEY).unwrap();
         let written = p.movements.iter().find(|l| l.ordo == "18412").unwrap();
         assert_eq!(
-            (written.date.as_deref(), written.kind.as_str(), written.nom.as_str()),
+            (
+                written.date.as_deref(),
+                written.kind.as_str(),
+                written.nom.as_str()
+            ),
             (Some("2025-03-03"), "S", "Dupont")
         );
         let again = sync(&db, &program, "2025-03-11", false).unwrap();
-        assert_eq!((again.exported, again.imported, again.paired), (0, 0, 2), "{again:?}");
+        assert_eq!(
+            (again.exported, again.imported, again.paired),
+            (0, 0, 2),
+            "{again:?}"
+        );
     }
 
     fn copy_tree(from: &Path, to: &Path) {

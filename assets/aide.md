@@ -48,7 +48,7 @@ disparaît au premier dossier.
 
 # Recherche
 
-« Aller à… » cherche partout d'un seul champ : les vues elles-mêmes, les
+« Chercher… » cherche partout d'un seul champ : les vues elles-mêmes, les
 dossiers, les fiches, les tables de conversion, les préparations, les
 protocoles, les dispositifs, les compléments nutritionnels, le registre,
 les carnets de suivi, les scripts, les outils de calcul et les textes imprimés. Saisir le nom, un
@@ -71,7 +71,7 @@ usage », qui liste les outils avec leur usage ; un clic ouvre l'outil.
 
 **Favoris.** L'étoile d'un dossier (à côté du nom), d'une fiche
 médicament (en tête des boutons de la fiche) ou d'un outil (page
-« Outils, par usage ») l'épingle ; dans « Aller à… », Ctrl+D épingle ou
+« Outils, par usage ») l'épingle ; dans « Chercher… », Ctrl+D épingle ou
 retire la ligne choisie. Les favoris passent en tête de la boîte ouverte
 à vide, avant les récents, marqués d'une étoile. Ils sont à la personne
 choisie dans le volet (« Opérateur ») et la suivent d'un poste à
@@ -427,7 +427,7 @@ six heures.
 
 # Calculs
 
-Accès par « Aller à… » — « enfant », « mg/kg », « clairance », « DFG
+Accès par « Chercher… » — « enfant », « mg/kg », « clairance », « DFG
 bas », « demi-vie » —, par « Calculs » au-dessus des tables de
 conversion, et par le bouton « Calculs… » d'une fiche, qui les ouvre
 **pour cette fiche**.
@@ -722,7 +722,7 @@ l'alternative ; aucune ne prescrit un arrêt.
 
 ## Fiche de vaccination
 
-Sur un acte Vaccination, « PDF » imprime la fiche de l'injection : les
+Sur un acte Vaccination, « Fiche » imprime la fiche de l'injection : les
 questions à poser avant (allergie, fièvre, grossesse, immunodépression,
 anticoagulant, malaise antérieur, vaccin récent), le vaccin tracé —
 nom, dose, lot, péremption, voie, site, heure —, les suites
@@ -751,7 +751,7 @@ n'est inscrit au carnet.
 courrier au médecin traitant ; pour une vaccination, la fiche puis le
 carnet de vaccination.
 
-Sur un acte TROD, « PDF » imprime la feuille du test et non la fiche
+Sur un acte TROD, « Fiche » imprime la feuille du test et non la fiche
 d'entretien : signes qui orientent vers le médecin sans tester, score de
 Mac Isaac pour l'angine, lecture du test avec lot, péremption et heure,
 conduite selon le résultat, et les lignes du protocole qui s'appliquent
@@ -759,7 +759,7 @@ au patient d'après son âge, son sexe et une grossesse en cours. L'âge
 connu coche l'item d'âge du score ; un résultat déjà enregistré arrive
 coché. Le reste se coche à la main, devant le patient.
 
-« CR » imprime le courrier au médecin traitant : le test réalisé, son
+« Courrier » imprime le courrier au médecin traitant : le test réalisé, son
 résultat et la conduite tenue — dispensation selon le protocole, ou
 traitement symptomatique et consigne de reconsulter. Sans résultat
 enregistré, la conclusion reste à écrire à la main.
@@ -1061,7 +1061,7 @@ Au-dessus de la liste, un filtre retient les cascades dont le titre,
 le sujet ou une molécule contient le mot tapé : « digoxine » trouve la
 digoxine et le QT long.
 
-Depuis une fiche, « Cascade : … » ouvre la cascade qui nomme sa molécule,
+Depuis une fiche, Plus › « Cascade : … » ouvre la cascade qui nomme sa molécule,
 la molécule déjà donnée. Dans l'autre sens, un clic sur la ligne d'une
 molécule (ou un clic droit sur sa case) ouvre sa fiche.
 
@@ -1248,7 +1248,7 @@ l'une après l'autre.
 # Mesures et conseils
 
 Ouvert par le bouton **Mesures et conseils** de la page des médicaments,
-ou par « Aller à… ». Trois pages, chacune avec sa fiche imprimée remise
+ou par « Chercher… ». Trois pages, chacune avec sa fiche imprimée remise
 au patient : les relevés de la page, puis les conseils, que l'officine
 peut réécrire dans « Textes ». Le dossier ouvert reçoit ce qui est
 enregistré ; sans dossier, les calculs et l'impression restent
@@ -1520,7 +1520,7 @@ déjà lu ne se relit que quand l'officine l'a changé. Rien ne s'y compare
 
 # Carte des officines
 
-« Carte des officines » (onglet, ou « Aller à… ») montre les officines
+« Carte des officines » (onglet, ou « Chercher… ») montre les officines
 qui paraissent au **répertoire** : une pastille par officine, à sa
 commune — pleine si elle est ouverte, creuse sinon, avec depuis quand
 elle n'a pas été vue. Le carré est cette officine. La molette (ou le
@@ -1595,7 +1595,7 @@ retour au produit initial. Les propositions viennent d'abord de la même
 molécule, puis de la même classe. **Aucun patient n'est enregistré** :
 un produit, un substitut, une date et des initiales.
 
-La vue **Ruptures** (« Aller à… ») regroupe les ruptures en cours et
+La vue **Ruptures** (« Chercher… ») regroupe les ruptures en cours et
 l'historique complet, y compris celui des officines du réseau, avec
 leur nom.
 
@@ -1927,7 +1927,7 @@ lus ni gardés — mais ce sont des données de santé, d'où un choix à part.
 
 # Messagerie
 
-La vue **Messages** (barre d'état, « Aller à… » : « messages ») réunit
+La vue **Messages** (barre d'état, « Chercher… » : « messages ») réunit
 les conversations de l'équipe. Elles passent d'un poste à l'autre de
 l'officine, et aux téléphones de l'équipe, chiffrées sous la clé des
 postes — à part des dossiers.
@@ -1972,7 +1972,7 @@ officine demande la même confirmation qu'un patient nommé.
 
 # Comptes
 
-La vue **Comptes** (« Aller à… » : « comptes ») donne à chaque personne
+La vue **Comptes** (« Chercher… » : « comptes ») donne à chaque personne
 **son compte** : pas un poste, pas l'officine, une personne. Ce qu'elle
 y range — ses rendez-vous, ses notes — la suit d'un poste à l'autre et
 d'une officine à l'autre.
@@ -2042,7 +2042,7 @@ perdu.
 
 # Actualités
 
-La vue **Actualités** (« Aller à… » : « actualites ») est le fil des
+La vue **Actualités** (« Chercher… » : « actualites ») est le fil des
 **billets** : ce que chaque compte dit aux autres, le plus récent
 d'abord. Elle montre les billets publics de tous les comptes que ce
 poste connaît — de l'officine et des autres officines du réseau — et
@@ -2199,7 +2199,7 @@ service, et sa clé en mémoire — c'est ce qui lui permet de répondre.
 
 # Qualité
 
-« Aller à… » › « Registre qualité » ouvre l'onglet Qualité (module
+« Chercher… » › « Registre qualité » ouvre l'onglet Qualité (module
 Gestion) : les **non-conformités** de l'officine — une erreur de
 délivrance, rattrapée ou non, une livraison abîmée, la chaîne du froid
 rompue, une réclamation, un appareil en panne — de leur déclaration à
@@ -2235,7 +2235,7 @@ non-conformité se clôt, elle ne se supprime pas.
 
 # Fiche de transmission
 
-« Aller à… » › « Fiche de transmission » ouvre l'onglet Transmission :
+« Chercher… » › « Fiche de transmission » ouvre l'onglet Transmission :
 une information à faire passer **une fois**, à un médecin, une
 infirmière, un EHPAD, une autre pharmacie, l'équipe ou le patient.
 Choisir le destinataire, écrire son nom (« Médecin du dossier » reprend
@@ -2295,7 +2295,7 @@ en deux clics.
 # Options
 
 Les **options** sont un onglet de l'espace de travail (« Options » dans
-la barre, ou « Aller à… » : « options »), à côté de ce qu'on règle et
+la barre, ou « Chercher… » : « options »), à côté de ce qu'on règle et
 non plus par-dessus : on voit l'effet d'un réglage en passant d'un
 onglet à l'autre. Les pages : Officine, Mentions, Interface, Modules,
 Base, Honoraires, Règles, Locations, À propos. « Enregistrer » écrit ;
@@ -2308,7 +2308,7 @@ patients** (passerelle, voie directe, relais, tableau de l'officine),
 les **comptes et actualités**, et la **gestion** (caisse, recettes,
 statistiques, campagne de vaccination, console, documents imprimés).
 Un module décoché n'est pas chargé : ni onglet, ni outil dans
-« Aller à… », ni fil qui tourne. Un poste de comptoir lent n'a pas à
+« Chercher… », ni fil qui tourne. Un poste de comptoir lent n'a pas à
 faire tourner le réseau d'officines pour le poste du bureau. Le reste
 ne se lit qu'à l'ouverture de ce qui le montre.
 

@@ -53982,7 +53982,12 @@ impl Db {
     /// transaction : une ligne sans son lien serait inscrite une seconde
     /// fois au rapprochement suivant. Les règles sont celles de toute
     /// ligne du registre — la même fonction les porte.
-    pub fn add_stup_move_linked(&self, m: &StupMove, origin: &str, day: &str) -> Result<i64, String> {
+    pub fn add_stup_move_linked(
+        &self,
+        m: &StupMove,
+        origin: &str,
+        day: &str,
+    ) -> Result<i64, String> {
         let tx = write_tx(&self.stups).map_err(|e| e.to_string())?;
         let id = Self::insert_stup_move(&tx, m)?;
         tx.execute(

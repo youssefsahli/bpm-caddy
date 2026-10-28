@@ -10163,13 +10163,15 @@ impl Session {
                                 Some((false, trn("stc_ping_ok", &[&a.version, &a.data_dir])));
                         }
                         Ok(StcDone::Report(r)) => {
-                            let key = if r.preview { "stc_preview_done" } else { "stc_done" };
+                            let key = if r.preview {
+                                "stc_preview_done"
+                            } else {
+                                "stc_done"
+                            };
                             let troubled =
                                 !(r.refused.is_empty() && r.failed.is_empty() && r.lost.is_empty());
-                            self.stc.note = Some((
-                                troubled,
-                                trn(key, &[&r.imported, &r.exported, &r.paired]),
-                            ));
+                            self.stc.note =
+                                Some((troubled, trn(key, &[&r.imported, &r.exported, &r.paired])));
                             self.stc.products = r.products.clone();
                             if !r.preview {
                                 self.reload_stup();
@@ -10196,8 +10198,15 @@ impl Session {
             return;
         }
         self.stc.auto_next = Some(now + Duration::from_secs(300));
-        let auto = self.db.stup_setting(crate::stupcontrol::AUTO_KEY).as_deref() == Some("1");
-        let since = self.db.stup_setting(crate::stupcontrol::SINCE_KEY).is_some();
+        let auto = self
+            .db
+            .stup_setting(crate::stupcontrol::AUTO_KEY)
+            .as_deref()
+            == Some("1");
+        let since = self
+            .db
+            .stup_setting(crate::stupcontrol::SINCE_KEY)
+            .is_some();
         if auto && since && self.serves() {
             self.start_stupcontrol(StcJob::Sync, config);
         }
@@ -22727,14 +22736,17 @@ impl App {
                                 .map(|s| s.product.label.clone())
                                 .unwrap_or_else(|| "Méthadone 10 mg".to_owned());
                             let products = vec![
-                                ("methadone.ods|méthadone 10 mg".to_owned(), "Méthadone 10 mg (methadone.ods)".to_owned()),
-                                ("skenan.ods|skenan 10 oro".to_owned(), "SKENAN 10 ORO (skenan.ods)".to_owned()),
+                                (
+                                    "methadone.ods|méthadone 10 mg".to_owned(),
+                                    "Méthadone 10 mg (methadone.ods)".to_owned(),
+                                ),
+                                (
+                                    "skenan.ods|skenan 10 oro".to_owned(),
+                                    "SKENAN 10 ORO (skenan.ods)".to_owned(),
+                                ),
                             ];
                             session.stc.products = products.clone();
-                            session.stc.note = Some((
-                                true,
-                                trn("stc_done", &[&3, &2, &41]),
-                            ));
+                            session.stc.note = Some((true, trn("stc_done", &[&3, &2, &41])));
                             session.stc.report = Some(crate::stupcontrol::Report {
                                 version: "1.22.0".to_owned(),
                                 data_dir: "\\\\NAS\\Stupefiants".to_owned(),
@@ -30581,9 +30593,12 @@ impl App {
                                 });
                                 for (name, text) in p.lines() {
                                     ui.label(
-                                        egui::RichText::new(trn("vord_history_line", &[&name, &text]))
-                                            .size(motif::pt(ui, 10.5))
-                                            .color(motif::text_dim()),
+                                        egui::RichText::new(trn(
+                                            "vord_history_line",
+                                            &[&name, &text],
+                                        ))
+                                        .size(motif::pt(ui, 10.5))
+                                        .color(motif::text_dim()),
                                     );
                                 }
                                 ui.add_space(2.0);
@@ -30642,43 +30657,40 @@ impl App {
             print = false;
             session.error = Some(tr("vord_line_empty").to_owned());
         }
-        let print_lines = |lines: &[(String, String)],
-                           day: &str,
-                           by: &str,
-                           session: &mut Session|
-         -> bool {
-            let lines: Vec<crate::ordonnance::Line> = lines
-                .iter()
-                .map(|(name, text)| crate::ordonnance::Line {
-                    name: name.clone(),
-                    posology: text.clone(),
-                    caution: String::new(),
-                })
-                .collect();
-            match crate::pdf::open_ordonnance(
-                patient,
-                &config.pharmacy,
-                tr("vord_indication"),
-                day,
-                &lines,
-                &[],
-                &config.ordonnance_template_path(),
-                &config.pharmacy.signature_for(by),
-                (
-                    &config.disclaimers.ordonnance_header,
-                    &config.disclaimers.ordonnance_footer,
-                ),
-            ) {
-                Ok(_) => {
-                    session.error = None;
-                    true
+        let print_lines =
+            |lines: &[(String, String)], day: &str, by: &str, session: &mut Session| -> bool {
+                let lines: Vec<crate::ordonnance::Line> = lines
+                    .iter()
+                    .map(|(name, text)| crate::ordonnance::Line {
+                        name: name.clone(),
+                        posology: text.clone(),
+                        caution: String::new(),
+                    })
+                    .collect();
+                match crate::pdf::open_ordonnance(
+                    patient,
+                    &config.pharmacy,
+                    tr("vord_indication"),
+                    day,
+                    &lines,
+                    &[],
+                    &config.ordonnance_template_path(),
+                    &config.pharmacy.signature_for(by),
+                    (
+                        &config.disclaimers.ordonnance_header,
+                        &config.disclaimers.ordonnance_footer,
+                    ),
+                ) {
+                    Ok(_) => {
+                        session.error = None;
+                        true
+                    }
+                    Err(e) => {
+                        session.error = Some(e);
+                        false
+                    }
                 }
-                Err(e) => {
-                    session.error = Some(e);
-                    false
-                }
-            }
-        };
+            };
         if print {
             let chosen: Vec<&VaccOrdLine> = rows.iter().filter(|r| r.on).collect();
             let lines: Vec<(String, String)> = chosen
@@ -30737,7 +30749,12 @@ impl App {
             } else {
                 p.operator.clone()
             };
-            print_lines(&p.lines(), &db::format_french_date(&p.on_date), &by, session);
+            print_lines(
+                &p.lines(),
+                &db::format_french_date(&p.on_date),
+                &by,
+                session,
+            );
         }
         if !close && !ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
             session.vacc_ord = Some((id, rows));
@@ -40134,7 +40151,7 @@ impl App {
                 [&format!("{code} · {}", rank + 1) as &str].into_iter(),
             );
             if itv.kind.is_accompaniment() {
-                act += Self::button_width(ui, db::REMOTE_CODE);
+                act += Self::button_width(ui, tr("itv_remote"));
             }
             if itv.kind.allows_treatment_change() {
                 act += Self::button_width(ui, tr("itv_change_short_label")) + 12.0;
@@ -40305,7 +40322,7 @@ impl App {
             // Held remotely: the convention bills
             // TPH on top of the act code.
             if row.itv.kind.is_accompaniment()
-                && motif::toggle(ui, db::REMOTE_CODE, row.itv.remote)
+                && motif::toggle(ui, tr("itv_remote"), row.itv.remote)
                     .on_hover_text(trf(
                         "itv_remote_tooltip",
                         format!(
@@ -77302,6 +77319,13 @@ impl App {
                     .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
                     .show(ui, |ui| {
                         ui.horizontal_wrapped(|ui| {
+                            // **Quatre gestes en vue, le reste en deux
+                            // menus.** Quatorze boutons prenaient trois
+                            // rangées au-dessus de la monographie ; au
+                            // comptoir on lit, on modifie, on imprime, on
+                            // calcule. Les bases extérieures vont sous
+                            // « Sources », ce qui se fait rarement sous
+                            // « Plus ».
                             if reading {
                                 if let Some((_, _, fav)) = &card_fav {
                                     if motif::star(ui, *fav)
@@ -77318,97 +77342,95 @@ impl App {
                                 if motif::button(ui, tr("drug_edit")).clicked() {
                                     edit = true;
                                 }
-                            } else if motif::button(ui, tr("form_save")).clicked() {
-                                save = true;
-                            }
-                            if motif::button(ui, tr("drug_close"))
-                                .on_hover_text(tr("drug_close_tooltip"))
-                                .clicked()
-                            {
-                                close = true;
-                            }
-                            if reading {
-                                if !form.class.trim().is_empty()
-                                    && motif::button(ui, tr("drug_class_edit"))
-                                        .on_hover_text(tr("drug_class_edit_tooltip"))
-                                        .clicked()
-                                {
-                                    edit_class = true;
+                                if motif::button(ui, tr("drug_print")).clicked() {
+                                    print_mono = true;
                                 }
-                                if motif::button(ui, tr("codex_from_card"))
-                                    .on_hover_text(tr("codex_from_card_tooltip"))
-                                    .clicked()
-                                {
-                                    open_codex = true;
-                                }
-                                // La notice, un courrier de retrait de lot : ce
-                                // qui est du papier et qui appartient à cette
-                                // fiche plutôt qu'à un dossier.
-                                if motif::button(ui, tr("scan_button"))
-                                    .on_hover_text(tr("scan_drug_tooltip"))
-                                    .clicked()
-                                {
-                                    open_scans = true;
-                                }
-                                for (source, label, tooltip) in [
-                                    (Lookup::Ansm, tr("drug_lookup"), tr("drug_lookup_tooltip")),
-                                    (
-                                        Lookup::PubChem,
-                                        tr("drug_pubchem"),
-                                        tr("drug_pubchem_tooltip"),
-                                    ),
-                                    (Lookup::PubMed, tr("drug_pubmed"), tr("drug_pubmed_tooltip")),
-                                ] {
-                                    if motif::button(ui, label).on_hover_text(tooltip).clicked() {
-                                        lookup = Some(source);
-                                    }
-                                }
-                                // **Les calculs, avec cette fiche en
-                                // main.** C'est le chemin le plus court
-                                // vers « ce médicament-là, pour seize
-                                // kilos, ça fait combien » : on est déjà
-                                // sur la fiche qui écrit la réponse.
-                                // Sans ce bouton il fallait retenir que
-                                // les calculs vivent derrière « Tables
-                                // de conversion », puis y retaper le nom.
                                 if motif::button(ui, tr("drug_calc"))
                                     .on_hover_text(tr("drug_calc_tooltip"))
                                     .clicked()
                                 {
                                     open_calc = true;
                                 }
-                                // Le mécanisme, joué : une porte par
-                                // cascade qui nomme la molécule.
-                                for (id, title) in &cascade_doors {
-                                    if motif::button(ui, &trf("cascade_from_card", title))
-                                        .on_hover_text(tr("cascade_from_card_tooltip"))
-                                        .clicked()
-                                    {
-                                        open_cascade = Some(*id);
-                                    }
+                                #[derive(Clone)]
+                                enum Source {
+                                    Web(Lookup),
+                                    Codex,
                                 }
-                                if motif::button(ui, tr("drug_print"))
-                                    .on_hover_text(tr("drug_print_tooltip"))
-                                    .clicked()
+                                let sources = [
+                                    (Source::Web(Lookup::Ansm), tr("drug_lookup").to_owned()),
+                                    (Source::Web(Lookup::PubChem), tr("drug_pubchem").to_owned()),
+                                    (Source::Web(Lookup::PubMed), tr("drug_pubmed").to_owned()),
+                                    (Source::Codex, tr("codex_from_card").to_owned()),
+                                ];
+                                let w = chars_wide(ui, 12.0).min(ui.available_width());
+                                match motif::menu(
+                                    ui,
+                                    "drug_sources",
+                                    w,
+                                    tr("drug_sources"),
+                                    &sources,
+                                )
+                                .inner
                                 {
-                                    print_mono = true;
+                                    Some(Source::Web(l)) => lookup = Some(l),
+                                    Some(Source::Codex) => open_codex = true,
+                                    None => {}
+                                }
+                                #[derive(Clone)]
+                                enum More {
+                                    ClassNote,
+                                    Scans,
+                                    Cascade(i64),
+                                    ToNotes,
+                                    Delete,
+                                }
+                                let mut more = Vec::new();
+                                if !form.class.trim().is_empty() {
+                                    more.push((More::ClassNote, tr("drug_class_edit").to_owned()));
+                                }
+                                more.push((More::Scans, tr("scan_button").to_owned()));
+                                for (id, title) in &cascade_doors {
+                                    more.push((
+                                        More::Cascade(*id),
+                                        trf("cascade_from_card", title),
+                                    ));
+                                }
+                                more.push((More::ToNotes, tr("drug_to_notes").to_owned()));
+                                more.push((More::Delete, tr("patient_delete").to_owned()));
+                                let w = chars_wide(ui, 10.0).min(ui.available_width());
+                                match motif::menu(ui, "drug_more", w, tr("drug_more"), &more).inner
+                                {
+                                    Some(More::ClassNote) => edit_class = true,
+                                    Some(More::Scans) => open_scans = true,
+                                    Some(More::Cascade(id)) => open_cascade = Some(id),
+                                    Some(More::ToNotes) => insert_note = true,
+                                    Some(More::Delete) => delete = true,
+                                    None => {}
+                                }
+                            } else {
+                                if motif::button(ui, tr("form_save")).clicked() {
+                                    save = true;
+                                }
+                                if motif::button(ui, tr("drug_to_notes")).clicked() {
+                                    insert_note = true;
                                 }
                             }
-                            if motif::button(ui, tr("drug_to_notes"))
-                                .on_hover_text(tr("drug_to_notes_tooltip"))
-                                .clicked()
-                            {
-                                insert_note = true;
+                            if motif::button(ui, tr("drug_close")).clicked() {
+                                close = true;
                             }
-                            // Destructive action last, after a visible gap.
-                            ui.add_space(12.0);
-                            let del_label = if session.confirm_delete_drug {
-                                tr("patient_delete_confirm")
-                            } else {
-                                tr("patient_delete")
-                            };
-                            if motif::button(ui, del_label).clicked() {
-                                delete = true;
+                            // Destructive action last, after a visible gap:
+                            // in the form, or once « Supprimer » was picked
+                            // and waits for its confirmation.
+                            if !reading || session.confirm_delete_drug {
+                                ui.add_space(12.0);
+                                let del_label = if session.confirm_delete_drug {
+                                    tr("patient_delete_confirm")
+                                } else {
+                                    tr("patient_delete")
+                                };
+                                if motif::button(ui, del_label).clicked() {
+                                    delete = true;
+                                }
                             }
                         });
                     });
@@ -85045,11 +85067,8 @@ impl App {
                         let mut options: Vec<(String, String)> =
                             vec![(String::new(), tr("stc_map_none").to_owned())];
                         options.extend(products.iter().cloned());
-                        let width = Self::widest(
-                            ui,
-                            11.0,
-                            options.iter().map(|(_, l)| l.as_str()),
-                        ) + Self::button_height(ui);
+                        let width = Self::widest(ui, 11.0, options.iter().map(|(_, l)| l.as_str()))
+                            + Self::button_height(ui);
                         let width = width.min(ui.available_width() * 0.55);
                         egui::Grid::new("stc_map_grid")
                             .num_columns(2)
@@ -85165,7 +85184,11 @@ impl App {
                     });
             });
         if save_since {
-            let year = session.today.get(..4).and_then(|y| y.parse().ok()).unwrap_or(2026);
+            let year = session
+                .today
+                .get(..4)
+                .and_then(|y| y.parse().ok())
+                .unwrap_or(2026);
             match crate::db::parse_french_date(
                 &session.stc.since_text,
                 year,
@@ -85174,7 +85197,8 @@ impl App {
                 Ok(iso) => match session.db.set_stup_setting(SINCE_KEY, &iso) {
                     Ok(()) => {
                         session.stc.since_text = crate::db::format_french_date(&iso);
-                        session.stc.note = Some((false, trf("stc_since_saved", &session.stc.since_text)));
+                        session.stc.note =
+                            Some((false, trf("stc_since_saved", &session.stc.since_text)));
                     }
                     Err(e) => session.stc.note = Some((true, plain_error(&e))),
                 },
@@ -85182,7 +85206,10 @@ impl App {
             }
         }
         if let Some(on) = set_auto {
-            if let Err(e) = session.db.set_stup_setting(AUTO_KEY, if on { "1" } else { "" }) {
+            if let Err(e) = session
+                .db
+                .set_stup_setting(AUTO_KEY, if on { "1" } else { "" })
+            {
                 session.stc.note = Some((true, plain_error(&e)));
             }
         }
@@ -90300,7 +90327,7 @@ impl App {
         // seconde rangée coûte quarante-six pixels au volet
         // central à `text_scale = 1,6`, et cette bande-là est
         // déjà si courte que le panneau de biologie y perdait
-        // son formulaire. « Docs (F1) » devient « Docs »,
+        // son formulaire. « Notes (F1) » devient « Notes »,
         // « Aller à… » devient « Aller… » : le raccourci est
         // dans l'infobulle et dans la fenêtre F12, la place de
         // travail ne se remplace pas.
@@ -98060,14 +98087,12 @@ impl App {
                                     )
                                     .on_hover_text(tr("opts_stc_configuration_tooltip"));
                                 });
-                                ui.label(dim(
-                                    &match crate::stupcontrol::find_program(
-                                        &editor.cfg.stupcontrol.programme,
-                                    ) {
-                                        Some(p) => trf("stc_program_found", p.display()),
-                                        None => tr("stc_no_program").to_owned(),
-                                    },
-                                ));
+                                ui.label(dim(&match crate::stupcontrol::find_program(
+                                    &editor.cfg.stupcontrol.programme,
+                                ) {
+                                    Some(p) => trf("stc_program_found", p.display()),
+                                    None => tr("stc_no_program").to_owned(),
+                                }));
                             }
                             ui.add_space(8.0);
                             motif::section(ui, tr("opts_init"));
@@ -99955,7 +99980,7 @@ mod tests {
                 // central à `text_scale = 1,6`, où le panneau de
                 // biologie perd alors son formulaire : à partir de 1024
                 // de large, la barre doit tenir sur une rangée, quitte à
-                // écrire « Docs » au lieu de « Docs (F1) ».
+                // écrire « Notes » au lieu de « Notes (F1) ».
                 assert!(
                     !two_rows,
                     "échelle {scale}, {width} px : deux rangées là où raccourcir suffisait"

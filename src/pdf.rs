@@ -129,9 +129,8 @@ const DEFAULT_CR_TEMPLATE: &str = r#"
 #v(4mm)
 Docteur,
 
-Dans le cadre d'un accompagnement pharmaceutique ({{KIND}}), nous avons reçu
-à l'officine votre patient(e) {{PATIENT_NAME}}. Vous trouverez ci-dessous les
-éléments recueillis à cette occasion.
+Nous avons reçu votre patient(e) {{PATIENT_NAME}} à l'officine pour un
+accompagnement pharmaceutique ({{KIND}}). Voici les éléments recueillis.
 
 #v(2mm)
 #text(weight: "bold")[Traitements connus à l'officine :]
@@ -149,7 +148,7 @@ Dans le cadre d'un accompagnement pharmaceutique ({{KIND}}), nous avons reçu
 ]
 
 #v(1fr)
-Restant à votre disposition, nous vous prions d'agréer, Docteur,
+Nous restons à votre disposition et vous prions d'agréer, Docteur,
 l'expression de nos salutations confraternelles.
 
 #align(right)[{{PHARMACIST}}
@@ -1311,7 +1310,7 @@ const GUIDE_SECTIONS: &[(&str, &str)] = &[
     ),
     (
         "Documents imprimés par l'acte",
-        "Sur chaque ligne : « PDF » sort la fiche d'entretien à remplir, « CR » le courrier au médecin traitant avec les traitements connus, « Adhésion » le bulletin officiel de l'Assurance Maladie pré-rempli — les cases, la date et les signatures restent à faire devant le patient. Sur un TROD, « PDF » sort la feuille du test — signes d'orientation, score, lecture, lot et conduite —, et un TROD positif ouvre en plus l'ordonnance protocolisée.",
+        "Sur chaque ligne : « Fiche » sort la fiche d'entretien à remplir, « Courrier » le courrier au médecin traitant avec les traitements connus, « Adhésion » le bulletin officiel de l'Assurance Maladie pré-rempli — les cases, la date et les signatures restent à faire devant le patient. Sur un TROD, « Fiche » sort la feuille du test — signes d'orientation, score, lecture, lot et conduite —, et un TROD positif ouvre en plus l'ordonnance protocolisée.",
     ),
     (
         "Le bilan et le plan de prise",
@@ -1338,7 +1337,7 @@ const GUIDE_SECTIONS: &[(&str, &str)] = &[
         "Depuis les médicaments : « Tables de conversion » (les références de comptoir, datées et sourcées, interrogées par une seule recherche), « Codex… » (les préparations de l'officine, avec la formule mise à la quantité prescrite et la fiche de fabrication), « Protocoles… » (les arbres de décision, à dérouler question par question au comptoir).",
     ),
     (
-        "Chercher partout : « Aller à… » et « Dans le texte… »",
+        "Chercher partout : « Chercher… » et « Dans le texte… »",
         "Ctrl+K ouvre la recherche globale : trois lettres suffisent pour lister les patients, les fiches, les tables, les préparations et les protocoles qui répondent, avec les flèches pour parcourir et Entrée pour ouvrir. Sa dernière ligne cherche le même mot dans le *texte* des fiches. Le même bouton se trouve dans les médicaments sous « Dans le texte… » : « pamplemousse », « allaitement », « QT », chaque fiche concernée s'affiche avec la phrase correspondante, mot surligné, la posologie et sa remarque comprises. Lorsqu'une fiche patient est ouverte, un bouton limite la recherche à ses seuls traitements.",
     ),
     (
@@ -1679,9 +1678,9 @@ const DEFAULT_MESSAGERIE_TEMPLATE: &str = r##"
 #align(center)[#text(11pt)[{{PHARMACY_NAME}} — {{PHARMACY_PHONE}}]]
 #v(4mm)
 
-Scannez ce code avec l'appareil photo de votre téléphone : il ouvre la
-messagerie de la pharmacie, à votre nom. Vos messages sont chiffrés de bout
-en bout entre votre téléphone et la pharmacie.
+Scannez ce code avec l'appareil photo de votre téléphone : il ouvre votre
+conversation avec la pharmacie. Vos messages sont chiffrés de bout en bout,
+de votre téléphone à la pharmacie.
 
 #v(3mm)
 #align(center)[{{QR}}]
@@ -1691,9 +1690,9 @@ en bout entre votre téléphone et la pharmacie.
 
 - *Ce n'est pas un service d'urgence.* La pharmacie lit vos messages
   pendant ses heures d'ouverture. En cas d'urgence, appelez le 15 (ou le 112).
-- *Ce code vous est personnel.* Il donne accès à votre conversation : ne le
-  communiquez à personne. En cas de perte, demandez-en un nouveau à la
-  pharmacie ; l'ancien sera désactivé.
+- *Ce code vous est personnel.* Il ouvre votre conversation : ne le donnez
+  à personne. Si vous le perdez, demandez-en un nouveau à la pharmacie ;
+  l'ancien ne fonctionnera plus.
 
 #v(1fr)
 #text(9pt, fill: luma(90))[{{PATIENT_NAME}} — remis le {{DATE}}]
@@ -2647,7 +2646,7 @@ const DEFAULT_APPELS_TEMPLATE: &str = r##"
 {{ROWS}})
 
 #v(4mm)
-#text(9pt, style: "italic")[Liste établie le {{DATE}} d'après les dossiers à cette date ; à réimprimer avant chaque utilisation.]
+#text(9pt, style: "italic")[Liste établie le {{DATE}} ; à réimprimer avant chaque utilisation.]
 "##;
 
 fn call_list_values(
@@ -2750,7 +2749,7 @@ const DEFAULT_DESTRUCTION_TEMPLATE: &str = r##"
 #v(4mm)
 #text(9pt)[Le pharmacien : #box(width: 6cm, stroke: (bottom: 0.5pt))   Le témoin : #box(width: 6cm, stroke: (bottom: 0.5pt))]
 #v(3mm)
-#text(9pt, style: "italic")[Les quantités ci-dessus correspondent au compte « à détruire » du registre : retours de patients, non réintégrés au stock délivrable. La destruction est inscrite au registre ligne par ligne, avec le numéro du présent procès-verbal. Un stupéfiant rapporté par un patient n'est jamais redélivré.]
+#text(9pt, style: "italic")[Quantités du compte « à détruire » du registre : retours de patients, non réintégrés au stock délivrable. Chaque destruction est inscrite au registre, ligne par ligne, avec le numéro du présent procès-verbal. Un stupéfiant rapporté par un patient n'est jamais redélivré.]
 "##;
 
 fn destruction_list_values(
@@ -2806,7 +2805,7 @@ const DEFAULT_CONTROLE_TEMPLATE: &str = r##"
 #v(6mm)
 #text(9pt)[Compté par : #box(width: 5cm, stroke: (bottom: 0.5pt))   Le : #box(width: 3cm, stroke: (bottom: 0.5pt))   Signature : #box(width: 4cm, stroke: (bottom: 0.5pt))]
 #v(3mm)
-#text(9pt, style: "italic")[Tout écart entre le comptage et le registre est inscrit au registre par une ligne d'inventaire, accompagnée de sa justification. Aucune rature n'est portée au registre.]
+#text(9pt, style: "italic")[Tout écart entre le comptage et le registre est inscrit au registre par une ligne d'inventaire, avec sa justification. Aucune rature au registre.]
 "##;
 
 fn stock_check_values(
@@ -3045,7 +3044,7 @@ const DEFAULT_REGISTRE_TEMPLATE: &str = r##"
 {{ROWS}})
 
 #v(4mm)
-#text(8pt, style: "italic")[{{COUNT}} ligne(s) au registre, quantités exprimées en {{UNIT}}. Aucune ligne n'est raturée : une ligne annulée reste imprimée, barrée, et la ligne d'annulation qui s'y rapporte en annule l'effet sur le stock. Un inventaire *fixe* le solde au lieu de s'y ajouter : lorsqu'un comptage a trouvé un écart, la somme des colonnes ne correspond plus au solde final. Deux soldes sont tenus : les retours de patients sont tracés ici, ne sont jamais redélivrés et restent au compte « à détruire » jusqu'au procès-verbal de destruction. Le nom du patient figure dans le dossier dont le numéro est indiqué ci-dessus.]
+#text(8pt, style: "italic")[{{COUNT}} ligne(s) au registre ; quantités en {{UNIT}}. Aucune rature : une ligne annulée reste imprimée, barrée, et sa ligne d'annulation en annule l'effet sur le stock. Un inventaire *fixe* le solde au lieu de s'y ajouter : dès qu'un comptage a trouvé un écart, la somme des colonnes ne correspond plus au solde final. Deux soldes sont tenus : les retours de patients, inscrits ici et jamais redélivrés, restent au compte « à détruire » jusqu'au procès-verbal de destruction. Le nom du patient figure au dossier dont le numéro est indiqué.]
 "##;
 
 /// Ce que l'ordonnancier d'une année imprime.
@@ -3166,7 +3165,7 @@ const DEFAULT_ORDONNANCIER_TEMPLATE: &str = r##"
 {{ROWS}})
 
 #v(4mm)
-#text(8pt, style: "italic")[{{COUNT}} délivrance(s) inscrite(s) pour l'année. Un numéro n'est jamais réattribué : une ligne annulée conserve le sien. Le nom du patient figure dans le dossier dont le numéro est indiqué ci-dessus.]
+#text(8pt, style: "italic")[{{COUNT}} délivrance(s) inscrite(s) pour l'année. Un numéro n'est jamais réattribué : une ligne annulée conserve le sien. Le nom du patient figure au dossier dont le numéro est indiqué.]
 "##;
 
 pub struct ConciliationData<'a> {
@@ -5412,7 +5411,7 @@ const DEFAULT_FACTURATION_TEMPLATE: &str = r##"
 #v(4mm)
 #text(weight: "bold")[{{COUNT}} acte(s) — total {{TOTAL}}]
 #v(3mm)
-#text(9pt)[Prestations facturées en tiers payant, indépendamment de tout code CIP, aux prix TTC. Un patient n'est accompagné que par une pharmacie : celle qui a débuté la séquence annuelle perçoit la rémunération.]
+#text(9pt)[Prestations facturées en tiers payant, aux prix TTC, indépendamment de tout code CIP. Une seule pharmacie accompagne un patient : celle qui a débuté la séquence annuelle perçoit la rémunération.]
 {{RENTALS}}
 "##;
 
@@ -8111,7 +8110,7 @@ const DEFAULT_ECRASER_TEMPLATE: &str = r##"
 ]
 
 #v(3mm)
-#text(8pt, style: "italic")[Cette feuille reprend les résumés des caractéristiques des produits et la liste nationale des médicaments écrasables. Elle ne remplace pas l'avis du prescripteur : le remplacement d'un traitement non écrasable se fait avec son accord.]
+#text(8pt, style: "italic")[D'après les résumés des caractéristiques des produits et la liste nationale des médicaments écrasables. Ne remplace pas l'avis du prescripteur : un traitement non écrasable n'est remplacé qu'avec son accord.]
 "##;
 
 const MARKERS_PLANNING: &[&str] = &[
@@ -8142,7 +8141,7 @@ const DEFAULT_PLANNING_TEMPLATE: &str = r##"
 #text(9pt)[Total de la semaine : *{{TOTAL}}*]
 
 #v(3mm)
-#text(8pt, style: "italic")[Un poste sans heure de fin renseignée est noté « 9 h–… » et n'est pas compté dans le total : « 34 h 15 +1 » se lit 34 h 15, plus un poste sans heure de fin. Un total « — » indique qu'aucun horaire n'est renseigné, et non zéro heure. Une garde qui se prolonge au-delà de minuit est comptée en entier sur le jour où elle commence.]
+#text(8pt, style: "italic")[Un poste sans heure de fin (« 9 h–… ») n'entre pas dans le total : « 34 h 15 +1 » se lit 34 h 15 plus un poste sans heure de fin. Un total « — » signifie qu'aucun horaire n'est renseigné, et non zéro heure. Une garde qui dépasse minuit est comptée en entier sur son jour de début.]
 "##;
 
 fn crush_values(
@@ -9006,7 +9005,7 @@ const DEFAULT_SURVEILLANCE_TEMPLATE: &str = r##"
 {{ROWS}})
 
 #v(5mm)
-#text(9pt)[Feuille établie le {{DATE}} par {{PHARMACY_NAME}} d'après les traitements enregistrés dans votre dossier. Elle ne remplace ni la prescription de votre médecin ni le compte rendu du laboratoire. Pour toute question, adressez-vous à votre pharmacien ou à votre médecin.]
+#text(9pt)[Feuille établie le {{DATE}} par {{PHARMACY_NAME}} d'après les traitements de votre dossier. Elle ne remplace ni la prescription de votre médecin ni le compte rendu du laboratoire. Pour toute question, demandez à votre pharmacien ou à votre médecin.]
 #v(2mm)
 {{MENTION}}
 "##;
@@ -9156,7 +9155,7 @@ const DEFAULT_TROD_TEMPLATE: &str = r##"
   )
 ]
 
-#sec[Signes d'orientation vers le médecin, sans réalisation du test]
+#sec[Signes d'orientation vers le médecin, sans test]
 {{SIGNS}}
 
 {{SCORE}}
@@ -9426,7 +9425,7 @@ Docteur,
 #box(width: 100%, height: 3cm, stroke: 0.7pt)
 
 #v(1fr)
-Restant à votre disposition, nous vous prions d'agréer, Docteur,
+Nous restons à votre disposition et vous prions d'agréer, Docteur,
 l'expression de nos salutations confraternelles.
 
 #align(right)[{{PHARMACIST}}
@@ -9570,7 +9569,7 @@ const DEFAULT_VACCIN_TEMPLATE: &str = r##"
   )
 ]
 
-#sec[Avant l'injection : toute réponse « oui » est à évaluer avant de vacciner]
+#sec[Avant l'injection : évaluer toute réponse « oui » avant de vacciner]
 {{QUESTIONS}}
 
 #sec[Vaccin administré]

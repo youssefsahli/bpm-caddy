@@ -22,8 +22,8 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # backups_keep = 14
 
 [ui]
-# Afficher le panneau de documentation d'équipe au démarrage.
-# show_docs_on_start = true
+# Afficher le panneau de droite (notes d'équipe, aide) au démarrage.
+# show_docs_on_start = false
 # Échelle du texte (1.0 = taille de référence).
 # text_scale = 1.0   # de 0,8 à 1,6 — au-delà, la barre du haut ne tient
 #                    # plus sur un écran de 1024 de large
@@ -1891,7 +1891,7 @@ const DEFAULT_THEME: &str = "motif";
 impl Default for UiConfig {
     fn default() -> Self {
         Self {
-            show_docs_on_start: true,
+            show_docs_on_start: false,
             show_nav_on_start: true,
             text_scale: 1.0,
             density: "confortable".to_owned(),
@@ -2733,7 +2733,7 @@ mod tests {
             auto_lock_timeout_minutes = 5
 
             [ui]
-            show_docs_on_start = false
+            show_docs_on_start = true
 
             [billing]
             bpm_fee = 55.5
@@ -2742,7 +2742,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(cfg.database.auto_lock_timeout_minutes, 5);
-        assert!(!cfg.ui.show_docs_on_start);
+        assert!(cfg.ui.show_docs_on_start);
         // The legacy flat form fills all three rank slots…
         assert_eq!(cfg.billing.bpm, ActFees::flat(55.5));
         // …the nested form sets them individually.
@@ -2778,7 +2778,7 @@ mod tests {
         // Et le reste de `[ui]` garde ses valeurs par défaut : une clé
         // écrite seule n'en efface pas d'autres.
         assert_eq!(cfg.ui.text_scale, 1.0);
-        assert!(cfg.ui.show_docs_on_start);
+        assert!(!cfg.ui.show_docs_on_start);
         // Le gabarit commenté livré avec l'application la mentionne,
         // faute de quoi personne ne saurait qu'elle existe.
         assert!(CONFIG_TEMPLATE.contains("caisse_expected"));
@@ -3141,7 +3141,7 @@ mod tests {
     fn empty_config_is_all_defaults() {
         let cfg: Config = toml::from_str("").unwrap();
         assert_eq!(cfg.database.auto_lock_timeout_minutes, 15);
-        assert!(cfg.ui.show_docs_on_start);
+        assert!(!cfg.ui.show_docs_on_start);
         assert!(cfg.ui.discreet_finances);
     }
 

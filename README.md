@@ -177,7 +177,7 @@ auto_lock_timeout_minutes = 15
 backups_keep = 14
 
 [ui]
-show_docs_on_start = true
+show_docs_on_start = false
 # Mask dashboard amounts until revealed via the small corner control.
 discreet_finances = true
 
