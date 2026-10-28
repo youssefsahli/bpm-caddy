@@ -6141,6 +6141,9 @@ struct Session {
     /// si le presse-papiers porte encore ce texte — autre chose copié
     /// entre-temps ne colle pas une journée oubliée.
     planning_clip: Option<(String, Vec<planning::Shift>)>,
+    /// The planning cell being typed in — « 9-12h30 14-19 », « congé » —
+    /// see [`PlanningTyping`].
+    planning_typing: Option<PlanningTyping>,
     /// L'autre bout d'une plage de jours, posé par Maj+clic sur la ligne
     /// de la personne désignée : de `shift_form.day` à ce jour-ci. Ce
     /// qu'un congé du 12 au 26 demande, d'un clic droit.
@@ -7380,6 +7383,7 @@ impl Session {
             planning_undo: Vec::new(),
             planning_notice: None,
             planning_clip: None,
+            planning_typing: None,
             planning_range: None,
             shifts: Vec::new(),
             shifts_eve: Vec::new(),
@@ -20564,6 +20568,22 @@ enum AgendaMode {
     Planning,
 }
 
+/// **A planning cell typed in, like a spreadsheet's.** Double-click,
+/// Entrée or a first digit opens a field in the cell with the day as
+/// it reads back (`planning::typed_day`); Entrée writes it, Tab writes
+/// it and moves to the next day, Échap leaves it. What is written is
+/// that day only — the person's pattern (trame) stays whole — and one
+/// « Annuler » takes it back.
+struct PlanningTyping {
+    who: String,
+    day: String,
+    text: String,
+    /// What the field opened with: unchanged, nothing is written.
+    was: String,
+    /// The field still has to take the keyboard (its first frame).
+    focus: bool,
+}
+
 /// A planning gesture that can be taken back.
 ///
 /// **Une manipulation sans retour arrière est un piège** : « Supprimer »
@@ -22588,6 +22608,28 @@ impl App {
                                 // seulement » cochée.
                                 let (who, day) = (occ.operator.clone(), occ.day.clone());
                                 App::pick_planning_cell(&mut session, &who, &day, Some(occ));
+                            }
+                        }
+                        // The planning with **a cell being typed in**,
+                        // the first person's Monday: the field only exists
+                        // under a double-click, so no capture showed it.
+                        Ok("planning_saisie") => {
+                            session.refresh_dashboard();
+                            session.agenda_mode = AgendaMode::Planning;
+                            session.load_shifts(true);
+                            session.view = MainView::Agenda;
+                            let who = config
+                                .pharmacy
+                                .operators
+                                .first()
+                                .map(|o| o.initials.trim().to_owned())
+                                .unwrap_or_else(|| "CL".to_owned());
+                            if let Some(day) = session.agenda_week.first().cloned() {
+                                session.shift_form.operator = who.clone();
+                                session.shift_form.day = day.clone();
+                                let occ = App::picked_shift(&session);
+                                App::pick_planning_cell(&mut session, &who, &day, occ);
+                                App::planning_start_typing(&mut session, &who, &day, None);
                             }
                         }
                         // Le planning au mois, **sur la personne dont
@@ -43934,6 +43976,34 @@ impl App {
                 session.planning_notice = None;
                 Self::planning_clear_cell(session);
             }
+            // **Typing on the designated cell**: Entrée or F2 opens it
+            // with its day, a first digit opens it with that digit — the
+            // way a spreadsheet takes a cell.
+            let who = session.shift_form.operator.trim().to_owned();
+            let day = session.shift_form.day.clone();
+            if !session.planning_month
+                && session.planning_typing.is_none()
+                && !who.is_empty()
+                && session.agenda_week.contains(&day)
+            {
+                let open = ctx.input_mut(|i| {
+                    i.consume_key(egui::Modifiers::NONE, egui::Key::Enter)
+                        || i.consume_key(egui::Modifiers::NONE, egui::Key::F2)
+                });
+                let first = ctx.input(|i| {
+                    i.events.iter().find_map(|e| match e {
+                        egui::Event::Text(t) if t.starts_with(|c: char| c.is_ascii_digit()) => {
+                            Some(t.clone())
+                        }
+                        _ => None,
+                    })
+                });
+                if open {
+                    Self::planning_start_typing(session, &who, &day, None);
+                } else if let Some(t) = first {
+                    Self::planning_start_typing(session, &who, &day, Some(t));
+                }
+            }
             if copy {
                 session.planning_notice = None;
                 if let Some(text) = Self::planning_copy_cell(session) {
@@ -44172,21 +44242,25 @@ impl App {
             "agenda_counts",
             &[&tally.kept, &tally.hidden, &tally.clashes],
         );
-        let filter_lines = Self::wrapped_rows(
-            ui,
-            body.width() - 60.0,
-            [
-                tr("agenda_place_counter"),
-                tr("agenda_place_remote"),
-                tr("agenda_filter_all"),
-            ]
-            .into_iter()
-            .chain(InterviewKind::ALL.iter().map(|k| k.label()))
-            // Le compteur aussi se mesure rempli : « {} rendez-vous
-            // affiché(s) » n'a pas la largeur de « 12 rendez-vous
-            // affiché(s) ».
-            .chain(std::iter::once(counts_label.as_str())),
-        );
+        let filter_lines = if session.agenda_mode == AgendaMode::Planning {
+            0.0
+        } else {
+            Self::wrapped_rows(
+                ui,
+                body.width() - 60.0,
+                [
+                    tr("agenda_place_counter"),
+                    tr("agenda_place_remote"),
+                    tr("agenda_filter_all"),
+                ]
+                .into_iter()
+                .chain(InterviewKind::ALL.iter().map(|k| k.label()))
+                // Le compteur aussi se mesure rempli : « {} rendez-vous
+                // affiché(s) » n'a pas la largeur de « 12 rendez-vous
+                // affiché(s) ».
+                .chain(std::iter::once(counts_label.as_str())),
+            )
+        };
         // **On mesure la chaîne qu'on va dessiner, pas son gabarit.**
         // « Semaine du {} » fait dix caractères de moins que « Semaine
         // du 07/09/2026 » : la bande comptait deux rangées, en
@@ -44406,80 +44480,85 @@ impl App {
                         // une qu'on pouvait cliquer. La légende a disparu ;
                         // c'est cette rangée-ci qui la remplace, et elle
                         // rend au calendrier la hauteur qu'elle prenait.
-                        ui.horizontal_wrapped(|ui| {
-                            ui.label(
-                                egui::RichText::new(tr("agenda_filter"))
-                                    .size(motif::pt(ui, 11.0))
-                                    .color(motif::text_dim()),
-                            );
-                            if motif::toggle(
-                                ui,
-                                tr("agenda_filter_all"),
-                                session.agenda_filter.is_empty()
-                                    && session.agenda_places == [true, true],
-                            )
-                            .on_hover_text(tr("agenda_filter_tooltip"))
-                            .clicked()
-                            {
-                                session.agenda_filter.clear();
-                                session.agenda_places = [true, true];
-                            }
-                            // Le comptoir et le téléphone : deux endroits,
-                            // et une personne ne peut pas être aux deux.
-                            for (i, label) in
-                                [tr("agenda_place_counter"), tr("agenda_place_remote")]
-                                    .into_iter()
-                                    .enumerate()
-                            {
-                                if motif::toggle(ui, label, session.agenda_places[i])
-                                    .on_hover_text(tr("agenda_place_tooltip"))
-                                    .clicked()
-                                {
-                                    session.agenda_places[i] = !session.agenda_places[i];
-                                }
-                            }
-                            for kind in InterviewKind::ALL {
-                                let on = session.agenda_filter.contains(&kind);
-                                // The same sunken-when-on idiom as everywhere else,
-                                // with the act's own colour as a marker so the
-                                // filter row and the grid read as one thing.
-                                let resp = motif::toggle(ui, kind.label(), on);
-                                let dot = egui::Rect::from_center_size(
-                                    egui::pos2(resp.rect.left() + 6.0, resp.rect.center().y),
-                                    egui::vec2(4.0, resp.rect.height() - 10.0),
+                        // Not in Planning: it filters appointments, and
+                        // the planning shows none — two rows of buttons
+                        // that change nothing on that screen.
+                        if session.agenda_mode != AgendaMode::Planning {
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(
+                                    egui::RichText::new(tr("agenda_filter"))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
                                 );
-                                ui.painter().rect_filled(dot, 0.0, kind_color(kind));
-                                if resp.clicked() {
-                                    if on {
-                                        session.agenda_filter.remove(&kind);
-                                    } else {
-                                        session.agenda_filter.insert(kind);
+                                if motif::toggle(
+                                    ui,
+                                    tr("agenda_filter_all"),
+                                    session.agenda_filter.is_empty()
+                                        && session.agenda_places == [true, true],
+                                )
+                                .on_hover_text(tr("agenda_filter_tooltip"))
+                                .clicked()
+                                {
+                                    session.agenda_filter.clear();
+                                    session.agenda_places = [true, true];
+                                }
+                                // Le comptoir et le téléphone : deux endroits,
+                                // et une personne ne peut pas être aux deux.
+                                for (i, label) in
+                                    [tr("agenda_place_counter"), tr("agenda_place_remote")]
+                                        .into_iter()
+                                        .enumerate()
+                                {
+                                    if motif::toggle(ui, label, session.agenda_places[i])
+                                        .on_hover_text(tr("agenda_place_tooltip"))
+                                        .clicked()
+                                    {
+                                        session.agenda_places[i] = !session.agenda_places[i];
                                     }
                                 }
-                            }
-                            // Le compteur, et c'est lui qui empêche de
-                            // croire une journée vide alors qu'elle est
-                            // filtrée. Le mot « masqués » y est nécessaire.
-                            ui.add_space(8.0);
-                            // **D'un seul tenant** : un libellé dans une
-                            // rangée qui enveloppe se replie *lui-même* au
-                            // bord, et « 7 rendez-vous » finissait la
-                            // rangée des filtres quand « affiché(s) ·
-                            // 0 masqué(s) » commençait la suivante.
-                            ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(&counts_label)
-                                        .size(motif::pt(ui, 11.0))
-                                        .color(if tally.clashes > 0 {
-                                            motif::alert()
+                                for kind in InterviewKind::ALL {
+                                    let on = session.agenda_filter.contains(&kind);
+                                    // The same sunken-when-on idiom as everywhere else,
+                                    // with the act's own colour as a marker so the
+                                    // filter row and the grid read as one thing.
+                                    let resp = motif::toggle(ui, kind.label(), on);
+                                    let dot = egui::Rect::from_center_size(
+                                        egui::pos2(resp.rect.left() + 6.0, resp.rect.center().y),
+                                        egui::vec2(4.0, resp.rect.height() - 10.0),
+                                    );
+                                    ui.painter().rect_filled(dot, 0.0, kind_color(kind));
+                                    if resp.clicked() {
+                                        if on {
+                                            session.agenda_filter.remove(&kind);
                                         } else {
-                                            motif::text_dim()
-                                        }),
+                                            session.agenda_filter.insert(kind);
+                                        }
+                                    }
+                                }
+                                // Le compteur, et c'est lui qui empêche de
+                                // croire une journée vide alors qu'elle est
+                                // filtrée. Le mot « masqués » y est nécessaire.
+                                ui.add_space(8.0);
+                                // **D'un seul tenant** : un libellé dans une
+                                // rangée qui enveloppe se replie *lui-même* au
+                                // bord, et « 7 rendez-vous » finissait la
+                                // rangée des filtres quand « affiché(s) ·
+                                // 0 masqué(s) » commençait la suivante.
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(&counts_label)
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(if tally.clashes > 0 {
+                                                motif::alert()
+                                            } else {
+                                                motif::text_dim()
+                                            }),
+                                    )
+                                    .wrap_mode(egui::TextWrapMode::Extend),
                                 )
-                                .wrap_mode(egui::TextWrapMode::Extend),
-                            )
-                            .on_hover_text(tr("agenda_counts_tooltip"));
-                        });
+                                .on_hover_text(tr("agenda_counts_tooltip"));
+                            });
+                        }
                         if !overdue.is_empty() {
                             {
                                 ui.horizontal_wrapped(|ui| {
@@ -46774,6 +46853,12 @@ impl App {
         let range = Self::planning_range_bounds(session);
         let anchor_who = session.shift_form.operator.trim().to_owned();
         let mut range_pick: Option<String> = None;
+        // The cell being typed in, out of the session while the grid
+        // borrows it; what its field gave back, and a cell to open.
+        let mut typing = session.planning_typing.take();
+        let mut typed: Option<(String, String, String, i64)> = None;
+        let mut typing_left = false;
+        let mut start_typing: Option<(String, String)> = None;
         // Une deuxième région défilante sans nom dans la même vue peint
         // ses deux bannières rouges en travers de l'écran.
         motif::inside(ui, rect, |ui| {
@@ -46954,6 +47039,60 @@ impl App {
                                     .map(|(_, _, sh, _)| sh)
                                     .collect();
                                 let text = Self::planning_cell_text(&mine);
+                                if let Some(t) = typing
+                                    .as_mut()
+                                    .filter(|t| !key.is_empty() && t.who == key && t.day == *date)
+                                {
+                                    let field = motif::field(
+                                        ui,
+                                        day_w.max(chars_wide(ui, 24.0)),
+                                        egui::TextEdit::singleline(&mut t.text)
+                                            .hint_text(motif::hint(tr("planning_typed_hint"))),
+                                    )
+                                    .on_hover_text(tr("planning_typed_tooltip"));
+                                    if std::mem::take(&mut t.focus) {
+                                        field.request_focus();
+                                        // Opened on its day, all of it is
+                                        // selected: what is typed replaces
+                                        // it, as in a sheet.
+                                        // A first digit opened it: the
+                                        // caret goes after that digit.
+                                        if let Some(mut state) =
+                                            egui::TextEdit::load_state(ui.ctx(), field.id)
+                                                .filter(|_| t.text == t.was)
+                                        {
+                                            state.cursor.set_char_range(Some(
+                                                egui::text::CCursorRange::two(
+                                                    egui::text::CCursor::new(0),
+                                                    egui::text::CCursor::new(
+                                                        t.text.chars().count(),
+                                                    ),
+                                                ),
+                                            ));
+                                            state.store(ui.ctx(), field.id);
+                                        }
+                                    }
+                                    if field.lost_focus() {
+                                        let (esc, tab, back) = ui.input(|i| {
+                                            (
+                                                i.key_pressed(egui::Key::Escape),
+                                                i.key_pressed(egui::Key::Tab) && !i.modifiers.shift,
+                                                i.key_pressed(egui::Key::Tab) && i.modifiers.shift,
+                                            )
+                                        });
+                                        if esc {
+                                            typing_left = true;
+                                        } else {
+                                            typed = Some((
+                                                t.who.clone(),
+                                                t.day.clone(),
+                                                t.text.clone(),
+                                                i64::from(tab) - i64::from(back),
+                                            ));
+                                        }
+                                    }
+                                    continue;
+                                }
                                 // Deux postes de la même personne à la
                                 // même minute : elle ne peut pas les
                                 // tenir tous les deux. Un liseré, jamais
@@ -47095,6 +47234,9 @@ impl App {
                                 // **Maj+clic trace une plage** sur la
                                 // ligne de la personne désignée : du
                                 // jour désigné à celui-ci.
+                                if cell.double_clicked() && !key.is_empty() {
+                                    start_typing = Some((key.to_owned(), date.clone()));
+                                }
                                 let shift_held = ui.input(|i| i.modifiers.shift);
                                 if cell.clicked()
                                     && shift_held
@@ -47306,6 +47448,26 @@ impl App {
         }
         if let Some(day) = range_pick {
             session.planning_range = Some(day);
+        }
+        session.planning_typing = if typing_left { None } else { typing };
+        if let Some((who, day, text, step)) = typed {
+            let unchanged = session
+                .planning_typing
+                .as_ref()
+                .is_some_and(|t| t.was.trim() == text.trim());
+            if unchanged || Self::planning_write_typed(session, &who, &day, &text) {
+                session.planning_typing = None;
+                if step != 0 {
+                    Self::planning_type_next(session, &who, &day, step);
+                }
+            } else if let Some(t) = session.planning_typing.as_mut() {
+                t.focus = true;
+            }
+        }
+        if let Some((who, day)) = start_typing {
+            session.shift_form.operator = who.clone();
+            session.shift_form.day = day.clone();
+            Self::planning_start_typing(session, &who, &day, None);
         }
         if let Some((who, day, action)) = cell_action {
             Self::planning_cell_act(session, ui.ctx(), &who, &day, action);
@@ -48104,6 +48266,144 @@ impl App {
     /// [`App::planning_rewrite_day`].
     fn planning_clear_cell(session: &mut Session) {
         Self::planning_rewrite_day(session, None);
+    }
+
+    /// Open the cell of `who` on `day` for typing, with its day — or
+    /// with `first`, the key that opened it.
+    fn planning_start_typing(session: &mut Session, who: &str, day: &str, first: Option<String>) {
+        let was = Self::planning_typed_cell(session, who, day);
+        session.planning_notice = None;
+        session.planning_typing = Some(PlanningTyping {
+            who: who.to_owned(),
+            day: day.to_owned(),
+            text: first.unwrap_or_else(|| was.clone()),
+            was,
+            focus: true,
+        });
+    }
+
+    /// Tab out of a typed cell: the next day (or, Maj+Tab, the one
+    /// before) of the same person opens for typing, the week turning at
+    /// its edge as the arrows turn it.
+    fn planning_type_next(session: &mut Session, who: &str, day: &str, step: i64) {
+        let Some(next) = crate::date::add_days(day, step) else {
+            return;
+        };
+        if !session.agenda_week.contains(&next) {
+            session.agenda_offset += step.signum();
+            session.agenda_week = session
+                .db
+                .week_dates(session.agenda_offset)
+                .unwrap_or_default();
+            session.load_shifts(false);
+        }
+        session.shift_form.operator = who.to_owned();
+        session.shift_form.day = next.clone();
+        let occ = Self::picked_shift(session);
+        Self::pick_planning_cell(session, who, &next, occ);
+        Self::planning_start_typing(session, who, &next, None);
+    }
+
+    /// The day of `who` on `day` as its cell shows it, for typing.
+    fn planning_typed_cell(session: &Session, who: &str, day: &str) -> String {
+        let mine: Vec<planning::Shift> = session
+            .shifts
+            .iter()
+            .filter(|s| s.day == day && s.operator.trim() == who)
+            .filter_map(planned_shift)
+            .collect();
+        planning::typed_day(&mine.iter().collect::<Vec<_>>())
+    }
+
+    /// **Write a day typed in a cell** — that day only, the pattern
+    /// whole: the cell is emptied the way Suppr empties it
+    /// ([`App::planning_rewrite_day`]), then the typed shifts are placed
+    /// as shifts of that one day, and the two become **one** « Annuler ».
+    ///
+    /// A typed range names no kind: it keeps the kind of the shift it
+    /// replaces, in order, when that one was worked — « 8h30-12h30 »
+    /// retyped on an opening stays an opening —, and is a « journée »
+    /// otherwise. An absence typed with no hour starts at the person's
+    /// first hour that day, or nine, like a leave over a range.
+    ///
+    /// `false` when the text was refused: the field stays open, and the
+    /// notice says which word.
+    fn planning_write_typed(session: &mut Session, who: &str, day: &str, text: &str) -> bool {
+        let pieces = match planning::parse_day(text) {
+            Ok(p) => p,
+            Err(word) => {
+                session.planning_notice = Some(trf("planning_typed_bad", &word));
+                return false;
+            }
+        };
+        let mut before: Vec<planning::Shift> = session
+            .shifts
+            .iter()
+            .filter(|s| s.day == day && s.operator.trim() == who)
+            .filter_map(planned_shift)
+            .collect();
+        before.sort_by_key(|s| (s.start, s.end));
+        let first_hour = before.first().map_or(9 * 60, |s| s.start);
+        let mut shifts = Vec::new();
+        for (i, p) in pieces.iter().enumerate() {
+            let kind = p.kind.unwrap_or_else(|| {
+                before
+                    .get(i)
+                    .map(|s| s.kind)
+                    .filter(|k| k.worked())
+                    .unwrap_or(planning::ShiftKind::Journee)
+            });
+            let Some(start) = p.start.or(kind.is_absence().then_some(first_hour)) else {
+                session.planning_notice = Some(tr("planning_needs_an_hour").to_owned());
+                return false;
+            };
+            shifts.push(planning::Shift {
+                id: 0,
+                operator: who.to_owned(),
+                start,
+                end: p.end,
+                pause: p.pause,
+                kind,
+            });
+        }
+        session.shift_form.operator = who.to_owned();
+        session.shift_form.day = day.to_owned();
+        let undo_from = session.planning_undo.len();
+        Self::planning_rewrite_day(session, None);
+        if !shifts.is_empty() {
+            Self::planning_place_day(session, who, day, &shifts, "planning_undo_typed");
+        }
+        // The emptying and the placing, folded into one step back.
+        let steps: Vec<PlanningUndo> = session.planning_undo.drain(undo_from..).collect();
+        let mut added: Vec<(i64, String)> = Vec::new();
+        let mut removed: Vec<Vec<db::NewShift>> = Vec::new();
+        for step in steps {
+            match step {
+                PlanningUndo::Cleared {
+                    added: a,
+                    removed: r,
+                    ..
+                } => {
+                    added.extend(a);
+                    removed.extend(r);
+                }
+                PlanningUndo::Placed { ids, who, .. } => {
+                    added.extend(ids.into_iter().map(|id| (id, who.clone())));
+                }
+                other => session.planning_undo.push(other),
+            }
+        }
+        if !added.is_empty() || !removed.is_empty() {
+            session.remember(PlanningUndo::Cleared {
+                added,
+                removed,
+                who: who.to_owned(),
+                what: "planning_undo_typed",
+            });
+        }
+        let occ = Self::picked_shift(session);
+        Self::pick_planning_cell(session, who, day, occ);
+        true
     }
 
     /// Réécrire la journée de la case désignée : **la vider**
@@ -110155,6 +110455,132 @@ mod tests {
         let theirs = s.comptes.posts[0].clone();
         s.comptes_delete_post(&theirs);
         assert_eq!(s.comptes.posts.len(), 3);
+    }
+
+    /// **A day typed in its cell is that day only, and one step back.**
+    /// On a pattern day the typed hours replace the day and the next
+    /// week keeps its pattern; « congé » takes the whole day; a typo is
+    /// refused and writes nothing; a range retyped keeps the kind it
+    /// had; one « Annuler » gives the cell back as it was.
+    #[test]
+    fn a_planning_day_typed_in_its_cell_replaces_that_day_only() {
+        use crate::planning::{Cadence, ShiftKind};
+        let (mut s, _swept) = scratch_session("planning_typed");
+        let half = |from: &str, to: &str, kind: ShiftKind| crate::db::NewShift {
+            operator: "CL".to_owned(),
+            day: "2026-10-12".to_owned(),
+            start_time: from.to_owned(),
+            end_time: to.to_owned(),
+            pause_minutes: 0,
+            kind: kind.as_str().to_owned(),
+            repeat_days: Cadence::Hebdomadaire.pas(),
+            cadence: Cadence::Hebdomadaire.as_str().to_owned(),
+            ..Default::default()
+        };
+        s.db.add_shift(&half("09:00", "12:30", ShiftKind::Ouverture))
+            .unwrap();
+        s.db.add_shift(&half("14:00", "19:00", ShiftKind::Journee))
+            .unwrap();
+        s.agenda_week = (19..=25).map(|d| format!("2026-10-{d}")).collect();
+        s.load_shifts(true);
+        let cell = |s: &super::Session, day: &str| {
+            let mut v: Vec<(String, String, String)> = s
+                .shifts
+                .iter()
+                .filter(|x| x.day == day && x.operator == "CL")
+                .map(|x| (x.start_time.clone(), x.end_time.clone(), x.kind.clone()))
+                .collect();
+            v.sort();
+            v
+        };
+        let monday = "2026-10-19";
+        let before = cell(&s, monday);
+        assert_eq!(
+            super::App::planning_typed_cell(&s, "CL", monday),
+            "ouverture 9-12h30 journée 14-19"
+        );
+
+        // A typo: refused, nothing written, the word said.
+        assert!(!super::App::planning_write_typed(
+            &mut s,
+            "CL",
+            monday,
+            "8-12 vacances"
+        ));
+        assert_eq!(cell(&s, monday), before);
+        assert!(s
+            .planning_notice
+            .as_deref()
+            .unwrap_or("")
+            .contains("vacances"));
+
+        // Retyped: the morning keeps its kind, the pattern stays whole.
+        let undo_depth = s.planning_undo.len();
+        assert!(super::App::planning_write_typed(
+            &mut s,
+            "CL",
+            monday,
+            "8h30-12h30 14-18"
+        ));
+        assert_eq!(
+            cell(&s, monday),
+            vec![
+                (
+                    "08:30".to_owned(),
+                    "12:30".to_owned(),
+                    ShiftKind::Ouverture.as_str().to_owned()
+                ),
+                (
+                    "14:00".to_owned(),
+                    "18:00".to_owned(),
+                    ShiftKind::Journee.as_str().to_owned()
+                ),
+            ]
+        );
+        let next = s.db.shifts_between("2026-10-26", "2026-10-26").unwrap();
+        assert_eq!(next.len(), 2);
+        assert!(next.iter().any(|x| x.start_time == "09:00"));
+        // One step back, and the cell is what it was.
+        assert_eq!(s.planning_undo.len(), undo_depth + 1);
+        super::App::planning_undo(&mut s);
+        assert_eq!(cell(&s, monday), before);
+
+        // « congé »: the whole day, from her first hour.
+        assert!(super::App::planning_write_typed(
+            &mut s, "CL", monday, "congé"
+        ));
+        assert_eq!(
+            cell(&s, monday),
+            vec![(
+                "09:00".to_owned(),
+                String::new(),
+                ShiftKind::Conge.as_str().to_owned()
+            )]
+        );
+        // Emptied: nothing that day.
+        assert!(super::App::planning_write_typed(&mut s, "CL", monday, ""));
+        assert!(cell(&s, monday).is_empty());
+        // A free day takes typed hours as « journée ».
+        assert!(super::App::planning_write_typed(
+            &mut s,
+            "YS",
+            monday,
+            "garde 20-8"
+        ));
+        let ys: Vec<_> = s
+            .shifts
+            .iter()
+            .filter(|x| x.day == monday && x.operator == "YS")
+            .map(|x| (x.start_time.clone(), x.end_time.clone(), x.kind.clone()))
+            .collect();
+        assert_eq!(
+            ys,
+            vec![(
+                "20:00".to_owned(),
+                "32:00".to_owned(),
+                ShiftKind::Garde.as_str().to_owned()
+            )]
+        );
     }
 
     /// **Une journée se copie, se colle, se met en congé** — d'un geste

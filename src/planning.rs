@@ -916,6 +916,241 @@ pub fn usual_day(days: &[(String, Vec<Shift>)], who: &str, weekday: i64) -> Vec<
     .unwrap_or_default()
 }
 
+/// One piece of a day typed in a planning cell: what kind of shift,
+/// from when to when, and its break. Built by [`parse_day`].
+///
+/// `kind` and `start` stay `None` when the text does not say them —
+/// « 9-19 » names no kind, « congé » no hour — and the caller fills
+/// them from what the cell held, never from an invented default.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct TypedPiece {
+    pub kind: Option<ShiftKind>,
+    pub start: Option<u16>,
+    pub end: Option<u16>,
+    pub pause: u16,
+}
+
+/// The words a cell accepts for a kind, accents and case folded, and
+/// each kind's label besides. A word of three letters or more names a
+/// kind when one of these starts with it (« form », « mal », « récup »).
+const KIND_WORDS: [(&str, ShiftKind); 4] = [
+    ("cp", ShiftKind::Conge),
+    ("arret", ShiftKind::Maladie),
+    ("repos", ShiftKind::Recup),
+    ("conges", ShiftKind::Conge),
+];
+
+fn fold(s: &str) -> String {
+    s.chars()
+        .flat_map(char::to_lowercase)
+        .map(|c| match c {
+            'é' | 'è' | 'ê' | 'ë' => 'e',
+            'à' | 'â' | 'ä' => 'a',
+            'î' | 'ï' => 'i',
+            'ô' | 'ö' => 'o',
+            'ù' | 'û' | 'ü' => 'u',
+            'ç' => 'c',
+            '–' | '—' => '-',
+            c => c,
+        })
+        .collect()
+}
+
+fn kind_named(word: &str) -> Option<ShiftKind> {
+    if let Some((_, k)) = KIND_WORDS.iter().find(|(w, _)| *w == word) {
+        return Some(*k);
+    }
+    if word.chars().count() < 3 {
+        return None;
+    }
+    ShiftKind::ALL
+        .into_iter()
+        .find(|k| fold(k.label()).starts_with(word))
+}
+
+/// An hour typed in a cell — « 9 », « 9h », « 9h30 », « 930 »,
+/// « 09:30 », « 12.30 » — in minutes, or `None`.
+fn typed_bound(t: &str) -> Option<u16> {
+    let t = t.trim();
+    if t.is_empty() {
+        return None;
+    }
+    let (h, m) = match t.find(['h', ':', '.']) {
+        Some(at) => (&t[..at], &t[at + 1..]),
+        None if t.len() > 2 => t.split_at(t.len() - 2),
+        None => (t, ""),
+    };
+    let digits = |s: &str| !s.is_empty() && s.len() <= 2 && s.chars().all(|c| c.is_ascii_digit());
+    if !digits(h) || !(m.is_empty() || (m.len() == 2 && digits(m))) {
+        return None;
+    }
+    let h: u16 = h.parse().ok()?;
+    let m: u16 = if m.is_empty() { 0 } else { m.parse().ok()? };
+    (h < 24 && m < 60).then_some(h * 60 + m)
+}
+
+/// Read a day **as it is typed in a cell**: « 9-12h30 14-19 »,
+/// « congé », « garde 20-8 », « formation 14h-17h », « 9-19 p60 ».
+///
+/// * Ranges are separated by spaces, commas, « ; », « / » or « · » ;
+///   « 9 h – 12 h 30 », as the grid writes it, reads the same.
+/// * A kind word applies to the ranges after it, until the next one.
+///   A kind with no range after it is a piece of its own, with no hour.
+/// * « p30 » or « pause 30 » is the break of the range before it, in
+///   minutes.
+/// * An end before the start is the next day (« 20-8 », a night).
+/// * A start alone (« 9 », « 9- ») is a shift with no end written.
+///
+/// Empty text is an empty day — the cell cleared. Anything that is
+/// none of these is refused **with the word that stopped it**, never
+/// guessed: a typo must not become a shift.
+pub fn parse_day(text: &str) -> Result<Vec<TypedPiece>, String> {
+    let folded = fold(text);
+    // Glue what the grid's own spelling puts apart: « 12 h 30 » and
+    // « 9 - 12 » are one token each.
+    let mut glued = String::new();
+    let chars: Vec<char> = folded.chars().collect();
+    for (i, &c) in chars.iter().enumerate() {
+        if c.is_whitespace() {
+            let prev = glued.chars().last();
+            let rest = &chars[i + 1..];
+            let next = rest.iter().find(|c| !c.is_whitespace()).copied();
+            // The word after the gap, to tell « 12 h 30 » (minutes)
+            // from « 12h 14h-19h » (the next range).
+            let word: String = rest
+                .iter()
+                .skip_while(|c| c.is_whitespace())
+                .take_while(|c| !c.is_whitespace())
+                .collect();
+            let minutes_follow = word.len() == 2 && word.chars().all(|c| c.is_ascii_digit());
+            let joins = match (prev, next) {
+                (Some(a), Some(b)) => {
+                    a == '-'
+                        || b == '-'
+                        || (a.is_ascii_digit() && b == 'h')
+                        || (a == 'h' && minutes_follow)
+                }
+                _ => false,
+            };
+            if joins {
+                continue;
+            }
+        }
+        glued.push(c);
+    }
+    let tokens: Vec<&str> = glued
+        .split(|c: char| c.is_whitespace() || matches!(c, ',' | ';' | '/' | '·' | '+'))
+        .filter(|t| !t.is_empty())
+        .collect();
+    let mut out: Vec<TypedPiece> = Vec::new();
+    let mut kind: Option<ShiftKind> = None;
+    // A kind word not yet followed by a range: it stands alone if
+    // nothing follows it.
+    let mut pending_kind = false;
+    let mut i = 0;
+    while i < tokens.len() {
+        let tok = tokens[i];
+        i += 1;
+        let pause_digits = tok
+            .strip_prefix("pause")
+            .or_else(|| tok.strip_prefix('p'))
+            .filter(|rest| rest.chars().all(|c| c.is_ascii_digit()));
+        if let Some(rest) = pause_digits {
+            let digits = if rest.is_empty() {
+                let next = tokens.get(i).copied().unwrap_or("");
+                i += 1;
+                next.trim_end_matches("min").trim_end_matches("mn")
+            } else {
+                rest
+            };
+            let minutes: u16 = digits.parse().map_err(|_| tok.to_owned())?;
+            let last = out.last_mut().ok_or_else(|| tok.to_owned())?;
+            last.pause = minutes;
+            continue;
+        }
+        if tok.starts_with(|c: char| c.is_ascii_digit()) {
+            let (from, to) = match tok.split_once('-') {
+                Some((a, b)) => (a, Some(b)),
+                None => (tok, None),
+            };
+            let start = typed_bound(from).ok_or_else(|| tok.to_owned())?;
+            let end = match to.filter(|b| !b.is_empty()) {
+                Some(b) => {
+                    let e = typed_bound(b).ok_or_else(|| tok.to_owned())?;
+                    Some(if e <= start { e + 24 * 60 } else { e })
+                }
+                None => None,
+            };
+            out.push(TypedPiece {
+                kind,
+                start: Some(start),
+                end,
+                pause: 0,
+            });
+            pending_kind = false;
+            continue;
+        }
+        let word = tok.trim_end_matches('.');
+        match kind_named(word) {
+            Some(k) => {
+                if pending_kind {
+                    out.push(TypedPiece {
+                        kind,
+                        start: None,
+                        end: None,
+                        pause: 0,
+                    });
+                }
+                kind = Some(k);
+                pending_kind = true;
+            }
+            None => return Err(tok.to_owned()),
+        }
+    }
+    if pending_kind {
+        out.push(TypedPiece {
+            kind,
+            start: None,
+            end: None,
+            pause: 0,
+        });
+    }
+    Ok(out)
+}
+
+/// A day written **the way [`parse_day`] reads it back** — what a cell
+/// shows in its field when typing starts: « 9-12h30 14-19 »,
+/// « ouverture 8h30-12h30 », « congé ».
+///
+/// A kind is named only where it changes and is not the ordinary
+/// « journée », so the common day is typed as plain hours. An absence
+/// with no end is the whole day and is written as its word alone.
+pub fn typed_day(shifts: &[&Shift]) -> String {
+    let mut sorted: Vec<&Shift> = shifts.to_vec();
+    sorted.sort_by_key(|s| (s.start, s.end));
+    let mut out: Vec<String> = Vec::new();
+    let mut kind = ShiftKind::Journee;
+    for s in sorted {
+        if s.kind != kind {
+            out.push(s.kind.label().to_lowercase());
+            kind = s.kind;
+        }
+        if s.kind.is_absence() && s.end.is_none() {
+            continue;
+        }
+        let mut piece = typed_hour(s.start).trim_end_matches('h').to_owned();
+        piece.push('-');
+        if let Some(end) = s.end {
+            piece.push_str(typed_hour(end).trim_end_matches('h'));
+        }
+        out.push(piece);
+        if s.pause > 0 {
+            out.push(format!("p{}", s.pause));
+        }
+    }
+    out.join(" ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1566,5 +1801,130 @@ mod tests {
             ),
         ];
         assert_eq!(usual_day(&tie, "MB", 3)[0].start, 840);
+    }
+
+    fn piece(kind: Option<ShiftKind>, start: Option<u16>, end: Option<u16>) -> TypedPiece {
+        TypedPiece {
+            kind,
+            start,
+            end,
+            pause: 0,
+        }
+    }
+
+    /// The ways a counter types a day all read as the same day — and
+    /// the grid's own spelling (« 9 h–12 h 30 · 14 h–19 h ») among them,
+    /// since that is what the eye copies from the cell beside.
+    #[test]
+    fn a_day_typed_in_a_cell_reads_however_it_is_spelled() {
+        let split = vec![
+            piece(None, Some(540), Some(750)),
+            piece(None, Some(840), Some(1140)),
+        ];
+        for typed in [
+            "9-12h30 14-19",
+            "9h-12h30 14h-19h",
+            "9h-12h30, 14h-19h",
+            "9 h–12 h 30 · 14 h–19 h",
+            "9:00-12:30 / 14:00-19:00",
+            "900-1230 1400-1900",
+            "9 - 12h30 ; 14 - 19",
+        ] {
+            assert_eq!(parse_day(typed), Ok(split.clone()), "{typed}");
+        }
+        assert_eq!(parse_day(""), Ok(vec![]));
+        assert_eq!(parse_day("   "), Ok(vec![]));
+    }
+
+    #[test]
+    fn a_typed_kind_covers_the_ranges_after_it_and_stands_alone_without_one() {
+        assert_eq!(
+            parse_day("congé"),
+            Ok(vec![piece(Some(ShiftKind::Conge), None, None)])
+        );
+        assert_eq!(
+            parse_day("Maladie"),
+            Ok(vec![piece(Some(ShiftKind::Maladie), None, None)])
+        );
+        assert_eq!(
+            parse_day("form 14-17"),
+            Ok(vec![piece(
+                Some(ShiftKind::Formation),
+                Some(840),
+                Some(1020)
+            )])
+        );
+        // A night: the end before the start is the next morning.
+        assert_eq!(
+            parse_day("garde 20-8"),
+            Ok(vec![piece(Some(ShiftKind::Garde), Some(1200), Some(1920))])
+        );
+        assert_eq!(
+            parse_day("9-12 formation 14-17"),
+            Ok(vec![
+                piece(None, Some(540), Some(720)),
+                piece(Some(ShiftKind::Formation), Some(840), Some(1020)),
+            ])
+        );
+        // A start alone is a shift with no end written, never a guess.
+        assert_eq!(parse_day("9"), Ok(vec![piece(None, Some(540), None)]));
+        assert_eq!(parse_day("9h-"), Ok(vec![piece(None, Some(540), None)]));
+    }
+
+    #[test]
+    fn a_typed_break_goes_to_the_range_before_it() {
+        let mut long = piece(None, Some(540), Some(1140));
+        long.pause = 60;
+        for typed in ["9-19 p60", "9-19 pause 60", "9-19 p 60", "9-19 pause 60min"] {
+            assert_eq!(parse_day(typed), Ok(vec![long]), "{typed}");
+        }
+    }
+
+    /// A typo is refused with the word that stopped it: a cell that
+    /// guessed would write a shift nobody typed.
+    #[test]
+    fn what_a_cell_cannot_read_is_refused_with_its_word() {
+        assert_eq!(parse_day("9-12h30 vacances"), Err("vacances".to_owned()));
+        assert_eq!(parse_day("25-26"), Err("25-26".to_owned()));
+        assert_eq!(parse_day("9-12h7"), Err("9-12h7".to_owned()));
+        assert_eq!(parse_day("p30"), Err("p30".to_owned()));
+        assert_eq!(parse_day("co"), Err("co".to_owned()));
+    }
+
+    /// What typing starts from reads back as the same day, kinds,
+    /// breaks and nights included.
+    #[test]
+    fn a_cell_s_typed_form_reads_back_as_the_same_day() {
+        let mut long = shift(1, "CL", 540, Some(1140), ShiftKind::Journee);
+        long.pause = 45;
+        let days: Vec<Vec<Shift>> = vec![
+            vec![
+                shift(1, "CL", 840, Some(1140), ShiftKind::Journee),
+                shift(2, "CL", 540, Some(750), ShiftKind::Journee),
+            ],
+            vec![shift(1, "CL", 510, Some(750), ShiftKind::Ouverture)],
+            vec![shift(1, "CL", 540, None, ShiftKind::Conge)],
+            vec![shift(1, "CL", 1200, Some(1920), ShiftKind::Garde)],
+            vec![long],
+        ];
+        for day in &days {
+            let refs: Vec<&Shift> = day.iter().collect();
+            let typed = typed_day(&refs);
+            let back = parse_day(&typed).unwrap();
+            let mut want: Vec<&Shift> = refs.clone();
+            want.sort_by_key(|s| s.start);
+            assert_eq!(back.len(), want.len(), "{typed}");
+            for (b, w) in back.iter().zip(&want) {
+                assert_eq!(b.kind.unwrap_or(ShiftKind::Journee), w.kind, "{typed}");
+                if !(w.kind.is_absence() && w.end.is_none()) {
+                    assert_eq!((b.start, b.end, b.pause), (Some(w.start), w.end, w.pause));
+                }
+            }
+        }
+        assert_eq!(
+            typed_day(&days[0].iter().collect::<Vec<_>>()),
+            "9-12h30 14-19"
+        );
+        assert_eq!(typed_day(&days[2].iter().collect::<Vec<_>>()), "congé");
     }
 }

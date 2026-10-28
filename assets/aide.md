@@ -818,6 +818,23 @@ personne, sept colonnes de jours. Le total d'un jour passe au rouge dès
 qu'une **plage d'ouverture n'est pas couverte**, y compris partiellement
 (matin couvert, après-midi vide).
 
+## Saisir les heures dans la case
+
+Le plus court : **double-clic** sur une case (ou **Entrée**, ou un
+chiffre tapé sur la case sélectionnée), puis les heures, comme on les
+écrit :
+
+- `9-12h30 14-19` : journée coupée ; `8h30-19 p60` : une heure de pause ;
+- `congé`, `maladie`, `formation`, `récup` : la journée entière ;
+  `formation 14-17` : une partie seulement ;
+- `garde 20-8` : une nuit (la fin avant le début est le lendemain) ;
+- case vidée : plus rien ce jour.
+
+**Entrée** enregistre, **Tab** enregistre et passe au jour suivant (Maj+Tab
+au précédent), **Échap** abandonne. La saisie vaut pour ce jour seulement :
+la trame reste intacte, et « Annuler » rend la case telle qu'elle était.
+Un mot non reconnu est refusé et la case reste ouverte.
+
 ## Corriger au fil de la journée
 
 Un clic sur un poste met **ses heures dans les champs** et vise **ce

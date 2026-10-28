@@ -2356,7 +2356,7 @@ add clicking and typing; it is not the price of entry.
   config.toml does not read)
 - `BPM_CADDY_NO_KEYRING=1` — skip the OS credential manager
 - `BPM_CADDY_START_VIEW=verrou|search|dashboard|patient|patient_edit|patient_new|drugs|drug_card|agenda|agenda_day|
-  agenda_filtre|agenda_month|planning|planning_mois|protocols|protocol_open|template|options|about|tables|
+  agenda_filtre|agenda_month|planning|planning_mois|planning_saisie|protocols|protocol_open|template|options|about|tables|
   tables_search|regles|mentions|honoraires|forfaits|modules|calc|carnet|vaccins|bio|watch|revue|conciliation|
   vaccine_map|campagne|campagne_rdv|campagne_parametrer|campagne_entretiens|vaccins_grossesse|vaccins_catalogue|ruptures|reseau|versions|postes|postes_seul|postes_telephone|connexions|officines|ordonnance|ordonnance_lignes|rein|grossesse|age|cyp|ddi|ddi_crush|fiche_transmission|qualite|libelles|listes|base|codex|
   codex_open|en_ligne|dispositifs|dispositif_open|conseil_contention|conseil_nutrition|conseil_protections|couverture|locations|keys|keys_outils|nouveautes|messages|comptes|comptes_phrase|comptes_ouvert|actualites|connexions_carte|vitale|
@@ -2407,6 +2407,10 @@ add clicking and typing; it is not the price of entry.
   `caisses` is its other page, the month: the demo seeds twenty-four
   evenings, one of them recounted and two with no expected takings,
   because those are the two cases the view has to know how to write.
+  `planning_saisie` is the planning with the first person's Monday open
+  for typing (`App::planning_start_typing`): the field a double-click,
+  Entrée or a first digit puts in a cell, which reads a day the way it
+  is typed (`planning::parse_day`) and writes it that day only.
   `planning_mois` is the planning read the other way: **one person's
   month** instead of the team's week, with the ISO week number and that
   week's total down a frozen first column — which is what makes « un
