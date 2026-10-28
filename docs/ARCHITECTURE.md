@@ -2362,7 +2362,7 @@ add clicking and typing; it is not the price of entry.
   codex_open|en_ligne|dispositifs|dispositif_open|conseil_contention|conseil_nutrition|conseil_protections|couverture|locations|keys|keys_outils|nouveautes|messages|comptes|comptes_phrase|comptes_ouvert|actualites|connexions_carte|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|graph_zoom|graph_wide|graph_ordonnance|graph_filtre|registres|stup|
   trame|cascades|cascades_decrire|cascades_boucle|
-  stup_catalogue|saisie|ordonnancier|vigilance|destruction|scans|
+  stup_catalogue|saisie|ordonnancier|vigilance|destruction|stupcontrol|scans|
   textes|carnets_edit|
   patient_scans|patient_dose|fil|infirmier|messagerie|explorer|explorer_organ|classes|classes_outside|export|tableau|
   finances|stats|companion|companion_poso|companion_conseils|companion_soins|companion_dossier|companion_vide|companion_doublon|companion_boite|script|carnets|caisse|caisses|peaux|aide`

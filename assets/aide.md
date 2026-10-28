@@ -1367,6 +1367,60 @@ chaque délivrance légitime serait signalée.
 En deçà de trois délivrances antérieures, aucun signalement : pas de
 rythme de référence.
 
+## StupControl
+
+Pour une officine qui tient aussi son registre dans les classeurs
+LibreOffice de StupControl (un fichier par produit et par année, un
+onglet par mois). Module à activer dans Options › Modules, sur le poste
+où StupControl est installé ; renseigner son chemin s'il n'est pas à
+son emplacement habituel. StupControl doit être en version 1.22 ou
+ultérieure.
+
+Le bouton « StupControl… » du registre ouvre la fenêtre de
+rapprochement :
+
+- **Date de départ** : aucune ligne antérieure n'est lue ni écrite.
+  Choisir une date où les deux registres présentent le même solde, par
+  exemple le lendemain d'un inventaire.
+- **Correspondance des produits** : chaque produit suivi désigne un
+  produit de StupControl (un fichier et un en-tête de colonne). Un
+  produit de StupControl sans correspondance peut être associé au
+  produit suivi le plus proche, ou suivi tel quel.
+- **Aperçu** indique ce que le rapprochement ferait, sans rien écrire ;
+  **Rapprocher** l'exécute.
+
+Les lignes présentes des deux côtés sont appariées : une délivrance par
+son numéro d'ordonnancier, le reste par date, sens, quantité et nom. Une
+ligne du registre absente du classeur y est ajoutée par StupControl —
+sauvegarde du fichier avant écriture, refus tant qu'il est ouvert dans
+LibreOffice —, avec le nom du patient repris du dossier. Une ligne du
+classeur absente du registre y est inscrite (opérateur « StupControl »),
+rattachée au dossier seulement si un seul dossier porte ce nom ; le nom
+lui-même n'est pas écrit au registre.
+
+Le classeur ne connaît que l'entrée et la sortie : une perte, une
+péremption au coffre et l'écart d'un inventaire y sont écrits comme une
+sortie ou une entrée nommées « Perte », « Périmé », « Inventaire » ; une
+annulation, comme le mouvement contraire nommé « Annulation ». Un retour
+patient et une destruction ne modifient pas le stock délivrable et n'y
+sont pas écrits.
+
+Ne sont jamais forcés, et sont listés :
+
+- une ligne du classeur que le registre refuse — délivrance sans numéro
+  d'ordonnancier, numéro non numérique ou déjà inscrit, date illisible ;
+- une ligne que StupControl n'a pas pu ajouter (classeur ouvert, onglet
+  plein, colonnes patient non identifiées) : elle repart au
+  rapprochement suivant ;
+- une ligne déjà rapprochée qui ne figure plus dans le classeur.
+
+Un écart entre le solde du registre et le bilan du classeur est
+signalé, jamais comblé : il s'explique, au besoin par un inventaire.
+
+« Rapprocher automatiquement » relance le rapprochement toutes les cinq
+minutes sur le poste qui sert l'officine. À activer après un premier
+rapprochement vérifié.
+
 # Liens d'une monographie
 
 Dans le texte d'une fiche, le nom d'une autre fiche de la base — nom de

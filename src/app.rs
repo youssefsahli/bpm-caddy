@@ -5773,6 +5773,9 @@ struct Session {
     /// « Prescrire… » ouverte sur le carnet : le dossier, et ses lignes —
     /// (vaccin, ce que la ligne dit, retenue).
     vacc_ord: Option<(i64, Vec<VaccOrdLine>)>,
+    /// Les ordonnances de vaccination du dossier ouvert, la plus récente
+    /// d'abord.
+    vacc_prescriptions: Vec<db::VaccPrescription>,
     /// La réécriture sans phrase dont « Retirer » a été cliqué une fois.
     textes_orphan_armed: Option<String>,
     /// Its editor, when open.
@@ -6423,6 +6426,8 @@ struct Session {
     /// « Tester la connexion » en cours, sur son fil.
     #[cfg(feature = "sync")]
     conn_diag: Option<std::sync::mpsc::Receiver<crate::network::Diagnosis>>,
+    /// StupControl : sa fenêtre, son dernier rapprochement, sa tâche.
+    stc: StcState,
     /// What the connections view reads from the base, when it opens and
     /// after something moved — never per frame.
     #[cfg(feature = "sync")]
@@ -7254,6 +7259,7 @@ impl Session {
             vacc_ddr_text: None,
             vacc_catalogue: Vec::new(),
             vacc_ord: None,
+            vacc_prescriptions: Vec::new(),
             textes_orphan_armed: None,
             vacc_cat_edit: None,
             travel_query: String::new(),
@@ -7498,6 +7504,7 @@ impl Session {
             conn_log: std::collections::VecDeque::new(),
             #[cfg(feature = "sync")]
             conn_diag: None,
+            stc: StcState::default(),
             #[cfg(feature = "sync")]
             conn_summary: None,
             msg: MessagesState::default(),
@@ -10103,6 +10110,97 @@ impl Session {
         });
         self.conn_diag = Some(rx);
         self.log_connection(false, tr("conn_diagnose_running"));
+    }
+
+    /// **StupControl, sur son fil**, avec sa propre connexion à la base :
+    /// le programme met quelques secondes à lire les classeurs, parfois
+    /// sur un partage.
+    fn start_stupcontrol(&mut self, job: StcJob, config: &Config) {
+        if self.stc.job.is_some() {
+            return;
+        }
+        let Some(path) = self.db.path() else {
+            return;
+        };
+        let Some(exe) = crate::stupcontrol::find_program(&config.stupcontrol.programme) else {
+            self.stc.note = Some((true, tr("stc_no_program").to_owned()));
+            return;
+        };
+        let program = crate::stupcontrol::Program {
+            exe,
+            config: config.stupcontrol.configuration.clone(),
+            patience: Duration::from_secs(300),
+        };
+        let password = self.password.clone();
+        let today = self.today.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let out = match job {
+                StcJob::Ping => program.ping().map(StcDone::Ping),
+                StcJob::Preview | StcJob::Sync => Db::open(&path, &password)
+                    .and_then(|db| {
+                        crate::stupcontrol::sync(&db, &program, &today, job == StcJob::Preview)
+                    })
+                    .map(StcDone::Report),
+            };
+            let _ = tx.send(out);
+        });
+        self.stc.job = Some(rx);
+        self.stc.note = Some((false, tr("stc_running").to_owned()));
+    }
+
+    /// Ce que StupControl a répondu, et le rapprochement **de lui-même**
+    /// toutes les cinq minutes, sur le poste qui sert l'officine, quand
+    /// elle l'a voulu.
+    fn poll_stupcontrol(&mut self, ctx: &egui::Context, config: &Config) {
+        if let Some(rx) = &self.stc.job {
+            match rx.try_recv() {
+                Ok(done) => {
+                    self.stc.job = None;
+                    match done {
+                        Ok(StcDone::Ping(a)) => {
+                            self.stc.note =
+                                Some((false, trn("stc_ping_ok", &[&a.version, &a.data_dir])));
+                        }
+                        Ok(StcDone::Report(r)) => {
+                            let key = if r.preview { "stc_preview_done" } else { "stc_done" };
+                            let troubled =
+                                !(r.refused.is_empty() && r.failed.is_empty() && r.lost.is_empty());
+                            self.stc.note = Some((
+                                troubled,
+                                trn(key, &[&r.imported, &r.exported, &r.paired]),
+                            ));
+                            self.stc.products = r.products.clone();
+                            if !r.preview {
+                                self.reload_stup();
+                            }
+                            self.stc.report = Some(r);
+                        }
+                        Err(e) => self.stc.note = Some((true, plain_error(&e))),
+                    }
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    ctx.request_repaint_after(Duration::from_millis(300));
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.stc.job = None;
+                    self.stc.note = Some((true, tr("conn_task_lost").to_owned()));
+                }
+            }
+        }
+        if !crate::config::loaded(crate::config::Module::StupControl) || self.stc.job.is_some() {
+            return;
+        }
+        let now = Instant::now();
+        if self.stc.auto_next.is_some_and(|t| now < t) {
+            return;
+        }
+        self.stc.auto_next = Some(now + Duration::from_secs(300));
+        let auto = self.db.stup_setting(crate::stupcontrol::AUTO_KEY).as_deref() == Some("1");
+        let since = self.db.stup_setting(crate::stupcontrol::SINCE_KEY).is_some();
+        if auto && since && self.serves() {
+            self.start_stupcontrol(StcJob::Sync, config);
+        }
     }
 
     /// Lancer une synchronisation du réseau d'officines sur son fil.
@@ -16136,6 +16234,7 @@ impl Session {
     /// colleague's version back on screen.
     fn load_carnet(&mut self, patient_id: i64) {
         self.vaccinations = self.db.vaccinations(patient_id).unwrap_or_default();
+        self.vacc_prescriptions = self.db.vacc_prescriptions(patient_id).unwrap_or_default();
         self.load_biology(patient_id);
         self.load_locations(patient_id);
         self.travels = self.db.travels(patient_id).unwrap_or_default();
@@ -16190,6 +16289,20 @@ impl Session {
                 title: v.label.clone(),
                 detail: v.dose.clone(),
                 id: v.id,
+            });
+        }
+        for p in &self.vacc_prescriptions {
+            out.push(Event {
+                day: p.on_date.clone(),
+                kind: Kind::Vaccin,
+                title: tr("vord_fil_title").to_owned(),
+                detail: p
+                    .lines()
+                    .into_iter()
+                    .map(|(name, _)| name)
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                id: p.id,
             });
         }
         for b in &self.bio_results {
@@ -18144,6 +18257,9 @@ enum MessagesTo {
 struct VaccOrdLine {
     /// Le vaccin.
     label: String,
+    /// Son code au calendrier, vide hors calendrier : c'est lui qui relie
+    /// la ligne inscrite au carnet à ce que le calendrier doit.
+    code: String,
     /// Ce que le calendrier en dit : une aide, jamais imprimée.
     hint: String,
     /// Ce que la ligne imprimera — dose, schéma, rappel —, écrit au
@@ -18685,6 +18801,32 @@ impl Carte {
 /// La fenêtre du réseau d'officines : ce que la base en dit, une tâche
 /// en cours sur son fil, et ce que l'écran a sous les doigts.
 #[cfg(feature = "sync")]
+#[derive(Default)]
+/// **StupControl** — voir `src/stupcontrol.rs`. Ce qu'un rapprochement a
+/// dit n'est gardé qu'en mémoire : il cite des noms lus dans les classeurs.
+struct StcState {
+    open: bool,
+    since_text: String,
+    /// Les produits de StupControl lus au dernier passage : (clé, libellé).
+    products: Vec<(String, String)>,
+    report: Option<crate::stupcontrol::Report>,
+    note: Option<(bool, String)>,
+    job: Option<std::sync::mpsc::Receiver<Result<StcDone, String>>>,
+    auto_next: Option<Instant>,
+}
+
+enum StcDone {
+    Ping(crate::stupcontrol::Answer),
+    Report(crate::stupcontrol::Report),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StcJob {
+    Ping,
+    Preview,
+    Sync,
+}
+
 #[derive(Default)]
 struct NetWindow {
     /// Le réseau montré (vide : le principal).
@@ -22570,6 +22712,44 @@ impl App {
                         // et des destructions de l'autre.
                         Ok("destruction") => {
                             session.open_registres(RegistreTab::Destruction);
+                        }
+                        // La fenêtre StupControl, **avec un rapprochement
+                        // déjà fait** : vide, elle ne montrerait ni la
+                        // correspondance, ni un écart, ni une ligne
+                        // refusée — rien de ce qu'elle existe pour dire.
+                        Ok("stupcontrol") => {
+                            session.open_registres(RegistreTab::Stupefiants);
+                            session.stc.open = true;
+                            session.stc.since_text = "01/03/2026".to_owned();
+                            let label = session
+                                .stup_summary
+                                .first()
+                                .map(|s| s.product.label.clone())
+                                .unwrap_or_else(|| "Méthadone 10 mg".to_owned());
+                            let products = vec![
+                                ("methadone.ods|méthadone 10 mg".to_owned(), "Méthadone 10 mg (methadone.ods)".to_owned()),
+                                ("skenan.ods|skenan 10 oro".to_owned(), "SKENAN 10 ORO (skenan.ods)".to_owned()),
+                            ];
+                            session.stc.products = products.clone();
+                            session.stc.note = Some((
+                                true,
+                                trn("stc_done", &[&3, &2, &41]),
+                            ));
+                            session.stc.report = Some(crate::stupcontrol::Report {
+                                version: "1.22.0".to_owned(),
+                                data_dir: "\\\\NAS\\Stupefiants".to_owned(),
+                                imported: 3,
+                                exported: 2,
+                                paired: 41,
+                                refused: vec![crate::stupcontrol::Refused {
+                                    product: label.clone(),
+                                    line: "12/03/26 — sortie 7 — Durand".to_owned(),
+                                    reason: tr("stc_refused_number").to_owned(),
+                                }],
+                                gaps: vec![(label, 42.0, 35.0)],
+                                products,
+                                ..Default::default()
+                            });
                         }
                         // La feuille de saisie groupée, **avec des cases
                         // déjà remplies** : vide, elle ne montre ni les
@@ -30297,7 +30477,13 @@ impl App {
     /// doit, cochés d'avance, d'autres pris au catalogue de l'officine, et
     /// chaque ligne telle qu'elle s'imprimera — à corriger. Elle part par
     /// le modèle « Ordonnance », signée de qui est au comptoir, avec les
-    /// mentions que l'officine a écrites. Rien n'est inscrit au carnet.
+    /// mentions que l'officine a écrites.
+    ///
+    /// Imprimée, elle est **gardée au dossier** (elle se relit et se
+    /// réimprime ici, et paraît au fil) et chaque vaccin prescrit s'inscrit
+    /// au carnet comme une ligne sans date — la dose à faire, que le
+    /// comptoir date et lote le jour de l'injection. Une réimpression ne
+    /// garde ni n'inscrit rien de plus.
     fn vacc_ord_window(
         ctx: &egui::Context,
         session: &mut Session,
@@ -30315,6 +30501,7 @@ impl App {
         let mut close = false;
         let mut print = false;
         let mut add: Option<String> = None;
+        let mut reprint: Option<usize> = None;
         let screen = ctx.screen_rect();
         let shown = egui::Window::new(tr("vord_title"))
             .collapsible(false)
@@ -30358,6 +30545,50 @@ impl App {
                             );
                             ui.add_space(2.0);
                         }
+                        // Celles qui sont déjà parties, la plus récente
+                        // d'abord : telles qu'imprimées, à réimprimer.
+                        if !session.vacc_prescriptions.is_empty() {
+                            ui.add_space(6.0);
+                            motif::separator(ui);
+                            ui.label(
+                                egui::RichText::new(trf(
+                                    "vord_history",
+                                    session.vacc_prescriptions.len().to_string(),
+                                ))
+                                .size(motif::pt(ui, 11.0))
+                                .strong(),
+                            );
+                            for (i, p) in session.vacc_prescriptions.iter().enumerate() {
+                                ui.horizontal_wrapped(|ui| {
+                                    if motif::button(ui, tr("vord_reprint"))
+                                        .on_hover_text(tr("vord_reprint_tooltip"))
+                                        .clicked()
+                                    {
+                                        reprint = Some(i);
+                                    }
+                                    let by = if p.operator.trim().is_empty() {
+                                        String::new()
+                                    } else {
+                                        format!(" — {}", p.operator.trim())
+                                    };
+                                    ui.label(
+                                        egui::RichText::new(format!(
+                                            "{}{by}",
+                                            db::format_french_date(&p.on_date)
+                                        ))
+                                        .size(motif::pt(ui, 11.0)),
+                                    );
+                                });
+                                for (name, text) in p.lines() {
+                                    ui.label(
+                                        egui::RichText::new(trn("vord_history_line", &[&name, &text]))
+                                            .size(motif::pt(ui, 10.5))
+                                            .color(motif::text_dim()),
+                                    );
+                                }
+                                ui.add_space(2.0);
+                            }
+                        }
                     });
                 ui.horizontal_wrapped(|ui| {
                     let options: Vec<(String, String)> = session
@@ -30391,8 +30622,15 @@ impl App {
             });
         motif::dialog_relief(ctx, &shown);
         if let Some(label) = add {
+            let code = session
+                .vacc_catalogue
+                .iter()
+                .find(|v| v.label == label)
+                .map(|v| v.code.clone())
+                .unwrap_or_default();
             rows.push(VaccOrdLine {
                 label,
+                code,
                 hint: String::new(),
                 text: String::new(),
                 on: true,
@@ -30404,37 +30642,102 @@ impl App {
             print = false;
             session.error = Some(tr("vord_line_empty").to_owned());
         }
-        if print {
-            let lines: Vec<crate::ordonnance::Line> = rows
+        let print_lines = |lines: &[(String, String)],
+                           day: &str,
+                           by: &str,
+                           session: &mut Session|
+         -> bool {
+            let lines: Vec<crate::ordonnance::Line> = lines
                 .iter()
-                .filter(|r| r.on)
-                .map(|r| crate::ordonnance::Line {
-                    name: r.label.clone(),
-                    posology: r.text.trim().to_owned(),
+                .map(|(name, text)| crate::ordonnance::Line {
+                    name: name.clone(),
+                    posology: text.clone(),
                     caution: String::new(),
                 })
                 .collect();
-            let today = session
-                .db
-                .today_french()
-                .unwrap_or_else(|_| tr("itv_date_fallback").to_owned());
             match crate::pdf::open_ordonnance(
                 patient,
                 &config.pharmacy,
                 tr("vord_indication"),
-                &today,
+                day,
                 &lines,
                 &[],
                 &config.ordonnance_template_path(),
-                &config.pharmacy.signature_for(operator),
+                &config.pharmacy.signature_for(by),
                 (
                     &config.disclaimers.ordonnance_header,
                     &config.disclaimers.ordonnance_footer,
                 ),
             ) {
-                Ok(_) => session.error = None,
-                Err(e) => session.error = Some(e),
+                Ok(_) => {
+                    session.error = None;
+                    true
+                }
+                Err(e) => {
+                    session.error = Some(e);
+                    false
+                }
             }
+        };
+        if print {
+            let chosen: Vec<&VaccOrdLine> = rows.iter().filter(|r| r.on).collect();
+            let lines: Vec<(String, String)> = chosen
+                .iter()
+                .map(|r| (r.label.clone(), r.text.trim().to_owned()))
+                .collect();
+            let today = session
+                .db
+                .today_french()
+                .unwrap_or_else(|_| tr("itv_date_fallback").to_owned());
+            if print_lines(&lines, &today, operator, session) {
+                let day = session.today.clone();
+                let pairs: Vec<(&str, &str)> = lines
+                    .iter()
+                    .map(|(n, t)| (n.as_str(), t.as_str()))
+                    .collect();
+                let prescription = db::VaccPrescription {
+                    patient_id: patient.id,
+                    on_date: day.clone(),
+                    operator: operator.to_owned(),
+                    lines: db::VaccPrescription::encode(&pairs),
+                    ..Default::default()
+                };
+                // La dose à faire, pas la dose faite : ni date, ni lot,
+                // ni site. Ce que l'ordonnance en dit reste à côté.
+                let planned: Vec<db::Vaccination> = chosen
+                    .iter()
+                    .map(|r| db::Vaccination {
+                        code: r.code.clone(),
+                        label: r.label.clone(),
+                        operator: operator.to_owned(),
+                        remark: trn(
+                            "vord_carnet_remark",
+                            &[&db::format_french_date(&day), &r.text.trim()],
+                        ),
+                        ..Default::default()
+                    })
+                    .collect();
+                match session.db.record_vacc_prescription(&prescription, &planned) {
+                    Ok(_) => {
+                        // Décochées : un second clic ne garde pas une
+                        // seconde ordonnance. La réimpression est plus bas.
+                        for r in rows.iter_mut() {
+                            r.on = false;
+                        }
+                        session.load_carnet(patient.id);
+                        session.refresh_counts();
+                    }
+                    Err(e) => session.error = Some(e),
+                }
+            }
+        }
+        if let Some(p) = reprint.and_then(|i| session.vacc_prescriptions.get(i).cloned()) {
+            let by = if p.operator.trim().is_empty() {
+                operator.to_owned()
+            } else {
+                p.operator.clone()
+            };
+            print_lines(&p.lines(), &db::format_french_date(&p.on_date), &by, session);
         }
         if !close && !ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
             session.vacc_ord = Some((id, rows));
@@ -35261,6 +35564,7 @@ impl App {
                 .filter(|l| vaccines::CATALOGUE.iter().any(|v| v.code == l.code))
                 .map(|l| VaccOrdLine {
                     label: l.label.to_owned(),
+                    code: l.code.to_owned(),
                     hint: l.detail.clone(),
                     text: String::new(),
                     on: l.level == vaccines::DueLevel::Due,
@@ -60098,6 +60402,9 @@ impl App {
             Self::button_width(ui, tr("stup_catalogue")),
             Self::button_width(ui, tr("stup_print")),
         ];
+        if crate::config::loaded(crate::config::Module::StupControl) {
+            widths.push(Self::button_width(ui, tr("stc_open")));
+        }
         if session.stup_open.is_some() {
             widths.push(Self::button_width(ui, tr("stup_print_register")));
         }
@@ -60188,6 +60495,13 @@ impl App {
                         // qu'un contrôle demande, et qui ne s'imprimait pas :
                         // seules la liste d'inventaire et l'année de
                         // l'ordonnancier existaient.
+                        if crate::config::loaded(crate::config::Module::StupControl)
+                            && motif::button(ui, tr("stc_open"))
+                                .on_hover_text(tr("stc_open_tooltip"))
+                                .clicked()
+                        {
+                            session.stc.open = true;
+                        }
                         if let Some(id) = session.stup_open {
                             if motif::button(ui, tr("stup_print_register"))
                                 .on_hover_text(tr("stup_print_register_tooltip"))
@@ -83720,7 +84034,9 @@ impl App {
             "shifts" => tr("posts_tbl_shifts"),
             "settings" => tr("posts_tbl_settings"),
             "caisse_counts" => tr("posts_tbl_caisse"),
-            "stupefiants" | "stup_moves" | "stup_numbers" => tr("posts_tbl_register"),
+            "stupefiants" | "stup_moves" | "stup_numbers" | "stup_links" => {
+                tr("posts_tbl_register")
+            }
             other => other,
         };
         let key: Vec<String> = c
@@ -84597,6 +84913,324 @@ impl App {
     /// cinq groupes, quand il arrive, prend la fenêtre : c'est la seule
     /// chose à faire à ce moment-là.
     #[cfg(feature = "sync")]
+    /// **La fenêtre StupControl** : la date de départ, la correspondance
+    /// des produits, l'aperçu, le rapprochement et ce qu'il a dit.
+    fn stupcontrol_window(ctx: &egui::Context, session: &mut Session, config: &Config) {
+        use crate::stupcontrol::{AUTO_KEY, SINCE_KEY};
+        if !session.stc.open {
+            return;
+        }
+        let since = session.db.stup_setting(SINCE_KEY).unwrap_or_default();
+        let auto = session.db.stup_setting(AUTO_KEY).as_deref() == Some("1");
+        let mapping: std::collections::HashMap<i64, String> = session
+            .db
+            .stupcontrol_mapping()
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
+        let followed: Vec<(i64, String)> = session
+            .stup_summary
+            .iter()
+            .filter(|s| !s.product.archived)
+            .map(|s| (s.product.id, s.product.label.clone()))
+            .collect();
+        let program = crate::stupcontrol::find_program(&config.stupcontrol.programme);
+        let busy = session.stc.job.is_some();
+        let mut start: Option<StcJob> = None;
+        let mut close = false;
+        let mut save_since = false;
+        let mut set_auto: Option<bool> = None;
+        let mut set_map: Option<(i64, String)> = None;
+        let mut follow: Option<crate::stupcontrol::Product> = None;
+        let screen = ctx.screen_rect();
+        let size = dialog_size(screen.size(), egui::vec2(760.0, 620.0));
+        egui::Window::new(tr("stc_title"))
+            .collapsible(false)
+            .resizable(false)
+            .fixed_size(size)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                let small = motif::pt(ui, 10.5);
+                let dim = |s: &str| {
+                    egui::RichText::new(s.to_owned())
+                        .size(small)
+                        .color(motif::text_dim())
+                };
+                ui.add(egui::Label::new(dim(tr("stc_scope"))).wrap());
+                ui.add_space(4.0);
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(dim(&match &program {
+                        Some(p) => trf("stc_program_found", p.display()),
+                        None => tr("stc_no_program").to_owned(),
+                    }));
+                    if ui
+                        .add_enabled_ui(!busy && program.is_some(), |ui| {
+                            motif::button(ui, tr("stc_ping"))
+                        })
+                        .inner
+                        .on_hover_text(tr("stc_ping_tooltip"))
+                        .clicked()
+                    {
+                        start = Some(StcJob::Ping);
+                    }
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(dim(tr("stc_since")));
+                    if session.stc.since_text.is_empty() && !since.is_empty() {
+                        session.stc.since_text = crate::db::format_french_date(&since);
+                    }
+                    let r = motif::field(
+                        ui,
+                        chars_wide(ui, 11.0),
+                        egui::TextEdit::singleline(&mut session.stc.since_text)
+                            .hint_text(motif::hint(tr("stc_since_hint"))),
+                    )
+                    .on_hover_text(tr("stc_since_tooltip"));
+                    if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        save_since = true;
+                    }
+                    if motif::button(ui, tr("stc_since_save")).clicked() {
+                        save_since = true;
+                    }
+                });
+                let mut on = auto;
+                if motif::checkbox(ui, &mut on, tr("stc_auto"))
+                    .on_hover_text(tr("stc_auto_tooltip"))
+                    .changed()
+                {
+                    set_auto = Some(on);
+                }
+                ui.horizontal_wrapped(|ui| {
+                    let can = !busy && program.is_some() && !since.is_empty();
+                    if ui
+                        .add_enabled_ui(can, |ui| motif::button(ui, tr("stc_preview")))
+                        .inner
+                        .on_hover_text(tr("stc_preview_tooltip"))
+                        .clicked()
+                    {
+                        start = Some(StcJob::Preview);
+                    }
+                    if ui
+                        .add_enabled_ui(can, |ui| motif::button(ui, tr("stc_sync")))
+                        .inner
+                        .on_hover_text(tr("stc_sync_tooltip"))
+                        .clicked()
+                    {
+                        start = Some(StcJob::Sync);
+                    }
+                    if motif::button(ui, tr("stc_close")).clicked() {
+                        close = true;
+                    }
+                });
+                if let Some((bad, said)) = &session.stc.note {
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(said)
+                                .size(motif::pt(ui, 11.0))
+                                .color(if *bad { motif::alert() } else { motif::text() }),
+                        )
+                        .wrap(),
+                    );
+                }
+                motif::separator(ui);
+                egui::ScrollArea::vertical()
+                    .id_salt("stc_window")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        motif::section(ui, tr("stc_map_title"));
+                        if session.stc.products.is_empty() {
+                            ui.add(egui::Label::new(dim(tr("stc_map_empty"))).wrap());
+                        }
+                        let products = session.stc.products.clone();
+                        let mut options: Vec<(String, String)> =
+                            vec![(String::new(), tr("stc_map_none").to_owned())];
+                        options.extend(products.iter().cloned());
+                        let width = Self::widest(
+                            ui,
+                            11.0,
+                            options.iter().map(|(_, l)| l.as_str()),
+                        ) + Self::button_height(ui);
+                        let width = width.min(ui.available_width() * 0.55);
+                        egui::Grid::new("stc_map_grid")
+                            .num_columns(2)
+                            .spacing([12.0, 4.0])
+                            .show(ui, |ui| {
+                                for (id, label) in &followed {
+                                    ui.label(label);
+                                    let mut current = mapping.get(id).cloned().unwrap_or_default();
+                                    if !products.is_empty()
+                                        && motif::select(
+                                            ui,
+                                            ("stc_map", *id),
+                                            width,
+                                            &mut current,
+                                            &options,
+                                        )
+                                        .changed()
+                                    {
+                                        set_map = Some((*id, current));
+                                    } else if products.is_empty() {
+                                        ui.label(dim(&current));
+                                    }
+                                    ui.end_row();
+                                }
+                            });
+                        if let Some(r) = &session.stc.report {
+                            // Ce qu'aucun produit suivi ne désigne : à suivre,
+                            // ou à faire désigner, avec la proposition la plus
+                            // proche.
+                            if !r.unmapped.is_empty() {
+                                ui.add_space(6.0);
+                                ui.label(dim(tr("stc_unmapped")));
+                                for p in &r.unmapped {
+                                    ui.horizontal_wrapped(|ui| {
+                                        ui.label(crate::stupcontrol::shown_label(p));
+                                        let near = followed.iter().find(|(id, label)| {
+                                            !mapping.contains_key(id)
+                                                && crate::stupcontrol::suggest(
+                                                    label,
+                                                    std::slice::from_ref(p),
+                                                )
+                                                .is_some()
+                                        });
+                                        if let Some((id, label)) = near {
+                                            if motif::button(ui, &trf("stc_map_to", label))
+                                                .on_hover_text(tr("stc_map_to_tooltip"))
+                                                .clicked()
+                                            {
+                                                set_map = Some((*id, p.key.clone()));
+                                            }
+                                        }
+                                        if motif::button(ui, tr("stc_follow"))
+                                            .on_hover_text(tr("stc_follow_tooltip"))
+                                            .clicked()
+                                        {
+                                            follow = Some(p.clone());
+                                        }
+                                    });
+                                }
+                            }
+                            ui.add_space(6.0);
+                            motif::section(ui, tr("stc_report_title"));
+                            if !r.data_dir.is_empty() {
+                                ui.label(dim(&trn("stc_ping_ok", &[&r.version, &r.data_dir])));
+                            }
+                            for (label, ours, theirs) in &r.gaps {
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(trn(
+                                            "stc_gap",
+                                            &[
+                                                label,
+                                                &crate::strings::decimal(*ours, 2),
+                                                &crate::strings::decimal(*theirs, 2),
+                                            ],
+                                        ))
+                                        .color(motif::alert()),
+                                    )
+                                    .wrap(),
+                                );
+                            }
+                            for f in &r.unreadable {
+                                ui.label(
+                                    egui::RichText::new(trf("stc_unreadable", f))
+                                        .color(motif::alert()),
+                                );
+                            }
+                            for (title, list) in [
+                                ("stc_refused_title", &r.refused),
+                                ("stc_failed_title", &r.failed),
+                                ("stc_lost_title", &r.lost),
+                            ] {
+                                if list.is_empty() {
+                                    continue;
+                                }
+                                ui.add_space(4.0);
+                                ui.label(
+                                    egui::RichText::new(trf(title, list.len()))
+                                        .strong()
+                                        .color(motif::alert()),
+                                );
+                                for x in list {
+                                    ui.add(
+                                        egui::Label::new(trn(
+                                            "stc_issue",
+                                            &[&x.product, &x.line, &x.reason],
+                                        ))
+                                        .wrap(),
+                                    );
+                                }
+                            }
+                        }
+                    });
+            });
+        if save_since {
+            let year = session.today.get(..4).and_then(|y| y.parse().ok()).unwrap_or(2026);
+            match crate::db::parse_french_date(
+                &session.stc.since_text,
+                year,
+                crate::db::YearHint::Future,
+            ) {
+                Ok(iso) => match session.db.set_stup_setting(SINCE_KEY, &iso) {
+                    Ok(()) => {
+                        session.stc.since_text = crate::db::format_french_date(&iso);
+                        session.stc.note = Some((false, trf("stc_since_saved", &session.stc.since_text)));
+                    }
+                    Err(e) => session.stc.note = Some((true, plain_error(&e))),
+                },
+                Err(e) => session.stc.note = Some((true, e)),
+            }
+        }
+        if let Some(on) = set_auto {
+            if let Err(e) = session.db.set_stup_setting(AUTO_KEY, if on { "1" } else { "" }) {
+                session.stc.note = Some((true, plain_error(&e)));
+            }
+        }
+        if let Some((id, key)) = set_map {
+            if let Err(e) = session.db.set_stupcontrol_map(id, &key) {
+                session.stc.note = Some((true, e));
+            }
+        }
+        if let Some(p) = follow {
+            let label = if p.label.trim().is_empty() {
+                p.specialite.trim().to_owned()
+            } else {
+                p.label.trim().to_owned()
+            };
+            let done = session
+                .db
+                .follow_stupefiant(&db::Stupefiant {
+                    id: 0,
+                    drug_id: 0,
+                    label,
+                    unit: tr("stc_unit").to_owned(),
+                    threshold: p.min_stock.max(0) as f64,
+                    archived: false,
+                    family: String::new(),
+                    status: crate::ordonnancier::Status::Stupefiant.as_key().to_owned(),
+                    max_days: 0,
+                    note: String::new(),
+                    per_box: p.units_per_box.max(0) as f64,
+                })
+                .and_then(|id| session.db.set_stupcontrol_map(id, &p.key));
+            match done {
+                Ok(()) => {
+                    session.reload_stup();
+                    if let Some(r) = &mut session.stc.report {
+                        r.unmapped.retain(|u| u.key != p.key);
+                    }
+                }
+                Err(e) => session.stc.note = Some((true, e)),
+            }
+        }
+        if let Some(job) = start {
+            session.start_stupcontrol(job, config);
+        }
+        if close {
+            session.stc.open = false;
+        }
+    }
+
     fn net_window(ctx: &egui::Context, session: &mut Session, config: &Config) {
         use crate::network::{Job, Progress};
         // Les officines entendues sur le réseau local, hors celles déjà
@@ -93743,6 +94377,8 @@ impl eframe::App for App {
             Self::tableau_window(ctx, session);
             session.refresh_online_fresh();
             Self::online_window(ctx, session);
+            session.poll_stupcontrol(ctx, &self.config);
+            Self::stupcontrol_window(ctx, session, &self.config);
             // The posts: their automatic synchronisation, polled every
             // frame, and their window wherever it was opened from.
             #[cfg(feature = "sync")]
@@ -97383,6 +98019,11 @@ impl App {
                                     "opts_module_gestion",
                                     "opts_module_gestion_tooltip",
                                 ),
+                                (
+                                    crate::config::Module::StupControl,
+                                    "opts_module_stupcontrol",
+                                    "opts_module_stupcontrol_tooltip",
+                                ),
                             ] {
                                 let mut on = editor.cfg.modules.on(m);
                                 if motif::checkbox(ui, &mut on, tr(label))
@@ -97391,6 +98032,42 @@ impl App {
                                 {
                                     editor.cfg.modules.set(m, on);
                                 }
+                            }
+                            // Où est StupControl sur ce poste : vide, là où il
+                            // s'installe d'ordinaire.
+                            if editor.cfg.modules.stupcontrol {
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.label(dim(tr("opts_stc_programme")));
+                                    motif::field(
+                                        ui,
+                                        chars_wide(ui, 40.0),
+                                        egui::TextEdit::singleline(
+                                            &mut editor.cfg.stupcontrol.programme,
+                                        )
+                                        .hint_text(motif::hint(tr("opts_stc_programme_hint"))),
+                                    )
+                                    .on_hover_text(tr("opts_stc_programme_tooltip"));
+                                });
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.label(dim(tr("opts_stc_configuration")));
+                                    motif::field(
+                                        ui,
+                                        chars_wide(ui, 40.0),
+                                        egui::TextEdit::singleline(
+                                            &mut editor.cfg.stupcontrol.configuration,
+                                        )
+                                        .hint_text(motif::hint(tr("opts_stc_configuration_hint"))),
+                                    )
+                                    .on_hover_text(tr("opts_stc_configuration_tooltip"));
+                                });
+                                ui.label(dim(
+                                    &match crate::stupcontrol::find_program(
+                                        &editor.cfg.stupcontrol.programme,
+                                    ) {
+                                        Some(p) => trf("stc_program_found", p.display()),
+                                        None => tr("stc_no_program").to_owned(),
+                                    },
+                                ));
                             }
                             ui.add_space(8.0);
                             motif::section(ui, tr("opts_init"));
@@ -98285,6 +98962,9 @@ impl App {
         self.poll_maintenance(ctx);
         if let (State::Unlocked(session), None) = (&mut self.state, &self.maint_job) {
             session.sync_if_others_wrote();
+        }
+        if let State::Unlocked(session) = &mut self.state {
+            session.poll_stupcontrol(ctx, &self.config);
         }
         #[cfg(feature = "sync")]
         if let State::Unlocked(session) = &mut self.state {

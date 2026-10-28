@@ -421,6 +421,8 @@ mod tests {
             include_str!("compte.rs"),
             // Ce qu'un appel au rendez-vous dit quand il échoue.
             include_str!("punch.rs"),
+            // Les mots écrits dans un classeur de StupControl, et ses refus.
+            include_str!("stupcontrol.rs"),
             // Les erreurs des couches du dessous, dites en clair
             // (`plain_error`) : ce fichier-ci nomme leurs phrases.
             include_str!("strings.rs"),

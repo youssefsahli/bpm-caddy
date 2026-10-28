@@ -102,6 +102,7 @@ pub mod script;
 pub mod selfcheck;
 pub mod shipped;
 pub mod strings;
+pub mod stupcontrol;
 pub mod surveillance;
 pub mod tableau;
 pub mod tables;

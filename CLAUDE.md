@@ -43,6 +43,9 @@ line in that test.
   `planning`, `agenda`, `location`, `prescribers`, `annuaire`,
   `timeline`, `graph`, `scans`, `codebar`, `vitale`/`winscard`,
   `bulletin`, `content`, `script` (Rhai console), `telemetry`, `audit`,
+  `stupcontrol` (the register kept in step with StupControl's
+  LibreOffice workbooks, through the installed program's headless
+  `--bridge`: pairing, export, import, gaps said never filled),
   `replica` (what travels between posts, field-by-field apply, and
   `admissible`: an op only through its table's stream), `reach` (a post
   reachable from the internet: IPv6, UPnP, published addresses) and

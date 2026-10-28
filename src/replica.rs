@@ -128,6 +128,9 @@ pub const TABLES: &[Table] = &[
     t("message_files", Main, Equipe, true, true),
     t("message_chunks", Main, Equipe, true, true),
     t("vaccinations", Main, Dossiers, false, true),
+    // Une ordonnance de vaccination nomme un dossier. Pas en ajout seul :
+    // la suppression d'un dossier l'emporte, et doit voyager.
+    t("vacc_prescriptions", Main, Dossiers, false, true),
     t("patient_travel", Main, Dossiers, false, false),
     // La messagerie des patients : la clé remise à un patient et ce qu'il
     // a échangé avec l'officine, sous la clé des dossiers.
@@ -199,6 +202,9 @@ pub const TABLES: &[Table] = &[
     t("stup_labels", Stups, Registre, true, true),
     t("stup_codes", Stups, Registre, false, false),
     t("stup_numbers", Stups, Registre, true, false),
+    // Ce qui est déjà rapproché de StupControl : sur tous les postes, pour
+    // que celui qui servira demain ne réinscrive pas ce qui l'est.
+    t("stup_links", Stups, Registre, true, false),
 ];
 
 /// Les tables qui ne voyagent pas, et pourquoi. Un test tient les deux
@@ -1375,6 +1381,7 @@ mod tests {
             "stup_moves",
             "stup_labels",
             "stup_numbers",
+            "stup_links",
             "caisse_counts",
             "supply_events",
             "card_edits",

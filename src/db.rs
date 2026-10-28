@@ -858,6 +858,17 @@ CREATE TABLE IF NOT EXISTS counsel_records (
     operator    TEXT NOT NULL DEFAULT '',
     remark      TEXT NOT NULL DEFAULT ''
 );
+-- Les ordonnances de vaccination rédigées à l'officine : une ligne par
+-- ordonnance imprimée, ses vaccins dans `lines` (un par ligne, le vaccin
+-- et ce qui s'imprime séparés d'une tabulation). Elles se relisent et se
+-- réimpriment telles qu'elles sont parties.
+CREATE TABLE IF NOT EXISTS vacc_prescriptions (
+    id          INTEGER PRIMARY KEY,
+    patient_id  INTEGER NOT NULL REFERENCES patients(id),
+    on_date     TEXT NOT NULL,
+    operator    TEXT NOT NULL DEFAULT '',
+    lines       TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS compression_grids (
     id          INTEGER PRIMARY KEY,
     model       TEXT NOT NULL,
@@ -1172,6 +1183,7 @@ const INDEXES: &[&str] = &[
     "CREATE INDEX IF NOT EXISTS idx_notes_subject ON notes(subject_kind, subject_id)",
     "CREATE INDEX IF NOT EXISTS idx_biology_patient ON biology(patient_id)",
     "CREATE INDEX IF NOT EXISTS idx_vaccinations_patient ON vaccinations(patient_id)",
+    "CREATE INDEX IF NOT EXISTS idx_vacc_prescriptions_patient ON vacc_prescriptions(patient_id)",
     "CREATE INDEX IF NOT EXISTS idx_locations_patient ON locations(patient_id)",
     // `patient_drugs` has a primary key on (patient_id, drug_id), which
     // answers « what does this patient take ». The other direction —
@@ -1817,6 +1829,14 @@ const MIGRATIONS: &[&str] = &[
         data        TEXT NOT NULL DEFAULT '',
         operator    TEXT NOT NULL DEFAULT '',
         remark      TEXT NOT NULL DEFAULT ''
+    )",
+    // Les ordonnances de vaccination — voir `SCHEMA`.
+    "CREATE TABLE IF NOT EXISTS vacc_prescriptions (
+        id          INTEGER PRIMARY KEY,
+        patient_id  INTEGER NOT NULL REFERENCES patients(id),
+        on_date     TEXT NOT NULL,
+        operator    TEXT NOT NULL DEFAULT '',
+        lines       TEXT NOT NULL DEFAULT ''
     )",
     "CREATE TABLE IF NOT EXISTS compression_grids (
         id          INTEGER PRIMARY KEY,
@@ -3037,6 +3057,49 @@ impl CounselRecord {
             .map(|(k, v)| format!("{k}={}", v.replace([';', '='], " ").trim()))
             .collect::<Vec<_>>()
             .join(";")
+    }
+}
+
+/// Une ordonnance de vaccination rédigée à l'officine : voir la table
+/// `vacc_prescriptions`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct VaccPrescription {
+    pub id: i64,
+    pub patient_id: i64,
+    /// ISO.
+    pub on_date: String,
+    /// Qui l'a signée.
+    pub operator: String,
+    /// Un vaccin par ligne, le vaccin et ce qui s'imprime séparés d'une
+    /// tabulation : voir [`VaccPrescription::encode`].
+    pub lines: String,
+}
+
+impl VaccPrescription {
+    /// Les lignes telles qu'elles se sont imprimées : (vaccin, dose,
+    /// schéma, rappel…).
+    pub fn lines(&self) -> Vec<(String, String)> {
+        self.lines
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| match l.split_once('\t') {
+                Some((name, text)) => (name.trim().to_owned(), text.trim().to_owned()),
+                None => (l.trim().to_owned(), String::new()),
+            })
+            .collect()
+    }
+
+    /// Écrire des lignes dans la forme de `lines`. Les séparateurs sont
+    /// retirés des valeurs : une tabulation collée dans un libellé
+    /// couperait la ligne.
+    pub fn encode(lines: &[(&str, &str)]) -> String {
+        let clean = |v: &str| v.replace(['\t', '\n', '\r'], " ").trim().to_owned();
+        lines
+            .iter()
+            .filter(|(name, _)| !name.trim().is_empty())
+            .map(|(name, text)| format!("{}\t{}", clean(name), clean(text)))
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }
 
@@ -42421,6 +42484,15 @@ CREATE TABLE IF NOT EXISTS stup_numbers (
     assigned_on TEXT NOT NULL DEFAULT '',
     operator    TEXT NOT NULL DEFAULT ''
 );
+-- Les lignes du registre déjà rapprochées des classeurs de StupControl
+-- (`src/stupcontrol.rs`) : inscrites depuis un classeur, ajoutées à un
+-- classeur, ou trouvées des deux côtés. En ajout seul, comme le registre.
+-- Une ligne liée qu'un classeur ne porte plus est dite, jamais rajoutée.
+CREATE TABLE IF NOT EXISTS stup_links (
+    move_id   INTEGER PRIMARY KEY,
+    origin    TEXT NOT NULL,
+    linked_on TEXT NOT NULL DEFAULT ''
+);
 -- Les écritures pas encore parties vers les autres postes, capturées
 -- par les déclencheurs que `Db::install_capture` pose ; les numéros de
 -- ce poste ; et l'interrupteur qui coupe la capture le temps de ranger
@@ -42479,6 +42551,12 @@ const STUP_MIGRATIONS: &[&str] = &[
         ordo_no     INTEGER NOT NULL,
         assigned_on TEXT NOT NULL DEFAULT '',
         operator    TEXT NOT NULL DEFAULT ''
+    )",
+    // Le rapprochement avec StupControl — voir `STUP_SCHEMA`.
+    "CREATE TABLE IF NOT EXISTS stup_links (
+        move_id   INTEGER PRIMARY KEY,
+        origin    TEXT NOT NULL,
+        linked_on TEXT NOT NULL DEFAULT ''
     )",
     // Les écritures pas encore parties, les numéros de ce poste —
     // voir `STUP_SCHEMA`.
@@ -45443,6 +45521,7 @@ impl Db {
             "DELETE FROM vaccinations WHERE patient_id = ?1",
             "DELETE FROM campaign_calls WHERE patient_id = ?1",
             "DELETE FROM counsel_records WHERE patient_id = ?1",
+            "DELETE FROM vacc_prescriptions WHERE patient_id = ?1",
             "DELETE FROM locations WHERE patient_id = ?1",
             "DELETE FROM patient_travel WHERE patient_id = ?1",
             "DELETE FROM patient_messages WHERE patient_id = ?1",
@@ -46020,6 +46099,7 @@ impl Db {
             "DELETE FROM vaccinations",
             "DELETE FROM campaign_calls",
             "DELETE FROM counsel_records",
+            "DELETE FROM vacc_prescriptions",
             "DELETE FROM compression_grids",
             "DELETE FROM cno_products",
             "DELETE FROM vaccine_lots",
@@ -51672,6 +51752,87 @@ impl Db {
         Ok(changed == 1)
     }
 
+    // --- Ordonnances de vaccination --------------------------------
+
+    /// Les ordonnances de vaccination d'un dossier, la plus récente
+    /// d'abord.
+    pub fn vacc_prescriptions(&self, patient_id: i64) -> Result<Vec<VaccPrescription>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, patient_id, on_date, operator, lines
+                 FROM vacc_prescriptions WHERE patient_id = ?1
+                 ORDER BY on_date DESC, id DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([patient_id], |r| {
+                Ok(VaccPrescription {
+                    id: r.get(0)?,
+                    patient_id: r.get(1)?,
+                    on_date: r.get(2)?,
+                    operator: r.get(3)?,
+                    lines: r.get(4)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Garder une ordonnance de vaccination imprimée, et inscrire au
+    /// carnet chaque vaccin qu'elle prescrit comme une ligne sans date —
+    /// le rendez-vous, pas l'acte —, sauf celui que le carnet attend
+    /// déjà. Une seule transaction : l'ordonnance et ses lignes au carnet
+    /// arrivent ensemble ou pas du tout. Rend le numéro de l'ordonnance
+    /// et le nombre de lignes ajoutées au carnet.
+    pub fn record_vacc_prescription(
+        &self,
+        p: &VaccPrescription,
+        planned: &[Vaccination],
+    ) -> Result<(i64, usize), String> {
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
+        tx.execute(
+            &format!(
+                "INSERT INTO vacc_prescriptions (id, patient_id, on_date, operator, lines)
+                 VALUES ({next}, ?1, ?2, ?3, ?4)",
+                next = next_id("vacc_prescriptions")
+            ),
+            rusqlite::params![p.patient_id, &p.on_date, &p.operator, &p.lines],
+        )
+        .map_err(|e| e.to_string())?;
+        let id = tx.last_insert_rowid();
+        let mut added = 0;
+        for v in planned {
+            // Déjà attendu : une ligne sans date du même vaccin — par son
+            // code, ou par son nom pour un vaccin hors calendrier.
+            let waiting: i64 = tx
+                .query_row(
+                    "SELECT COUNT(*) FROM vaccinations
+                     WHERE patient_id = ?1 AND given_on = ''
+                       AND ((?2 <> '' AND code = ?2) OR (?2 = '' AND label = ?3))",
+                    rusqlite::params![p.patient_id, &v.code, &v.label],
+                    |r| r.get(0),
+                )
+                .map_err(|e| e.to_string())?;
+            if waiting > 0 {
+                continue;
+            }
+            tx.execute(
+                &format!(
+                    "INSERT INTO vaccinations
+                         (id, patient_id, code, label, dose, given_on, lot, site, operator, next_due, remark)
+                     VALUES ({next}, ?1, ?2, ?3, ?4, '', '', '', ?5, '', ?6)",
+                    next = next_id("vaccinations")
+                ),
+                rusqlite::params![p.patient_id, &v.code, &v.label, &v.dose, &v.operator, &v.remark],
+            )
+            .map_err(|e| e.to_string())?;
+            added += 1;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok((id, added))
+    }
+
     /// Les grilles de tailles de compression, par modèle.
     pub fn compression_grids(&self) -> Result<Vec<CompressionGrid>, String> {
         let mut stmt = self
@@ -53722,6 +53883,115 @@ impl Db {
             )
             .map(|_| ())
             .map_err(|e| e.to_string())
+    }
+
+    /// Un réglage du registre, ou `None`.
+    pub fn stup_setting(&self, key: &str) -> Option<String> {
+        self.stups
+            .query_row(
+                "SELECT value FROM stup_settings WHERE key = ?1",
+                [key],
+                |r| r.get::<_, String>(0),
+            )
+            .ok()
+    }
+
+    /// Poser un réglage du registre ; vide, il est retiré.
+    pub fn set_stup_setting(&self, key: &str, value: &str) -> Result<(), String> {
+        if value.is_empty() {
+            return self
+                .stups
+                .execute("DELETE FROM stup_settings WHERE key = ?1", [key])
+                .map(|_| ())
+                .map_err(|e| e.to_string());
+        }
+        self.stups
+            .execute(
+                "INSERT INTO stup_settings (key, value) VALUES (?1, ?2)
+                 ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                [key, value],
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
+    /// **Quel produit de StupControl chaque produit suivi désigne** : (id
+    /// du produit, clé de StupControl).
+    pub fn stupcontrol_mapping(&self) -> Result<Vec<(i64, String)>, String> {
+        let mut stmt = self
+            .stups
+            .prepare("SELECT key, value FROM stup_settings WHERE key LIKE 'stupcontrol_map:%'")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (key, value) = row.map_err(|e| e.to_string())?;
+            if let Some(id) = key
+                .strip_prefix(crate::stupcontrol::MAP_PREFIX)
+                .and_then(|id| id.parse::<i64>().ok())
+            {
+                out.push((id, value));
+            }
+        }
+        Ok(out)
+    }
+
+    /// Faire désigner un produit de StupControl par un produit suivi, ou
+    /// défaire la correspondance (`key` vide). Un produit de StupControl
+    /// n'est désigné que par un seul : deux registres versés dans une
+    /// colonne compteraient chaque boîte deux fois.
+    pub fn set_stupcontrol_map(&self, stup_id: i64, key: &str) -> Result<(), String> {
+        if !key.is_empty()
+            && self
+                .stupcontrol_mapping()?
+                .iter()
+                .any(|(id, k)| *id != stup_id && k == key)
+        {
+            return Err(crate::strings::tr("stc_err_mapped_twice").to_owned());
+        }
+        self.set_stup_setting(&format!("{}{stup_id}", crate::stupcontrol::MAP_PREFIX), key)
+    }
+
+    /// Les lignes du registre déjà rapprochées de StupControl.
+    pub fn stup_links(&self) -> Result<std::collections::HashSet<i64>, String> {
+        let mut stmt = self
+            .stups
+            .prepare("SELECT move_id FROM stup_links")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, i64>(0))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Lier une ligne du registre à sa ligne de classeur. Une fois : un
+    /// lien ne se réécrit pas.
+    pub fn add_stup_link(&self, move_id: i64, origin: &str, day: &str) -> Result<(), String> {
+        self.stups
+            .execute(
+                "INSERT OR IGNORE INTO stup_links (move_id, origin, linked_on) VALUES (?1, ?2, ?3)",
+                rusqlite::params![move_id, origin, day],
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
+    /// **Inscrire une ligne venue d'un classeur et la lier**, dans une
+    /// transaction : une ligne sans son lien serait inscrite une seconde
+    /// fois au rapprochement suivant. Les règles sont celles de toute
+    /// ligne du registre — la même fonction les porte.
+    pub fn add_stup_move_linked(&self, m: &StupMove, origin: &str, day: &str) -> Result<i64, String> {
+        let tx = write_tx(&self.stups).map_err(|e| e.to_string())?;
+        let id = Self::insert_stup_move(&tx, m)?;
+        tx.execute(
+            "INSERT INTO stup_links (move_id, origin, linked_on) VALUES (?1, ?2, ?3)",
+            rusqlite::params![id, origin, day],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(id)
     }
 
     /// Les délivrances d'une année, dans l'ordre de l'ordonnancier.

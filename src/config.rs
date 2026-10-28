@@ -427,15 +427,25 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # comptes : les comptes et les actualités.
 # gestion : caisse, recettes, statistiques, campagne de vaccination,
 #   console, documents imprimés.
+# stupcontrol : le registre des stupéfiants rapproché des classeurs
+#   LibreOffice de StupControl. Éteint par défaut.
 # reseau = true
 # patients = true
 # comptes = true
 # gestion = true
+# stupcontrol = false
 #
 # Le script de démarrage (Rhai), lancé à l'ouverture d'une session sur
 # ce que lit la console, en lecture seule : il ne peut rien écrire ni
 # rien faire sortir. Ce qu'il rend s'affiche dans la console.
 # demarrage = ""
+
+# [stupcontrol]
+# Où est StupControl sur ce poste, quand le module est chargé. Vide : là
+# où il s'installe d'ordinaire. La date de départ et la correspondance
+# des produits sont de l'officine, dans le registre.
+# programme = ""
+# configuration = ""
 
 # [prevention]
 # Les sujets d'un rendez-vous de prévention. Il n'a pas de thème — on en
@@ -469,6 +479,7 @@ pub struct Config {
     pub audit: AuditConfig,
     pub prescribers: PrescribersConfig,
     pub modules: ModulesConfig,
+    pub stupcontrol: StupControlConfig,
     /// **Le fichier n'a pas pu se lire** : l'erreur, et rien n'est
     /// réécrit tant qu'elle reste. Une faute de frappe dans
     /// `config.toml` donnait les valeurs par défaut, que le premier
@@ -487,6 +498,10 @@ pub struct ModulesConfig {
     pub patients: bool,
     pub comptes: bool,
     pub gestion: bool,
+    /// Le rapprochement du registre avec les classeurs de StupControl.
+    /// **Éteint par défaut** : seule une officine qui tient ses
+    /// classeurs l'allume.
+    pub stupcontrol: bool,
     /// Le script de démarrage : lancé à l'ouverture d'une session sur le
     /// même instantané que la console, en lecture seule.
     pub demarrage: String,
@@ -501,6 +516,7 @@ impl Default for ModulesConfig {
             patients: true,
             comptes: true,
             gestion: true,
+            stupcontrol: false,
             demarrage: String::new(),
         }
     }
@@ -520,14 +536,17 @@ pub enum Module {
     /// La gestion : caisse, recettes, statistiques, campagne, console,
     /// documents imprimés.
     Gestion,
+    /// StupControl : le registre rapproché des classeurs LibreOffice.
+    StupControl,
 }
 
 impl Module {
-    pub const ALL: [Module; 4] = [
+    pub const ALL: [Module; 5] = [
         Module::Reseau,
         Module::Patients,
         Module::Comptes,
         Module::Gestion,
+        Module::StupControl,
     ];
 }
 
@@ -567,6 +586,7 @@ impl ModulesConfig {
             Module::Patients => self.patients,
             Module::Comptes => self.comptes,
             Module::Gestion => self.gestion,
+            Module::StupControl => self.stupcontrol,
         }
     }
 
@@ -576,8 +596,21 @@ impl ModulesConfig {
             Module::Patients => self.patients = on,
             Module::Comptes => self.comptes = on,
             Module::Gestion => self.gestion = on,
+            Module::StupControl => self.stupcontrol = on,
         }
     }
+}
+
+/// **StupControl, sur ce poste** — voir `src/stupcontrol.rs`. Le chemin
+/// du programme (vide : là où il s'installe d'ordinaire) et, s'il le
+/// faut, celui de son fichier de réglages (vide : le sien). La date de
+/// départ et la correspondance des produits sont de l'officine, dans le
+/// registre.
+#[derive(Deserialize, Serialize, Clone, PartialEq, Debug, Default)]
+#[serde(default)]
+pub struct StupControlConfig {
+    pub programme: String,
+    pub configuration: String,
 }
 
 /// L'annuaire des prescripteurs — voir `src/prescribers.rs` et le
@@ -2817,7 +2850,11 @@ mod tests {
     #[test]
     fn every_module_is_loaded_unless_this_post_unchecks_it() {
         let all = Config::default().modules;
-        assert!(Module::ALL.iter().all(|m| all.on(*m)));
+        // Sauf StupControl : seule une officine qui tient ses classeurs
+        // l'allume.
+        assert!(Module::ALL
+            .iter()
+            .all(|m| all.on(*m) == (*m != Module::StupControl)));
         assert!(all.demarrage.is_empty());
         let silent: Config = toml::from_str("[ui]\ntext_scale = 1.25\n").unwrap();
         assert_eq!(silent.modules, all);
