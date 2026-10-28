@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.448.0] - 2026-10-28
+
 ### Added
 
 - **StupControl module** (`src/stupcontrol.rs`, Options › Modules, off by default): the stupéfiants register and StupControl's LibreOffice workbooks keep each other up to date from a start date, product by product. BPM-Caddy never touches a workbook itself: it runs the installed StupControl headless (`StupControl --bridge request.json response.json`, new in StupControl 1.22), so every write goes through StupControl's own path — backup first, atomic save, refusal while LibreOffice holds the file, audit log. Lines on both sides pair (a délivrance by its ordonnancier number, the rest by day, side, quantity and name, then day, side and quantity alone); a register line missing from the workbook is appended with the patient's name taken from the dossier on this post; a workbook line missing from the register is inserted, INSERT-only, linked to a dossier only when exactly one bears the name, the name itself never written to the register. Perte, péremption and an inventory gap become named outs or ins; an annulation, the opposite movement; returns and destructions do not touch the dispensable stock and stay out. What the register refuses (no number, a non-numeric or already-used one, an unreadable date), what StupControl could not append (workbook open, sheet full) and linked lines gone from a workbook are listed, never forced; a balance gap is said, never filled with an invented inventory. A preview writes nothing; automatic sync every five minutes on the serving post once the officine turns it on. Pairings are kept in `stup_links` (append-only, travels with the register).
