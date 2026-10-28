@@ -287,7 +287,7 @@ The one that was missing — « combien de fois un autre poste avait
   écrit le premier », the most useful number the pane carries and the
   one no other screen says — was absent for two versions for a reason
   worth keeping: every compare-and-set answers `false` in its own place,
-  120 of them, and counting at all but one would be a counter quietly
+  121 of them, and counting at all but one would be a counter quietly
   short, which is worse than one that is not there. It arrived by making those answers
   go through **one** function, `Session::stale` / `stale_note`, the only
   path to a « rechargez » notice (`stale_note_with` when it names what changed); `no_stale_notice_is_written_by_hand`
@@ -1470,7 +1470,7 @@ add clicking and typing; it is not the price of entry.
   explorer's axes, the map's lenses, the batch sheet's natures, as the
   register form already did (`richest_form`); it says nothing useful
   about a form, a dialog or a table of records, where what is under the
-  fold is the control you came to use. 77 regions now set
+  fold is the control you came to use. 78 regions now set
   `ui.spacing_mut().scroll.floating = false`, each for a loss seen on a
   capture at 1024x700: the planning's entry row (« Poser »), the
   register's write form (its natures and nothing else — the quantity,
@@ -2358,7 +2358,7 @@ add clicking and typing; it is not the price of entry.
 - `BPM_CADDY_START_VIEW=verrou|search|dashboard|patient|patient_edit|patient_new|drugs|drug_card|agenda|agenda_day|
   agenda_filtre|agenda_month|planning|planning_mois|planning_saisie|protocols|protocol_open|template|options|about|tables|
   tables_search|regles|mentions|honoraires|forfaits|modules|calc|carnet|vaccins|bio|watch|revue|conciliation|
-  vaccine_map|campagne|campagne_rdv|campagne_parametrer|campagne_entretiens|vaccins_grossesse|vaccins_catalogue|ruptures|reseau|versions|postes|postes_seul|postes_telephone|connexions|officines|ordonnance|ordonnance_lignes|rein|grossesse|age|cyp|ddi|ddi_crush|fiche_transmission|qualite|libelles|listes|base|codex|
+  vaccine_map|campagne|campagne_rappels|campagne_rdv|campagne_parametrer|campagne_entretiens|vaccins_grossesse|vaccins_catalogue|ruptures|reseau|versions|postes|postes_seul|postes_telephone|connexions|officines|ordonnance|ordonnance_lignes|rein|grossesse|age|cyp|ddi|ddi_crush|fiche_transmission|qualite|libelles|listes|base|codex|
   codex_open|en_ligne|dispositifs|dispositif_open|conseil_contention|conseil_nutrition|conseil_protections|couverture|locations|keys|keys_outils|nouveautes|messages|comptes|comptes_phrase|comptes_ouvert|actualites|connexions_carte|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|graph_zoom|graph_wide|graph_ordonnance|graph_filtre|registres|stup|
   trame|cascades|cascades_decrire|cascades_boucle|
@@ -2946,6 +2946,14 @@ name>` follows that node's lineage, as a click would.
   (flux Officine) et `campaign_calls` (flux Dossiers, une ligne par appel,
   la liste lit le dernier). La vue ne lit la base qu'à l'ouverture et
   après un geste (`reload_campagne`).
+- **Le comptoir** (0.448) : une dose sans dossier (`counter_doses`, flux
+  Officine, `campagne::CounterDose`) garde le vaccin, le lot, la borne
+  basse de sa tranche d'âge (`band_floor`, que `band_of` relit dans la
+  même tranche), le jour, la minute et les initiales — jamais un nom. Elle entre partout où entre
+  une dose de carnet : `vaccination_lots` (le stock), `vaccinations_on`
+  (la barre d'état), `tally`, `summary_aged`, le registre du jour et
+  l'export. Le comptoir est la page par défaut d'une campagne de vaccins
+  en cours ; les rappels, la seconde.
 - **« Mesures et conseils »** (`compression`, `nutrition`, `protections`,
   `conseils`) garde ce qu'il note d'un dossier dans une seule table,
   `counsel_records`, dont `data` porte des `clé=valeur` séparés par des

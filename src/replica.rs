@@ -141,6 +141,8 @@ pub const TABLES: &[Table] = &[
     t("campaign_calls", Main, Dossiers, false, true),
     t("vaccine_lots", Main, Officine, false, true),
     t("vial_openings", Main, Officine, false, true),
+    // Les doses du comptoir ne nomment personne : le stock de l'officine.
+    t("counter_doses", Main, Officine, false, true),
     // Le registre qualité : du texte libre, qui peut nommer un patient
     // (une erreur de délivrance) — il voyage sous la clé des dossiers.
     t("nonconformites", Main, Dossiers, false, true),

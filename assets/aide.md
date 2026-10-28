@@ -1107,7 +1107,18 @@ d'octobre à février. Sans réglage, la campagne est celle de la saison,
 du 1er septembre au 31 août, construite chaque année sans rien à faire ;
 celle de l'hiver passé reste lisible dans le menu « Autre campagne »,
 avec son compte et son bilan. Une campagne terminée ne rappelle plus
-personne.
+personne. Les documents (liste, bilan, registre du jour, export) sont
+dans le menu « Documents ».
+
+**Comptoir.** La page qui s'ouvre pendant la campagne : une dose en un
+clic, sans dossier. Pour chaque vaccin, un bouton par tranche d'âge
+(« +1 65 à 74 ans ») ; le lot proposé est celui dont la péremption est
+la plus proche, un autre se choisit dans le menu à côté du vaccin. La
+dose compte au compte de la campagne, au bilan par tranche d'âge et au
+stock de son lot ; elle ne nomme personne. Les doses du jour se lisent
+dessous, avec l'heure, le lot et les initiales ; « Retirer » efface une
+dose notée par erreur. Pour suivre une personne (carnet, rappel l'an
+prochain), la dose s'inscrit plutôt à son carnet.
 
 **Paramétrer.** Le bouton ouvre l'éditeur à la place des panneaux. La
 campagne de la saison s'y personnalise : titre, dates, stock bas,
@@ -1126,7 +1137,8 @@ dates et années du titre avancées ; « Nouvelle campagne » part d'une page
 vide. Rien n'est écrit avant « Enregistrer ». Les appels d'une campagne
 restent rangés sous sa clé, même si ses dates changent.
 
-**À rappeler.** Les dossiers que le calendrier vaccinal déclare dus
+**À rappeler.** La seconde page, pour l'équipe qui appelle sa
+patientèle : les dossiers que le calendrier vaccinal déclare dus
 pour la grippe, le COVID-19, le VRS, le pneumocoque ou le zona (65 ans et plus,
 grossesse en cours selon la date des dernières règles, 75 ans et plus
 pour le VRS ; pour le zona, la seconde dose à partir de deux mois après
@@ -1154,29 +1166,27 @@ avec le médicament en cause. L'indication est à confirmer avec le
 patient. Ouvrir un dossier depuis la liste prépare le carnet : le vaccin
 de la campagne et le lot en stock sont déjà renseignés. « Imprimer la
 liste » sort la liste du vaccin choisi, avec une colonne pour noter
-l'issue de chaque appel. Sur un écran court, les quatre documents de
-la campagne (liste, bilan, registre du jour, export) sont réunis dans
-le menu « Documents ».
+l'issue de chaque appel.
 Au clavier, une flèche active la liste et la parcourt ; Entrée ouvre
 alors le carnet et les touches 1 à 4 notent l'issue de l'appel, dans
 l'ordre des boutons. La saisie dans un champ désactive la liste.
 
 **Doses de la saison.** Par vaccin : le jour, les sept derniers jours et
-la saison, lus dans tous les carnets ; puis la courbe hebdomadaire du
+la saison, lus dans tous les carnets et au comptoir ; puis la courbe hebdomadaire du
 vaccin choisi. « Bilan » imprime les doses par vaccin et
 par tranche d'âge à la date de l'injection, puis semaine par semaine.
-« Registre du jour » imprime les doses inscrites aux carnets dans la
-journée, avec le patient, le lot, le site et l'opérateur.
-« Exporter les doses » écrit les doses de la saison dans un fichier CSV
-(dossier `exports` à côté de la base) : date, patient, vaccin, dose,
-lot, site et opérateur. L'export est tracé dans le journal d'accès.
+« Registre du jour » imprime les doses de la journée, avec le patient
+(ou « Sans dossier » et la tranche d'âge), le lot, le site et
+l'opérateur. « Exporter les doses » écrit les doses de la saison dans
+un fichier CSV (dossier `exports` à côté de la base) : date, patient,
+vaccin, dose, lot, site et opérateur. L'export est tracé dans le journal d'accès.
 
 **Lots reçus.** Chaque lot est saisi à réception : vaccin, spécialité,
 numéro, péremption (`06/2027` suffit, le dernier jour du mois est
 retenu) et nombre de doses. Le stock restant n'est jamais décompté à la
-main : il se calcule à partir des doses inscrites au carnet avec ce
-numéro. Une dose corrigée ou supprimée au carnet se retrouve donc dans
-le stock. Un lot est signalé périmé, épuisé, proche de la péremption
+main : il se calcule à partir des doses notées avec ce numéro, au
+carnet ou au comptoir. Une dose corrigée ou supprimée se retrouve donc
+dans le stock. Un lot est signalé périmé, épuisé, proche de la péremption
 (moins de 30 jours) ou en stock bas (moins de 5 doses).
 
 Sur un lot de Comirnaty, « Flacon ouvert » note la première ponction

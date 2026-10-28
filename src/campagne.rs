@@ -1722,13 +1722,35 @@ pub fn summary(
     campaign: &Campaign,
     today: &str,
 ) -> Vec<Summary> {
+    let aged: Vec<(Option<u32>, &str, &str, &str)> = rows
+        .iter()
+        .map(|(birth, code, label, given)| {
+            (
+                crate::db::age_on(birth, given.trim()),
+                *code,
+                *label,
+                *given,
+            )
+        })
+        .collect();
+    summary_aged(&aged, campaign, today)
+}
+
+/// Le bilan, chaque dose avec l'âge à l'injection (`None` : inconnu) —
+/// celles des carnets comme celles du comptoir, qui n'ont que leur
+/// tranche.
+pub fn summary_aged(
+    rows: &[(Option<u32>, &str, &str, &str)],
+    campaign: &Campaign,
+    today: &str,
+) -> Vec<Summary> {
     if !campaign.has_vaccines() {
         return Vec::new();
     }
     let until = campaign.read_until(today);
     let bands = &campaign.bands;
     let mut out: Vec<Summary> = Vec::new();
-    for (birth, code, label, given) in rows {
+    for (age, code, label, given) in rows {
         let date = given.trim();
         if date.is_empty() || date < campaign.starts_on.as_str() || date > until {
             continue;
@@ -1754,16 +1776,50 @@ pub fn summary(
             }
         };
         let row = &mut out[i];
-        match crate::db::age_on(birth, date) {
-            Some(a) => {
-                let band = bands.iter().take_while(|b| a >= **b).count();
-                row.by_band[band] += 1;
-            }
+        match age {
+            Some(a) => row.by_band[band_of(bands, *a)] += 1,
             None => row.unknown += 1,
         }
     }
     out.sort_by(|a, b| b.total().cmp(&a.total()).then(a.code.cmp(&b.code)));
     out
+}
+
+// ---------------------------------------------------------------------
+// Les doses du comptoir
+// ---------------------------------------------------------------------
+
+/// Une dose faite au comptoir, sans dossier : le vaccin, le lot et la
+/// tranche d'âge — rien qui nomme la personne. Elle compte au compte de
+/// la campagne, à son bilan et au stock de son lot comme une dose de
+/// carnet.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CounterDose {
+    pub id: i64,
+    pub code: String,
+    pub label: String,
+    pub lot: String,
+    /// La borne basse de la tranche d'âge choisie (`band_floor`).
+    pub age_from: u32,
+    /// ISO.
+    pub given_on: String,
+    /// Minutes depuis minuit.
+    pub given_min: i64,
+    pub operator: String,
+}
+
+/// La tranche d'un âge, en rang dans `band_labels`.
+pub fn band_of(bands: &[u32], age: u32) -> usize {
+    bands.iter().take_while(|b| age >= **b).count()
+}
+
+/// L'âge qu'une dose du comptoir inscrit pour la tranche `i` : sa borne
+/// basse, qui retombe dans la même tranche (`band_of`).
+pub fn band_floor(bands: &[u32], i: usize) -> u32 {
+    match i {
+        0 => 0,
+        _ => bands.get(i - 1).copied().unwrap_or(0),
+    }
 }
 
 // ---------------------------------------------------------------------
@@ -2682,6 +2738,35 @@ mod tests {
         assert_eq!(band_labels(&[65, 75])[1], "65 à 74 ans");
         c.bands.clear();
         assert_eq!(summary(&rows, &c, "2026-10-20")[0].by_band, [3]);
+    }
+
+    #[test]
+    fn a_counter_dose_lands_in_the_band_its_button_named() {
+        // Chaque bouton du comptoir inscrit la borne basse de sa tranche,
+        // et le bilan la range sous ce même bouton — avec ou sans bornes.
+        for bands in [vec![65, 75], vec![70], vec![]] {
+            for i in 0..=bands.len() {
+                assert_eq!(band_of(&bands, band_floor(&bands, i)), i, "{bands:?} {i}");
+            }
+        }
+        let c = default_campaign("2026-10-20");
+        let rows = [
+            (
+                Some(band_floor(&c.bands, 2)),
+                "GRIPPE",
+                "Grippe",
+                "2026-10-14",
+            ),
+            (
+                Some(band_floor(&c.bands, 0)),
+                "GRIPPE",
+                "Grippe",
+                "2026-10-14",
+            ),
+            (None, "GRIPPE", "Grippe", "2026-10-15"),
+        ];
+        let s = summary_aged(&rows, &c, "2026-10-20");
+        assert_eq!((s[0].by_band.as_slice(), s[0].unknown), (&[1, 0, 1][..], 1));
     }
 
     #[test]

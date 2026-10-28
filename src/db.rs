@@ -781,6 +781,19 @@ CREATE TABLE IF NOT EXISTS vial_openings (
     opened_min  INTEGER NOT NULL DEFAULT 0,
     operator    TEXT NOT NULL DEFAULT ''
 );
+-- Les doses faites au comptoir sans dossier (`campagne::CounterDose`) :
+-- vaccin, lot, tranche d'âge — jamais un nom. Elles comptent au compte de
+-- la campagne et au stock de leur lot.
+CREATE TABLE IF NOT EXISTS counter_doses (
+    id          INTEGER PRIMARY KEY,
+    code        TEXT NOT NULL DEFAULT '',
+    label       TEXT NOT NULL DEFAULT '',
+    lot         TEXT NOT NULL DEFAULT '',
+    age_from    INTEGER NOT NULL DEFAULT 0,
+    given_on    TEXT NOT NULL,
+    given_min   INTEGER NOT NULL DEFAULT 0,
+    operator    TEXT NOT NULL DEFAULT ''
+);
 -- Le registre qualité : les non-conformités et leurs actions
 -- (`qualite.rs`). L'étape n'y est pas : elle se lit dans ce qui est écrit.
 CREATE TABLE IF NOT EXISTS nonconformites (
@@ -1784,6 +1797,16 @@ const MIGRATIONS: &[&str] = &[
         done_on     TEXT NOT NULL DEFAULT ''
     )",
     // La campagne de vaccination — voir `SCHEMA`.
+    "CREATE TABLE IF NOT EXISTS counter_doses (
+        id          INTEGER PRIMARY KEY,
+        code        TEXT NOT NULL DEFAULT '',
+        label       TEXT NOT NULL DEFAULT '',
+        lot         TEXT NOT NULL DEFAULT '',
+        age_from    INTEGER NOT NULL DEFAULT 0,
+        given_on    TEXT NOT NULL,
+        given_min   INTEGER NOT NULL DEFAULT 0,
+        operator    TEXT NOT NULL DEFAULT ''
+    )",
     "CREATE TABLE IF NOT EXISTS vial_openings (
         id          INTEGER PRIMARY KEY,
         lot         TEXT NOT NULL,
@@ -46104,6 +46127,7 @@ impl Db {
             "DELETE FROM cno_products",
             "DELETE FROM vaccine_lots",
             "DELETE FROM vial_openings",
+            "DELETE FROM counter_doses",
             "DELETE FROM campaigns",
             "DELETE FROM nc_actions",
             "DELETE FROM nonconformites",
@@ -52129,6 +52153,73 @@ impl Db {
         Ok(changed == 1)
     }
 
+    /// Les doses du comptoir depuis `since` (ISO), la plus récente d'abord.
+    pub fn counter_doses_since(
+        &self,
+        since: &str,
+    ) -> Result<Vec<crate::campagne::CounterDose>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, code, label, lot, age_from, given_on, given_min, operator
+                 FROM counter_doses WHERE given_on >= ?1
+                 ORDER BY given_on DESC, given_min DESC, id DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([since], |r| {
+                Ok(crate::campagne::CounterDose {
+                    id: r.get(0)?,
+                    code: r.get(1)?,
+                    label: r.get(2)?,
+                    lot: r.get(3)?,
+                    age_from: r.get(4)?,
+                    given_on: r.get(5)?,
+                    given_min: r.get(6)?,
+                    operator: r.get(7)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    pub fn add_counter_dose(&self, d: &crate::campagne::CounterDose) -> Result<i64, String> {
+        self.conn
+            .execute(
+                &format!(
+                    "INSERT INTO counter_doses
+                     (id, code, label, lot, age_from, given_on, given_min, operator)
+                     VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    next = next_id("counter_doses")
+                ),
+                rusqlite::params![
+                    &d.code,
+                    &d.label,
+                    &d.lot,
+                    d.age_from,
+                    &d.given_on,
+                    d.given_min,
+                    &d.operator
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Retirer une dose du comptoir saisie par erreur, compare-and-set sur
+    /// le vaccin, le lot et l'heure affichés.
+    pub fn delete_counter_dose(&self, d: &crate::campagne::CounterDose) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "DELETE FROM counter_doses WHERE id = ?1 AND code = ?2 AND lot = ?3
+                 AND given_on = ?4 AND given_min = ?5",
+                rusqlite::params![d.id, &d.code, &d.lot, &d.given_on, d.given_min],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
     /// Les non-conformités, la plus récemment déclarée d'abord.
     pub fn nonconformites(&self) -> Result<Vec<crate::qualite::NonConformite>, String> {
         let mut stmt = self
@@ -52533,12 +52624,13 @@ impl Db {
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
     }
 
-    /// Combien de doses sont inscrites aux carnets à la date `day` (ISO) :
+    /// Combien de doses sont faites à la date `day` (ISO), carnets et comptoir :
     /// le compte de la barre d'état pendant la campagne.
     pub fn vaccinations_on(&self, day: &str) -> Result<usize, String> {
         self.conn
             .query_row(
-                "SELECT COUNT(*) FROM vaccinations WHERE given_on = ?1",
+                "SELECT (SELECT COUNT(*) FROM vaccinations WHERE given_on = ?1)
+                      + (SELECT COUNT(*) FROM counter_doses WHERE given_on = ?1)",
                 [day],
                 |r| r.get::<_, i64>(0),
             )
@@ -52562,12 +52654,16 @@ impl Db {
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
     }
 
-    /// Les lots portés par le carnet, toutes dates confondues : un lot
-    /// reçu en septembre peut servir jusqu'en mars.
+    /// Les lots portés par le carnet et par les doses du comptoir, toutes
+    /// dates confondues : un lot reçu en septembre peut servir jusqu'en
+    /// mars.
     pub fn vaccination_lots(&self) -> Result<Vec<String>, String> {
         let mut stmt = self
             .conn
-            .prepare("SELECT lot FROM vaccinations WHERE lot <> ''")
+            .prepare(
+                "SELECT lot FROM vaccinations WHERE lot <> ''
+                 UNION ALL SELECT lot FROM counter_doses WHERE lot <> ''",
+            )
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([], |r| r.get(0))

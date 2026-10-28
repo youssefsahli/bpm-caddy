@@ -4988,6 +4988,14 @@ struct CampagneState {
     /// L'éditeur des campagnes, quand il est ouvert : il prend la place
     /// des trois panneaux.
     edit: Option<CampaignEdit>,
+    /// Les doses du comptoir depuis le début de la campagne, la plus
+    /// récente d'abord.
+    counter: Vec<crate::campagne::CounterDose>,
+    /// Le lot choisi au comptoir pour chaque vaccin : (code, lot).
+    counter_lots: Vec<(String, String)>,
+    /// Le panneau de gauche montre les rappels des dossiers plutôt que le
+    /// comptoir.
+    recalls_on: bool,
 }
 
 /// Les réécritures sans phrase, contre (`content_rev`, nombre de
@@ -14750,6 +14758,10 @@ impl Session {
             .db
             .vaccinations_since(&campaign.starts_on)
             .unwrap_or_default();
+        let counter = self
+            .db
+            .counter_doses_since(&campaign.starts_on)
+            .unwrap_or_default();
         let doses: Vec<campagne::DoseRow> = rows
             .iter()
             .map(|(code, label, date)| campagne::DoseRow {
@@ -14757,6 +14769,11 @@ impl Session {
                 label,
                 given_on: date,
             })
+            .chain(counter.iter().map(|d| campagne::DoseRow {
+                code: &d.code,
+                label: &d.label,
+                given_on: &d.given_on,
+            }))
             .collect();
         // Les actes réalisés ne se lisent que pour une campagne qui en a :
         // tous, car un sujet peut compter sur douze mois ou une fois pour
@@ -14789,6 +14806,8 @@ impl Session {
             ),
             None => Vec::new(),
         };
+        drop(doses);
+        self.camp.counter = counter;
         // Une campagne terminée n'a plus personne à rappeler : son compte
         // et son bilan restent.
         if campaign.phase(&today) == Phase::Ended {
@@ -23940,8 +23959,33 @@ impl App {
                             session.map_country = Some("ML");
                             session.view = MainView::VaccineMap;
                         }
+                        // Le comptoir, avec trois doses notées ce matin.
                         Ok("campagne") => {
                             session.view = MainView::Campagne;
+                            session.reload_campagne();
+                            let lot = session.first_usable_lot("GRIPPE").unwrap_or_default();
+                            if session.camp.counter.is_empty() {
+                                for (age, min) in [(65, 545), (75, 560), (0, 610)] {
+                                    let _ = session.db.add_counter_dose(
+                                        &crate::campagne::CounterDose {
+                                            code: "GRIPPE".to_owned(),
+                                            label: crate::campagne::code_label("GRIPPE").to_owned(),
+                                            lot: lot.clone(),
+                                            age_from: age,
+                                            given_on: session.today.clone(),
+                                            given_min: min,
+                                            operator: "YS".to_owned(),
+                                            ..Default::default()
+                                        },
+                                    );
+                                }
+                                session.reload_campagne();
+                            }
+                        }
+                        // Les dossiers à rappeler, à la place du comptoir.
+                        Ok("campagne_rappels") => {
+                            session.view = MainView::Campagne;
+                            session.camp.recalls_on = true;
                             session.reload_campagne();
                         }
                         // La liste des rendez-vous, avec trois rendez-vous
@@ -23958,6 +24002,7 @@ impl App {
                             }
                             session.view = MainView::Campagne;
                             session.camp.show_rdv = true;
+                            session.camp.recalls_on = true;
                             session.reload_campagne();
                         }
                         // L'éditeur ouvert sur la campagne de la saison,
@@ -66092,9 +66137,6 @@ impl App {
         let title = campaign.title.clone();
         let subject = campaign.subject(&session.camp.code).cloned();
         let vaccines = campaign.has_vaccines();
-        // Sur un volet court, le sous-titre se réduit à la saison : ses
-        // trois lignes d'explication prenaient la place de la liste.
-        let short = body.height() < Self::row_height(ui) * 20.0;
         // L'avis d'un export prend la place du sous-titre : la bande garde
         // sa hauteur, et l'avis se lit là où l'on regarde.
         let period = [
@@ -66107,10 +66149,10 @@ impl App {
             trn("camp_subtitle_ended", &[&period[0], &period[1]])
         } else if phase == Phase::Upcoming {
             trn("camp_subtitle_upcoming", &[&period[0], &period[1]])
-        } else if short {
-            trn("camp_subtitle_short", &[&period[0], &period[1]])
         } else {
-            tr("camp_subtitle").to_owned()
+            // En cours, le titre dit la saison : une ligne de moins
+            // au-dessus du comptoir.
+            String::new()
         };
         // Plusieurs campagnes : un menu les propose, à côté du titre.
         let choices: Vec<((String, i64), String)> = session
@@ -66127,10 +66169,8 @@ impl App {
                 .chain([tr("camp_switch")]),
         );
         let editing = session.camp.edit.is_some();
-        // Sur un volet court, les quatre documents tiennent dans un menu :
-        // en boutons, ils prenaient deux rangées de plus au bandeau, et la
-        // liste des rappels n'avait plus une ligne à 1024x700 en texte 1,6.
-        let fold = short;
+        // Les quatre documents tiennent dans un menu : en boutons, ils
+        // prenaient une rangée de plus au bandeau.
         let documents: Vec<(u8, String)> = [
             (0, tr("camp_print")),
             (1, tr("camp_summary")),
@@ -66154,14 +66194,8 @@ impl App {
             [
                 Some(Self::heading_width(ui, &title)),
                 (choices.len() > 1).then_some(menu_w),
+                (!editing).then_some(docs_w),
                 Some(Self::button_width(ui, tr("camp_settings"))),
-                (!editing).then(|| Self::button_width(ui, tr("camp_reload"))),
-                (!editing && fold).then_some(docs_w),
-                (!editing && !fold).then(|| Self::button_width(ui, tr("camp_print"))),
-                (!editing && !fold).then(|| Self::button_width(ui, tr("camp_summary"))),
-                (!editing && !fold && vaccines)
-                    .then(|| Self::button_width(ui, tr("camp_register"))),
-                (!editing && !fold && vaccines).then(|| Self::button_width(ui, tr("camp_export"))),
             ]
             .into_iter()
             .flatten(),
@@ -66191,22 +66225,7 @@ impl App {
                         pick_campaign = Some(key);
                     }
                 }
-                if motif::toggle(ui, tr("camp_settings"), editing)
-                    .on_hover_text(tr("camp_settings_tooltip"))
-                    .clicked()
-                {
-                    settings = true;
-                }
-                if editing {
-                    return;
-                }
-                if motif::button(ui, tr("camp_reload"))
-                    .on_hover_text(tr("camp_reload_tooltip"))
-                    .clicked()
-                {
-                    reload = true;
-                }
-                if fold {
+                if !editing {
                     match motif::menu(
                         ui,
                         "camp_documents_menu",
@@ -66222,44 +66241,24 @@ impl App {
                         Some(3) => export = true,
                         _ => {}
                     }
-                    return;
                 }
-                if motif::button(ui, tr("camp_print"))
-                    .on_hover_text(tr("camp_print_tooltip"))
+                if motif::toggle(ui, tr("camp_settings"), editing)
+                    .on_hover_text(tr("camp_settings_tooltip"))
                     .clicked()
                 {
-                    print = true;
-                }
-                if motif::button(ui, tr("camp_summary"))
-                    .on_hover_text(tr("camp_summary_tooltip"))
-                    .clicked()
-                {
-                    print_summary = true;
-                }
-                if !vaccines {
-                    return;
-                }
-                if motif::button(ui, tr("camp_register"))
-                    .on_hover_text(tr("camp_register_tooltip"))
-                    .clicked()
-                {
-                    print_register = true;
-                }
-                if motif::button(ui, tr("camp_export"))
-                    .on_hover_text(tr("camp_export_tooltip"))
-                    .clicked()
-                {
-                    export = true;
+                    settings = true;
                 }
             });
-            ui.add(
-                egui::Label::new(
-                    egui::RichText::new(&subtitle)
-                        .size(motif::pt(ui, 11.5))
-                        .color(motif::text_dim()),
-                )
-                .wrap(),
-            );
+            if !subtitle.is_empty() {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(&subtitle)
+                            .size(motif::pt(ui, 11.5))
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+            }
         });
         if let Some((key, id)) = pick_campaign {
             session.camp.key = key;
@@ -66287,26 +66286,82 @@ impl App {
             Self::campaign_editor(ui, rows[1], session);
             return;
         }
-        // Large : les rappels à gauche, les doses et les lots à droite.
-        // Étroit : les trois l'un sous l'autre, les rappels en premier —
-        // c'est la liste qu'on vient chercher.
+        // Large : le comptoir (ou les rappels) à gauche, le compte et les
+        // lots à droite. Étroit : un panneau à la fois, choisi par une
+        // rangée de pages — trois panneaux empilés à 1024x700 en texte 1,6
+        // ne montraient que leurs en-têtes.
         let wide = rows[1].width() >= chars_wide(ui, 90.0);
-        // Étroit, **un panneau à la fois** : trois panneaux empilés à
-        // 1024x700 en texte 1,6 ne montraient que leurs en-têtes — la
-        // liste des rappels n'avait plus une seule ligne. Une rangée de
-        // pages choisit lequel prend toute la hauteur.
         let hidden = egui::Rect::NOTHING;
-        // Une campagne sans vaccin n'a pas de lots : son compte prend la
-        // colonne entière. Sans acte à planifier, pas de rendez-vous.
+        // Une campagne sans vaccin n'a ni lots ni comptoir : son compte
+        // prend la colonne entière. Sans acte à planifier, pas de
+        // rendez-vous. Le comptoir sert pendant la campagne.
         let with_rdv = campaign.subjects.iter().any(|s| s.act_kind().is_some());
+        let counter_ok = vaccines && phase == Phase::Running;
         if !vaccines && session.camp.page == 2 {
             session.camp.page = 0;
         }
         if !with_rdv && session.camp.show_rdv {
             session.camp.show_rdv = false;
         }
-        let (recall_rect, tally_rect, lots_rect) = if wide {
-            let cols = motif::split_columns(rows[1], 2, 8.0);
+        if !counter_ok {
+            session.camp.recalls_on = true;
+        }
+        let waiting: usize = session.camp.counts.iter().sum();
+        let pages: Vec<(u8, String)> = [
+            counter_ok.then(|| (0, tr("camp_page_counter").to_owned())),
+            Some((1, trf("camp_page_recalls", waiting))),
+            (!wide && with_rdv).then(|| (2, tr("camp_page_rdv").to_owned())),
+            (!wide).then(|| (3, tr("camp_page_tally").to_owned())),
+            (!wide && vaccines).then(|| (4, tr("camp_page_lots").to_owned())),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        let area = if pages.len() > 1 {
+            let strip =
+                Self::wrapped_rows(ui, rows[1].width(), pages.iter().map(|(_, l)| l.as_str()))
+                    * (Self::row_height(ui) + ui.spacing().item_spacing.y);
+            let r = motif::split_rows(rows[1], &[strip, 0.0], 6.0);
+            motif::inside(ui, r[0], |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    let camp = &mut session.camp;
+                    for (i, label) in &pages {
+                        let left = camp.page == 0;
+                        let on = match i {
+                            0 => left && !camp.recalls_on,
+                            1 => left && camp.recalls_on && (wide || !camp.show_rdv),
+                            2 => left && camp.recalls_on && camp.show_rdv,
+                            3 => camp.page == 1,
+                            _ => camp.page == 2,
+                        };
+                        let toggle = motif::toggle(ui, label, on);
+                        let toggle = match i {
+                            0 => toggle.on_hover_text(tr("camp_page_counter_tooltip")),
+                            1 => toggle.on_hover_text(tr("camp_page_recalls_tooltip")),
+                            _ => toggle,
+                        };
+                        if toggle.clicked() {
+                            camp.page = match i {
+                                3 => 1,
+                                4 => 2,
+                                _ => 0,
+                            };
+                            match i {
+                                0 => camp.recalls_on = false,
+                                1 => (camp.recalls_on, camp.show_rdv) = (true, false),
+                                2 => (camp.recalls_on, camp.show_rdv) = (true, true),
+                                _ => {}
+                            }
+                        }
+                    }
+                });
+            });
+            r[1]
+        } else {
+            rows[1]
+        };
+        let (left_rect, tally_rect, lots_rect) = if wide {
+            let cols = motif::split_columns(area, 2, 8.0);
             if vaccines {
                 let right = motif::split_rows(cols[1], &[0.0, 0.0], 8.0);
                 (cols[0], right[0], right[1])
@@ -66314,43 +66369,22 @@ impl App {
                 (cols[0], cols[1], hidden)
             }
         } else {
-            // Les rendez-vous sont une page de plus (rang 3), à côté des
-            // rappels : la bascule du panneau prendrait une rangée.
-            let pages: Vec<(usize, &str)> = [
-                (0, tr("camp_page_recalls")),
-                (3, tr("camp_page_rdv")),
-                (1, tr("camp_page_tally")),
-                (2, tr("camp_page_lots")),
-            ]
-            .into_iter()
-            .filter(|(i, _)| (*i != 2 || vaccines) && (*i != 3 || with_rdv))
-            .collect();
-            let strip = Self::wrapped_rows(ui, rows[1].width(), pages.iter().map(|(_, l)| *l))
-                * (Self::row_height(ui) + ui.spacing().item_spacing.y);
-            let r = motif::split_rows(rows[1], &[strip, 0.0], 6.0);
-            motif::inside(ui, r[0], |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    for (i, label) in pages {
-                        let on = if i == 3 {
-                            session.camp.page == 0 && session.camp.show_rdv
-                        } else if i == 0 {
-                            session.camp.page == 0 && !session.camp.show_rdv
-                        } else {
-                            session.camp.page == i
-                        };
-                        if motif::toggle(ui, label, on).clicked() {
-                            session.camp.page = if i == 3 { 0 } else { i };
-                            session.camp.show_rdv = i == 3;
-                        }
-                    }
-                });
-            });
             match session.camp.page {
-                1 => (hidden, r[1], hidden),
-                2 => (hidden, hidden, r[1]),
-                _ => (r[1], hidden, hidden),
+                1 => (hidden, area, hidden),
+                2 => (hidden, hidden, area),
+                _ => (area, hidden, hidden),
             }
         };
+        let (recall_rect, counter_rect) = if session.camp.recalls_on {
+            (left_rect, hidden)
+        } else {
+            (hidden, left_rect)
+        };
+        if counter_rect.is_positive()
+            && Self::campaign_counter(ui, counter_rect, session, &campaign, operator)
+        {
+            reload = true;
+        }
 
         // --- À rappeler -------------------------------------------------
         let mut pick_code: Option<String> = None;
@@ -67239,6 +67273,23 @@ impl App {
                 .log_access(&session.operator, crate::audit::Act::Exporte, 0);
             match session.db.vaccinations_season(&campaign.starts_on) {
                 Ok(mut rows) => {
+                    // Les doses du comptoir, sans nom ni naissance : leur
+                    // tranche d'âge se lit au bilan.
+                    rows.extend(session.camp.counter.iter().map(|d| {
+                        [
+                            d.given_on.clone(),
+                            String::new(),
+                            String::new(),
+                            String::new(),
+                            d.label.clone(),
+                            d.code.clone(),
+                            String::new(),
+                            d.lot.clone(),
+                            String::new(),
+                            d.operator.clone(),
+                        ]
+                    }));
+                    rows.sort_by(|a, b| a[0].cmp(&b[0]));
                     // Une campagne passée s'arrête à son dernier jour.
                     rows.retain(|r| r[0].as_str() <= campaign.ends_on.as_str());
                     campagne::campaign_doses(&mut rows, &campaign);
@@ -67278,6 +67329,7 @@ impl App {
             if let Err(e) = &read {
                 session.error = Some(e.clone());
             }
+            let bands = campagne::band_labels(&campaign.bands);
             let rows: Vec<[String; 7]> = read
                 .unwrap_or_default()
                 .into_iter()
@@ -67292,6 +67344,31 @@ impl App {
                         op,
                     ]
                 })
+                // Les doses du comptoir, sans dossier : leur tranche d'âge
+                // à la place du nom.
+                .chain(
+                    session
+                        .camp
+                        .counter
+                        .iter()
+                        .rev()
+                        .filter(|d| d.given_on == session.today)
+                        .map(|d| {
+                            let band = bands
+                                .get(campagne::band_of(&campaign.bands, d.age_from))
+                                .cloned()
+                                .unwrap_or_default();
+                            [
+                                trf("camp_counter_who", band),
+                                String::new(),
+                                d.label.clone(),
+                                String::new(),
+                                d.lot.clone(),
+                                String::new(),
+                                d.operator.clone(),
+                            ]
+                        }),
+                )
                 .collect();
             let paper = crate::pdf::VaccinationRegisterPaper {
                 title: trf(
@@ -67313,11 +67390,21 @@ impl App {
                 .db
                 .vaccinations_with_birth_since(&campaign.starts_on)
                 .unwrap_or_default();
-            let refs: Vec<(&str, &str, &str, &str)> = rows
+            // Les doses des carnets à l'âge du jour de l'injection, celles
+            // du comptoir à leur tranche.
+            let refs: Vec<(Option<u32>, &str, &str, &str)> = rows
                 .iter()
-                .map(|(b, c, l, d)| (b.as_str(), c.as_str(), l.as_str(), d.as_str()))
+                .map(|(b, c, l, d)| (db::age_on(b, d.trim()), c.as_str(), l.as_str(), d.as_str()))
+                .chain(session.camp.counter.iter().map(|d| {
+                    (
+                        Some(d.age_from),
+                        d.code.as_str(),
+                        d.label.as_str(),
+                        d.given_on.as_str(),
+                    )
+                }))
                 .collect();
-            let by_age: Vec<Vec<String>> = campagne::summary(&refs, &campaign, &session.today)
+            let by_age: Vec<Vec<String>> = campagne::summary_aged(&refs, &campaign, &session.today)
                 .iter()
                 .map(|s| {
                     let mut row = vec![if s.label.is_empty() {
@@ -67331,7 +67418,7 @@ impl App {
                     row
                 })
                 .collect();
-            let doses: Vec<campagne::DoseRow> = rows
+            let doses: Vec<campagne::DoseRow> = refs
                 .iter()
                 .map(|(_, code, label, date)| campagne::DoseRow {
                     code,
@@ -67476,6 +67563,206 @@ impl App {
 
     /// Le libellé d'une issue d'appel : « Vacciné ailleurs » pour un
     /// vaccin, « Fait ailleurs » pour un autre sujet.
+    /// **Le comptoir** : une dose en un clic, sans dossier — le vaccin et
+    /// la tranche d'âge, sur le lot proposé (le plus proche de sa
+    /// péremption, ou celui choisi). Les doses du jour se lisent dessous,
+    /// et une erreur se retire. Vrai quand une dose a été ajoutée ou
+    /// retirée.
+    fn campaign_counter(
+        ui: &mut egui::Ui,
+        rect: egui::Rect,
+        session: &mut Session,
+        campaign: &crate::campagne::Campaign,
+        operator: &str,
+    ) -> bool {
+        use crate::campagne::{self, CounterDose};
+        let today = session.today.clone();
+        let now = i64::from(session.now_minutes);
+        let bands = campagne::band_labels(&campaign.bands);
+        let stock = campaign.stock();
+        let todays: Vec<CounterDose> = session
+            .camp
+            .counter
+            .iter()
+            .filter(|d| d.given_on == today)
+            .cloned()
+            .collect();
+        let mut add: Option<CounterDose> = None;
+        let mut remove: Option<CounterDose> = None;
+        let mut pick: Option<(String, String)> = None;
+        let title = trf("camp_counter_title", todays.len());
+        let camp = &session.camp;
+        motif::panel(ui, rect, Some(&title), |ui| {
+            ui.spacing_mut().scroll.floating = false;
+            egui::ScrollArea::vertical()
+                .id_salt("camp_counter")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    for s in campaign.subjects.iter().filter(|s| s.is_vaccine()) {
+                        // Les lots utilisables, le plus proche de sa
+                        // péremption d'abord, avec ce qu'il en reste.
+                        let usable: Vec<(String, String)> =
+                            campagne::usable_lots(&camp.lots, &camp.used, &s.code, &today)
+                                .into_iter()
+                                .map(|l| {
+                                    let used = camp
+                                        .lots
+                                        .iter()
+                                        .position(|x| std::ptr::eq(x, l))
+                                        .and_then(|i| camp.used.get(i))
+                                        .copied()
+                                        .unwrap_or(0);
+                                    let left = campagne::lot_use(l, used, &today, stock).remaining;
+                                    (l.lot.clone(), trn("camp_counter_lot", &[&l.lot, &left]))
+                                })
+                                .collect();
+                        let chosen = camp
+                            .counter_lots
+                            .iter()
+                            .find(|(c, _)| *c == s.code)
+                            .map(|(_, l)| l.clone())
+                            .filter(|l| usable.iter().any(|(u, _)| u == l))
+                            .or_else(|| usable.first().map(|(l, _)| l.clone()))
+                            .unwrap_or_default();
+                        let n = todays.iter().filter(|d| d.code == s.code).count();
+                        // Le vaccin et son lot, puis un bouton par tranche
+                        // d'âge : on choisit le lot avant de cliquer.
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(
+                                egui::RichText::new(trn("camp_counter_subject", &[&s.label, &n]))
+                                    .size(motif::pt(ui, 13.0))
+                                    .strong(),
+                            );
+                            let current = usable
+                                .iter()
+                                .find(|(l, _)| *l == chosen)
+                                .map(|(_, t)| t.as_str());
+                            match current {
+                                None => {
+                                    ui.label(
+                                        egui::RichText::new(tr("camp_counter_no_lot"))
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::warn()),
+                                    );
+                                }
+                                Some(t) if usable.len() == 1 => {
+                                    ui.label(
+                                        egui::RichText::new(t)
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::text_dim()),
+                                    );
+                                }
+                                Some(t) => {
+                                    let w = motif::select_width(
+                                        ui,
+                                        usable.iter().map(|(_, t)| t.as_str()),
+                                    );
+                                    if let Some(l) = motif::menu(
+                                        ui,
+                                        ("camp_counter_lot", &s.code),
+                                        w,
+                                        t,
+                                        &usable,
+                                    )
+                                    .inner
+                                    {
+                                        pick = Some((s.code.clone(), l));
+                                    }
+                                }
+                            }
+                        });
+                        ui.horizontal_wrapped(|ui| {
+                            for (i, band) in bands.iter().enumerate() {
+                                if motif::button(ui, &trf("camp_counter_add", band)).clicked() {
+                                    add = Some(CounterDose {
+                                        id: 0,
+                                        code: s.code.clone(),
+                                        label: s.label.clone(),
+                                        lot: chosen.clone(),
+                                        age_from: campagne::band_floor(&campaign.bands, i),
+                                        given_on: today.clone(),
+                                        given_min: now,
+                                        operator: operator.to_owned(),
+                                    });
+                                }
+                            }
+                        });
+                        motif::separator(ui);
+                        ui.add_space(4.0);
+                    }
+                    motif::section(ui, &trf("camp_counter_today", todays.len()));
+                    if todays.is_empty() {
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(tr("camp_counter_none"))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            )
+                            .wrap(),
+                        );
+                    }
+                    for d in &todays {
+                        let band = bands
+                            .get(campagne::band_of(&campaign.bands, d.age_from))
+                            .map(String::as_str)
+                            .unwrap_or("");
+                        let lot = if d.lot.is_empty() {
+                            tr("camp_counter_without_lot").to_owned()
+                        } else {
+                            d.lot.clone()
+                        };
+                        ui.horizontal_wrapped(|ui| {
+                            if motif::button(ui, tr("camp_counter_remove"))
+                                .on_hover_text(tr("camp_counter_remove_tooltip"))
+                                .clicked()
+                            {
+                                remove = Some(d.clone());
+                            }
+                            ui.label(
+                                egui::RichText::new(trn(
+                                    "camp_counter_line",
+                                    &[
+                                        &campagne::hm(d.given_min),
+                                        &d.label,
+                                        &band,
+                                        &lot,
+                                        &d.operator,
+                                    ],
+                                ))
+                                .size(motif::pt(ui, 11.0)),
+                            );
+                        });
+                    }
+                });
+        });
+        if let Some((code, lot)) = pick {
+            let lots = &mut session.camp.counter_lots;
+            match lots.iter_mut().find(|(c, _)| *c == code) {
+                Some(slot) => slot.1 = lot,
+                None => lots.push((code, lot)),
+            }
+        }
+        if let Some(d) = add {
+            match session.db.add_counter_dose(&d) {
+                Ok(_) => {
+                    session.vacc_today = session.db.vaccinations_on(&session.today).unwrap_or(0);
+                    return true;
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if let Some(d) = remove {
+            match session.db.delete_counter_dose(&d) {
+                Ok(true) => {}
+                Ok(false) => session.stale("camp_stale"),
+                Err(e) => session.error = Some(e),
+            }
+            session.vacc_today = session.db.vaccinations_on(&session.today).unwrap_or(0);
+            return true;
+        }
+        false
+    }
+
     fn campaign_outcome_label(o: crate::campagne::Outcome, vaccine: bool) -> &'static str {
         use crate::campagne::Outcome;
         match o {
@@ -110462,6 +110749,49 @@ mod tests {
     /// week keeps its pattern; « congé » takes the whole day; a typo is
     /// refused and writes nothing; a range retyped keeps the kind it
     /// had; one « Annuler » gives the cell back as it was.
+    #[test]
+    fn a_dose_given_at_the_counter_counts_and_leaves_the_stock() {
+        let (mut s, _swept) = scratch_session("camp_counter");
+        s.today = "2026-10-20".to_owned();
+        s.db.add_vaccine_lot(&crate::campagne::Lot {
+            code: "GRIPPE".to_owned(),
+            product: "Efluelda".to_owned(),
+            lot: "CPT-1".to_owned(),
+            expires_on: "2027-06-30".to_owned(),
+            received: 10,
+            received_on: "2026-10-01".to_owned(),
+            ..Default::default()
+        })
+        .unwrap();
+        let dose = crate::campagne::CounterDose {
+            code: "GRIPPE".to_owned(),
+            label: "Grippe".to_owned(),
+            lot: "CPT-1".to_owned(),
+            age_from: 75,
+            given_on: s.today.clone(),
+            given_min: 600,
+            operator: "YS".to_owned(),
+            ..Default::default()
+        };
+        let before = s.db.vaccinations_on(&s.today).unwrap();
+        s.db.add_counter_dose(&dose).unwrap();
+        s.db.add_counter_dose(&dose).unwrap();
+        s.reload_campagne();
+        let at = s.camp.lots.iter().position(|l| l.lot == "CPT-1").unwrap();
+        assert_eq!(s.camp.used[at], 2, "le lot perd ses deux doses");
+        let grippe = s.camp.tally.iter().find(|t| t.code == "GRIPPE").unwrap();
+        assert!(grippe.today >= 2);
+        assert_eq!(s.db.vaccinations_on(&s.today).unwrap(), before + 2);
+        assert_eq!(s.camp.counter.len(), 2);
+        // Retirée, la dose rend sa place au stock ; une seconde fois, il
+        // n'y a plus rien à retirer.
+        let first = s.camp.counter[0].clone();
+        assert!(s.db.delete_counter_dose(&first).unwrap());
+        assert!(!s.db.delete_counter_dose(&first).unwrap());
+        s.reload_campagne();
+        assert_eq!(s.camp.used[at], 1);
+    }
+
     #[test]
     fn a_planning_day_typed_in_its_cell_replaces_that_day_only() {
         use crate::planning::{Cadence, ShiftKind};
