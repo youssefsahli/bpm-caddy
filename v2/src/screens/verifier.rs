@@ -171,7 +171,7 @@ impl Verifier {
         if let Some(k) = drop {
             self.drugs.remove(k);
         }
-        let r = ui::field(ui, &mut self.search, 30.0, t("verifier.add"));
+        let r = ui::field(ui, &mut self.search, 60.0, t("verifier.add"));
         let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
         if !self.search.trim().is_empty() {
             let found = super::medicaments::matching(&cx.s.drugs, &self.search, 6, &self.drugs);
