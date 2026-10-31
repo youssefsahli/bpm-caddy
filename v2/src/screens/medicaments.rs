@@ -87,6 +87,7 @@ pub struct Medicaments {
     /// The patients on the open card, and the generation they were read at.
     on_it: Option<(i64, u64, Vec<OnIt>)>,
     tables: Option<(i64, u64, Vec<analyse::Line>)>,
+    posos: Option<(i64, u64, Vec<bpm_caddy::db::Posologie>)>,
 }
 
 impl Medicaments {
@@ -214,7 +215,36 @@ impl Medicaments {
             }
         });
 
-        let mut any = false;
+        if !self
+            .posos
+            .as_ref()
+            .is_some_and(|(i, g, _)| *i == id && *g == cx.s.generation)
+        {
+            let read = cx.s.db.posologies(id).unwrap_or_default();
+            self.posos = Some((id, cx.s.generation, read));
+        }
+        let posologies = self
+            .posos
+            .as_ref()
+            .map(|(_, _, p)| p.clone())
+            .unwrap_or_default();
+        if !posologies.is_empty() {
+            ui::heading(ui, t("medicaments.posologies"));
+            for p in &posologies {
+                ui.horizontal_wrapped(|ui| {
+                    if !p.indication.trim().is_empty() {
+                        ui.label(egui::RichText::new(p.indication.trim()).strong());
+                    }
+                    ui.label(p.posologie.trim());
+                });
+                if !p.remarque.trim().is_empty() {
+                    ui.indent(("poso", p.id), |ui| {
+                        ui.label(motif::hint(p.remarque.trim()));
+                    });
+                }
+            }
+        }
+        let mut any = !posologies.is_empty();
         for (col, key) in SECTIONS {
             let text = db::drug_field(&d, col).unwrap_or_default();
             if text.trim().is_empty() {

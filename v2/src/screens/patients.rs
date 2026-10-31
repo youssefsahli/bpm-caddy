@@ -69,6 +69,8 @@ pub struct Form {
     phone: String,
     physician: String,
     notes: String,
+    /// Last period of a pregnancy under way, as typed; empty when none.
+    ddr: String,
     error: Option<String>,
 }
 
@@ -87,6 +89,11 @@ impl Form {
             phone: p.phone.clone(),
             physician: p.physician.clone(),
             notes: p.notes.clone(),
+            ddr: if p.pregnancy_ddr.is_empty() {
+                String::new()
+            } else {
+                db::format_french_date(&p.pregnancy_ddr)
+            },
             error: None,
         }
     }
@@ -298,7 +305,13 @@ impl Patients {
             if !p.pregnancy_ddr.is_empty() {
                 motif::badge(
                     ui,
-                    &tf("patients.pregnant_since", &[&ui::date(&p.pregnancy_ddr)]),
+                    &match bpm_caddy::date::days_between(&p.pregnancy_ddr, &cx.s.today) {
+                        Some(d) if d >= 0 => tf(
+                            "patients.pregnant_sa",
+                            &[&(d / 7), &ui::date(&p.pregnancy_ddr)],
+                        ),
+                        _ => tf("patients.pregnant_since", &[&ui::date(&p.pregnancy_ddr)]),
+                    },
                     Some(motif::Pict::Warn),
                     motif::warn(),
                     false,
@@ -734,10 +747,16 @@ impl Patients {
         }
         ui::heading(ui, t("patients.interviews"));
         let today = cx.s.today.clone();
+        let mut advance = None;
         for i in f.interviews.iter().take(6) {
             ui.horizontal_wrapped(|ui| {
                 ui.label(egui::RichText::new(i.kind.label()).strong());
                 ui.label(i.state.label());
+                if let Some(next) = i.state.next() {
+                    if motif::button(ui, &tf("patients.advance", &[&next.label()])).clicked() {
+                        advance = Some((i.id, i.state));
+                    }
+                }
                 if let Some(d) = &i.scheduled_date {
                     let ink = if d.as_str() < today.as_str() {
                         motif::text_dim()
@@ -750,6 +769,13 @@ impl Patients {
                     );
                 }
             });
+        }
+        if let Some((id, state)) = advance {
+            match cx.s.db.advance_interview(id, state) {
+                Ok(true) => cx.s.changed(),
+                Ok(false) => cx.s.stale(),
+                Err(e) => cx.s.fail(e),
+            }
         }
     }
 
@@ -834,6 +860,16 @@ impl Patients {
             28.0,
             "",
         );
+        if form.sex != "M" {
+            ui::form_row(
+                ui,
+                t("patients.ddr"),
+                lw,
+                &mut form.ddr,
+                12.0,
+                t("patients.ddr_hint"),
+            );
+        }
         ui::form_row(
             ui,
             t("patients.counter_note"),
@@ -898,6 +934,21 @@ impl Patients {
                 }
             }
         };
+        let ddr = if form.ddr.trim().is_empty() || form.sex == "M" {
+            String::new()
+        } else {
+            match db::parse_french_date(&form.ddr, cx.s.db.current_year(), db::YearHint::Past) {
+                Ok(d) if d.as_str() <= cx.s.today.as_str() => d,
+                Ok(_) => {
+                    form.error = Some(t("patients.ddr_future").to_owned());
+                    return;
+                }
+                Err(e) => {
+                    form.error = Some(e);
+                    return;
+                }
+            }
+        };
         let base = match &form.shown {
             Some(p) => p.clone(),
             None => {
@@ -935,6 +986,31 @@ impl Patients {
             ..base.clone()
         };
         let id = base.id;
+        if ddr != base.pregnancy_ddr {
+            match cx.s.db.set_patient_ddr(id, &ddr, &base.pregnancy_ddr) {
+                Ok(true) => {}
+                Ok(false) => {
+                    self.form = None;
+                    cx.s.stale();
+                    return;
+                }
+                Err(e) => {
+                    if let Some(form) = self.form.as_mut() {
+                        form.error = Some(e);
+                    }
+                    return;
+                }
+            }
+        }
+        // `update_patient` compares the identity; the DDR travels apart.
+        let base = Patient {
+            pregnancy_ddr: ddr.clone(),
+            ..base
+        };
+        let new = Patient {
+            pregnancy_ddr: ddr,
+            ..new
+        };
         if new == base {
             self.form = None;
             self.open(id);
@@ -1133,6 +1209,42 @@ mod tests {
             screen.load(&mut cx);
         }
         assert_eq!(screen.file.as_ref().unwrap().drugs.len(), 1);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_pregnancy_is_written_apart_and_read_back() {
+        let (mut s, dir) = crate::session::tests::scratch("ddr");
+        let pid =
+            s.db.add_patient_with_sex("Petit", "Léa", "1995-04-02", "F")
+                .unwrap();
+        s.changed();
+        let mut go = None;
+        let mut screen = Patients::default();
+        screen.form = Some(Form::of(s.patient(pid).unwrap()));
+        let ddr = bpm_caddy::date::add_days(&s.today, -70).unwrap();
+        screen.form.as_mut().unwrap().ddr = db::format_french_date(&ddr);
+        {
+            let mut cx = Ctx {
+                s: &mut s,
+                go: &mut go,
+            };
+            screen.save(&mut cx);
+        }
+        assert!(screen.form.is_none(), "saved");
+        assert_eq!(s.patient(pid).unwrap().pregnancy_ddr, ddr);
+        // A date to come is refused.
+        screen.form = Some(Form::of(s.patient(pid).unwrap()));
+        let later = bpm_caddy::date::add_days(&s.today, 3).unwrap();
+        screen.form.as_mut().unwrap().ddr = db::format_french_date(&later);
+        {
+            let mut cx = Ctx {
+                s: &mut s,
+                go: &mut go,
+            };
+            screen.save(&mut cx);
+        }
+        assert!(screen.form.as_ref().unwrap().error.is_some());
         let _ = std::fs::remove_dir_all(dir);
     }
 }
