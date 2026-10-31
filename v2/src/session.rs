@@ -15,6 +15,8 @@ pub struct Session {
     pub today: String,
     /// Initials of whoever works at this post (config `[ui] operator`).
     pub operator: String,
+    /// Days before an ordonnance ends that it is flagged (config `[ordonnance] notice_days`).
+    pub notice_days: u32,
     /// The base's screen revision as last seen: when another post (or
     /// the first window) writes, it moves, and screens reload.
     rev: i64,
@@ -65,6 +67,7 @@ impl Session {
             path: path.to_path_buf(),
             today,
             operator: operator.trim().to_owned(),
+            notice_days: bpm_caddy::config::Config::load().ordonnance.notice_days,
             rev,
             generation: 1,
             clock: Some(std::time::Instant::now()),

@@ -21,9 +21,15 @@ pub struct Today {
     pub events: Vec<Event>,
     pub handover: Vec<Note>,
     pub low_stups: usize,
+    pub due: Vec<crate::renouvellement::Due>,
 }
 
-pub fn load_today(db: &bpm_caddy::db::Db, today: &str) -> Today {
+pub fn load_today(
+    db: &bpm_caddy::db::Db,
+    patients: &[bpm_caddy::db::Patient],
+    today: &str,
+    notice: u32,
+) -> Today {
     let all = db.upcoming_appointments().unwrap_or_default();
     let overdue = all.iter().filter(|a| a.date.as_str() < today).count();
     let appointments = all.into_iter().filter(|a| a.date == today).collect();
@@ -34,6 +40,7 @@ pub fn load_today(db: &bpm_caddy::db::Db, today: &str) -> Today {
         events: db.events_between(today, today).unwrap_or_default(),
         handover: db.transmissions_for_day(today).unwrap_or_default(),
         low_stups: super::stups::low(&standing).len(),
+        due: crate::renouvellement::due(db, patients, today, notice),
     }
 }
 
@@ -44,7 +51,7 @@ impl Accueil {
             .as_ref()
             .is_some_and(|(g, d, _)| *g == cx.s.generation && *d == cx.s.today);
         if !fresh {
-            let today = load_today(&cx.s.db, &cx.s.today);
+            let today = load_today(&cx.s.db, &cx.s.patients, &cx.s.today, cx.s.notice_days);
             self.memo = Some((cx.s.generation, cx.s.today.clone(), today));
         }
         let Some((_, _, today)) = self.memo.clone() else {
@@ -148,6 +155,37 @@ impl Accueil {
             cx.go(Go::Patient(pid));
         }
 
+        if !today.due.is_empty() {
+            ui::heading(ui, &tn("accueil.due", today.due.len()));
+            let mut open = None;
+            for d in today.due.iter().take(12) {
+                ui.horizontal_wrapped(|ui| {
+                    let ink = if d.days_left < 0 {
+                        motif::warn()
+                    } else {
+                        motif::text_dim()
+                    };
+                    ui.add_sized(
+                        [ui::chars_wide(ui, 12.0), ui::line(ui)],
+                        egui::Label::new(
+                            egui::RichText::new(crate::renouvellement::when(d.days_left))
+                                .color(ink),
+                        ),
+                    );
+                    if motif::button(ui, &d.name).clicked() {
+                        open = Some(d.patient_id);
+                    }
+                    ui.label(motif::hint(ui::date(&d.ends_on)));
+                });
+            }
+            if today.due.len() > 12 {
+                ui.label(motif::hint(tn("accueil.due_more", today.due.len() - 12)));
+            }
+            if let Some(pid) = open {
+                cx.go(Go::Patient(pid));
+            }
+        }
+
         ui::heading(ui, t("accueil.handover"));
         if ui::field_and_button(
             ui,
@@ -189,7 +227,7 @@ mod tests {
         let (s, dir) = crate::session::tests::scratch("accueil");
         s.db.add_note(NoteSubject::Transmission, 0, "AB", "Commande en retard.")
             .unwrap();
-        let today = load_today(&s.db, &s.today);
+        let today = load_today(&s.db, &s.patients, &s.today, 7);
         assert_eq!(today.handover.len(), 1);
         assert_eq!(today.appointments.len(), 0);
         let _ = std::fs::remove_dir_all(dir);

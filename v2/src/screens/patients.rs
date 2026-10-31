@@ -30,6 +30,15 @@ pub struct Patients {
     liver: Option<bpm_caddy::hepatic::Stage>,
     confirm_delete: bool,
     focus_filter: bool,
+    rx_form: Option<RxForm>,
+}
+
+/// A new ordonnance, as typed.
+#[derive(Clone, Default)]
+struct RxForm {
+    on: String,
+    days: String,
+    renewals: String,
 }
 
 /// The open file, read once per base generation.
@@ -43,6 +52,7 @@ struct File {
     bio: Vec<BioResult>,
     notes: Vec<Note>,
     interviews: Vec<Interview>,
+    scripts: Vec<(i64, bpm_caddy::renewal::Prescription)>,
     lines: Vec<Line>,
     /// What `lines` was computed for.
     asked: (bool, bool, Option<bpm_caddy::hepatic::Stage>),
@@ -214,6 +224,7 @@ impl Patients {
             bio: db.bio_results(id).unwrap_or_default(),
             notes: db.notes_for(NoteSubject::Patient, id).unwrap_or_default(),
             interviews: db.interviews_for(id).unwrap_or_default(),
+            scripts: db.patient_prescriptions(id).unwrap_or_default(),
             drugs,
             patient,
             lines: Vec::new(),
@@ -304,6 +315,7 @@ impl Patients {
         }
 
         self.treatments_ui(ui, cx, pid);
+        self.ordonnance_ui(ui, cx, pid);
         self.alerts_ui(ui, cx);
         self.bio_ui(ui, cx, pid);
         self.interviews_ui(ui, cx);
@@ -325,7 +337,11 @@ impl Patients {
         // name; otherwise the name on its own line, the fields under it.
         let one_row = avail - dose_w - poso_w - remove_w - gap * 4.0 >= ui::chars_wide(ui, 12.0);
         let (name_w, poso_w) = if one_row {
-            (avail - dose_w - poso_w - remove_w - gap * 4.0, poso_w)
+            // A name rarely needs more than 28 characters: what is left
+            // goes to the posology, the field that holds sentences.
+            let free = avail - dose_w - poso_w - remove_w - gap * 4.0;
+            let name = free.min(ui::chars_wide(ui, 28.0));
+            (name, poso_w + free - name)
         } else {
             (
                 avail,
@@ -429,6 +445,164 @@ impl Patients {
                     }
                     Err(e) => cx.s.fail(e),
                 }
+            }
+        }
+    }
+
+    fn ordonnance_ui(&mut self, ui: &mut egui::Ui, cx: &mut Ctx, pid: i64) {
+        use bpm_caddy::renewal::{self, Prescription};
+        let Some(f) = self.file.as_ref() else { return };
+        if f.drugs.is_empty() {
+            return;
+        }
+        ui::heading(ui, t("patients.ordonnance"));
+        let named: Vec<(String, Prescription)> = f
+            .scripts
+            .iter()
+            .filter_map(|(id, p)| {
+                f.drugs
+                    .iter()
+                    .find(|d| d.id == *id)
+                    .map(|d| (d.name.clone(), p.clone()))
+            })
+            .collect();
+        let groups = renewal::group(&named);
+        let several = groups.len() > 1;
+        for (rx, names) in &groups {
+            let stand = renewal::read(rx, &cx.s.today, cx.s.notice_days);
+            let (text, act) = crate::renouvellement::sentence(&stand);
+            ui.horizontal_wrapped(|ui| {
+                if act {
+                    ui::pict(ui, motif::Pict::Warn, motif::warn());
+                }
+                let rich = egui::RichText::new(text);
+                ui.label(if act {
+                    rich.color(motif::warn()).strong()
+                } else {
+                    rich
+                });
+                if several {
+                    ui.label(motif::hint(names.join(", ")));
+                }
+            });
+        }
+        let scripts = f.scripts.clone();
+        let mut dispense = false;
+        ui.horizontal_wrapped(|ui| {
+            let dated = scripts.iter().any(|(_, p)| p.is_dated());
+            dispense = motif::button_enabled(ui, t("patients.dispensed_today"), dated).clicked();
+            if motif::button(ui, t("patients.new_ordonnance")).clicked() {
+                let c = crate::renouvellement::common(&scripts);
+                self.rx_form = Some(RxForm {
+                    on: String::new(),
+                    days: if c.duration_days > 0 {
+                        c.duration_days.to_string()
+                    } else {
+                        "30".into()
+                    },
+                    renewals: c.renewals.to_string(),
+                });
+            }
+        });
+        if dispense {
+            let today = cx.s.today.clone();
+            let mut stale = false;
+            for (did, old) in scripts.iter().filter(|(_, p)| p.is_dated()) {
+                let new = Prescription {
+                    dispensed: old.dispensed.saturating_add(1),
+                    dispensed_on: today.clone(),
+                    ..old.clone()
+                };
+                match cx.s.db.set_patient_prescription(pid, *did, &new, old) {
+                    Ok(true) => {}
+                    Ok(false) => stale = true,
+                    Err(e) => cx.s.fail(e),
+                }
+            }
+            if stale {
+                cx.s.stale();
+            } else {
+                cx.s.say(t("patients.dispensed_noted"));
+                cx.s.changed();
+            }
+        }
+        let mut save = false;
+        let mut cancel = false;
+        if let Some(form) = self.rx_form.as_mut() {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(t("patients.rx_on"));
+                ui::field(ui, &mut form.on, 11.0, t("patients.rx_on_hint"));
+                ui.label(t("patients.rx_days"));
+                ui::field(ui, &mut form.days, 4.0, "");
+                ui.label(t("patients.rx_renewals"));
+                ui::field(ui, &mut form.renewals, 3.0, "");
+            });
+            ui.horizontal(|ui| {
+                save = motif::button(ui, t("patients.rx_save")).clicked();
+                cancel = motif::button(ui, t("app.cancel")).clicked();
+            });
+        }
+        if cancel {
+            self.rx_form = None;
+        }
+        if save {
+            let Some(form) = self.rx_form.clone() else {
+                return;
+            };
+            let on = if form.on.trim().is_empty() {
+                Ok(cx.s.today.clone())
+            } else {
+                db::parse_french_date(&form.on, cx.s.db.current_year(), db::YearHint::Past)
+            };
+            let days = form
+                .days
+                .trim()
+                .parse::<u32>()
+                .ok()
+                .filter(|d| (1..=365).contains(d));
+            let renewals = form
+                .renewals
+                .trim()
+                .parse::<u32>()
+                .ok()
+                .filter(|r| *r <= 12);
+            match (on, days, renewals) {
+                (Ok(on), Some(days), Some(renewals)) => {
+                    let new = Prescription {
+                        prescribed_on: on,
+                        duration_days: days,
+                        renewals,
+                        dispensed: 1,
+                        dispensed_on: cx.s.today.clone(),
+                    };
+                    let mut stale = false;
+                    let lines: Vec<i64> = self
+                        .file
+                        .as_ref()
+                        .map(|f| f.drugs.iter().map(|d| d.id).collect())
+                        .unwrap_or_default();
+                    for did in lines {
+                        let old = scripts
+                            .iter()
+                            .find(|(d, _)| *d == did)
+                            .map(|(_, p)| p.clone())
+                            .unwrap_or_default();
+                        match cx.s.db.set_patient_prescription(pid, did, &new, &old) {
+                            Ok(true) => {}
+                            Ok(false) => stale = true,
+                            Err(e) => cx.s.fail(e),
+                        }
+                    }
+                    self.rx_form = None;
+                    if stale {
+                        cx.s.stale();
+                    } else {
+                        cx.s.say(t("patients.rx_saved"));
+                        cx.s.changed();
+                    }
+                }
+                (Err(e), _, _) => cx.s.fail(e),
+                _ => cx.s.fail(t("patients.rx_bad")),
             }
         }
     }

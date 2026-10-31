@@ -6,6 +6,7 @@
 pub mod analyse;
 pub mod app;
 pub mod print;
+pub mod renouvellement;
 pub mod screens;
 pub mod session;
 pub mod t;
