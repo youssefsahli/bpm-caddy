@@ -97,38 +97,46 @@ impl Stups {
                 if shown.is_empty() {
                     ui::empty(ui, t("stups.none"));
                 }
-                egui::Grid::new("stup_stock")
-                    .striped(true)
-                    .num_columns(4)
+                egui::ScrollArea::horizontal()
+                    .id_salt("stup_stock_scroll")
                     .show(ui, |ui| {
-                        ui.label(motif::hint(t("stups.product")));
-                        ui.label(motif::hint(t("stups.in_stock")));
-                        ui.label(motif::hint(t("stups.to_destroy")));
-                        ui.label(motif::hint(t("stups.counted")));
-                        ui.end_row();
-                        for s in shown {
-                            let under = s.product.threshold > 0.0 && s.stock <= s.product.threshold;
-                            ui.horizontal(|ui| {
-                                if under {
-                                    ui::pict(ui, motif::Pict::Warn, motif::warn());
+                        egui::Grid::new("stup_stock")
+                            .striped(true)
+                            .num_columns(4)
+                            .show(ui, |ui| {
+                                ui.label(motif::hint(t("stups.product")));
+                                ui.label(motif::hint(t("stups.in_stock")));
+                                ui.label(motif::hint(t("stups.to_destroy")));
+                                ui.label(motif::hint(t("stups.counted")));
+                                ui.end_row();
+                                for s in shown {
+                                    let under =
+                                        s.product.threshold > 0.0 && s.stock <= s.product.threshold;
+                                    ui.horizontal(|ui| {
+                                        if under {
+                                            ui::pict(ui, motif::Pict::Warn, motif::warn());
+                                        }
+                                        ui.label(&s.product.label);
+                                    });
+                                    let stock = egui::RichText::new(format!(
+                                        "{} {}",
+                                        qty(s.stock),
+                                        s.product.unit
+                                    ));
+                                    ui.label(if under {
+                                        stock.color(motif::warn()).strong()
+                                    } else {
+                                        stock
+                                    });
+                                    ui.label(if s.to_destroy > 0.0 {
+                                        qty(s.to_destroy)
+                                    } else {
+                                        String::new()
+                                    });
+                                    ui.label(ui::date(&s.last_count));
+                                    ui.end_row();
                                 }
-                                ui.label(&s.product.label);
                             });
-                            let stock =
-                                egui::RichText::new(format!("{} {}", qty(s.stock), s.product.unit));
-                            ui.label(if under {
-                                stock.color(motif::warn()).strong()
-                            } else {
-                                stock
-                            });
-                            ui.label(if s.to_destroy > 0.0 {
-                                qty(s.to_destroy)
-                            } else {
-                                String::new()
-                            });
-                            ui.label(ui::date(&s.last_count));
-                            ui.end_row();
-                        }
                     });
 
                 ui::heading(ui, t("stups.recent"));
@@ -143,25 +151,36 @@ impl Stups {
                         .unwrap_or_default()
                 };
                 let mut open = None;
-                egui::Grid::new("stup_recent")
-                    .striped(true)
-                    .num_columns(5)
+                egui::ScrollArea::horizontal()
+                    .id_salt("stup_recent_scroll")
                     .show(ui, |ui| {
-                        for m in &recent {
-                            ui.label(ui::date(&m.happened_on));
-                            ui.label(bpm_caddy::strings::tr(Kind::from_key(&m.kind).label_key()));
-                            ui.label(label_of(m.stup_id));
-                            ui.label(qty(m.quantity));
-                            if m.ordo_no > 0 {
-                                ui.label(motif::hint(format!("{}/{}", m.ordo_year, m.ordo_no)));
-                            } else {
-                                ui.label("");
-                            }
-                            if m.patient_id > 0 && motif::button(ui, t("stups.file")).clicked() {
-                                open = Some(m.patient_id);
-                            }
-                            ui.end_row();
-                        }
+                        egui::Grid::new("stup_recent")
+                            .striped(true)
+                            .num_columns(5)
+                            .show(ui, |ui| {
+                                for m in &recent {
+                                    ui.label(ui::date(&m.happened_on));
+                                    ui.label(bpm_caddy::strings::tr(
+                                        Kind::from_key(&m.kind).label_key(),
+                                    ));
+                                    ui.label(label_of(m.stup_id));
+                                    ui.label(qty(m.quantity));
+                                    if m.ordo_no > 0 {
+                                        ui.label(motif::hint(format!(
+                                            "{}/{}",
+                                            m.ordo_year, m.ordo_no
+                                        )));
+                                    } else {
+                                        ui.label("");
+                                    }
+                                    if m.patient_id > 0
+                                        && motif::button(ui, t("stups.file")).clicked()
+                                    {
+                                        open = Some(m.patient_id);
+                                    }
+                                    ui.end_row();
+                                }
+                            });
                     });
                 if let Some(pid) = open {
                     cx.go(Go::Patient(pid));

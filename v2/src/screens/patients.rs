@@ -110,7 +110,9 @@ impl Patients {
 
     pub fn ui(&mut self, ui: &mut egui::Ui, cx: &mut Ctx) {
         let full = ui.available_rect_before_wrap();
-        let list_w = ui::chars_wide(ui, 26.0).min(full.width() * 0.32);
+        let list_w = ui::chars_wide(ui, 26.0)
+            .min(full.width() * 0.34)
+            .max(ui::chars_wide(ui, 18.0).min(full.width() * 0.4));
         let gap = ui.spacing().item_spacing.x * 2.0;
         let left = egui::Rect::from_min_size(full.min, egui::vec2(list_w, full.height()));
         let right = egui::Rect::from_min_max(egui::pos2(left.right() + gap, full.top()), full.max);
@@ -133,24 +135,30 @@ impl Patients {
     }
 
     fn list(&mut self, ui: &mut egui::Ui, cx: &mut Ctx) {
-        ui.horizontal(|ui| {
-            let w =
-                ui.available_width() - motif::select_width(ui, std::iter::once(t("patients.new")));
-            let r = motif::field(
-                ui,
-                w.max(ui::chars_wide(ui, 8.0)),
-                egui::TextEdit::singleline(&mut self.filter)
-                    .hint_text(motif::hint(t("patients.filter"))),
-            );
-            if std::mem::take(&mut self.focus_filter) {
-                r.request_focus();
-            }
-            if motif::button(ui, t("patients.new")).clicked() {
-                self.new_file();
-            }
-        });
+        let r = motif::field(
+            ui,
+            ui.available_width(),
+            egui::TextEdit::singleline(&mut self.filter)
+                .hint_text(motif::hint(t("patients.filter"))),
+        );
+        if std::mem::take(&mut self.focus_filter) {
+            r.request_focus();
+        }
         let rows = matching(&cx.s.patients, &self.filter);
-        ui.label(motif::hint(tn("patients.count", rows.len())));
+        if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            if let Some(&i) = rows.first() {
+                let id = cx.s.patients[i].id;
+                self.open(id);
+            }
+        }
+        ui.horizontal(|ui| {
+            ui.label(motif::hint(tn("patients.count", rows.len())));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if motif::button(ui, t("patients.new")).clicked() {
+                    self.new_file();
+                }
+            });
+        });
         let row_h = motif::list_row_height(ui);
         let today = cx.s.today.clone();
         egui::ScrollArea::vertical()
@@ -305,22 +313,37 @@ impl Patients {
         let dose_w = ui::chars_wide(ui, 10.0);
         let poso_w = ui::chars_wide(ui, 22.0);
         let gap = ui.spacing().item_spacing.x;
-        let name_w = (ui.available_width()
-            - dose_w
-            - poso_w
-            - ui::button_width(ui, t("patients.remove"))
-            - gap * 4.0)
-            .max(ui::chars_wide(ui, 10.0));
+        let remove_w = ui::button_width(ui, t("patients.remove"));
+        let avail = ui.available_width();
+        // One row per treatment when everything fits beside a readable
+        // name; otherwise the name on its own line, the fields under it.
+        let one_row = avail - dose_w - poso_w - remove_w - gap * 4.0 >= ui::chars_wide(ui, 12.0);
+        let (name_w, poso_w) = if one_row {
+            (avail - dose_w - poso_w - remove_w - gap * 4.0, poso_w)
+        } else {
+            (
+                avail,
+                (avail - dose_w - remove_w - gap * 3.0).max(ui::chars_wide(ui, 8.0)),
+            )
+        };
         let mut writes: Vec<(i64, bool, String, String)> = Vec::new();
         let mut remove: Option<i64> = None;
         let mut open_drug: Option<i64> = None;
         for d in &f.drugs {
             let dosage = f.dosage.get(&d.id).cloned().unwrap_or_default();
             let posology = f.posology.get(&d.id).cloned().unwrap_or_default();
-            ui.horizontal(|ui| {
+            if !one_row {
                 let r = ui::cell_text(ui, egui::RichText::new(&d.name).strong(), name_w);
                 if r.clicked() {
                     open_drug = Some(d.id);
+                }
+            }
+            ui.horizontal(|ui| {
+                if one_row {
+                    let r = ui::cell_text(ui, egui::RichText::new(&d.name).strong(), name_w);
+                    if r.clicked() {
+                        open_drug = Some(d.id);
+                    }
                 }
                 if let Some(v) = self.typing.cell(
                     ui,
