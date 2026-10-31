@@ -1,5 +1,5 @@
 [workspace]
-members = ["motif", "launcher", "sync", "mobile", "tray"]
+members = ["motif", "launcher", "sync", "mobile", "tray", "v2"]
 
 [package]
 name = "bpm-caddy"

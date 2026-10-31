@@ -1,0 +1,17 @@
+[package]
+name = "bpm-caddy-v2"
+version = "0.448.0"
+edition = "2021"
+description = "BPM-Caddy v2 — the same base and clinical tables, a new and simpler window."
+license-file = "../LICENSE"
+publish = false
+
+[dependencies]
+bpm-caddy = { path = ".." }
+motif = { path = "../motif" }
+eframe = "0.29"
+toml = "1.1.4"
+
+[[bin]]
+name = "bpm-caddy-v2"
+path = "src/main.rs"

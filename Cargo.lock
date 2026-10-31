@@ -978,6 +978,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "bpm-caddy-v2"
+version = "0.448.0"
+dependencies = [
+ "bpm-caddy",
+ "eframe",
+ "motif",
+ "toml 1.1.4+spec-1.1.0",
+]
+
+[[package]]
 name = "bpm-sync"
 version = "0.241.0"
 dependencies = [

@@ -59,7 +59,7 @@ jobs:
         shell: bash
         run: |
           want="${GITHUB_REF_NAME#v}"; want="${want%%-*}"
-          for f in Cargo.toml launcher/Cargo.toml motif/Cargo.toml mobile/Cargo.toml tray/Cargo.toml; do
+          for f in Cargo.toml launcher/Cargo.toml motif/Cargo.toml mobile/Cargo.toml tray/Cargo.toml v2/Cargo.toml; do
             got=$(grep -m1 '^version = ' "$f" | cut -d'"' -f2)
             [ "$got" = "$want" ] || { echo "$f : $got, l'étiquette dit $want" >&2; exit 1; }
           done
