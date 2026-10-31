@@ -1220,8 +1220,10 @@ mod tests {
                 .unwrap();
         s.changed();
         let mut go = None;
-        let mut screen = Patients::default();
-        screen.form = Some(Form::of(s.patient(pid).unwrap()));
+        let mut screen = Patients {
+            form: Some(Form::of(s.patient(pid).unwrap())),
+            ..Default::default()
+        };
         let ddr = bpm_caddy::date::add_days(&s.today, -70).unwrap();
         screen.form.as_mut().unwrap().ddr = db::format_french_date(&ddr);
         {
