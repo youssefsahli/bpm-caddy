@@ -34,6 +34,7 @@ medicaments = "Médicaments"
 verifier = "Vérifier"
 agenda = "Agenda"
 stups = "Stupéfiants"
+tables = "Tables"
 options = "Options"
 
 [jours]
@@ -316,3 +317,10 @@ covered = " Couvert jusqu'au {}."
 today = "aujourd'hui"
 in_days = "dans {} j"
 since_days = "depuis {} j"
+
+[tables]
+reviewed = "Relue : {}"
+filter = "Chercher dans la table…"
+edited = "{} case modifiée par l'équipe (en couleur)|{} cases modifiées par l'équipe (en couleur)"
+no_row = "Aucune ligne ne correspond."
+sources = "Sources"

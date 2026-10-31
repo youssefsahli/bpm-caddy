@@ -4,7 +4,7 @@
 #   ./scripts/v2-shot.sh <vue> [fichier.png] [taille] [échelle] [thème]
 #
 # Vues : accueil patients patient patient_new medicaments fiche verifier
-# verifier_patient agenda stups options verrou. Sans Xvfb sur la machine :
+# verifier_patient agenda stups tables options verrou. Sans Xvfb sur la machine :
 # PATH="$PWD/scripts/headless:$PATH" ./scripts/v2-shot.sh …
 set -euo pipefail
 . "$(dirname "$0")/demo-config.sh"

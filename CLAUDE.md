@@ -78,7 +78,7 @@ line in that test.
   declares),
   `enligne` (the network journal read as offers to search and take), `release`, `maintenance`, `date`, `fuzzy`, `strings`).
 - `v2/` — `bpm-caddy-v2`, a second, simpler window on the same base
-  (seven screens, one clinical reading over every table); branch `v2`.
+  (eight screens, one clinical reading over every table); branch `v2`.
   Map: `docs/V2.md`.
 - `launcher/` — `bpm-caddy-launcher`, auto-updates from GitHub Releases;
   does not depend on the app crate.

@@ -1,4 +1,4 @@
-//! The screens of the v2 window. Seven, and the sidebar shows them all:
+//! The screens of the v2 window. Eight, and the sidebar shows them all:
 //! nothing is two clicks deep that the counter uses every hour.
 
 pub mod accueil;
@@ -7,6 +7,7 @@ pub mod medicaments;
 pub mod options;
 pub mod patients;
 pub mod stups;
+pub mod tables;
 pub mod verifier;
 
 use crate::session::Session;
@@ -21,17 +22,19 @@ pub enum Screen {
     Verifier,
     Agenda,
     Stups,
+    Tables,
     Options,
 }
 
 impl Screen {
-    pub const ALL: [Screen; 7] = [
+    pub const ALL: [Screen; 8] = [
         Screen::Accueil,
         Screen::Patients,
         Screen::Medicaments,
         Screen::Verifier,
         Screen::Agenda,
         Screen::Stups,
+        Screen::Tables,
         Screen::Options,
     ];
 
@@ -43,6 +46,7 @@ impl Screen {
             Screen::Verifier => t("nav.verifier"),
             Screen::Agenda => t("nav.agenda"),
             Screen::Stups => t("nav.stups"),
+            Screen::Tables => t("nav.tables"),
             Screen::Options => t("nav.options"),
         }
     }
@@ -55,6 +59,7 @@ impl Screen {
             Screen::Verifier => Pict::Check,
             Screen::Agenda => Pict::Calendar,
             Screen::Stups => Pict::Lock,
+            Screen::Tables => Pict::Doc,
             Screen::Options => Pict::Cog,
         }
     }
@@ -69,7 +74,8 @@ impl Screen {
             Screen::Verifier => Key::F4,
             Screen::Agenda => Key::F5,
             Screen::Stups => Key::F6,
-            Screen::Options => Key::F7,
+            Screen::Tables => Key::F7,
+            Screen::Options => Key::F8,
         }
     }
 }

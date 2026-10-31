@@ -1,9 +1,9 @@
-//! The window: unlock, then a sidebar of seven screens, a search box
+//! The window: unlock, then a sidebar of eight screens, a search box
 //! that reaches any file or card (Ctrl+K), and one status line.
 
 use crate::screens::{
     accueil::Accueil, agenda::Agenda, medicaments::Medicaments, options::Options,
-    patients::Patients, stups::Stups, verifier::Verifier, Ctx, Go, Screen,
+    patients::Patients, stups::Stups, tables::Tables, verifier::Verifier, Ctx, Go, Screen,
 };
 use crate::session::{self, Session};
 use crate::t::{t, tf};
@@ -39,6 +39,7 @@ pub struct Desk {
     verifier: Verifier,
     agenda: Agenda,
     stups: Stups,
+    tables: Tables,
     options: Options,
     find: String,
     find_focus: bool,
@@ -196,6 +197,7 @@ impl Desk {
             verifier: Verifier::default(),
             agenda: Agenda::default(),
             stups: Stups::default(),
+            tables: Tables::default(),
             options: Options::default(),
             find: String::new(),
             find_focus: false,
@@ -245,6 +247,7 @@ impl Desk {
             }
             "agenda" => self.screen = Screen::Agenda,
             "stups" => self.screen = Screen::Stups,
+            "tables" => self.screen = Screen::Tables,
             "options" => self.screen = Screen::Options,
             _ => self.screen = Screen::Accueil,
         }
@@ -366,6 +369,7 @@ impl Desk {
                 Screen::Verifier => self.verifier.ui(ui, &mut cx),
                 Screen::Agenda => self.agenda.ui(ui, &mut cx),
                 Screen::Stups => self.stups.ui(ui, &mut cx),
+                Screen::Tables => self.tables.ui(ui, &mut cx),
                 Screen::Options => self.options.ui(ui, &mut cx),
             }
         });
@@ -484,7 +488,7 @@ fn nav_width(ctx: &egui::Context) -> f32 {
             .iter()
             .map(|s| {
                 f.layout_no_wrap(
-                    format!("{}  F7", s.label()),
+                    format!("{}  F8", s.label()),
                     font.clone(),
                     egui::Color32::WHITE,
                 )
@@ -586,6 +590,7 @@ mod tests {
                 "verifier_patient",
                 "agenda",
                 "stups",
+                "tables",
                 "options",
             ] {
                 let ctx = egui::Context::default();
@@ -645,6 +650,7 @@ mod tests {
             "verifier_patient",
             "agenda",
             "stups",
+            "tables",
         ] {
             let ctx = egui::Context::default();
             motif::apply(&ctx);
