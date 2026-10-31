@@ -198,6 +198,12 @@ impl Medicaments {
             if motif::button(ui, t("medicaments.edit")).clicked() {
                 self.edit = Some((d.clone(), d.clone()));
             }
+            if motif::button(ui, t("medicaments.print")).clicked() {
+                match crate::print::monograph(cx.s, id) {
+                    Ok(_) => cx.s.say(t("print.opened")),
+                    Err(e) => cx.s.fail(e),
+                }
+            }
             if let Some(status) = db::DrugStatus::parse(&d.status) {
                 if status != db::DrugStatus::Marketed {
                     motif::badge(ui, &d.status, Some(motif::Pict::Warn), motif::warn(), false);

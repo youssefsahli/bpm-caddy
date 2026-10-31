@@ -278,6 +278,12 @@ impl Patients {
             if motif::button(ui, t("patients.check")).clicked() {
                 cx.go(Go::Check(pid));
             }
+            if motif::button(ui, t("patients.print_plan")).clicked() {
+                match crate::print::plan(cx.s, pid) {
+                    Ok(_) => cx.s.say(t("print.opened")),
+                    Err(e) => cx.s.fail(e),
+                }
+            }
             if !p.pregnancy_ddr.is_empty() {
                 motif::badge(
                     ui,
