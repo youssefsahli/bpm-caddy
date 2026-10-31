@@ -299,6 +299,7 @@ about_v2 = "Une fenêtre plus simple sur la même base et les mêmes tables clin
 opened = "Document ouvert dans le lecteur PDF."
 no_patient = "Ce dossier n'existe plus."
 no_drug = "Cette fiche n'existe plus."
+not_in_tests = "Impression désactivée pendant les tests."
 
 [renouv]
 unknown = "Ordonnance non datée : il manque {}."

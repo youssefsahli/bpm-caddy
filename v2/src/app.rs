@@ -606,4 +606,100 @@ mod tests {
         }
         let _ = std::fs::remove_dir_all(dir);
     }
+
+    /// Every screen *used* at random — clicks, wheel, keys, typing — on a
+    /// base with files, treatments, biology and an ordonnance. Fails on a
+    /// panic. A fixed seed, so a failure replays.
+    #[test]
+    fn every_screen_survives_random_use() {
+        let (s, dir) = crate::session::tests::scratch("fuzz");
+        let pid =
+            s.db.add_patient_with_sex("Durand", "Anne", "1950-01-01", "F")
+                .unwrap();
+        for d in s.drugs.iter().take(6) {
+            s.db.add_patient_drug(pid, d.id).unwrap();
+        }
+        let mut desk = Desk::new(s);
+        desk.s.changed();
+        let mut seed: u64 = 0x5eed_b9c4;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        let keys = [
+            egui::Key::Enter,
+            egui::Key::Escape,
+            egui::Key::Tab,
+            egui::Key::ArrowDown,
+            egui::Key::ArrowUp,
+            egui::Key::Backspace,
+        ];
+        let (w, h) = (1024.0_f32, 700.0_f32);
+        for view in [
+            "accueil",
+            "patient",
+            "patient_new",
+            "fiche",
+            "verifier_patient",
+            "agenda",
+            "stups",
+        ] {
+            let ctx = egui::Context::default();
+            motif::apply(&ctx);
+            desk.start_at(view);
+            for _ in 0..250 {
+                let mut events = Vec::new();
+                let pos = egui::pos2((next() % w as u64) as f32, (next() % h as u64) as f32);
+                events.push(egui::Event::PointerMoved(pos));
+                match next() % 6 {
+                    0 | 1 => {
+                        for pressed in [true, false] {
+                            events.push(egui::Event::PointerButton {
+                                pos,
+                                button: egui::PointerButton::Primary,
+                                pressed,
+                                modifiers: egui::Modifiers::NONE,
+                            });
+                        }
+                    }
+                    2 => events.push(egui::Event::MouseWheel {
+                        unit: egui::MouseWheelUnit::Line,
+                        delta: egui::vec2(0.0, if next() % 2 == 0 { 3.0 } else { -3.0 }),
+                        modifiers: egui::Modifiers::NONE,
+                    }),
+                    3 => {
+                        let key = keys[(next() % keys.len() as u64) as usize];
+                        for pressed in [true, false] {
+                            events.push(egui::Event::Key {
+                                key,
+                                physical_key: None,
+                                pressed,
+                                repeat: false,
+                                modifiers: egui::Modifiers::NONE,
+                            });
+                        }
+                    }
+                    4 => {
+                        let words = ["dol", "12", "<15", "9h30", "010126", "a", "Tahor"];
+                        events.push(egui::Event::Text(
+                            words[(next() % words.len() as u64) as usize].to_owned(),
+                        ));
+                    }
+                    _ => {}
+                }
+                let input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(w, h),
+                    )),
+                    events,
+                    ..Default::default()
+                };
+                let _ = ctx.run(input, |ctx| desk.update(ctx));
+            }
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }

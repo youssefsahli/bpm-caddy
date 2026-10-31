@@ -99,6 +99,10 @@ pub fn plan_source(s: &Session, patient_id: i64, config: &Config) -> Result<Stri
 
 /// Print the plan de prise: compile, open in the PDF reader.
 pub fn plan(s: &Session, patient_id: i64) -> Result<PathBuf, String> {
+    // A test (the random-use pass clicks everything) never opens a viewer.
+    if cfg!(test) {
+        return Err(crate::t::t("print.not_in_tests").to_owned());
+    }
     let config = Config::load();
     let (patient, lines, today, signature) = plan_parts(s, patient_id, &config)?;
     let data = bpm_caddy::pdf::PlanData {
@@ -115,6 +119,9 @@ pub fn plan(s: &Session, patient_id: i64) -> Result<PathBuf, String> {
 /// values and the CYP routes section stay with the first window's card
 /// view, which computes them against the whole base.
 pub fn monograph(s: &Session, drug_id: i64) -> Result<PathBuf, String> {
+    if cfg!(test) {
+        return Err(crate::t::t("print.not_in_tests").to_owned());
+    }
     let config = Config::load();
     let d = s
         .drug(drug_id)
