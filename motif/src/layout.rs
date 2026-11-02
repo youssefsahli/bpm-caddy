@@ -428,7 +428,14 @@ pub fn tab_strip(ui: &mut egui::Ui, salt: &str, tabs: &[Tab], active: usize) -> 
                     // clique pas. L'actif fait exception : plus large que
                     // la bande, il vaut mieux le montrer coupé que le
                     // faire disparaître.
-                    let whole = ui.clip_rect().contains_rect(rect.shrink(0.5));
+                    // **De gauche à droite seulement** : la règle parle
+                    // d'un onglet tranché par un bord de la bande. Sur une
+                    // seule rangée (Entretiens), le volet coupait les
+                    // onglets d'un pixel en hauteur, et tous les postes
+                    // sauf l'actif disparaissaient.
+                    let clip = ui.clip_rect();
+                    let whole =
+                        rect.left() + 0.5 >= clip.left() && rect.right() - 0.5 <= clip.right();
                     if !is_active && !whole {
                         continue;
                     }
