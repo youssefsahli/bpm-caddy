@@ -10476,6 +10476,15 @@ impl Session {
     /// run on one computer at a time when several open the same file on
     /// a shared drive; the others only show what it stores. A renewal
     /// refused by a busy base keeps the last answer.
+    ///
+    /// Built without the network code there is no lease: this process
+    /// serves.
+    #[cfg(not(feature = "sync"))]
+    fn serves(&mut self) -> bool {
+        true
+    }
+
+    /// The lease, held in the base and renewed every thirty seconds.
     #[cfg(feature = "sync")]
     fn serves(&mut self) -> bool {
         let now = Instant::now();
@@ -19604,9 +19613,6 @@ impl Carte {
     }
 }
 
-/// La fenêtre du réseau d'officines : ce que la base en dit, une tâche
-/// en cours sur son fil, et ce que l'écran a sous les doigts.
-#[cfg(feature = "sync")]
 #[derive(Default)]
 /// **StupControl** — voir `src/stupcontrol.rs`. Ce qu'un rapprochement a
 /// dit n'est gardé qu'en mémoire : il cite des noms lus dans les classeurs.
@@ -19633,6 +19639,9 @@ enum StcJob {
     Sync,
 }
 
+/// La fenêtre du réseau d'officines : ce que la base en dit, une tâche
+/// en cours sur son fil, et ce que l'écran a sous les doigts.
+#[cfg(feature = "sync")]
 #[derive(Default)]
 struct NetWindow {
     /// Le réseau montré (vide : le principal).
@@ -86265,14 +86274,6 @@ impl App {
         }
     }
 
-    /// La fenêtre du réseau d'officines.
-    ///
-    /// **La réserve d'abord** : ce qui voyage, et ce qui ne voyage jamais.
-    /// Puis ce que l'officine est dans le réseau, les officines appairées,
-    /// et les trois gestes — inviter, rejoindre, synchroniser. Le code de
-    /// cinq groupes, quand il arrive, prend la fenêtre : c'est la seule
-    /// chose à faire à ce moment-là.
-    #[cfg(feature = "sync")]
     /// **La fenêtre StupControl** : la date de départ, la correspondance
     /// des produits, l'aperçu, le rapprochement et ce qu'il a dit.
     fn stupcontrol_window(ctx: &egui::Context, session: &mut Session, config: &Config) {
@@ -86596,6 +86597,14 @@ impl App {
         }
     }
 
+    /// La fenêtre du réseau d'officines.
+    ///
+    /// **La réserve d'abord** : ce qui voyage, et ce qui ne voyage jamais.
+    /// Puis ce que l'officine est dans le réseau, les officines appairées,
+    /// et les trois gestes — inviter, rejoindre, synchroniser. Le code de
+    /// cinq groupes, quand il arrive, prend la fenêtre : c'est la seule
+    /// chose à faire à ce moment-là.
+    #[cfg(feature = "sync")]
     fn net_window(ctx: &egui::Context, session: &mut Session, config: &Config) {
         use crate::network::{Job, Progress};
         // Les officines entendues sur le réseau local, hors celles déjà
