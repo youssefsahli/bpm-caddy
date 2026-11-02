@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **« À dire » on the patient file.** A file now opens on a tab that gathers what its tables already read — revue, interactions, kidney (with the latest DFG), biology, overdue monitoring, the elderly table's « à éviter », a finished or last-step ordonnance, vaccines due — most urgent first (Alerte, À adapter, À surveiller, À proposer), each in its table's own words, with a link to the tab that says more. The Fil sits beside it on a wide window. Recomputed when one of those readings changes, never per frame.
+
 ## [0.449.0] - 2026-11-02
 
 ### Added

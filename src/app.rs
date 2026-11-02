@@ -4147,7 +4147,11 @@ struct GotoHit {
 /// turns behind a notebook strip rather than share a split.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum PatientTab {
+    /// Ce qu'il faut dire aujourd'hui à ce patient : ce que le dossier
+    /// relève déjà, onglet par onglet, réuni en une liste, le plus
+    /// urgent d'abord. L'onglet où le dossier s'ouvre.
     #[default]
+    Comptoir,
     Acts,
     Vaccins,
     /// The biology: what the laboratory said, and what it changes for
@@ -4187,7 +4191,8 @@ impl PatientTab {
     /// soit **lisible d'ailleurs** : le mode d'emploi imprimé annonçait
     /// « six onglets » et les énumérait sans le fil, parce qu'il avait
     /// été écrit avant lui et que rien ne reliait la phrase à la liste.
-    pub const ALL: [PatientTab; 9] = [
+    pub const ALL: [PatientTab; 10] = [
+        PatientTab::Comptoir,
         PatientTab::Acts,
         PatientTab::Fil,
         PatientTab::Vaccins,
@@ -4198,6 +4203,25 @@ impl PatientTab {
         PatientTab::Infirmier,
         PatientTab::Messagerie,
     ];
+}
+
+/// Le rang d'une ligne de « À dire » : l'ordre où elles se lisent.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+enum SayRank {
+    Stop,
+    Adapt,
+    Watch,
+    Propose,
+}
+
+/// Une ligne de « À dire » : ce que dit une table du dossier, et
+/// l'onglet qui en dit plus.
+#[derive(Clone, Debug)]
+struct SayLine {
+    rank: SayRank,
+    title: String,
+    detail: String,
+    go: Option<PatientTab>,
 }
 
 /// Laquelle des trois moitiés des registres est à l'écran.
@@ -5599,6 +5623,12 @@ struct Session {
     /// l'officine quand elle en a réécrit. Résolue là où le cache est
     /// rempli et non au dessin — l'écran et le bilan lisent le même.
     patient_review: Vec<crate::revue::Resolved>,
+    /// « À dire » : relu quand une des lectures qu'il réunit change
+    /// (`say_stale`), et non à chaque image.
+    say_today: Vec<SayLine>,
+    say_stale: bool,
+    /// Le délai de renouvellement avec lequel il a été lu.
+    say_notice: u32,
     /// The viewed patient's dated notes, newest first.
     patient_notes: Vec<Note>,
     /// Le fil du dossier : tout ce que la base sait de ce patient, dans
@@ -7301,6 +7331,9 @@ impl Session {
             patient_treats: Vec::new(),
             patient_interactions: Vec::new(),
             patient_review: Vec::new(),
+            say_today: Vec::new(),
+            say_stale: true,
+            say_notice: 0,
             patient_notes: Vec::new(),
             patient_fil: Vec::new(),
             patient_tab: PatientTab::default(),
@@ -16738,6 +16771,7 @@ impl Session {
         // must never be read against the next patient's ordonnance. The
         // same file reopened keeps it.
         if previous != Some(patient.id) {
+            self.patient_tab = PatientTab::Comptoir;
             self.concil_sheet.clear();
             self.concil_key = None;
         }
@@ -17017,6 +17051,7 @@ impl Session {
             self.reload_cascades();
         }
         self.file_meetings = cascade_meetings(&self.cascade_index, &self.patient_treats);
+        self.say_stale = true;
     }
 
     /// What the calendrier vaccinal still owes the open file, read
@@ -17042,6 +17077,141 @@ impl Session {
             &doses,
             &patient.pregnancy_ddr,
         );
+        self.say_stale = true;
+    }
+
+    /// **Ce qu'il faut dire aujourd'hui** : les lectures que le dossier
+    /// fait déjà — la revue, les interactions, le rein, la biologie, la
+    /// surveillance, l'âge, l'ordonnance, le calendrier vaccinal —
+    /// réunies en une liste, le plus urgent d'abord. Rien n'est jugé
+    /// ici : chaque ligne est celle de sa table, avec ses mots.
+    fn refresh_say(&mut self, notice_days: u32) {
+        if !self.say_stale && self.say_notice == notice_days {
+            return;
+        }
+        self.say_stale = false;
+        self.say_notice = notice_days;
+        let mut out: Vec<SayLine> = Vec::new();
+        let rank_of = |s: crate::biology::Severity| match s {
+            crate::biology::Severity::Alert => SayRank::Stop,
+            crate::biology::Severity::Warn => SayRank::Adapt,
+            crate::biology::Severity::Info => SayRank::Watch,
+        };
+        for r in &self.patient_review {
+            out.push(SayLine {
+                rank: rank_of(r.severity),
+                title: r.title.clone(),
+                detail: r.detail.clone(),
+                go: None,
+            });
+        }
+        for (head, sentence) in &self.patient_interactions {
+            out.push(SayLine {
+                rank: SayRank::Adapt,
+                title: head.clone(),
+                detail: sentence.clone(),
+                go: None,
+            });
+        }
+        // Le rein seulement quand un DFG est noté : sans lui, la table
+        // ne dit rien de la dose, et la surveillance réclame la mesure.
+        if let Some(dfg) = self.renal_dfg {
+            for r in &self.renal {
+                let rank = match r.level {
+                    Some(crate::renal::Level::Contraindicated) => SayRank::Stop,
+                    Some(crate::renal::Level::Reduce) => SayRank::Adapt,
+                    Some(crate::renal::Level::Watch) | None => SayRank::Watch,
+                };
+                out.push(SayLine {
+                    rank,
+                    title: trn("say_renal", &[&r.treatment, &format!("{}", dfg.round())]),
+                    detail: r.conduct.clone(),
+                    go: Some(PatientTab::Bio),
+                });
+            }
+        }
+        for f in &self.bio_findings {
+            if f.severity == crate::biology::Severity::Info {
+                continue;
+            }
+            out.push(SayLine {
+                rank: rank_of(f.severity),
+                title: crate::biology::find(f.code)
+                    .map_or(f.code, |a| a.label)
+                    .to_owned(),
+                detail: f.text.clone(),
+                go: Some(PatientTab::Bio),
+            });
+        }
+        for d in &self.surveillance {
+            let detail = match (&d.last, d.level) {
+                (_, crate::surveillance::Level::Never) => tr("say_watch_never").to_owned(),
+                (Some(day), _) => trf("say_watch_last", db::format_french_date(day)),
+                (None, _) => continue,
+            };
+            if !matches!(
+                d.level,
+                crate::surveillance::Level::Overdue | crate::surveillance::Level::Never
+            ) {
+                continue;
+            }
+            out.push(SayLine {
+                rank: SayRank::Watch,
+                title: d.label.to_owned(),
+                detail: format!("{detail} {}", d.why).trim().to_owned(),
+                go: Some(PatientTab::Bio),
+            });
+        }
+        for e in &self.elderly {
+            if e.level != Some(crate::elderly::Level::Avoid) {
+                continue;
+            }
+            out.push(SayLine {
+                rank: SayRank::Adapt,
+                title: e.treatment.clone(),
+                detail: e.risk.clone(),
+                go: None,
+            });
+        }
+        // L'ordonnance : une ligne par ordonnance, pas par médicament.
+        let scripts: Vec<(String, crate::renewal::Prescription)> = self
+            .patient_treats
+            .iter()
+            .map(|d| (d.name.clone(), self.script_of(d.id)))
+            .collect();
+        for (p, names) in crate::renewal::group(&scripts) {
+            let stand = crate::renewal::read(&p, &self.today, notice_days);
+            let ends = stand
+                .ends_on
+                .as_deref()
+                .map(db::format_french_date)
+                .unwrap_or_default();
+            let (rank, detail) = match stand.state {
+                crate::renewal::State::Over => (SayRank::Adapt, trf("say_rx_over", ends)),
+                crate::renewal::State::Last => (SayRank::Watch, trf("say_rx_last", ends)),
+                _ => continue,
+            };
+            out.push(SayLine {
+                rank,
+                title: names.join(", "),
+                detail,
+                go: None,
+            });
+        }
+        for v in &self.vacc_due {
+            if v.level != vaccines::DueLevel::Due {
+                continue;
+            }
+            out.push(SayLine {
+                rank: SayRank::Propose,
+                title: v.label.to_owned(),
+                detail: v.detail.clone(),
+                go: Some(PatientTab::Vaccins),
+            });
+        }
+        // Stable : dans un rang, l'ordre des tables.
+        out.sort_by_key(|l| l.rank);
+        self.say_today = out;
     }
 
     /// (Re)read the patient's carnet and destinations. Called on open
@@ -28723,6 +28893,7 @@ impl App {
         };
         motif::inside(ui, strip[0], |ui| {
             let tabs = [
+                motif::Tab::new(tr("patient_tab_comptoir")),
                 motif::Tab::new(tr("patient_tab_acts")),
                 motif::Tab::new(tr("patient_tab_fil")),
                 motif::Tab::new(tr("patient_tab_vaccins")),
@@ -28748,6 +28919,10 @@ impl App {
         Self::pchat_qr_window(ctx, session, patient, config);
         if session.ordonnance.is_none() {
             session.trod_edit = None;
+        }
+        if session.patient_tab == PatientTab::Comptoir {
+            Self::patient_say_pane(ui, session, work, config);
+            return;
         }
         if session.patient_tab == PatientTab::Fil {
             Self::patient_fil_pane(ui, session, work);
@@ -29476,6 +29651,97 @@ impl App {
     /// c'est la bande qui tombe, puis le résumé, jamais les lignes —
     /// une bande de chaleur au-dessus de deux lignes de fil illustre
     /// quelque chose qu'on ne voit pas.
+    /// **« À dire »** : ce que le dossier relève, le plus urgent
+    /// d'abord, et le fil à côté quand la largeur le permet — les deux
+    /// questions qu'on pose en ouvrant un dossier au comptoir.
+    fn patient_say_pane(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        rect: egui::Rect,
+        config: &Config,
+    ) {
+        session.refresh_say(config.ordonnance.notice_days);
+        let (list, fil) = if rect.width() >= chars_wide(ui, 110.0) {
+            let fil_w = (rect.width() * 0.38).max(chars_wide(ui, 40.0));
+            let gap = 8.0;
+            let left = egui::Rect::from_min_max(
+                rect.min,
+                egui::pos2(rect.max.x - fil_w - gap, rect.max.y),
+            );
+            let right =
+                egui::Rect::from_min_max(egui::pos2(rect.max.x - fil_w, rect.min.y), rect.max);
+            (left, Some(right))
+        } else {
+            (rect, None)
+        };
+        let mut go: Option<PatientTab> = None;
+        motif::panel(ui, list, Some(tr("say_title")), |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("patient_say")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    let width = Self::scrolled_width(ui, ui.available_width());
+                    ui.set_max_width(width);
+                    if session.say_today.is_empty() {
+                        ui.label(
+                            egui::RichText::new(tr("say_empty"))
+                                .size(motif::pt(ui, 11.5))
+                                .color(motif::text_dim()),
+                        );
+                        return;
+                    }
+                    for (i, line) in session.say_today.iter().enumerate() {
+                        let (label, color, mark) = match line.rank {
+                            SayRank::Stop => (tr("say_stop"), motif::alert(), motif::Pict::Stop),
+                            SayRank::Adapt => (tr("say_adapt"), motif::warn(), motif::Pict::Warn),
+                            SayRank::Watch => {
+                                (tr("say_watch"), motif::accent(), motif::Pict::Pending)
+                            }
+                            SayRank::Propose => {
+                                (tr("say_propose"), motif::accent(), motif::Pict::Check)
+                            }
+                        };
+                        ui.horizontal_wrapped(|ui| {
+                            motif::badge(ui, label, Some(mark), color, true);
+                            ui.label(
+                                egui::RichText::new(&line.title)
+                                    .strong()
+                                    .size(motif::pt(ui, 11.5)),
+                            );
+                            if let Some(tab) = line.go {
+                                let key = match tab {
+                                    PatientTab::Bio => "patient_tab_bio",
+                                    PatientTab::Vaccins => "patient_tab_vaccins",
+                                    _ => "patient_tab_acts",
+                                };
+                                // Une pastille en relief, à la hauteur de la
+                                // ligne : un bouton plein la doublait.
+                                let open = ui
+                                    .push_id(i, |ui| {
+                                        motif::badge(ui, tr(key), None, motif::bg(), true)
+                                            .on_hover_cursor(egui::CursorIcon::PointingHand)
+                                    })
+                                    .inner;
+                                if open.clicked() {
+                                    go = Some(tab);
+                                }
+                            }
+                        });
+                        if !line.detail.is_empty() {
+                            ui.label(egui::RichText::new(&line.detail).size(motif::pt(ui, 11.5)));
+                        }
+                        ui.add_space(6.0);
+                    }
+                });
+        });
+        if let Some(tab) = go {
+            session.patient_tab = tab;
+        }
+        if let Some(fil) = fil {
+            Self::patient_fil_pane(ui, session, fil);
+        }
+    }
+
     fn patient_fil_pane(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) {
         let line = ui.text_style_height(&egui::TextStyle::Body);
         // Une fois par relecture du fil et par jour, pas à chaque image :
@@ -113902,6 +114168,57 @@ mod tests {
             s.db.notes_for(crate::db::NoteSubject::Patient, p.id)
                 .unwrap();
         assert_eq!(again.len(), notes.len());
+    }
+
+    /// « À dire » réunit les lectures du dossier, le plus urgent
+    /// d'abord : sous un DFG à 20, la metformine en tête, et le dossier
+    /// s'ouvre sur cet onglet.
+    #[test]
+    fn what_to_say_puts_the_urgent_first_and_the_file_opens_on_it() {
+        let (mut s, _swept) = scratch_session("say");
+        let p = s.patients[0].clone();
+        let met =
+            s.db.drugs()
+                .unwrap()
+                .into_iter()
+                .find(|d| d.dci.to_lowercase().contains("metformine"))
+                .expect("une fiche de metformine livrée");
+        s.db.add_patient_drug(p.id, met.id).unwrap();
+        s.db.add_bio_result(
+            p.id,
+            &crate::db::BioResult {
+                id: 0,
+                code: "DFG".to_owned(),
+                label: "DFG".to_owned(),
+                value: 20.0,
+                unit: "mL/min".to_owned(),
+                taken_on: s.today.clone(),
+                remark: String::new(),
+            },
+        )
+        .unwrap();
+        s.patient_tab = super::PatientTab::Bio;
+        s.open_patient(p);
+        assert_eq!(s.patient_tab, super::PatientTab::Comptoir);
+        s.refresh_say(30);
+        let lines = &s.say_today;
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.title.contains("DFG 20") && l.rank <= super::SayRank::Adapt),
+            "{lines:?}"
+        );
+        assert!(
+            lines.windows(2).all(|w| w[0].rank <= w[1].rank),
+            "{lines:?}"
+        );
+        // Relu seulement quand une lecture change.
+        s.say_today.clear();
+        s.refresh_say(30);
+        assert!(s.say_today.is_empty());
+        s.refresh_vacc_due();
+        s.refresh_say(30);
+        assert!(!s.say_today.is_empty());
     }
 
     #[test]

@@ -122,6 +122,13 @@ modifie la taille du texte, réglée une fois pour toute l'application à
 Le bandeau porte l'identité et les traitements ; en dessous, les actes,
 le journal, la biologie, les vaccins et les pièces scannées.
 
+Le dossier s'ouvre sur **« À dire »** : ce que ses tables relèvent,
+le plus urgent d'abord. Alerte, à adapter (dose selon le DFG,
+interaction, sujet âgé), à surveiller (mesure en retard, dernière
+délivrance), à proposer (vaccin dû). Chaque ligne garde les mots de sa
+table ; « Biologie » ou « Vaccinations » ouvre l'onglet qui en dit
+plus. Le fil s'affiche à droite quand la fenêtre est assez large.
+
 Saisie courte des dates : `230826` ou `2308` donne `23/08/2026`. Pour
 une date déjà passée (délivrance, ordonnance, registre, pièce, vaccin,
 biologie, DDR), `2312` tapé en janvier donne le 23 décembre précédent, et

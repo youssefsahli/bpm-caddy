@@ -1302,7 +1302,7 @@ const GUIDE_SECTIONS: &[(&str, &str)] = &[
     ),
     (
         "Le dossier patient",
-        "Le bandeau du haut porte l'identité, les traitements rattachés au référentiel médicaments (une puce par médicament, cliquable), et les éléments relevés automatiquement : les interactions entre ces traitements, et la revue d'ordonnance. En dessous, neuf onglets : les entretiens, le fil du dossier, le carnet de vaccination, la biologie, les locations de matériel, la conciliation de sortie, les pièces numérisées, la feuille de l'infirmier(ère) et la messagerie du patient.",
+        "Le bandeau du haut porte l'identité, les traitements rattachés au référentiel médicaments (une puce par médicament, cliquable), et les éléments relevés automatiquement : les interactions entre ces traitements, et la revue d'ordonnance. En dessous, dix onglets : ce qu'il faut dire aujourd'hui (alertes, doses à adapter, mesures en retard, ordonnance finie, vaccins dus), les entretiens, le fil du dossier, le carnet de vaccination, la biologie, les locations de matériel, la conciliation de sortie, les pièces numérisées, la feuille de l'infirmier(ère) et la messagerie du patient.",
     ),
     (
         "Créer et suivre un entretien",
