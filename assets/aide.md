@@ -741,6 +741,13 @@ ouvre le registre, où l'association du code se fait manuellement.
 
 # Entretiens
 
+Le poste Entretiens (F2) s'ouvre sur le **Suivi** : une colonne par
+étape — à proposer, planifiés, faits (compte rendu à envoyer), à
+facturer, facturés ce mois. Le nom ouvre le dossier ; « Fait », « CR
+envoyé » et « Facturé » passent l'acte à l'étape suivante. Le filtre du
+haut ne montre qu'un type. Fenêtre étroite : une liste par étape.
+« Chiffres » garde le tableau de bord.
+
 Un acte porte sa thématique, son état, sa date, sa durée et les
 initiales de l'intervenant. « Tout imprimer » produit la fiche
 d'entretien, le bilan et le plan de prise en un seul document.

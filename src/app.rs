@@ -6198,6 +6198,13 @@ struct Session {
     /// Les dossiers à renouveler (`renewal::due`), relus avec le reste
     /// du tableau du jour.
     renew_due: Vec<(i64, crate::renewal::State, String)>,
+    /// Le suivi des entretiens (`db::interview_board`), relu avec le
+    /// tableau du jour.
+    board: Vec<db::BoardRow>,
+    /// Entretiens : le suivi (`false`) ou les chiffres (`true`).
+    dash_figures: bool,
+    /// Le type que le suivi montre seul, ou tous.
+    board_kind: Option<InterviewKind>,
     /// `[ordonnance] notice_days`, poussé ici comme `loc_notice_days`.
     rx_notice_days: u32,
     today_notes: Vec<Note>,
@@ -7532,6 +7539,9 @@ impl Session {
             appointments: Vec::new(),
             recent: Vec::new(),
             renew_due: Vec::new(),
+            board: Vec::new(),
+            dash_figures: false,
+            board_kind: None,
             rx_notice_days: 7,
             today_notes: Vec::new(),
             export_notice: None,
@@ -17488,6 +17498,7 @@ impl Session {
         self.tomorrow = self.db.tomorrow_iso().unwrap_or_default();
         self.agenda_week = self.db.week_dates(self.agenda_offset).unwrap_or_default();
         self.recent = self.db.recent_patients(6).unwrap_or_default();
+        self.board = self.db.interview_board().unwrap_or_default();
         self.renew_due = crate::renewal::due(
             &self.db.all_prescriptions().unwrap_or_default(),
             &self.today,
@@ -23564,6 +23575,13 @@ impl App {
                         // The agenda's three modes are session state, so
                         // a screenshot of the day plan or the month grid
                         // needs its own hook.
+                        // Entretiens s'ouvre sur le suivi : les chiffres
+                        // ont leur crochet, sans quoi rien ne les balaie.
+                        Ok("chiffres") => {
+                            session.refresh_dashboard();
+                            session.dash_figures = true;
+                            session.view = MainView::Dashboard;
+                        }
                         Ok("agenda_day") => {
                             session.refresh_dashboard();
                             session.agenda_mode = AgendaMode::Day;
@@ -28633,6 +28651,177 @@ impl App {
                 });
             }
         });
+    }
+
+    /// **Le suivi des entretiens**, une colonne par étape : à proposer,
+    /// planifiés, faits (compte rendu à envoyer), à facturer, facturés
+    /// ce mois. Le bouton d'une carte la passe à l'étape suivante, son
+    /// nom ouvre le dossier. Sur une fenêtre étroite, les colonnes
+    /// deviennent une liste par étape.
+    fn board_view(ui: &mut egui::Ui, session: &mut Session) {
+        // Les types présents, pour le filtre.
+        let mut kinds: Vec<InterviewKind> = Vec::new();
+        for r in &session.board {
+            if !kinds.contains(&r.kind) {
+                kinds.push(r.kind);
+            }
+        }
+        kinds.sort_by_key(|k| InterviewKind::ALL.iter().position(|x| x == k));
+        if session.board_kind.is_some_and(|k| !kinds.contains(&k)) {
+            session.board_kind = None;
+        }
+        ui.horizontal_wrapped(|ui| {
+            ui.add_space(4.0);
+            let chip = |ui: &mut egui::Ui, label: &str, on: bool| {
+                let fill = if on { motif::accent() } else { motif::bg() };
+                motif::badge(ui, label, None, fill, !on)
+                    .on_hover_cursor(egui::CursorIcon::PointingHand)
+                    .clicked()
+            };
+            if chip(ui, tr("board_all"), session.board_kind.is_none()) {
+                session.board_kind = None;
+            }
+            for k in &kinds {
+                if chip(ui, k.label(), session.board_kind == Some(*k)) {
+                    session.board_kind = Some(*k);
+                }
+            }
+        });
+        ui.add_space(4.0);
+        let rows: Vec<&db::BoardRow> = session
+            .board
+            .iter()
+            .filter(|r| session.board_kind.is_none_or(|k| r.kind == k))
+            .collect();
+        let steps = InterviewState::ALL;
+        let mut cols: Vec<Vec<db::BoardRow>> = vec![Vec::new(); steps.len()];
+        for r in rows {
+            if let Some(i) = steps.iter().position(|s| *s == r.state) {
+                cols[i].push(r.clone());
+            }
+        }
+        let titles = [
+            "board_identified",
+            "board_scheduled",
+            "board_performed",
+            "board_report_sent",
+            "board_billed",
+        ];
+        let area = motif::visible_rect(ui).shrink2(egui::vec2(4.0, 0.0));
+        let wide = area.width() >= chars_wide(ui, 120.0);
+        let mut open: Option<i64> = None;
+        let mut advance: Option<(i64, InterviewState)> = None;
+        let today = session.today.clone();
+        let card = |ui: &mut egui::Ui,
+                    r: &db::BoardRow,
+                    open: &mut Option<i64>,
+                    advance: &mut Option<(i64, InterviewState)>| {
+            ui.push_id(r.id, |ui| {
+                if motif::list_row(ui, egui::RichText::new(&r.patient_name).strong(), false)
+                    .on_hover_text(tr("dash_open_patient"))
+                    .clicked()
+                {
+                    *open = Some(r.patient_id);
+                }
+                let when = match r.state {
+                    InterviewState::Scheduled if !r.scheduled_date.is_empty() => {
+                        let day = if r.scheduled_date == today {
+                            tr("board_today").to_owned()
+                        } else {
+                            db::format_french_date(&r.scheduled_date)
+                        };
+                        format!("{day} {}", r.scheduled_time).trim().to_owned()
+                    }
+                    _ => trf("board_since", db::format_french_date(&r.updated_on)),
+                };
+                let mut line = format!("{} · {when}", r.kind.label());
+                if !r.operator.is_empty() {
+                    line.push_str(" · ");
+                    line.push_str(&r.operator);
+                }
+                // Sous le nom, au même retrait que la rangée l'écrit.
+                ui.horizontal_wrapped(|ui| {
+                    ui.add_space(8.0);
+                    ui.label(
+                        egui::RichText::new(line)
+                            .size(motif::pt(ui, 10.5))
+                            .color(motif::text_dim()),
+                    );
+                });
+                let next = match r.state {
+                    InterviewState::Scheduled => Some("board_mark_performed"),
+                    InterviewState::Performed => Some("board_mark_sent"),
+                    InterviewState::ReportSent => Some("board_mark_billed"),
+                    _ => None,
+                };
+                if let Some(key) = next {
+                    ui.horizontal(|ui| {
+                        ui.add_space(8.0);
+                        if motif::button(ui, tr(key)).clicked() {
+                            *advance = Some((r.id, r.state));
+                        }
+                    });
+                }
+                ui.add_space(4.0);
+                motif::separator(ui);
+            });
+        };
+        if wide {
+            let rects = motif::split_columns(area, steps.len(), 8.0);
+            for (i, rect) in rects.into_iter().enumerate() {
+                let title = format!("{} ({})", tr(titles[i]), cols[i].len());
+                motif::panel(ui, rect, Some(&title), |ui| {
+                    ui.spacing_mut().scroll.floating = false;
+                    egui::ScrollArea::vertical()
+                        .id_salt(("board_col", i))
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            if cols[i].is_empty() {
+                                ui.label(
+                                    egui::RichText::new(tr("board_empty")).color(motif::text_dim()),
+                                );
+                            }
+                            for r in &cols[i] {
+                                card(ui, r, &mut open, &mut advance);
+                            }
+                        });
+                });
+            }
+        } else {
+            motif::panel(ui, area, None, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("board_list")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        for (i, col) in cols.iter().enumerate() {
+                            ui.label(
+                                egui::RichText::new(format!("{} ({})", tr(titles[i]), col.len()))
+                                    .strong(),
+                            );
+                            for r in col {
+                                card(ui, r, &mut open, &mut advance);
+                            }
+                            ui.add_space(6.0);
+                        }
+                    });
+            });
+        }
+        ui.allocate_space(area.size());
+        if let Some((id, state)) = advance {
+            match session.db.advance_interview(id, state) {
+                Ok(true) => session.error = None,
+                Ok(false) => session.stale("itv_stale"),
+                Err(e) => session.error = Some(e),
+            }
+            session.refresh_dashboard();
+        }
+        if let Some(id) = open {
+            if let Some(p) = session.patients.iter().find(|p| p.id == id).cloned() {
+                session.open_patient(p);
+                session.patient_tab = PatientTab::Acts;
+                session.view = MainView::Search;
+            }
+        }
     }
 
     /// « À renouveler » : un dossier par ligne, la date, et un clic
@@ -88316,6 +88505,22 @@ impl App {
     /// reste ici est ce qu'on peut lire à voix haute : des comptes
     /// d'actes, du temps, des dossiers.
     fn dashboard_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
+        // **Le suivi d'abord** : ce qu'il reste à faire, colonne par
+        // étape. Les chiffres viennent en second.
+        ui.add_space(4.0);
+        let tabs = [
+            motif::Tab::new(tr("board_tab")),
+            motif::Tab::new(tr("board_tab_figures")),
+        ];
+        if let Some(motif::TabAction::Select(i)) =
+            motif::tab_strip(ui, "dash_mode", &tabs, usize::from(session.dash_figures))
+        {
+            session.dash_figures = i == 1;
+        }
+        if !session.dash_figures {
+            Self::board_view(ui, session);
+            return;
+        }
         session.refresh_watchlist();
         session.refresh_dash_shortages();
         ui.add_space(6.0);

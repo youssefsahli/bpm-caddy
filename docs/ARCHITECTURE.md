@@ -287,7 +287,7 @@ The one that was missing — « combien de fois un autre poste avait
   écrit le premier », the most useful number the pane carries and the
   one no other screen says — was absent for two versions for a reason
   worth keeping: every compare-and-set answers `false` in its own place,
-  134 of them, and counting at all but one would be a counter quietly
+  135 of them, and counting at all but one would be a counter quietly
   short, which is worse than one that is not there. It arrived by making those answers
   go through **one** function, `Session::stale` / `stale_note`, the only
   path to a « rechargez » notice (`stale_note_with` when it names what changed); `no_stale_notice_is_written_by_hand`
@@ -1470,7 +1470,7 @@ add clicking and typing; it is not the price of entry.
   explorer's axes, the map's lenses, the batch sheet's natures, as the
   register form already did (`richest_form`); it says nothing useful
   about a form, a dialog or a table of records, where what is under the
-  fold is the control you came to use. 79 regions now set
+  fold is the control you came to use. 80 regions now set
   `ui.spacing_mut().scroll.floating = false`, each for a loss seen on a
   capture at 1024x700: the planning's entry row (« Poser »), the
   register's write form (its natures and nothing else — the quantity,
@@ -2355,7 +2355,7 @@ add clicking and typing; it is not the price of entry.
 - `BPM_CADDY_PASSWORD=<pw>` — unlock silently at startup (not when
   config.toml does not read)
 - `BPM_CADDY_NO_KEYRING=1` — skip the OS credential manager
-- `BPM_CADDY_START_VIEW=verrou|search|dashboard|patient|patient_edit|patient_new|drugs|drug_card|agenda|agenda_day|
+- `BPM_CADDY_START_VIEW=verrou|search|dashboard|chiffres|patient|patient_edit|patient_new|drugs|drug_card|agenda|agenda_day|
   agenda_filtre|agenda_month|planning|planning_mois|planning_saisie|protocols|protocol_open|template|options|about|tables|
   tables_search|regles|mentions|honoraires|forfaits|modules|calc|carnet|vaccins|bio|watch|revue|conciliation|
   vaccine_map|campagne|campagne_rappels|campagne_rdv|campagne_parametrer|campagne_entretiens|vaccins_grossesse|vaccins_catalogue|ruptures|reseau|versions|postes|postes_seul|postes_telephone|connexions|officines|ordonnance|ordonnance_lignes|rein|grossesse|age|cyp|ddi|ddi_crush|fiche_transmission|qualite|libelles|listes|base|codex|

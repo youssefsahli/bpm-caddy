@@ -2730,6 +2730,22 @@ pub struct InterviewSummary {
     pub operator: String,
 }
 
+/// One interview on the Entretiens board: where it stands, whose it
+/// is, and the day that says what to do next.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BoardRow {
+    pub id: i64,
+    pub patient_id: i64,
+    pub patient_name: String,
+    pub kind: InterviewKind,
+    pub state: InterviewState,
+    pub scheduled_date: String,
+    pub scheduled_time: String,
+    /// ISO day of the last state change.
+    pub updated_on: String,
+    pub operator: String,
+}
+
 /// One interview joined with its patient, for the CSV export.
 #[derive(Clone, Debug)]
 pub struct ExportRow {
@@ -46852,6 +46868,61 @@ impl Db {
 
     /// Every interview with its patient, oldest first — the CSV export
     /// for billing reconciliation.
+    /// The Entretiens board: every act not yet billed, and those billed
+    /// this month. Oldest change first inside a state — the one waiting
+    /// longest is on top.
+    pub fn interview_board(&self) -> Result<Vec<BoardRow>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT i.id, i.patient_id, p.last_name || ' ' || p.first_name, i.kind, i.state,
+                        COALESCE(substr(i.scheduled_date, 1, 10), ''), i.scheduled_time,
+                        substr(i.updated_at, 1, 10), i.operator
+                 FROM interviews i JOIN patients p ON p.id = i.patient_id
+                 WHERE i.state <> ?1
+                    OR substr(i.updated_at, 1, 7) = strftime('%Y-%m', 'now', 'localtime')
+                 ORDER BY i.updated_at, i.id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([InterviewState::Billed.as_str()], |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, String>(4)?,
+                    r.get::<_, String>(5)?,
+                    r.get::<_, String>(6)?,
+                    r.get::<_, String>(7)?,
+                    r.get::<_, String>(8)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (id, patient_id, name, kind, state, day, time, updated, operator) =
+                row.map_err(|e| e.to_string())?;
+            let (Some(kind), Some(state)) =
+                (InterviewKind::parse(&kind), InterviewState::parse(&state))
+            else {
+                continue;
+            };
+            out.push(BoardRow {
+                id,
+                patient_id,
+                patient_name: name,
+                kind,
+                state,
+                scheduled_date: day,
+                scheduled_time: time,
+                updated_on: updated,
+                operator,
+            });
+        }
+        Ok(out)
+    }
+
     pub fn export_rows(&self, cycle_months: u32) -> Result<Vec<ExportRow>, String> {
         let mut stmt = self
             .conn
@@ -63588,6 +63659,32 @@ mod tests {
         for k in InterviewKind::ALL {
             assert_eq!(InterviewKind::parse(k.as_str()), Some(k));
         }
+    }
+
+    /// Le suivi des entretiens : chaque acte à son étape, un acte
+    /// facturé ce mois encore là, et un passage écrit par
+    /// comparaison — le second clic sur une carte périmée est refusé.
+    #[test]
+    fn the_interview_board_shows_each_act_at_its_step() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-board-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("board.db"), "secret").unwrap();
+        let pid = db.add_patient("Martin", "Claire", "1949-02-11").unwrap();
+        let a = db.add_interview(pid, InterviewKind::Bpm).unwrap();
+        let b = db.add_interview(pid, InterviewKind::Aod).unwrap();
+        let mut state = InterviewState::Identified;
+        while let Some(next) = state.next() {
+            assert!(db.advance_interview(b, state).unwrap());
+            state = next;
+        }
+        let board = db.interview_board().unwrap();
+        let at = |id: i64| board.iter().find(|r| r.id == id).map(|r| r.state);
+        assert_eq!(at(a), Some(InterviewState::Identified));
+        assert_eq!(at(b), Some(InterviewState::Billed));
+        assert_eq!(board[0].patient_name, "Martin Claire");
+        assert!(db.advance_interview(a, InterviewState::Identified).unwrap());
+        assert!(!db.advance_interview(a, InterviewState::Identified).unwrap());
     }
 
     #[test]
