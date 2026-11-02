@@ -866,6 +866,10 @@ pub struct BureauConfig {
     pub en_service: bool,
     /// Lancer BPM-Caddy à l'ouverture de la session, fenêtre rangée.
     pub au_demarrage: bool,
+    /// Installer la dernière version à l'ouverture de la session (au
+    /// redémarrage du poste), sans fenêtre, par le lanceur. Lu par le
+    /// lanceur dans ce fichier : il ne dépend pas de l'application.
+    pub maj_au_demarrage: bool,
 }
 
 impl Default for BureauConfig {
@@ -873,6 +877,7 @@ impl Default for BureauConfig {
         Self {
             en_service: true,
             au_demarrage: true,
+            maj_au_demarrage: true,
         }
     }
 }
@@ -1813,7 +1818,8 @@ impl Default for DatabaseConfig {
 pub struct UiConfig {
     pub show_docs_on_start: bool,
     /// Open the left navigator dock (the patient / drug / month list)
-    /// on start. Off on a small screen, on at a wide counter.
+    /// on start. Off by default since the five postes: the strips reach
+    /// every view, and the dock is a choice.
     pub show_nav_on_start: bool,
     /// Text scale, 1.0 being the design size. The counter screen is
     /// often far from the eye; the tablet is often small.
@@ -1892,7 +1898,7 @@ impl Default for UiConfig {
     fn default() -> Self {
         Self {
             show_docs_on_start: false,
-            show_nav_on_start: true,
+            show_nav_on_start: false,
             text_scale: 1.0,
             density: "confortable".to_owned(),
             theme: DEFAULT_THEME.to_owned(),
@@ -2469,6 +2475,27 @@ pub struct Layout {
     /// by another version, and so a future change of shape can tell a
     /// stale record from a current one.
     pub version: String,
+}
+
+/// The first version laid out in five postes. A dock left open by an
+/// older one is not kept: the postes replace both docks, and a post
+/// updated in place would otherwise reopen on the old shape for good.
+pub const POSTES_SINCE: &str = "0.449.0";
+
+impl Layout {
+    /// Was the left dock open, as this shape understands it?
+    pub fn nav_was_open(&self) -> Option<bool> {
+        self.nav_open.filter(|_| !self.before_postes())
+    }
+
+    /// Was the right pane open, as this shape understands it?
+    pub fn docs_were_open(&self) -> Option<bool> {
+        self.docs_open.filter(|_| !self.before_postes())
+    }
+
+    fn before_postes(&self) -> bool {
+        crate::release::is_newer(POSTES_SINCE, &self.version)
+    }
 }
 
 impl Default for Layout {

@@ -1224,7 +1224,7 @@ const DEFAULT_GUIDE_TEMPLATE: &str = r##"
 /// cette liste-là qu'elle est « tenue par l'application elle-même, et
 /// non recopiée ici » ; `every_shortcut_the_app_answers_to_is_on_the_
 /// printed_guide` le rend vrai du papier aussi.
-const GUIDE_SHORTCUTS: &str = "Ctrl+K aller à… · Ctrl+F chercher un patient · Ctrl+N nouvel entretien · Ctrl+Tab et Ctrl+Shift+Tab onglet suivant et précédent · Ctrl+W fermer l'onglet · F1 panneau d'équipe · F2 tableau de bord · F3 médicaments · F4 agenda · F5 carnet · F6 liste de gauche · F7 carte vaccinale · F8 campagne de vaccination · F9 la fenêtre réduite en barre, où les flèches haut et bas parcourent les fiches trouvées, gauche et droite tournent ses pages, et Alt + 1 … 5 appellent ses cinq gestes · F10 couverture des délivrances · F12 cette liste · Échap ferme l'élément ouvert. Dans une liste — patients, protocoles, préparations, dispositifs — tapez dans son champ de recherche, puis les flèches parcourent et Entrée ouvre ; sur un dossier, Alt et les flèches changent d'onglet, et dans le choix rapide les chiffres 1 … 9, 0 posent l'acte. Dates : 230826 donne 23/08/2026, 2308 donne le 23/08, l'année étant déduite du champ.";
+const GUIDE_SHORTCUTS: &str = "F1 Comptoir · F2 Entretiens · F3 Agenda et équipe · F4 Officine · F5 Référence ; appuyée sur le poste affiché, la touche revient à sa première vue · Ctrl+1 … 4 dossier ouvert · Ctrl+Tab et Ctrl+Shift+Tab dossier suivant et précédent · Ctrl+W fermer le dossier · Ctrl+K aller à… · Ctrl+F chercher un patient · Ctrl+N nouvel entretien · F6 liste de gauche · F9 la fenêtre réduite en barre, où les flèches haut et bas parcourent les fiches trouvées, gauche et droite tournent ses pages, et Alt + 1 … 5 appellent ses cinq gestes · F10 couverture des délivrances · F12 cette liste · Échap ferme l'élément ouvert. Dans une liste — patients, protocoles, préparations, dispositifs — tapez dans son champ de recherche, puis les flèches parcourent et Entrée ouvre ; sur un dossier, Alt et les flèches changent d'onglet, et dans le choix rapide les chiffres 1 … 9, 0 posent l'acte. Dates : 230826 donne 23/08/2026, 2308 donne le 23/08, l'année étant déduite du champ.";
 
 /// Attache la ponctuation double au mot qu'elle accompagne.
 ///
@@ -1297,8 +1297,8 @@ const GUIDE_SECTIONS: &[(&str, &str)] = &[
         "L'application demande le mot de passe de la base au démarrage : la base est chiffrée. « Verrouiller » (en haut à droite) ferme l'écran sans quitter ; le verrouillage est aussi automatique après le délai d'inactivité réglé dans les Options. Une sauvegarde du jour est écrite à chaque déverrouillage, dans le dossier « backups » à côté de la base.",
     ),
     (
-        "Trouver ou créer un patient",
-        "L'application s'ouvre sur la recherche. Tapez les premières lettres : « jndp » trouve Jean Dupont, les accents et la casse n'ont pas d'importance. Sans résultat, le même champ devient le formulaire de création. Entrée ouvre le résultat choisi, Échap referme.",
+        "Postes et patients",
+        "Cinq postes : Comptoir (F1), Entretiens (F2), Agenda et équipe (F3), Officine (F4), Référence (F5). Chacun reprend la vue où on l'a laissé ; sa deuxième bande liste ses vues. Les dossiers ouverts suivent sur la première bande, quatre au plus. L'application s'ouvre sur la recherche. Tapez les premières lettres : « jndp » trouve Jean Dupont, les accents et la casse n'ont pas d'importance. Sans résultat, le même champ devient le formulaire de création. Entrée ouvre le résultat choisi, Échap referme.",
     ),
     (
         "Le dossier patient",

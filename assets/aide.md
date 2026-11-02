@@ -13,19 +13,45 @@ données.
 
 # Plan de travail
 
-Trois volets autour d'un cahier d'onglets.
+Cinq postes, sur F1 à F5 :
 
-- À gauche, la navigation : le mois, les prochains rendez-vous, la liste
-  en cours de recherche.
-- Au centre, la vue ouverte. Les onglets du haut en gardent plusieurs
-  ouvertes à la fois.
-- À droite, ce volet : notes d'équipe, carnet du jour, notes
-  personnelles et aide. Les notes d'équipe vivent dans la base chiffrée
-  et voyagent avec elle vers les autres postes ; elles ne se lisent
-  qu'une fois la session ouverte.
+- **Comptoir** (F1) : la recherche, les dossiers, le croisement d'une
+  ordonnance sans dossier, la fiche de transmission.
+- **Entretiens** (F2) : le tableau des entretiens, de la proposition à
+  la facturation.
+- **Agenda et équipe** (F3) : les rendez-vous et le planning, le carnet
+  du jour, les messages de l'équipe.
+- **Officine** (F4) : les registres, la caisse, la qualité, la campagne,
+  les ruptures, les statistiques, les listes de contrôle, les liaisons
+  et les réglages.
+- **Référence** (F5) : les médicaments, la carte vaccinale, les
+  cascades, l'explorateur et les classes.
 
-Les volets latéraux se ferment et se redimensionnent ; leur largeur et
-la vue ouverte sont conservées d'une session à l'autre.
+La première bande porte les cinq postes, puis les dossiers ouverts,
+quatre au plus (Ctrl+1 à Ctrl+4 ; Ctrl+W ferme le dossier affiché). La
+seconde bande liste les vues du poste affiché. Un poste reprend la vue
+où on l'a laissé ; sa touche, pressée une seconde fois, revient à sa
+première vue : F1 deux fois, la liste des patients.
+
+**Changer de vue enregistre.** Ce qui est saisi et pas encore
+enregistré l'est en quittant la vue, comme par son bouton : identité,
+posologie, dosage, date d'ordonnance, ligne de carnet ou de biologie en
+correction, DDR, fiche médicament en modification, heure ou jour d'un
+rendez-vous, case du planning ou d'une table, cascade, préparation,
+dispositif, protocole, liste de contrôle, non-conformité, réglages d'un
+stupéfiant suivi, options. Une note saisie et non ajoutée est ajoutée.
+Si un autre poste a modifié la même fiche, rien n'est écrasé : un avis
+le signale et la saisie reste. Une entrée nouvelle commencée (vaccin,
+résultat, ligne du registre des stupéfiants) n'est pas enregistrée :
+elle reste en place jusqu'au retour.
+
+Deux volets, fermés au départ, s'ouvrent depuis la barre du haut :
+« Liste » à gauche (le mois, les prochains rendez-vous, la liste en
+cours de recherche), « Notes » à droite (notes d'équipe, carnet du jour,
+notes personnelles et aide). Les notes d'équipe vivent dans la base
+chiffrée et voyagent avec elle vers les autres postes ; elles ne se
+lisent qu'une fois la session ouverte. Leur largeur et la vue ouverte
+sont conservées d'une session à l'autre.
 
 L'onglet **Aide** ouvre en tête, sous « Sur cette vue », la section qui
 parle de l'écran en cours — l'agenda, un dossier, la caisse… — puis
@@ -2203,6 +2229,12 @@ de l'équipe le trouvent. Pour qu'il le reste sans qu'on y pense :
   sur l'écran de verrouillage sinon. Une copie par session sur le poste.
   La copie quotidienne de la base se fait aussi chaque jour sur un poste
   qui reste allumé.
+- **Mise à jour au redémarrage** : à l'ouverture de la session, le
+  lanceur installe la dernière version sans fenêtre, puis démarre
+  BPM-Caddy. Hors ligne ou version non vérifiée, la version installée
+  démarre ; le résultat est noté dans « mise-a-jour.txt », à côté de
+  l'application. Pour ne pas mettre à jour au redémarrage : Options ›
+  Base › « Mettre à jour au redémarrage », à décocher (pour ce poste).
 
 **Sous Windows, l'installation** (« bpm-caddy-setup-windows-x86_64.exe »,
 sur la page des versions) pose le lanceur pour la personne connectée,
@@ -2321,12 +2353,10 @@ en deux clics.
 
 # Options
 
-Les **options** sont un onglet de l'espace de travail (« Options » dans
-la barre, ou « Chercher… » : « options »), à côté de ce qu'on règle et
-non plus par-dessus : on voit l'effet d'un réglage en passant d'un
-onglet à l'autre. Les pages : Officine, Mentions, Interface, Modules,
+Les **options** sont une vue du poste Officine (F4, ou « Chercher… » :
+« options »). Les pages : Officine, Mentions, Interface, Modules,
 Base, Honoraires, Règles, Locations, À propos. « Enregistrer » écrit ;
-« Fermer » ou la croix de l'onglet referment sans enregistrer.
+quitter la vue enregistre aussi ; « Fermer » referme sans enregistrer.
 
 **Modules.** Ce que ce poste charge, pour lui seul : le **réseau
 d'officines** (réseau ouvert, DHT, carte des officines, officines

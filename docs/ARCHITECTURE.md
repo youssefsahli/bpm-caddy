@@ -287,7 +287,7 @@ The one that was missing — « combien de fois un autre poste avait
   écrit le premier », the most useful number the pane carries and the
   one no other screen says — was absent for two versions for a reason
   worth keeping: every compare-and-set answers `false` in its own place,
-  121 of them, and counting at all but one would be a counter quietly
+  134 of them, and counting at all but one would be a counter quietly
   short, which is worse than one that is not there. It arrived by making those answers
   go through **one** function, `Session::stale` / `stale_note`, the only
   path to a « rechargez » notice (`stale_note_with` when it names what changed); `no_stale_notice_is_written_by_hand`
@@ -3269,6 +3269,15 @@ the user asked for opt-out) keeps it running:
   that never closes; a copy started without the launcher does not
   overwrite an entry that names it, nor one the desktop's startup
   settings disabled (`Hidden=true`). Debug builds never write the entry.
+- **Update on reboot, no window**: started with `--arriere-plan` and a
+  whole copy installed, the launcher opens no window: it installs the
+  latest release (same checks: size, executable bytes, signature), starts
+  the app, then updates itself, and writes the outcome to
+  `mise-a-jour.txt` beside the app. A failed update starts the installed
+  copy. `[bureau] maj_au_demarrage = false` (per post, Options › Base,
+  on by default: opt-out) skips the request entirely. Nothing whole
+  installed at the end: the window opens and says why. A manual launch
+  keeps its window and its update.
 - The drug map's worker repaints the window open **now**
   (`GraphWorker::screen`): it is the one egui handle the session keeps.
 - Under the sweep hooks (`BPM_CADDY_START_VIEW`, `BPM_CADDY_FUZZ`,

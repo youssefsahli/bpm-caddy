@@ -819,16 +819,7 @@ impl Launcher {
     }
 
     fn launch_app(&mut self, ctx: &egui::Context) {
-        // Ses arguments passent à l'application (`--arriere-plan`, du
-        // lancement à l'ouverture de session), et elle apprend qui l'a
-        // lancée : c'est le lanceur qu'elle inscrit au démarrage, pour que
-        // la mise à jour passe avant elle.
-        let mut command = Command::new(bin_path());
-        command.args(std::env::args_os().skip(1));
-        if let Some(me) = me() {
-            command.env("BPM_CADDY_LAUNCHER", me);
-        }
-        match command.spawn() {
+        match spawn_app() {
             Ok(_) => {
                 self.launched = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -923,10 +914,98 @@ impl eframe::App for Launcher {
     }
 }
 
+/// Démarrer l'application installée. Ses arguments passent
+/// (`--arriere-plan`, du lancement à l'ouverture de session), et elle
+/// apprend qui l'a lancée : c'est le lanceur qu'elle inscrit au
+/// démarrage, pour que la mise à jour passe avant elle.
+fn spawn_app() -> std::io::Result<std::process::Child> {
+    let mut command = Command::new(bin_path());
+    command.args(std::env::args_os().skip(1));
+    if let Some(me) = me() {
+        command.env("BPM_CADDY_LAUNCHER", me);
+    }
+    command.spawn()
+}
+
+/// L'argument de l'entrée posée à l'ouverture de session.
+const BACKGROUND: &str = "--arriere-plan";
+
+/// Lancé par l'ouverture de session — au redémarrage du poste ?
+fn at_session_open(args: &[String]) -> bool {
+    args.iter().skip(1).any(|a| a == BACKGROUND)
+}
+
+/// `[bureau] maj_au_demarrage` : coché par défaut, décoché seulement
+/// par un `false` écrit.
+fn update_at_session_open(config: Option<&str>) -> bool {
+    config
+        .and_then(|c| value_in(c, "bureau", "maj_au_demarrage"))
+        .is_none_or(|v| !v.trim().eq_ignore_ascii_case("false"))
+}
+
+/// **La mise à jour au redémarrage, sans fenêtre.** À l'ouverture de la
+/// session, personne n'attend devant l'écran : la dernière version
+/// s'installe (vérifiée comme toujours : taille, exécutable, signature),
+/// puis l'application démarre. Une mise à jour impossible — hors ligne,
+/// version non signée — démarre la version installée ; le résultat est
+/// écrit dans `mise-a-jour.txt`, à côté de l'application. Réglage
+/// décoché : aucune requête, la version installée démarre.
+///
+/// Rend `false` quand rien d'entier n'est installé à la fin : la fenêtre
+/// prend alors le relais, pour dire ce qui manque.
+fn start_at_session_open() -> bool {
+    let latest = update_at_session_open(configuration().as_deref())
+        .then(|| latest_release().map_err(|e| e.to_string()));
+    let note = match &latest {
+        Some(Ok((agent, release, tag))) => {
+            let shared = Shared {
+                phase: Mutex::new(Phase::Checking),
+                downloaded: AtomicU64::new(0),
+                total: AtomicU64::new(0),
+            };
+            Some(match update_app(&shared, agent, release, tag) {
+                Ok(note) => note,
+                Err(e) => format!("Mise à jour impossible ({e}) : version installée"),
+            })
+        }
+        Some(Err(e)) => Some(format!("Mise à jour impossible ({e}) : version installée")),
+        None => None,
+    };
+    if let Some(note) = note {
+        let _ = std::fs::write(app_dir().join("mise-a-jour.txt"), note);
+    }
+    if !installed_whole() {
+        return false;
+    }
+    if let Err(e) = spawn_app() {
+        let _ = std::fs::write(
+            app_dir().join("mise-a-jour.txt"),
+            format!("Échec du démarrage : {e}"),
+        );
+        return false;
+    }
+    // Le lanceur ensuite, l'application déjà lancée.
+    if let Some(Ok((agent, release, tag))) = &latest {
+        let said = match update_self(agent, release, tag) {
+            Ok(true) => Some(format!("Lanceur mis à jour vers {tag}")),
+            Ok(false) => None,
+            Err(e) => Some(format!("Lanceur non mis à jour vers {tag} : {e}")),
+        };
+        if let Some(said) = said {
+            let _ = std::fs::write(app_dir().join("lanceur.txt"), said);
+        }
+    }
+    true
+}
+
 fn main() -> eframe::Result {
     // Le chemin d'abord, avant que quoi que ce soit ne le renomme.
     let _ = me();
     sweep_old_launcher();
+    let args: Vec<String> = std::env::args().collect();
+    if at_session_open(&args) && installed_whole() && start_at_session_open() {
+        return Ok(());
+    }
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([420.0, 240.0])
@@ -957,6 +1036,27 @@ fn main() -> eframe::Result {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_update_at_session_open_is_on_unless_written_off() {
+        use super::*;
+        assert!(update_at_session_open(None));
+        assert!(update_at_session_open(Some("[ui]\ntheme = \"nuit\"\n")));
+        assert!(update_at_session_open(Some(
+            "[bureau]\nmaj_au_demarrage = true\n"
+        )));
+        assert!(!update_at_session_open(Some(
+            "[bureau]\nen_service = true\nmaj_au_demarrage = false\n"
+        )));
+        // Another section's key of the same name does not count.
+        assert!(update_at_session_open(Some(
+            "[ui]\nmaj_au_demarrage = false\n[bureau]\n"
+        )));
+        let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(at_session_open(&args(&["lanceur", "--arriere-plan"])));
+        assert!(!at_session_open(&args(&["lanceur"])));
+        assert!(!at_session_open(&args(&["--arriere-plan"])));
+    }
+
     #[test]
     fn the_proxy_is_found_where_the_application_finds_it() {
         use super::*;

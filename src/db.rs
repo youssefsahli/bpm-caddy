@@ -3025,7 +3025,7 @@ pub struct Dispositif {
 /// vaccine was picked from the list — that is what lets the calendar
 /// and the travel panel tick it off. A line typed by hand keeps an
 /// empty code and still reads correctly; it simply answers nothing.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Vaccination {
     pub id: i64,
     pub code: String,

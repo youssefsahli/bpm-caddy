@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.449.0] - 2026-11-02
+
+### Added
+
+- **Update on reboot.** At session opening (the entry the app sets for login), the launcher now opens no window: it installs the latest release with the usual checks (size, executable, signature), starts BPM-Caddy, then updates itself. Offline or an unsigned release, the installed copy starts; the outcome is written to `mise-a-jour.txt` beside the application. On by default, opt-out per post: Options › Base › « Mettre à jour au redémarrage » (`[bureau] maj_au_demarrage = false`), which then makes no request at all. A manual launch keeps its window and update as before.
+
+### Changed
+
+- **Five postes instead of nine permanent tabs.** The window is cut into Comptoir (F1), Entretiens (F2), Agenda et équipe (F3), Officine (F4) and Référence (F5). The first strip shows the five, then the open patient files; the second the views of the poste on screen (Comptoir: recherche, croisement, fiche de transmission; Agenda et équipe: agenda, carnet, messages; Officine: registres, caisse, qualité, campagne, ruptures, statistiques, listes, connexions, carte des officines, comptes, actualités, console, libellés, options; Référence: médicaments, carte vaccinale, cascades, explorateur, classes). A poste comes back on the view it was left on; its key pressed on the poste itself lands on its first view (F1 twice: the patient list). Up to four patient files stay open (a fifth pushes out the oldest not on screen), reached by Ctrl+1 to Ctrl+4; Ctrl+Tab and Ctrl+W now walk and close files only. A drug card no longer opens a tab: it is Référence's view. F7 (carte vaccinale) and F8 (campagne) are gone, both one click under their poste or by Ctrl+K; F6, F9, F10, F12 and Ctrl+K are unchanged. The poste keys are read after the views draw, so the planning's F2 still opens a cell. Both side panes start closed (`[ui] show_nav_on_start = false`), and a dock left open by an older version is not reopened; « Liste » and « Notes » in the toolbar open them. The printed guide, the shortcut list (F12) and the manual follow.
+- **Changing view saves what was typed.** A field that wrote when it lost the focus never lost it when its view stopped being drawn, and a form left open was dropped by the next file or card: both are now written on any change of view (poste, file, sub-view, a list row, Échap, « Retour », opening a drug card or another file), as their button or field would, compare-and-set against what the screen showed. Covered: identity form, posology, dosage, prescription date, carnet and lab lines being corrected, DDR, interview fields and nurse sheet (as before), the drug card being edited, a posology row, the class note, a rendez-vous hour or day, a planning cell, a reference-table cell, a cascade, a préparation, a dispositif, a protocol node and title, a checklist line, a non-conformité, a followed narcotic's label, threshold, unit and box size, and the options (« Fermer » still discards). A note typed and not added (file, card, carnet, agenda day) is added. A refusal is said and the typing stays. New entries begun (a vaccine, a lab result, a register line) are not written: they stay for the return. A discharge sheet pasted for conciliation stays when the same file is reopened. `Session::save_leaving`.
+
 ## [0.448.0] - 2026-10-28
 
 ### Added

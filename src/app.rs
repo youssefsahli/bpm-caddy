@@ -3396,16 +3396,148 @@ enum WorkTab {
 }
 
 impl WorkTab {
-    /// Does this tab survive a "close"? The four standing views are
-    /// fixtures of the workspace; only opened files can be dismissed.
+    /// Does this tab survive a "close"? The views are fixtures of their
+    /// poste; only patient files can be dismissed.
     fn closable(&self) -> bool {
-        // Les options aussi : un réglage se fait, puis se referme.
-        matches!(
-            self,
-            WorkTab::Patient(_) | WorkTab::Drug(_) | WorkTab::Options
-        )
+        matches!(self, WorkTab::Patient(_))
     }
 }
+
+/// The five work stations the window is cut into, on F1 to F5.
+///
+/// Every view belongs to exactly one of them. The first strip shows the
+/// five, the second the views of the one on screen: nine permanent tabs
+/// and a score of openable ones said what could be reached, never what
+/// the counter does. A poste remembers the view it was left on, so its
+/// key brings it back; pressed again, the key lands on the poste's first
+/// view.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Poste {
+    Comptoir,
+    Entretiens,
+    Agenda,
+    Officine,
+    Reference,
+}
+
+impl Poste {
+    const ALL: [Poste; 5] = [
+        Poste::Comptoir,
+        Poste::Entretiens,
+        Poste::Agenda,
+        Poste::Officine,
+        Poste::Reference,
+    ];
+
+    fn index(self) -> usize {
+        self as usize
+    }
+
+    fn key(self) -> egui::Key {
+        [
+            egui::Key::F1,
+            egui::Key::F2,
+            egui::Key::F3,
+            egui::Key::F4,
+            egui::Key::F5,
+        ][self.index()]
+    }
+
+    fn key_name(self) -> &'static str {
+        ["F1", "F2", "F3", "F4", "F5"][self.index()]
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Poste::Comptoir => tr("poste_comptoir"),
+            Poste::Entretiens => tr("poste_entretiens"),
+            Poste::Agenda => tr("poste_agenda"),
+            Poste::Officine => tr("poste_officine"),
+            Poste::Reference => tr("poste_reference"),
+        }
+    }
+
+    /// The poste a view lives under.
+    fn of(tab: &WorkTab) -> Poste {
+        match tab {
+            WorkTab::Search | WorkTab::Patient(_) | WorkTab::Ddi | WorkTab::Liaison => {
+                Poste::Comptoir
+            }
+            WorkTab::Dashboard | WorkTab::Finances => Poste::Entretiens,
+            WorkTab::Agenda | WorkTab::Carnet | WorkTab::Messages => Poste::Agenda,
+            WorkTab::Registres
+            | WorkTab::Caisse
+            | WorkTab::Qualite
+            | WorkTab::Campagne
+            | WorkTab::Ruptures
+            | WorkTab::Stats
+            | WorkTab::Checklists
+            | WorkTab::Connexions
+            | WorkTab::Officines
+            | WorkTab::Comptes
+            | WorkTab::Actualites
+            | WorkTab::Script
+            | WorkTab::UiTexts
+            | WorkTab::Options => Poste::Officine,
+            WorkTab::Drugs
+            | WorkTab::Drug(_)
+            | WorkTab::Map
+            | WorkTab::Cascades
+            | WorkTab::Explorer
+            | WorkTab::Classes => Poste::Reference,
+        }
+    }
+
+    /// The views of the second strip, in order; the first is where the
+    /// poste's key lands when pressed on the poste itself. Recettes is
+    /// not listed: it shows only once typed into Ctrl+K
+    /// ([`MainView::Finances`]).
+    fn views(self) -> &'static [WorkTab] {
+        match self {
+            Poste::Comptoir => &[WorkTab::Search, WorkTab::Ddi, WorkTab::Liaison],
+            Poste::Entretiens => &[WorkTab::Dashboard],
+            Poste::Agenda => &[WorkTab::Agenda, WorkTab::Carnet, WorkTab::Messages],
+            Poste::Officine => &[
+                WorkTab::Registres,
+                WorkTab::Caisse,
+                WorkTab::Qualite,
+                WorkTab::Campagne,
+                WorkTab::Ruptures,
+                WorkTab::Stats,
+                WorkTab::Checklists,
+                WorkTab::Connexions,
+                WorkTab::Officines,
+                WorkTab::Comptes,
+                WorkTab::Actualites,
+                WorkTab::Script,
+                WorkTab::UiTexts,
+                WorkTab::Options,
+            ],
+            Poste::Reference => &[
+                WorkTab::Drugs,
+                WorkTab::Map,
+                WorkTab::Cascades,
+                WorkTab::Explorer,
+                WorkTab::Classes,
+            ],
+        }
+    }
+
+    /// The entry of the second strip a view lights: an open file lights
+    /// the list it was opened from.
+    fn sub_of(tab: &WorkTab) -> WorkTab {
+        match tab {
+            WorkTab::Patient(_) => WorkTab::Search,
+            WorkTab::Drug(_) => WorkTab::Drugs,
+            t => t.clone(),
+        }
+    }
+}
+
+/// How many patient files stay open in the strip. A fifth pushes out the
+/// oldest one not on screen: past four, a strip of names is a list, and
+/// Ctrl+1 to Ctrl+4 reach them all.
+const OPEN_FILES: usize = 4;
 
 /// One row of the drug navigator's A–Z tree: a drawer with the number
 /// of fiches in it, or one of those fiches.
@@ -7033,12 +7165,18 @@ struct Session {
     goto_open: bool,
     goto_query: String,
     goto_selected: usize,
-    /// The workspace notebook: what the operator has opened, in the
-    /// order they opened it. The *active* tab is never stored — it is
-    /// derived from the live view each frame (see [`Session::current_tab`]),
-    /// so navigating by any other route (a dashboard row, a search
-    /// result, Escape) can never leave the strip pointing elsewhere.
+    /// The patient files open in the strip, in the order they were
+    /// opened, at most [`OPEN_FILES`]. The *active* view is never stored —
+    /// it is derived from the live view each frame (see
+    /// [`Session::current_tab`]), so navigating by any other route (a
+    /// dashboard row, a search result, Escape) can never leave the strip
+    /// pointing elsewhere.
     tabs: Vec<WorkTab>,
+    /// The view each poste was last left on, by [`Poste::index`].
+    poste_last: [Option<WorkTab>; 5],
+    /// The view on screen at the last frame: a change by any route
+    /// writes what was typed on the view left ([`Session::save_leaving`]).
+    last_tab: Option<WorkTab>,
     error: Option<String>,
 }
 
@@ -7750,27 +7888,11 @@ impl Session {
             goto_open: false,
             goto_query: String::new(),
             goto_selected: 0,
-            // The standing views are always in the strip, in a
-            // fixed order, so their position never moves under the
-            // pointer; opened files are appended after them.
-            tabs: vec![
-                WorkTab::Dashboard,
-                WorkTab::Search,
-                WorkTab::Drugs,
-                WorkTab::Agenda,
-                WorkTab::Carnet,
-                WorkTab::Map,
-                // La campagne de l'hiver : un onglet permanent, parce
-                // que d'octobre à février c'est l'écran qu'on rouvre
-                // entre deux injections.
-                WorkTab::Campagne,
-                WorkTab::Registres,
-                // Les récepteurs et cascades : sans onglet, la vue
-                // n'avait que des portes qu'il fallait connaître — le
-                // bouton de la base médicaments, la boîte « Aller à… »,
-                // la fiche d'une molécule — et on la cherchait.
-                WorkTab::Cascades,
-            ],
+            // The five postes are fixed and drawn from `Poste::ALL`;
+            // only patient files are kept here.
+            tabs: Vec::new(),
+            poste_last: Default::default(),
+            last_tab: None,
             error: None,
         };
         // Une ouverture, comptée une fois, ici : c'est le seul endroit
@@ -7851,13 +7973,61 @@ impl Session {
         }
     }
 
-    /// Record the live view in the notebook, appending a tab for a file
-    /// opened for the first time. Called once per frame: whatever route
-    /// the operator took to get here, the strip ends up showing it.
+    /// Record the live view: the poste remembers it, and a patient file
+    /// opened for the first time gets its tab. Called once per frame:
+    /// whatever route the operator took to get here, the strip ends up
+    /// showing it.
     fn note_tab(&mut self) {
-        let cur = self.current_tab();
-        if !self.tabs.contains(&cur) {
-            self.tabs.push(cur);
+        let mut cur = self.current_tab();
+        // Left by a route that did not go through `activate_tab` (a row
+        // of a list, Échap, a button): what was typed there is written.
+        if let Some(from) = self.last_tab.clone().filter(|t| *t != cur) {
+            self.save_leaving(&from);
+            cur = self.current_tab();
+        }
+        self.last_tab = Some(cur.clone());
+        self.poste_last[Poste::of(&cur).index()] = Some(cur.clone());
+        if matches!(cur, WorkTab::Patient(_)) && !self.tabs.contains(&cur) {
+            self.tabs.push(cur.clone());
+            // Past the cap, the oldest file not on screen goes.
+            while self.tabs.len() > OPEN_FILES {
+                let Some(i) = self.tabs.iter().position(|t| *t != cur) else {
+                    break;
+                };
+                self.tabs.remove(i);
+            }
+        }
+    }
+
+    /// Write what was typed on the open file, before it closes.
+    fn leave_file(&mut self) {
+        match self.viewing.as_ref().map(|p| p.id) {
+            Some(id) => self.save_patient_edits(id),
+            None => self.flush_date_edits(),
+        }
+    }
+
+    /// The poste on screen.
+    fn poste(&self) -> Poste {
+        Poste::of(&self.current_tab())
+    }
+
+    /// Go to `poste`: back to the view it was left on, or to its first
+    /// view when it is already on screen (F1 twice: the patient list).
+    fn goto_poste(&mut self, poste: Poste) {
+        let home = poste.views()[0].clone();
+        let to = if self.poste() == poste {
+            home
+        } else {
+            match self.poste_last[poste.index()].clone() {
+                // A file closed since, or a module unloaded since.
+                Some(WorkTab::Patient(id)) if !self.tabs.contains(&WorkTab::Patient(id)) => home,
+                Some(t) if tab_loaded(&t) => t,
+                _ => home,
+            }
+        };
+        if to != self.current_tab() {
+            self.activate_tab(&to);
         }
     }
 
@@ -7869,7 +8039,8 @@ impl Session {
         if !tab_loaded(tab) {
             return;
         }
-        self.flush_date_edits();
+        let from = self.current_tab();
+        self.save_leaving(&from);
         self.show_amounts = false;
         match tab {
             WorkTab::Dashboard => {
@@ -8024,16 +8195,606 @@ impl Session {
         }
     }
 
-    /// Move `delta` tabs along the strip (Ctrl+Tab and its shifted twin).
+    /// Write what was typed on the view being left, before it goes.
+    ///
+    /// A field that writes when it loses the focus never loses it when
+    /// its view stops being drawn, and a form left open was dropped by
+    /// the next file or card opened: either way, what was typed went
+    /// with the view. Every write here is the one its button or its
+    /// field would make, compared against what the screen showed; a
+    /// refusal is said and the typing stays. Drafts of new entries
+    /// (a vaccine being entered, a lab result, a register line) are not
+    /// written: they stay where they were, for the return.
+    fn save_leaving(&mut self, from: &WorkTab) {
+        match from {
+            WorkTab::Patient(id) => self.save_patient_edits(*id),
+            WorkTab::Drug(id) => self.save_drug_edits(*id),
+            _ => self.flush_date_edits(),
+        }
+        self.save_open_edits();
+    }
+
+    /// The file's own typing: interview fields, nurse sheet, identity
+    /// form, posologies, dosage, prescription date, carnet and lab lines
+    /// being corrected, the DDR, and a note typed but not added.
+    fn save_patient_edits(&mut self, id: i64) {
+        let Some(patient) = self.viewing.clone().filter(|p| p.id == id) else {
+            return;
+        };
+        self.flush_date_edits();
+        // Posologies: each line whose field differs from what the base gave.
+        let doses: Vec<(i64, String, String)> = self
+            .patient_doses
+            .iter()
+            .filter_map(|(drug, typed)| {
+                let base = self.dose_base_of(*drug);
+                (typed.trim() != base.trim()).then(|| (*drug, typed.clone(), base.to_owned()))
+            })
+            .collect();
+        for (drug, typed, base) in doses {
+            match self.db.set_patient_posology(id, drug, &typed, &base) {
+                Ok(true) => {}
+                Ok(false) => self.stale("concil_stale"),
+                Err(e) => self.error = Some(e),
+            }
+        }
+        // The dosage typed on the open line.
+        if let Some(drug) = self.treat_dosing {
+            let typed = self.strength_edit.trim().to_owned();
+            let shown = self.strength_of(drug).to_owned();
+            if !typed.is_empty() && typed != shown.trim() {
+                match self.db.set_patient_dosage(id, drug, &typed, &shown) {
+                    Ok(true) => self.strength_edit.clear(),
+                    Ok(false) => self.stale("concil_stale"),
+                    Err(e) => self.error = Some(e),
+                }
+            }
+            // The prescription date typed on the same line.
+            if let Some((seen, text)) = self.script_date_edit.clone().filter(|(d, _)| *d == drug) {
+                let was = self.script_of(seen);
+                let mut next = was.clone();
+                let typed = text.trim();
+                if typed.is_empty() {
+                    next.prescribed_on.clear();
+                } else if let Ok(iso) = db::parse_event_date(typed, &self.today) {
+                    next.prescribed_on = iso;
+                }
+                if next != was {
+                    match self.db.set_patient_prescription(id, seen, &next, &was) {
+                        Ok(true) => self.script_date_edit = None,
+                        Ok(false) => self.stale("concil_stale"),
+                        Err(e) => self.error = Some(e),
+                    }
+                }
+            }
+        }
+        self.reload_treatments(id);
+        // The DDR typed in the vaccination panel.
+        if let Some((seen, typed)) = self.vacc_ddr_text.clone().filter(|(p, _)| *p == id) {
+            let iso = if typed.trim().is_empty() {
+                Ok(String::new())
+            } else {
+                db::parse_event_date(&typed, &self.today)
+            };
+            match iso {
+                Ok(iso) if iso != patient.pregnancy_ddr => {
+                    match self.db.set_patient_ddr(seen, &iso, &patient.pregnancy_ddr) {
+                        Ok(applied) => {
+                            self.vacc_ddr_text = None;
+                            if !applied {
+                                self.stale("vacc_ddr_stale");
+                            }
+                            if let Ok(list) = self.db.patients() {
+                                self.set_patients(list);
+                                self.resync_viewing();
+                            }
+                            self.refresh_vacc_due();
+                        }
+                        Err(e) => self.error = Some(e),
+                    }
+                }
+                Ok(_) => {}
+                Err(e) => self.error = Some(e),
+            }
+        }
+        if self.vacc_edit.is_some() {
+            App::vacc_save_edit(self, id, true);
+        }
+        if self.bio_edit.is_some() {
+            App::bio_write_edit(self, id, true);
+        }
+        if self
+            .edit_patient
+            .as_ref()
+            .is_some_and(App::patient_form_changed)
+        {
+            if let Some(p) = self.viewing.clone().filter(|p| p.id == id) {
+                App::patient_save_form(self, &p);
+            }
+        }
+        // A note typed and not added: added, as « Ajouter » would.
+        let body = self.note_text.trim().to_owned();
+        if !body.is_empty() {
+            match self
+                .db
+                .add_note(NoteSubject::Patient, id, &self.operator, &body)
+            {
+                Ok(_) => {
+                    self.note_text.clear();
+                    self.patient_notes = self
+                        .db
+                        .notes_for(NoteSubject::Patient, id)
+                        .unwrap_or_default();
+                    self.refresh_fil();
+                }
+                Err(e) => self.error = Some(e),
+            }
+        }
+    }
+
+    /// The card's own typing: the card form being edited, a posology
+    /// row being corrected, the class note, and a note typed but not
+    /// added.
+    fn save_drug_edits(&mut self, id: i64) {
+        if self.drug_form.as_ref().is_none_or(|d| d.id != id) {
+            return;
+        }
+        if !self.drug_reading && self.drug_form != self.drug_base {
+            self.save_drug_form();
+        }
+        let changed = self.poso_edit.as_ref().is_some_and(|edited| {
+            self.posologies
+                .iter()
+                .find(|p| p.id == edited.id)
+                .is_none_or(|p| p != edited)
+        });
+        if changed {
+            self.save_poso_edit();
+        }
+        // The class note, in its window over the card.
+        if let Some(buffer) = self.class_note_edit.clone() {
+            let class = self
+                .drug_form
+                .as_ref()
+                .map(|d| d.class.trim().to_owned())
+                .unwrap_or_default();
+            if !class.is_empty() && buffer.trim() != self.class_note.trim() {
+                let expected = self.class_note.clone();
+                match self.db.set_class_note(&class, &buffer, &expected) {
+                    Ok(true) => {
+                        self.class_note = buffer.trim().to_owned();
+                        self.class_note_edit = None;
+                    }
+                    Ok(false) => {
+                        self.class_note = self.db.class_note(&class).unwrap_or_default();
+                        self.stale("drug_class_stale");
+                    }
+                    Err(e) => self.error = Some(e),
+                }
+            }
+        }
+        let body = self.note_text.trim().to_owned();
+        if !body.is_empty() {
+            match self
+                .db
+                .add_note(NoteSubject::Drug, id, &self.operator, &body)
+            {
+                Ok(_) => {
+                    self.note_text.clear();
+                    self.drug_notes = self.db.notes_for(NoteSubject::Drug, id).unwrap_or_default();
+                }
+                Err(e) => self.error = Some(e),
+            }
+        }
+    }
+
+    /// « Enregistrer » on the card form.
+    fn save_drug_form(&mut self) {
+        let Some(form) = self.drug_form.clone() else {
+            return;
+        };
+        if form.name.trim().is_empty() {
+            self.error = Some(tr("drug_name_required").to_owned());
+        } else if let Some(base) = self.drug_base.clone() {
+            match self.db.update_drug_by(&form, &base, &self.operator, false) {
+                Ok(true) => {
+                    self.reload_card_edits();
+                    self.error = None;
+                    self.drug_base = Some(form);
+                    self.drug_reading = true;
+                    if let Ok(list) = self.db.drugs() {
+                        self.set_drugs(list);
+                    }
+                    self.reread_open_file();
+                }
+                Ok(false) => {
+                    // Reload the fresh card as the new baseline,
+                    // keep the typed values so nothing is lost.
+                    if let Ok(list) = self.db.drugs() {
+                        self.set_drugs(list);
+                        self.drug_base = self.drugs.iter().find(|d| d.id == form.id).cloned();
+                    }
+                    self.stale("drug_stale");
+                }
+                Err(e) => self.error = Some(e),
+            }
+        }
+    }
+
+    /// « Enregistrer » on a posology row being corrected.
+    fn save_poso_edit(&mut self) {
+        if let Some(edited) = self.poso_edit.clone() {
+            let expected = self
+                .posologies
+                .iter()
+                .find(|p| p.id == edited.id)
+                .cloned()
+                .unwrap_or_default();
+            let drug_id = self.drug_form.as_ref().map(|d| d.id).unwrap_or(0);
+            match self.db.update_posologie(edited.id, &edited, &expected) {
+                Ok(true) => self.poso_edit = None,
+                Ok(false) => self.stale("drug_stale"),
+                Err(e) => self.error = Some(e),
+            }
+            self.posologies = self.db.posologies(drug_id).unwrap_or_default();
+            self.calc_poso = None;
+            self.drugs_rev = self.drugs_rev.wrapping_add(1);
+            self.reread_open_file();
+        }
+    }
+
+    /// Typing that belongs to no file: appointment time and day, a
+    /// planning cell, a table cell, the registers' and references'
+    /// editors, and the day's notes.
+    fn save_open_edits(&mut self) {
+        // The hour and the day of a rendez-vous, typed in the agenda.
+        if let Some((id, typed)) = self.rdv_time_edit.clone() {
+            match self
+                .appointments
+                .iter()
+                .find(|a| a.id == id)
+                .map(|a| a.time.clone())
+            {
+                Some(shown) if typed.trim() != shown.trim() => {
+                    self.commit_rdv_time(id, &typed, &shown)
+                }
+                _ => self.rdv_time_edit = None,
+            }
+        }
+        if let Some((id, typed)) = self.rdv_move_edit.clone() {
+            match self
+                .appointments
+                .iter()
+                .find(|a| a.id == id)
+                .map(|a| a.date.clone())
+            {
+                Some(shown) if !typed.trim().is_empty() => self.commit_rdv_move(id, &typed, &shown),
+                _ => self.rdv_move_edit = None,
+            }
+        }
+        // A planning cell being typed.
+        if let Some(t) = self.planning_typing.take() {
+            if t.text.trim() != t.was.trim()
+                && !App::planning_write_typed(self, &t.who, &t.day, &t.text)
+            {
+                self.planning_typing = Some(t);
+            }
+        }
+        // A reference-table cell being corrected.
+        if let Some((r, c, value)) = self.table_edit.clone() {
+            let t =
+                &crate::tables::TABLES[self.table_selected.min(crate::tables::TABLES.len() - 1)];
+            let shipped = t
+                .rows
+                .get(r)
+                .and_then(|row| row.get(c))
+                .copied()
+                .unwrap_or("");
+            let shown = self
+                .table_cells
+                .get(&(r, c))
+                .cloned()
+                .unwrap_or_else(|| shipped.to_owned());
+            if value.trim() != shown.trim() {
+                self.commit_table_cell(r, c, &value);
+            } else {
+                self.table_edit = None;
+            }
+        }
+        // The cascade being edited.
+        if let (Some((typed, base)), Some(id)) = (
+            self.cascade_edit.clone(),
+            self.cascade_read.as_ref().map(|r| r.id),
+        ) {
+            if typed != base {
+                match self.db.update_cascade(id, &typed, &base) {
+                    Ok(true) => {
+                        self.cascade_edit = Some((typed.clone(), typed));
+                        self.cascade_conflict = false;
+                        self.reload_cascades();
+                    }
+                    Ok(false) => {
+                        self.cascade_conflict = true;
+                        self.stale("cascades_stale");
+                        self.reload_cascades();
+                    }
+                    Err(e) => self.error = Some(e),
+                }
+            }
+        }
+        // A préparation or a dispositif being corrected.
+        if let (Some(edited), Some(base)) = (self.codex_edit.clone(), self.codex_base.clone()) {
+            if edited != base && !edited.name.trim().is_empty() {
+                match self.db.update_preparation(&edited, &base) {
+                    Ok(true) => {
+                        self.codex_edit = None;
+                        self.codex_base = None;
+                        self.reload_codex();
+                    }
+                    Ok(false) => self.stale("codex_stale"),
+                    Err(e) => self.error = Some(e),
+                }
+            }
+        }
+        if let (Some(edited), Some(base)) = (self.dispo_edit.clone(), self.dispo_base.clone()) {
+            if edited != base && !edited.name.trim().is_empty() {
+                match self.db.update_dispositif(&edited, &base) {
+                    Ok(true) => {
+                        self.dispo_edit = None;
+                        self.dispo_base = None;
+                        self.reload_dispositifs();
+                    }
+                    Ok(false) => self.stale("dispo_stale"),
+                    Err(e) => self.error = Some(e),
+                }
+            }
+        }
+        // A protocol: the node being written, and its title.
+        if let Some(proto) = self.protocol_open.clone() {
+            if let Some((id, kind, text)) = self.protocol_node_edit.clone() {
+                let shown = self
+                    .protocol_nodes
+                    .iter()
+                    .find(|n| n.id == id)
+                    .map(|n| n.text.clone());
+                let typed = !text.trim().is_empty();
+                if let Some(shown) = shown.filter(|w| typed && w.trim() != text.trim()) {
+                    match self.db.update_protocol_node(id, kind, text.trim(), &shown) {
+                        Ok(true) => self.protocol_node_edit = None,
+                        Ok(false) => self.stale("proto_stale"),
+                        Err(e) => self.error = Some(e),
+                    }
+                    self.protocol_nodes = self.db.protocol_nodes(proto.id).unwrap_or_default();
+                }
+            }
+            if let Some((title, subject)) = self.protocol_header.clone() {
+                if !title.trim().is_empty()
+                    && (title.trim() != proto.title || subject.trim() != proto.subject)
+                {
+                    match self.db.rename_protocol(
+                        proto.id,
+                        title.trim(),
+                        subject.trim(),
+                        &proto.title,
+                    ) {
+                        Ok(applied) => {
+                            if !applied {
+                                self.stale("proto_stale");
+                            }
+                            self.reload_protocols();
+                            self.protocol_open =
+                                self.protocols.iter().find(|p| p.id == proto.id).cloned();
+                            self.protocol_header = None;
+                        }
+                        Err(e) => self.error = Some(e),
+                    }
+                }
+            }
+        }
+        // A checklist line being corrected.
+        if let Some((id, text, note)) = self.checklist_edit.clone() {
+            let shown = self.checklist_items.iter().find(|i| i.id == id).cloned();
+            if let Some(item) = shown {
+                if !text.trim().is_empty()
+                    && (text.trim() != item.text.trim() || note.trim() != item.note.trim())
+                {
+                    match self.db.update_checklist_item(
+                        id,
+                        text.trim(),
+                        note.trim(),
+                        &item.text,
+                        &item.note,
+                    ) {
+                        Ok(true) => self.checklist_edit = None,
+                        Ok(false) => self.stale("listes_stale"),
+                        Err(e) => self.error = Some(e),
+                    }
+                    self.reload_checklist_items();
+                }
+            }
+        }
+        // A non-conformité being corrected (a new one is a draft: kept).
+        let qual = self
+            .qual
+            .edit
+            .as_ref()
+            .filter(|e| e.draft.id != 0 && e.dirty())
+            .map(|e| (e.draft.clone(), e.shown.clone(), e.date.clone()));
+        if let Some((mut draft, shown, date)) = qual {
+            let year = self.db.current_year();
+            match db::parse_french_date(&date, year, db::YearHint::Past) {
+                Ok(iso) => {
+                    draft.declared_on = iso;
+                    draft.title = draft.title.trim().to_owned();
+                    match self.db.update_nonconformite(&draft, &shown) {
+                        Ok(true) => {
+                            self.reload_qualite();
+                            let id = draft.id;
+                            let q = &mut self.qual;
+                            q.edit = q.ncs.iter().find(|n| n.id == id).map(NcEdit::of);
+                        }
+                        Ok(false) => self.stale("qual_stale"),
+                        Err(e) => self.error = Some(e),
+                    }
+                }
+                Err(e) => self.error = Some(e),
+            }
+        }
+        // The open narcotic's label, threshold, unit and box size. The
+        // product row only: a register line is never written here.
+        if let Some(e) = self.stup_edits.clone() {
+            let shown = self
+                .stup_summary
+                .iter()
+                .find(|s| s.product.id == e.id)
+                .map(|s| s.product.clone());
+            if let Some(was) = shown {
+                let mut new = was.clone();
+                if !e.label.trim().is_empty() {
+                    new.label = e.label.trim().to_owned();
+                }
+                new.threshold = crate::codex::parse_amount(&e.threshold).map_or(0.0, |(v, _)| v);
+                new.unit = e.unit.trim().to_owned();
+                new.per_box = crate::codex::parse_amount(&e.per_box).map_or(0.0, |(v, _)| v);
+                let changed = new.label != was.label
+                    || new.unit != was.unit
+                    || (new.threshold - was.threshold).abs() > 1e-9
+                    || (new.per_box - was.per_box).abs() > 1e-9;
+                if changed {
+                    self.stup_edits = None;
+                    let operator = self.operator.clone();
+                    match self.db.update_stupefiant(&new, &was, &operator) {
+                        Ok(false) => {
+                            let said = self.stale_note("stup_stale");
+                            self.stup_note = Some((true, said));
+                        }
+                        Ok(true) => self.stup_note = None,
+                        Err(err) => self.stup_note = Some((true, err)),
+                    }
+                    self.reload_stup();
+                }
+            }
+        }
+        // The carnet's note and the agenda day's note, typed and not
+        // added: added, as « Ajouter » would.
+        let body = self.trans_note_text.trim().to_owned();
+        if !body.is_empty() {
+            match self
+                .db
+                .add_note(NoteSubject::Transmission, 0, &self.operator, &body)
+            {
+                Ok(_) => {
+                    self.trans_note_text.clear();
+                    self.load_transmissions();
+                }
+                Err(e) => self.error = Some(e),
+            }
+        }
+        let body = self.day_note_text.trim().to_owned();
+        if !body.is_empty() && !self.agenda_day.is_empty() {
+            let day = db::day_subject_id(&self.agenda_day);
+            match self
+                .db
+                .add_note(NoteSubject::Day, day, &self.operator, &body)
+            {
+                Ok(_) => {
+                    self.day_note_text.clear();
+                    self.load_day();
+                }
+                Err(e) => self.error = Some(e),
+            }
+        }
+    }
+
+    /// Write the hour typed for a rendez-vous.
+    fn commit_rdv_time(&mut self, id: i64, typed: &str, expected: &str) {
+        // An empty field clears the hour; anything unreadable is
+        // refused, leaving the hour as it was.
+        let time = if typed.trim().is_empty() {
+            Some(String::new())
+        } else {
+            db::parse_hour(typed)
+        };
+        if let Some(time) = time {
+            match self.db.set_scheduled_time(id, &time, expected) {
+                Ok(true) => {}
+                Ok(false) => self.stale("itv_stale"),
+                Err(e) => self.error = Some(e),
+            }
+            self.refresh_dashboard();
+        }
+        self.rdv_time_edit = None;
+    }
+
+    /// Move a rendez-vous to the day typed.
+    fn commit_rdv_move(&mut self, id: i64, typed: &str, expected: &str) {
+        let year = self.db.current_year();
+        match db::parse_french_date(typed, year, db::YearHint::Future) {
+            Ok(iso) => match self.db.set_scheduled_date(id, Some(&iso), Some(expected)) {
+                Ok(true) => {
+                    self.refresh_dashboard();
+                    self.load_day();
+                }
+                Ok(false) => self.stale("itv_stale"),
+                Err(e) => self.error = Some(e),
+            },
+            Err(e) => self.error = Some(e),
+        }
+        self.rdv_move_edit = None;
+    }
+
+    /// Write a reference-table cell of the table on screen.
+    fn commit_table_cell(&mut self, r: usize, c: usize, value: &str) {
+        let t = &crate::tables::TABLES[self.table_selected.min(crate::tables::TABLES.len() - 1)];
+        let shipped = t
+            .rows
+            .get(r)
+            .and_then(|row| row.get(c))
+            .copied()
+            .unwrap_or("");
+        let previous = self
+            .table_cells
+            .get(&(r, c))
+            .cloned()
+            .unwrap_or_else(|| shipped.to_owned());
+        match self
+            .db
+            .set_table_cell(t.short, r, c, value.trim(), shipped, &previous)
+        {
+            Ok(true) => self.table_undo = Some((r, c, previous, value.trim().to_owned())),
+            Ok(false) => self.stale("tables_cell_stale"),
+            Err(e) => self.error = Some(e),
+        }
+        self.table_cells = self.db.table_cells(t.short).unwrap_or_default();
+        self.table_rev = self.table_rev.wrapping_add(1);
+        self.table_edit = None;
+    }
+
+    /// Move `delta` files along the open patient files (Ctrl+Tab and its
+    /// shifted twin). From a view that is no file, forward lands on the
+    /// first file and back on the last.
     fn cycle_tab(&mut self, delta: i64) {
         if self.tabs.is_empty() {
             return;
         }
         let cur = self.current_tab();
-        let at = self.tabs.iter().position(|t| *t == cur).unwrap_or(0) as i64;
         let n = self.tabs.len() as i64;
-        let next = self.tabs[(at + delta).rem_euclid(n) as usize].clone();
+        let to = match self.tabs.iter().position(|t| *t == cur) {
+            Some(at) => (at as i64 + delta).rem_euclid(n),
+            None if delta > 0 => 0,
+            None => n - 1,
+        };
+        let next = self.tabs[to as usize].clone();
         self.activate_tab(&next);
+    }
+
+    /// Ctrl+1 to Ctrl+4: the open file at `slot`, counted from zero.
+    fn open_file_slot(&mut self, slot: usize) {
+        if let Some(t) = self.tabs.get(slot).cloned() {
+            if t != self.current_tab() {
+                self.activate_tab(&t);
+            }
+        }
     }
 
     /// Everything the jump box can reach, ranked against `goto_query`.
@@ -8909,6 +9670,8 @@ impl Session {
     /// Land in the drug view with none of its three panels open: the
     /// caller then opens the one it wants.
     fn enter_drug_panel(&mut self) {
+        let from = self.current_tab();
+        self.save_leaving(&from);
         self.view = MainView::Drugs;
         self.drug_form = None;
         self.drug_base = None;
@@ -15422,6 +16185,9 @@ impl Session {
     /// Open a drug card: load its baseline for CAS and the patients
     /// currently on it (recall / alert lookup).
     fn open_drug_card(&mut self, d: Drug) {
+        // The card or file being left first: its note box is this one.
+        let from = self.current_tab();
+        self.save_leaving(&from);
         self.note(crate::telemetry::Signal::Card);
         self.close_drug_lists();
         self.drug_patients = self.db.patients_for_drug(d.id).unwrap_or_default();
@@ -15915,6 +16681,11 @@ impl Session {
 
     fn open_patient(&mut self, patient: Patient) {
         let previous = self.viewing.as_ref().map(|v| v.id);
+        // What was typed on the file being left — or on this one, reopened
+        // from another poste — is written before the file is reread.
+        if let Some(prev) = previous {
+            self.save_patient_edits(prev);
+        }
         self.note(crate::telemetry::Signal::File);
         // Et la trace. Ici parce que c'est la porte unique : une
         // vingtaine d'endroits ouvrent un dossier, et tous passent par
@@ -15955,9 +16726,12 @@ impl Session {
         }
         self.rule_block = None;
         // A discharge sheet belongs to the file it was pasted on: it
-        // must never be read against the next patient's ordonnance.
-        self.concil_sheet.clear();
-        self.concil_key = None;
+        // must never be read against the next patient's ordonnance. The
+        // same file reopened keeps it.
+        if previous != Some(patient.id) {
+            self.concil_sheet.clear();
+            self.concil_key = None;
+        }
         self.concil_adopt_confirm = false;
         // `load_carnet` finit par reconstruire le fil, qui lit les
         // caches remplis au-dessus de lui : il est donc appelé en
@@ -21868,6 +22642,9 @@ impl OptionsPage {
 
 struct OptionsEditor {
     page: OptionsPage,
+    /// What the editor showed once the officine's settings were read:
+    /// leaving the view saves only when something differs from it.
+    opened_as: Option<String>,
     /// Les réglages de l'officine ont été relus de la base.
     officine_seeded: bool,
     /// La conservation du journal telle que la base la tenait à
@@ -21925,9 +22702,17 @@ impl OptionsEditor {
     /// La fenêtre des options, ouverte sur une page, avec ce que la
     /// configuration porte. Le bouton de la barre et la boîte « Aller à… »
     /// l'ouvrent de la même façon.
+    /// The settings as typed, in one string to compare.
+    fn snapshot(&self) -> Option<String> {
+        toml::to_string(&self.cfg)
+            .ok()
+            .map(|t| format!("{t}\n{}", self.db_path_text.trim()))
+    }
+
     fn open(config: &Config, page: OptionsPage) -> Self {
         Self {
             officine_seeded: false,
+            opened_as: None,
             keep_seen: None,
             shared_seen: std::collections::HashMap::new(),
             page,
@@ -22039,24 +22824,23 @@ fn restore_view(session: &mut Session, key: &str, caisse_expected: bool) {
 /// aussi.
 ///
 /// Une clé vide ouvre un groupe.
-pub fn key_rows() -> [(&'static str, &'static str); 29] {
+pub fn key_rows() -> [(&'static str, &'static str); 28] {
     [
         ("", tr("keys_group_workspace")),
         // Pas l'infobulle du bouton : elle dit sa touche entre
         // parenthèses, et la touche est déjà dans la colonne d'à côté.
-        ("F1", tr("keys_docs")),
         ("F6", tr("keys_nav")),
         ("F12", tr("keys_this")),
+        ("Ctrl+1 … 4", tr("keys_open_file")),
         ("Ctrl+Tab", tr("keys_next_tab")),
         ("Ctrl+Shift+Tab", tr("keys_prev_tab")),
         ("Ctrl+W", tr("keys_close_tab")),
         ("", tr("keys_group_views")),
-        ("F2", tr("tab_dashboard")),
-        ("F3", tr("tab_drugs")),
-        ("F4", tr("tab_agenda")),
-        ("F5", tr("tab_carnet")),
-        ("F7", tr("tab_map")),
-        ("F8", tr("tab_campagne")),
+        ("F1", tr("poste_comptoir")),
+        ("F2", tr("poste_entretiens")),
+        ("F3", tr("poste_agenda")),
+        ("F4", tr("poste_officine")),
+        ("F5", tr("poste_reference")),
         ("F9", tr("keys_companion")),
         ("F10", tr("couv_title")),
         ("Ctrl+K", tr("keys_goto")),
@@ -22153,6 +22937,7 @@ impl App {
         {
             editor.cfg.audit.keep_days = days;
         }
+        editor.opened_as = editor.snapshot();
     }
 
     // Not `Default`: building the application reads config.toml and the
@@ -22195,9 +22980,11 @@ impl App {
         // The shape the post was last left in wins over the start-up
         // flags; the flags are what a first launch has to go on.
         let layout = crate::config::Layout::load();
-        let show_docs = layout.docs_open.unwrap_or(config.ui.show_docs_on_start)
+        let show_docs = layout
+            .docs_were_open()
+            .unwrap_or(config.ui.show_docs_on_start)
             || std::env::var("BPM_CADDY_START_VIEW").as_deref() == Ok("aide");
-        let show_nav = layout.nav_open.unwrap_or(config.ui.show_nav_on_start);
+        let show_nav = layout.nav_was_open().unwrap_or(config.ui.show_nav_on_start);
 
         // Silent unlock when the OS credential manager holds the password.
         // Un `config.toml` illisible est dit à l'écran de verrouillage, et
@@ -24393,6 +25180,7 @@ impl App {
                 parked: false,
                 tabbed: false,
                 officine_seeded: false,
+                opened_as: None,
                 keep_seen: None,
                 shared_seen: std::collections::HashMap::new(),
                 page: match start_view.as_str() {
@@ -27183,7 +27971,7 @@ impl App {
         } else if focus_search && show_nav {
             self.focus_nav = true;
         } else if focus_search {
-            session.flush_date_edits();
+            session.leave_file();
             session.view = MainView::Search;
             session.viewing = None;
             session.show_amounts = false;
@@ -27811,7 +28599,7 @@ impl App {
             } else if session.ordonnance.is_some() {
                 session.ordonnance = None;
             } else {
-                session.flush_date_edits();
+                session.leave_file();
                 session.viewing = None;
                 return;
             }
@@ -31750,66 +32538,7 @@ impl App {
             session.vacc_edit_date.clear();
         }
         if save_edit {
-            if let Some(mut line) = session.vacc_edit.clone() {
-                let parsed = if session.vacc_edit_date.trim().is_empty() {
-                    Ok(String::new())
-                } else {
-                    Self::parse_carnet_date(&session.vacc_edit_date, &today)
-                };
-                match parsed {
-                    Ok(iso) => {
-                        line.given_on = iso;
-                        // Le nom corrigé emporte son code : « Grippe »
-                        // corrigé en « ROR » gardait le code de la grippe.
-                        line.label = line.label.trim().to_owned();
-                        // **Seulement si le nom a changé** : une ligne
-                        // planifiée porte le libellé du calendrier
-                        // (« dTcaP — rappel »), pas celui du catalogue, et
-                        // la recalculer à chaque correction lui retirait
-                        // son code — la dose restait « due ».
-                        // Ou s'il manque : une ligne inscrite sans code par
-                        // une version d'avant le retrouve en se corrigeant.
-                        if line.label != session.vacc_edit_base.label.trim() || line.code.is_empty()
-                        {
-                            line.code = Self::catalogue_code(
-                                &session.vacc_catalogue,
-                                &line.code,
-                                &line.label,
-                            );
-                        }
-                        let base = session.vacc_edit_base.clone();
-                        match session.db.update_vaccination(line.id, &line, &base) {
-                            Ok(true) => {
-                                session.error = None;
-                                // La rangée du bas redevient celle où
-                                // l'on écrit : la laisser en correction
-                                // après un enregistrement réussi, c'est
-                                // la reprendre pour ajouter la suivante.
-                                session.vacc_edit = None;
-                                session.vacc_edit_date.clear();
-                                session.load_carnet(patient.id);
-                            }
-                            // Refusée : la correction tapée reste, et
-                            // se compare désormais à la ligne relue —
-                            // `load_carnet` la vidait.
-                            Ok(false) => {
-                                session.stale("vacc_stale");
-                                session.vaccinations =
-                                    session.db.vaccinations(patient.id).unwrap_or_default();
-                                match session.vaccinations.iter().find(|v| v.id == line.id) {
-                                    Some(fresh) => session.vacc_edit_base = fresh.clone(),
-                                    None => {
-                                        session.vacc_edit = None;
-                                        session.vacc_edit_date.clear();
-                                    }
-                                }
-                            }
-                            Err(e) => session.error = Some(e),
-                        }
-                    }
-                    Err(e) => session.error = Some(e),
-                }
-            }
+            Self::vacc_save_edit(session, patient.id, false);
         }
         if let Some(gone) = delete {
             match session.db.delete_vaccination(&gone) {
@@ -35196,7 +35925,80 @@ impl App {
 
     /// Write back a corrected result. Compare-and-set on the value and
     /// the date the row was displayed with.
+    /// « Enregistrer » on a carnet line being corrected; on leaving the
+    /// file, only when something was changed.
+    fn vacc_save_edit(session: &mut Session, patient_id: i64, only_if_changed: bool) {
+        if let Some(mut line) = session.vacc_edit.clone() {
+            let parsed = if session.vacc_edit_date.trim().is_empty() {
+                Ok(String::new())
+            } else {
+                Self::parse_carnet_date(&session.vacc_edit_date, &session.today)
+            };
+            match parsed {
+                Ok(iso) => {
+                    line.given_on = iso;
+                    // Le nom corrigé emporte son code : « Grippe »
+                    // corrigé en « ROR » gardait le code de la grippe.
+                    line.label = line.label.trim().to_owned();
+                    // **Seulement si le nom a changé** : une ligne
+                    // planifiée porte le libellé du calendrier
+                    // (« dTcaP — rappel »), pas celui du catalogue, et
+                    // la recalculer à chaque correction lui retirait
+                    // son code — la dose restait « due ».
+                    // Ou s'il manque : une ligne inscrite sans code par
+                    // une version d'avant le retrouve en se corrigeant.
+                    if line.label != session.vacc_edit_base.label.trim() || line.code.is_empty() {
+                        line.code =
+                            Self::catalogue_code(&session.vacc_catalogue, &line.code, &line.label);
+                    }
+                    let base = session.vacc_edit_base.clone();
+                    // Left untouched: nothing to write, the line closes.
+                    if only_if_changed && line == base {
+                        session.vacc_edit = None;
+                        session.vacc_edit_date.clear();
+                        return;
+                    }
+                    match session.db.update_vaccination(line.id, &line, &base) {
+                        Ok(true) => {
+                            session.error = None;
+                            // La rangée du bas redevient celle où
+                            // l'on écrit : la laisser en correction
+                            // après un enregistrement réussi, c'est
+                            // la reprendre pour ajouter la suivante.
+                            session.vacc_edit = None;
+                            session.vacc_edit_date.clear();
+                            session.load_carnet(patient_id);
+                        }
+                        // Refusée : la correction tapée reste, et
+                        // se compare désormais à la ligne relue —
+                        // `load_carnet` la vidait.
+                        Ok(false) => {
+                            session.stale("vacc_stale");
+                            session.vaccinations =
+                                session.db.vaccinations(patient_id).unwrap_or_default();
+                            match session.vaccinations.iter().find(|v| v.id == line.id) {
+                                Some(fresh) => session.vacc_edit_base = fresh.clone(),
+                                None => {
+                                    session.vacc_edit = None;
+                                    session.vacc_edit_date.clear();
+                                }
+                            }
+                        }
+                        Err(e) => session.error = Some(e),
+                    }
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+    }
+
     fn bio_save_edit(session: &mut Session, patient: &Patient) {
+        Self::bio_write_edit(session, patient.id, false);
+    }
+
+    /// The lab line being corrected, written; on leaving the file, only
+    /// when something was changed.
+    fn bio_write_edit(session: &mut Session, patient_id: i64, only_if_changed: bool) {
         let Some(mut edited) = session.bio_edit.clone() else {
             return;
         };
@@ -35230,14 +36032,18 @@ impl App {
         edited.value = value;
         edited.taken_on = taken_on;
         let base = session.bio_edit_base.clone();
+        if only_if_changed && edited == base {
+            session.bio_edit = None;
+            return;
+        }
         match session.db.update_bio_result(&edited, &base) {
             Ok(true) => {
                 session.error = None;
                 session.bio_edit = None;
-                session.load_biology(patient.id);
+                session.load_biology(patient_id);
             }
             Ok(false) => {
-                session.load_biology(patient.id);
+                session.load_biology(patient_id);
                 session.stale("bio_stale");
             }
             Err(e) => session.error = Some(e),
@@ -38102,7 +38908,7 @@ impl App {
                 .on_hover_text(tr("patient_back_tooltip"))
                 .clicked()
             {
-                session.flush_date_edits();
+                session.leave_file();
                 session.viewing = None;
                 back = true;
             }
@@ -39406,91 +40212,7 @@ impl App {
             session.edit_patient = None;
         }
         if save_edit {
-            if let Some(form) = session.edit_patient.clone() {
-                let today = session.today.clone();
-                let outcome = optional_birth(&form.birth_date, &today).and_then(|iso| {
-                    if form.last_name.trim().is_empty() || form.first_name.trim().is_empty() {
-                        return Err(tr("form_names_required").to_owned());
-                    }
-                    // Un NIR changé se vérifie ; celui qui était déjà là, même
-                    // faux, n'empêche pas de corriger le reste.
-                    let nir = typed_nir(&form.nir);
-                    if nir != typed_nir(&patient.nir) && !nir_acceptable(&nir) {
-                        return Err(tr("patient_nir_invalid").to_owned());
-                    }
-                    let updated = Patient {
-                        id: patient.id,
-                        last_name: form.last_name.trim().to_owned(),
-                        first_name: form.first_name.trim().to_owned(),
-                        birth_date: iso,
-                        phone: form.phone.trim().to_owned(),
-                        notes: form.notes.trim().to_owned(),
-                        physician: form.physician.trim().to_owned(),
-                        email: form.email.trim().to_owned(),
-                        address: form.address.trim().to_owned(),
-                        situation: form.situation.trim().to_owned(),
-                        nir,
-                        regime: form.regime.trim().to_owned(),
-                        sex: form.sex.clone(),
-                        // Not on the identity form: kept as it is.
-                        pregnancy_ddr: patient.pregnancy_ddr.clone(),
-                    };
-                    // CAS against the row as displayed: a colleague's
-                    // concurrent correction is never wiped.
-                    let shown = form.base.as_ref().unwrap_or(patient);
-                    let applied = session.db.update_patient(&updated, shown)?;
-                    Ok((updated, applied))
-                });
-                match outcome {
-                    Ok((updated, true)) => {
-                        session.viewing = Some(updated);
-                        if let Ok(list) = session.db.patients() {
-                            session.set_patients(list);
-                        }
-                        session.edit_patient = None;
-                        // **Une date de naissance corrigée change l'âge**,
-                        // et avec lui le panneau de l'âge, la section du
-                        // bilan imprimé, le calendrier vaccinal et la puce
-                        // du compagnon : ils gardaient l'ancien jusqu'à la
-                        // réouverture du dossier.
-                        session.refresh_bio_findings();
-                        session.refresh_vacc_due();
-                    }
-                    Ok((_, false)) => {
-                        // Stale: reload the fresh row (header updates),
-                        // keep the typed form so nothing is lost.
-                        if let Ok(list) = session.db.patients() {
-                            session.set_patients(list);
-                            session.resync_viewing();
-                            session.refresh_bio_findings();
-                            session.refresh_vacc_due();
-                        }
-                        // Composé avant l'emprunt du formulaire, et
-                        // compté même si aucun n'est ouvert : la
-                        // collision a eu lieu, que quelqu'un ait eu
-                        // l'écran sous les yeux ou non.
-                        let said = session.stale_note("patient_stale");
-                        let fresh = session.viewing.clone();
-                        if let Some(form) = &mut session.edit_patient {
-                            form.error = Some(said);
-                            // Ce que l'écran montre désormais : le prochain
-                            // enregistrement se compare à lui. Et ce qu'on
-                            // n'a pas touché prend la valeur relue : gardé,
-                            // le second enregistrement réécrivait l'ancien
-                            // téléphone par-dessus la correction du collègue.
-                            if let (Some(old), Some(new)) = (form.base.clone(), fresh.as_ref()) {
-                                follow_untouched(form, &old, new);
-                            }
-                            form.base = fresh;
-                        }
-                    }
-                    Err(e) => {
-                        if let Some(form) = &mut session.edit_patient {
-                            form.error = Some(e);
-                        }
-                    }
-                }
-            }
+            Self::patient_save_form(session, patient);
         }
         // La dernière marque : le bas de tout ce qui a été dessiné.
         marks.push(ui.min_rect().bottom() - band_top);
@@ -40130,6 +40852,132 @@ impl App {
     /// mêmes boutons que le bandeau ouvert, et deux copies du même geste
     /// divergent — c'est ainsi qu'une correction cesse d'effacer la
     /// confirmation de suppression sur l'une des deux.
+    /// « Enregistrer » on the identity form, and the same write when the
+    /// file is left with the form still open.
+    fn patient_save_form(session: &mut Session, patient: &Patient) {
+        if let Some(form) = session.edit_patient.clone() {
+            let today = session.today.clone();
+            let outcome = optional_birth(&form.birth_date, &today).and_then(|iso| {
+                if form.last_name.trim().is_empty() || form.first_name.trim().is_empty() {
+                    return Err(tr("form_names_required").to_owned());
+                }
+                // Un NIR changé se vérifie ; celui qui était déjà là, même
+                // faux, n'empêche pas de corriger le reste.
+                let nir = typed_nir(&form.nir);
+                if nir != typed_nir(&patient.nir) && !nir_acceptable(&nir) {
+                    return Err(tr("patient_nir_invalid").to_owned());
+                }
+                let updated = Patient {
+                    id: patient.id,
+                    last_name: form.last_name.trim().to_owned(),
+                    first_name: form.first_name.trim().to_owned(),
+                    birth_date: iso,
+                    phone: form.phone.trim().to_owned(),
+                    notes: form.notes.trim().to_owned(),
+                    physician: form.physician.trim().to_owned(),
+                    email: form.email.trim().to_owned(),
+                    address: form.address.trim().to_owned(),
+                    situation: form.situation.trim().to_owned(),
+                    nir,
+                    regime: form.regime.trim().to_owned(),
+                    sex: form.sex.clone(),
+                    // Not on the identity form: kept as it is.
+                    pregnancy_ddr: patient.pregnancy_ddr.clone(),
+                };
+                // CAS against the row as displayed: a colleague's
+                // concurrent correction is never wiped.
+                let shown = form.base.as_ref().unwrap_or(patient);
+                let applied = session.db.update_patient(&updated, shown)?;
+                Ok((updated, applied))
+            });
+            match outcome {
+                Ok((updated, true)) => {
+                    session.viewing = Some(updated);
+                    if let Ok(list) = session.db.patients() {
+                        session.set_patients(list);
+                    }
+                    session.edit_patient = None;
+                    // **Une date de naissance corrigée change l'âge**,
+                    // et avec lui le panneau de l'âge, la section du
+                    // bilan imprimé, le calendrier vaccinal et la puce
+                    // du compagnon : ils gardaient l'ancien jusqu'à la
+                    // réouverture du dossier.
+                    session.refresh_bio_findings();
+                    session.refresh_vacc_due();
+                }
+                Ok((_, false)) => {
+                    // Stale: reload the fresh row (header updates),
+                    // keep the typed form so nothing is lost.
+                    if let Ok(list) = session.db.patients() {
+                        session.set_patients(list);
+                        session.resync_viewing();
+                        session.refresh_bio_findings();
+                        session.refresh_vacc_due();
+                    }
+                    // Composé avant l'emprunt du formulaire, et
+                    // compté même si aucun n'est ouvert : la
+                    // collision a eu lieu, que quelqu'un ait eu
+                    // l'écran sous les yeux ou non.
+                    let said = session.stale_note("patient_stale");
+                    let fresh = session.viewing.clone();
+                    if let Some(form) = &mut session.edit_patient {
+                        form.error = Some(said);
+                        // Ce que l'écran montre désormais : le prochain
+                        // enregistrement se compare à lui. Et ce qu'on
+                        // n'a pas touché prend la valeur relue : gardé,
+                        // le second enregistrement réécrivait l'ancien
+                        // téléphone par-dessus la correction du collègue.
+                        if let (Some(old), Some(new)) = (form.base.clone(), fresh.as_ref()) {
+                            follow_untouched(form, &old, new);
+                        }
+                        form.base = fresh;
+                    }
+                }
+                Err(e) => {
+                    if let Some(form) = &mut session.edit_patient {
+                        form.error = Some(e);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Has anything been typed on the identity form, against the file
+    /// it opened on?
+    fn patient_form_changed(form: &PatientForm) -> bool {
+        let Some(was) = &form.base else {
+            return false;
+        };
+        let typed = [
+            &form.last_name,
+            &form.first_name,
+            &form.phone,
+            &form.notes,
+            &form.physician,
+            &form.email,
+            &form.address,
+            &form.situation,
+            &form.nir,
+            &form.regime,
+            &form.sex,
+        ];
+        let shown = [
+            &was.last_name,
+            &was.first_name,
+            &was.phone,
+            &was.notes,
+            &was.physician,
+            &was.email,
+            &was.address,
+            &was.situation,
+            &was.nir,
+            &was.regime,
+            &was.sex,
+        ];
+        typed.iter().zip(shown).any(|(t, w)| t.trim() != w.trim())
+            || form.birth_date.trim() != db::format_french_date(&was.birth_date)
+    }
+
     fn patient_edit_started(session: &mut Session, patient: &Patient) {
         session.confirm_delete = false;
         session.edit_patient = Some(PatientForm {
@@ -43910,40 +44758,10 @@ impl App {
             }
         }
         if let Some((id, typed, expected)) = set_time {
-            // An empty field clears the hour; anything unreadable is
-            // refused, leaving the hour as it was.
-            let time = if typed.trim().is_empty() {
-                Some(String::new())
-            } else {
-                db::parse_hour(&typed)
-            };
-            if let Some(time) = time {
-                match session.db.set_scheduled_time(id, &time, &expected) {
-                    Ok(true) => {}
-                    Ok(false) => session.stale("itv_stale"),
-                    Err(e) => session.error = Some(e),
-                }
-                session.refresh_dashboard();
-            }
-            session.rdv_time_edit = None;
+            session.commit_rdv_time(id, &typed, &expected);
         }
         if let Some((id, typed, expected)) = move_rdv {
-            let year = session.db.current_year();
-            match db::parse_french_date(&typed, year, db::YearHint::Future) {
-                Ok(iso) => match session
-                    .db
-                    .set_scheduled_date(id, Some(&iso), Some(&expected))
-                {
-                    Ok(true) => {
-                        session.refresh_dashboard();
-                        session.load_day();
-                    }
-                    Ok(false) => session.stale("itv_stale"),
-                    Err(e) => session.error = Some(e),
-                },
-                Err(e) => session.error = Some(e),
-            }
-            session.rdv_move_edit = None;
+            session.commit_rdv_move(id, &typed, &expected);
         }
         if let Some((id, title)) = delete_event {
             match session.db.delete_event(id, &title) {
@@ -72410,28 +73228,7 @@ impl App {
             });
         });
         if let Some((r, c, value)) = commit {
-            let shipped = t
-                .rows
-                .get(r)
-                .and_then(|row| row.get(c))
-                .copied()
-                .unwrap_or("");
-            let previous = session
-                .table_cells
-                .get(&(r, c))
-                .cloned()
-                .unwrap_or_else(|| shipped.to_owned());
-            match session
-                .db
-                .set_table_cell(t.short, r, c, value.trim(), shipped, &previous)
-            {
-                Ok(true) => session.table_undo = Some((r, c, previous, value.trim().to_owned())),
-                Ok(false) => session.stale("tables_cell_stale"),
-                Err(e) => session.error = Some(e),
-            }
-            session.table_cells = session.db.table_cells(t.short).unwrap_or_default();
-            session.table_rev = session.table_rev.wrapping_add(1);
-            session.table_edit = None;
+            session.commit_table_cell(r, c, &value);
         }
         if undo {
             if let Some((r, c, previous, written)) = session.table_undo.take() {
@@ -78586,24 +79383,7 @@ impl App {
                 session.poso_edit = Some(p);
             }
             if poso_save {
-                if let Some(edited) = session.poso_edit.clone() {
-                    let expected = session
-                        .posologies
-                        .iter()
-                        .find(|p| p.id == edited.id)
-                        .cloned()
-                        .unwrap_or_default();
-                    let drug_id = session.drug_form.as_ref().map(|d| d.id).unwrap_or(0);
-                    match session.db.update_posologie(edited.id, &edited, &expected) {
-                        Ok(true) => session.poso_edit = None,
-                        Ok(false) => session.stale("drug_stale"),
-                        Err(e) => session.error = Some(e),
-                    }
-                    session.posologies = session.db.posologies(drug_id).unwrap_or_default();
-                    session.calc_poso = None;
-                    session.drugs_rev = session.drugs_rev.wrapping_add(1);
-                    session.reread_open_file();
-                }
+                session.save_poso_edit();
             }
             if let Some((id, indication)) = poso_delete {
                 let drug_id = session.drug_form.as_ref().map(|d| d.id).unwrap_or(0);
@@ -78701,37 +79481,8 @@ impl App {
                     }
                 }
             }
-            if let (true, Some(form)) = (save, session.drug_form.clone()) {
-                if form.name.trim().is_empty() {
-                    session.error = Some(tr("drug_name_required").to_owned());
-                } else if let Some(base) = session.drug_base.clone() {
-                    match session
-                        .db
-                        .update_drug_by(&form, &base, &session.operator, false)
-                    {
-                        Ok(true) => {
-                            session.reload_card_edits();
-                            session.error = None;
-                            session.drug_base = Some(form);
-                            session.drug_reading = true;
-                            if let Ok(list) = session.db.drugs() {
-                                session.set_drugs(list);
-                            }
-                            session.reread_open_file();
-                        }
-                        Ok(false) => {
-                            // Reload the fresh card as the new baseline,
-                            // keep the typed values so nothing is lost.
-                            if let Ok(list) = session.db.drugs() {
-                                session.set_drugs(list);
-                                session.drug_base =
-                                    session.drugs.iter().find(|d| d.id == form.id).cloned();
-                            }
-                            session.stale("drug_stale");
-                        }
-                        Err(e) => session.error = Some(e),
-                    }
-                }
+            if save {
+                session.save_drug_form();
             }
             if delete {
                 if let (true, Some(form)) = (session.confirm_delete_drug, session.drug_form.clone())
@@ -95118,9 +95869,6 @@ impl eframe::App for App {
             }
         }
 
-        if ctx.input(|i| i.key_pressed(egui::Key::F1)) {
-            self.show_docs = !self.show_docs;
-        }
         // Ctrl+K: one box over every view. Consumed, so the letter never
         // reaches a field behind it.
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::K)) {
@@ -95165,12 +95913,6 @@ impl eframe::App for App {
             self.companion_view(ctx);
             return;
         }
-        let toggle_dashboard = ctx.input(|i| i.key_pressed(egui::Key::F2));
-        let toggle_drugs = ctx.input(|i| i.key_pressed(egui::Key::F3));
-        let toggle_agenda = ctx.input(|i| i.key_pressed(egui::Key::F4));
-        let toggle_trans = ctx.input(|i| i.key_pressed(egui::Key::F5));
-        let toggle_map = ctx.input(|i| i.key_pressed(egui::Key::F7));
-        let toggle_campagne = ctx.input(|i| i.key_pressed(egui::Key::F8));
         let toggle_couverture = ctx.input(|i| i.key_pressed(egui::Key::F10));
 
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
@@ -95269,15 +96011,15 @@ impl eframe::App for App {
             ui.add_space(4.0);
         });
 
-        // The workspace notebook: where the operator is, and everything
-        // they have open. It replaces the row of view buttons the
-        // toolbar used to carry — those said what you could reach, never
-        // where you were.
+        // The workspace notebook, in two strips: the five postes and the
+        // open patient files, then the views of the poste on screen. It
+        // replaces the nine permanent tabs, which said what could be
+        // reached, never what the counter does.
         if matches!(self.state, State::Unlocked(_)) {
-            // Ctrl+Tab walks the strip; Ctrl+W closes the open file.
-            // Ctrl+Maj+Tab **d'abord** : `consume_key` ne regarde pas une
-            // Maj de trop, et Ctrl+Tab prenait les deux — on n'allait
-            // jamais en arrière.
+            // Ctrl+Tab walks the open files; Ctrl+W closes the one on
+            // screen. Ctrl+Maj+Tab **d'abord** : `consume_key` ne regarde
+            // pas une Maj de trop, et Ctrl+Tab prenait les deux — on
+            // n'allait jamais en arrière.
             let (back, cycle, close) = ctx.input_mut(|i| {
                 let back = i.consume_key(
                     egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
@@ -95301,47 +96043,120 @@ impl eframe::App for App {
                     };
                     session.note_tab();
                     let cur = session.current_tab();
-                    let active = session.tabs.iter().position(|t| *t == cur).unwrap_or(0);
-                    let labels: Vec<(String, bool, Option<egui::Color32>)> = session
+                    let poste = Poste::of(&cur);
+                    // The postes, then the files, in two strips on one
+                    // row: the postes never scroll away behind a file.
+                    // A file on screen is the active tab; otherwise its
+                    // poste is. Past the room, the keys leave the labels.
+                    let font = egui::TextStyle::Button.resolve(ui.style());
+                    let tab_w = |label: &str, closable: bool| {
+                        ui.painter()
+                            .layout_no_wrap(label.to_owned(), font.clone(), motif::text())
+                            .size()
+                            .x
+                            + 24.0
+                            + if closable { 18.0 } else { 0.0 }
+                            + 2.0
+                    };
+                    let with_keys: Vec<String> = Poste::ALL
+                        .iter()
+                        .map(|p| format!("{}  {}", p.label(), p.key_name()))
+                        .collect();
+                    let full = ui.available_width();
+                    let keyed_w: f32 = with_keys.iter().map(|l| tab_w(l, false)).sum();
+                    let file_room = session
                         .tabs
+                        .first()
+                        .map_or(0.0, |t| tab_w(&session.tab_label(t), true));
+                    let postes: Vec<String> = if keyed_w + file_room <= full {
+                        with_keys
+                    } else {
+                        Poste::ALL.iter().map(|p| p.label().to_owned()).collect()
+                    };
+                    let postes_w: f32 = postes
                         .iter()
-                        .map(|t| {
-                            let tint = match t {
-                                WorkTab::Patient(_) => Some(motif::accent()),
-                                WorkTab::Drug(_) => Some(motif::chart::series_color(2)),
-                                _ => None,
+                        .map(|l| tab_w(l, false))
+                        .sum::<f32>()
+                        .min(full);
+                    let file_on = session.tabs.iter().position(|t| *t == cur);
+                    let names: Vec<String> =
+                        session.tabs.iter().map(|t| session.tab_label(t)).collect();
+                    let (mut pick, mut shut) = (None, None);
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 0.0;
+                        let h = motif::tab_strip_height(ui);
+                        ui.allocate_ui(egui::vec2(postes_w, h), |ui| {
+                            let tabs: Vec<motif::Tab> =
+                                postes.iter().map(|l| motif::Tab::new(l)).collect();
+                            // Out of range: no poste lit while a file is.
+                            let on = if file_on.is_some() {
+                                usize::MAX
+                            } else {
+                                poste.index()
                             };
-                            (session.tab_label(t), t.closable(), tint)
-                        })
-                        .collect();
-                    let tabs: Vec<motif::Tab> = labels
+                            if let Some(motif::TabAction::Select(i)) =
+                                motif::tab_strip(ui, "workspace_tabs", &tabs, on)
+                            {
+                                pick = Some(Poste::ALL[i]);
+                            }
+                        });
+                        if !names.is_empty() {
+                            let tabs: Vec<motif::Tab> = names
+                                .iter()
+                                .map(|l| motif::Tab::new(l).closable().tint(motif::accent()))
+                                .collect();
+                            match motif::tab_strip(
+                                ui,
+                                "open_files",
+                                &tabs,
+                                file_on.unwrap_or(usize::MAX),
+                            ) {
+                                Some(motif::TabAction::Select(i)) => shut = Some((i, false)),
+                                Some(motif::TabAction::Close(i)) => shut = Some((i, true)),
+                                None => {}
+                            }
+                        }
+                    });
+                    if let Some(p) = pick {
+                        session.goto_poste(p);
+                    }
+                    if let Some((i, close)) = shut {
+                        if let Some(t) = session.tabs.get(i).cloned() {
+                            if close {
+                                session.close_tab(&t);
+                            } else if t != cur {
+                                session.activate_tab(&t);
+                            }
+                        }
+                    }
+                    // The poste's own views, when it has more than one.
+                    // A view no list names (Recettes) shows while it is on
+                    // screen.
+                    let lit = Poste::sub_of(&cur);
+                    let mut views: Vec<WorkTab> = poste
+                        .views()
                         .iter()
-                        .map(|(label, closable, tint)| {
-                            let mut t = motif::Tab::new(label);
-                            if *closable {
-                                t = t.closable();
-                            }
-                            if let Some(c) = tint {
-                                t = t.tint(*c);
-                            }
-                            t
-                        })
+                        .filter(|t| tab_loaded(t))
+                        .cloned()
                         .collect();
-                    let action = motif::tab_strip(ui, "workspace_tabs", &tabs, active);
-                    match action {
-                        Some(motif::TabAction::Select(i)) => {
-                            if let Some(t) = session.tabs.get(i).cloned() {
+                    if !views.contains(&lit) {
+                        views.push(lit.clone());
+                    }
+                    if views.len() > 1 {
+                        let names: Vec<String> =
+                            views.iter().map(|t| session.tab_label(t)).collect();
+                        let subs: Vec<motif::Tab> =
+                            names.iter().map(|l| motif::Tab::new(l)).collect();
+                        let on = views.iter().position(|t| *t == lit).unwrap_or(0);
+                        if let Some(motif::TabAction::Select(i)) =
+                            motif::tab_strip(ui, "poste_views", &subs, on)
+                        {
+                            if let Some(t) = views.get(i).cloned() {
                                 if t != cur {
                                     session.activate_tab(&t);
                                 }
                             }
                         }
-                        Some(motif::TabAction::Close(i)) => {
-                            if let Some(t) = session.tabs.get(i).cloned() {
-                                session.close_tab(&t);
-                            }
-                        }
-                        None => {}
                     }
                     if back {
                         session.cycle_tab(-1);
@@ -95715,74 +96530,6 @@ impl eframe::App for App {
             }
         }
 
-        if toggle_dashboard {
-            if let State::Unlocked(session) = &mut self.state {
-                session.view = match session.view {
-                    MainView::Search
-                    | MainView::Drugs
-                    | MainView::Agenda
-                    | MainView::Transmissions
-                    | MainView::VaccineMap
-                    | MainView::Campagne
-                    | MainView::Registres
-                    | MainView::Explorer
-                    | MainView::Classes
-                    | MainView::Finances
-                    | MainView::Stats
-                    | MainView::Ruptures
-                    | MainView::Connexions
-                    | MainView::Options
-                    | MainView::Officines
-                    | MainView::Messages
-                    | MainView::Comptes
-                    | MainView::Actualites
-                    | MainView::Script
-                    | MainView::Caisse
-                    | MainView::CaisseHistory
-                    | MainView::Ddi
-                    | MainView::Liaison
-                    | MainView::Qualite
-                    | MainView::UiTexts
-                    | MainView::Checklists
-                    | MainView::Cascades => {
-                        session.flush_date_edits();
-                        session.refresh_dashboard();
-                        MainView::Dashboard
-                    }
-                    MainView::Dashboard => {
-                        session.show_amounts = false;
-                        MainView::Search
-                    }
-                };
-            }
-        }
-        if toggle_agenda {
-            if let State::Unlocked(session) = &mut self.state {
-                session.view = match session.view {
-                    MainView::Agenda => MainView::Search,
-                    _ => {
-                        session.flush_date_edits();
-                        session.show_amounts = false;
-                        session.refresh_dashboard();
-                        MainView::Agenda
-                    }
-                };
-            }
-        }
-        if toggle_trans {
-            if let State::Unlocked(session) = &mut self.state {
-                session.view = match session.view {
-                    MainView::Transmissions => MainView::Search,
-                    _ => {
-                        session.flush_date_edits();
-                        session.show_amounts = false;
-                        session.trans_day = String::new();
-                        session.load_transmissions();
-                        MainView::Transmissions
-                    }
-                };
-            }
-        }
         // F10 : la couverture des délivrances — sur les traitements du
         // dossier ouvert s'il y en a un et que la couverture est vide.
         if toggle_couverture {
@@ -95799,49 +96546,6 @@ impl eframe::App for App {
                 }
             }
         }
-        // F8 : la campagne de vaccination, dans la même bascule que F7.
-        if toggle_campagne {
-            if let State::Unlocked(session) = &mut self.state {
-                session.view = match session.view {
-                    MainView::Campagne => MainView::Search,
-                    _ => {
-                        session.flush_date_edits();
-                        session.show_amounts = false;
-                        session.reload_campagne();
-                        MainView::Campagne
-                    }
-                };
-            }
-        }
-        if toggle_map {
-            if let State::Unlocked(session) = &mut self.state {
-                session.view = match session.view {
-                    MainView::VaccineMap => MainView::Search,
-                    _ => {
-                        session.flush_date_edits();
-                        session.show_amounts = false;
-                        MainView::VaccineMap
-                    }
-                };
-            }
-        }
-        if toggle_drugs {
-            if let State::Unlocked(session) = &mut self.state {
-                session.view = match session.view {
-                    MainView::Drugs => MainView::Search,
-                    _ => {
-                        session.flush_date_edits();
-                        session.show_amounts = false;
-                        match session.db.drugs() {
-                            Ok(list) => session.set_drugs(list),
-                            Err(e) => session.error = Some(e),
-                        }
-                        MainView::Drugs
-                    }
-                };
-            }
-        }
-
         // The settings dialogs are modal in intent — you are configuring
         // the application, not working in it — so the workspace is
         // greyed out behind them and stops answering the mouse. Without
@@ -96251,6 +96955,34 @@ impl eframe::App for App {
             State::Locked { .. } => self.unlock_screen(ctx),
             State::Unlocked(_) => self.main_screen(ctx),
         }
+        // F1 to F5, the postes; Ctrl+1 to Ctrl+4, the open files. Read
+        // once the views have drawn, with `consume_key`: a view that
+        // answers one of these keys itself (F2 opens a planning cell)
+        // takes it first.
+        if let State::Unlocked(session) = &mut self.state {
+            let (poste, slot) = ctx.input_mut(|i| {
+                let poste = Poste::ALL
+                    .into_iter()
+                    .find(|p| i.consume_key(egui::Modifiers::NONE, p.key()));
+                let slot = [
+                    egui::Key::Num1,
+                    egui::Key::Num2,
+                    egui::Key::Num3,
+                    egui::Key::Num4,
+                ]
+                .iter()
+                .position(|k| i.consume_key(egui::Modifiers::COMMAND, *k));
+                (poste, slot)
+            });
+            if let Some(p) = poste {
+                session.goto_poste(p);
+                ctx.request_repaint();
+            }
+            if let Some(n) = slot {
+                session.open_file_slot(n);
+                ctx.request_repaint();
+            }
+        }
         // Les options se dessinent dans la place que l'espace de travail
         // leur a gardée, une fois celui-ci peint (`options_rect`).
         self.options_tab(ctx);
@@ -96317,6 +97049,7 @@ impl App {
         // rouverte au lancement, un clic dans la rangée) en ouvre un ; et
         // l'onglet fermé emporte ce qui n'était pas enregistré.
         let mut fresh = false;
+        let mut leaving_opts = false;
         if let State::Unlocked(session) = &mut self.state {
             match &mut self.options {
                 Some(e) if !e.tabbed => {
@@ -96327,12 +97060,9 @@ impl App {
                     }
                     ctx.request_repaint();
                 }
-                Some(_)
-                    if session.view != MainView::Options
-                        && !session.tabs.contains(&WorkTab::Options) =>
-                {
-                    self.options = None;
-                }
+                // Left for another view: what was changed is saved, as
+                // « Enregistrer » would, then the editor closes.
+                Some(_) if session.view != MainView::Options => leaving_opts = true,
                 None if session.view == MainView::Options => {
                     let mut e = OptionsEditor::open(&self.config, OptionsPage::Pharmacy);
                     e.tabbed = true;
@@ -96353,6 +97083,35 @@ impl App {
         let mut close_opts = false;
         let mut open_pw = false;
         let mut saved_cfg: Option<Config> = None;
+        if leaving_opts {
+            if let Some(editor) = &mut self.options {
+                let changed = editor.opened_as.is_some() && editor.snapshot() != editor.opened_as;
+                editor.cfg.database.path = if editor.db_path_text.trim().is_empty() {
+                    None
+                } else {
+                    Some(std::path::PathBuf::from(editor.db_path_text.trim()))
+                };
+                close_opts = true;
+                if changed {
+                    match editor.cfg.save() {
+                        Ok(()) => saved_cfg = Some(editor.cfg.clone()),
+                        // Not written: the editor stays open, with what was
+                        // typed, and says why.
+                        Err(e) => {
+                            close_opts = false;
+                            // Back on the options, once: not retried at
+                            // every frame.
+                            editor.tabbed = false;
+                            let said = trf("opts_save_error", e);
+                            editor.message = Some((true, said.clone()));
+                            if let State::Unlocked(session) = &mut self.state {
+                                session.error = Some(said);
+                            }
+                        }
+                    }
+                }
+            }
+        }
         // « Remplacer par ces valeurs » : offert quand le dernier
         // enregistrement de l'officine a été refusé.
         let officine_refused = matches!(&self.state, State::Unlocked(s) if s.officine_stale);
@@ -97361,6 +98120,12 @@ impl App {
                                 tr("opts_bureau_autostart"),
                             )
                             .on_hover_text(tr("opts_bureau_autostart_tooltip"));
+                            motif::checkbox(
+                                ui,
+                                &mut editor.cfg.bureau.maj_au_demarrage,
+                                tr("opts_bureau_update"),
+                            )
+                            .on_hover_text(tr("opts_bureau_update_tooltip"));
                             #[cfg(feature = "sync")]
                             {
                                 ui.add_space(10.0);
@@ -98738,6 +99503,7 @@ impl App {
                         match editor.cfg.save() {
                             Ok(()) => {
                                 saved_cfg = Some(editor.cfg.clone());
+                                editor.opened_as = editor.snapshot();
                                 editor.message = Some((false, tr("opts_saved").to_owned()));
                             }
                             Err(e) => {
@@ -112965,25 +113731,242 @@ mod tests {
     }
 
     #[test]
-    fn the_standing_views_cannot_be_closed() {
+    fn the_strip_keeps_only_patient_files() {
         let (mut s, _swept) = scratch_session("standing");
-        let before = s.tabs.clone();
-        for tab in before.clone() {
+        for tab in [
+            super::WorkTab::Dashboard,
+            super::WorkTab::Registres,
+            super::WorkTab::Drugs,
+        ] {
+            s.activate_tab(&tab);
+            s.note_tab();
             s.close_tab(&tab);
+            assert_eq!(s.current_tab(), tab);
         }
-        assert_eq!(s.tabs, before);
+        assert!(s.tabs.is_empty());
     }
 
     #[test]
-    fn cycling_wraps_in_both_directions() {
+    fn every_view_lives_under_the_poste_that_lists_it() {
+        use super::{Poste, WorkTab};
+        for poste in Poste::ALL {
+            for view in poste.views() {
+                assert_eq!(Poste::of(view), poste, "{view:?}");
+                assert_eq!(Poste::sub_of(view), *view);
+            }
+        }
+        // A file lights the list it came from, under the same poste.
+        for file in [WorkTab::Patient(1), WorkTab::Drug(1)] {
+            let list = Poste::sub_of(&file);
+            assert_eq!(Poste::of(&list), Poste::of(&file));
+            assert!(Poste::of(&file).views().contains(&list));
+        }
+        // Every view a jump can land on belongs somewhere listed, but for
+        // Recettes, which shows only once typed.
+        for (tab, _) in super::standing_views() {
+            let listed = Poste::of(&tab).views().contains(&tab);
+            assert!(listed || tab == WorkTab::Finances, "{tab:?}");
+        }
+    }
+
+    #[test]
+    fn a_poste_key_brings_back_its_view_then_its_first() {
+        use super::{Poste, WorkTab};
+        let (mut s, _swept) = scratch_session("postes");
+        let p = s.patients[0].clone();
+        s.open_patient(p.clone());
+        s.note_tab();
+        s.goto_poste(Poste::Reference);
+        s.note_tab();
+        assert_eq!(s.current_tab(), WorkTab::Drugs);
+        s.activate_tab(&WorkTab::Cascades);
+        s.note_tab();
+        // Back at the counter: the file it was left on.
+        s.goto_poste(Poste::Comptoir);
+        s.note_tab();
+        assert_eq!(s.current_tab(), WorkTab::Patient(p.id));
+        // The same key again: the patient list.
+        s.goto_poste(Poste::Comptoir);
+        s.note_tab();
+        assert_eq!(s.current_tab(), WorkTab::Search);
+        // Référence was left on the cascades.
+        s.goto_poste(Poste::Reference);
+        assert_eq!(s.current_tab(), WorkTab::Cascades);
+        // A file closed since is not reopened by its poste.
+        s.close_tab(&WorkTab::Patient(p.id));
+        s.open_patient(p.clone());
+        s.note_tab();
+        s.close_tab(&WorkTab::Patient(p.id));
+        s.goto_poste(Poste::Reference);
+        s.note_tab();
+        s.goto_poste(Poste::Comptoir);
+        assert_eq!(s.current_tab(), WorkTab::Search);
+    }
+
+    #[test]
+    fn cycling_walks_the_open_files_in_both_directions() {
         let (mut s, _swept) = scratch_session("cycle");
+        let (a, b) = (s.patients[0].clone(), s.patients[1].clone());
+        s.open_patient(a.clone());
+        s.note_tab();
+        s.open_patient(b.clone());
+        s.note_tab();
         s.activate_tab(&super::WorkTab::Dashboard);
-        assert_eq!(s.current_tab(), super::WorkTab::Dashboard);
-        // Dashboard is first: back one wraps to the last standing view.
-        s.cycle_tab(-1);
-        assert_eq!(s.current_tab(), *s.tabs.last().unwrap());
+        // From a view that is no file: forward is the first file.
         s.cycle_tab(1);
-        assert_eq!(s.current_tab(), super::WorkTab::Dashboard);
+        assert_eq!(s.current_tab(), super::WorkTab::Patient(a.id));
+        s.cycle_tab(-1);
+        assert_eq!(s.current_tab(), super::WorkTab::Patient(b.id));
+        s.cycle_tab(1);
+        assert_eq!(s.current_tab(), super::WorkTab::Patient(a.id));
+        s.open_file_slot(1);
+        assert_eq!(s.current_tab(), super::WorkTab::Patient(b.id));
+        // A slot with no file does nothing.
+        s.open_file_slot(3);
+        assert_eq!(s.current_tab(), super::WorkTab::Patient(b.id));
+    }
+
+    #[test]
+    fn a_fifth_file_pushes_out_the_oldest_not_on_screen() {
+        let (mut s, _swept) = scratch_session("cap");
+        for name in ["Bernard", "Leroy", "Roux"] {
+            s.db.add_patient(name, "Anne", "1950-01-01").unwrap();
+        }
+        s.set_patients(s.db.patients().unwrap());
+        let people: Vec<_> = s
+            .patients
+            .iter()
+            .take(super::OPEN_FILES + 1)
+            .cloned()
+            .collect();
+        assert_eq!(
+            people.len(),
+            super::OPEN_FILES + 1,
+            "le jeu d'essai manque de patients"
+        );
+        for p in &people {
+            s.open_patient(p.clone());
+            s.note_tab();
+        }
+        assert_eq!(s.tabs.len(), super::OPEN_FILES);
+        assert!(!s.tabs.contains(&super::WorkTab::Patient(people[0].id)));
+        assert_eq!(
+            s.tabs.last(),
+            Some(&super::WorkTab::Patient(people[super::OPEN_FILES].id))
+        );
+    }
+
+    #[test]
+    fn what_is_typed_on_a_file_is_written_when_the_view_changes() {
+        use super::{Poste, WorkTab};
+        let (mut s, _swept) = scratch_session("leave-file");
+        let drug = s.db.add_drug("Triatec").unwrap();
+        s.set_drugs(s.db.drugs().unwrap());
+        let p = s.patients[0].clone();
+        s.db.add_patient_drug(p.id, drug).unwrap();
+        s.open_patient(p.clone());
+        s.note_tab();
+        // The identity form left open, a posology typed and never
+        // tabbed out of, a note typed and not added.
+        super::App::patient_edit_started(&mut s, &p);
+        if let Some(f) = s.edit_patient.as_mut() {
+            f.phone = "06 11 22 33 44".to_owned();
+        }
+        s.patient_doses = vec![(drug, "1 cp le soir".to_owned())];
+        s.note_text = "Rappeler pour la biologie".to_owned();
+        s.goto_poste(Poste::Agenda);
+        let fresh = s.db.patients().unwrap();
+        let fresh = fresh.iter().find(|q| q.id == p.id).unwrap();
+        assert_eq!(fresh.phone, "06 11 22 33 44");
+        assert!(s.edit_patient.is_none());
+        let doses = s.db.patient_posologies(p.id).unwrap();
+        assert!(doses.iter().any(|(d, t)| *d == drug && t == "1 cp le soir"));
+        let notes =
+            s.db.notes_for(crate::db::NoteSubject::Patient, p.id)
+                .unwrap();
+        assert!(notes.iter().any(|n| n.body == "Rappeler pour la biologie"));
+        assert!(s.note_text.is_empty());
+        // Back on the file: nothing was dropped, nothing is written twice.
+        s.goto_poste(Poste::Comptoir);
+        assert_eq!(s.current_tab(), WorkTab::Patient(p.id));
+        let again =
+            s.db.notes_for(crate::db::NoteSubject::Patient, p.id)
+                .unwrap();
+        assert_eq!(again.len(), notes.len());
+    }
+
+    #[test]
+    fn a_note_typed_on_one_file_goes_to_that_file_when_another_opens() {
+        let (mut s, _swept) = scratch_session("leave-note");
+        let (a, b) = (s.patients[0].clone(), s.patients[1].clone());
+        s.open_patient(a.clone());
+        s.note_text = "Pour Jean".to_owned();
+        s.open_patient(b.clone());
+        let on_a =
+            s.db.notes_for(crate::db::NoteSubject::Patient, a.id)
+                .unwrap();
+        let on_b =
+            s.db.notes_for(crate::db::NoteSubject::Patient, b.id)
+                .unwrap();
+        assert!(on_a.iter().any(|n| n.body == "Pour Jean"));
+        assert!(on_b.is_empty());
+    }
+
+    #[test]
+    fn a_card_being_edited_is_written_when_the_view_changes() {
+        let (mut s, _swept) = scratch_session("leave-card");
+        let id = s.db.add_drug("Kardegic").unwrap();
+        s.set_drugs(s.db.drugs().unwrap());
+        s.activate_tab(&super::WorkTab::Drug(id));
+        s.note_tab();
+        s.drug_reading = false;
+        if let Some(f) = s.drug_form.as_mut() {
+            f.dci = "acide acétylsalicylique".to_owned();
+        }
+        // Left by a route that is no tab: a row of a list sets the view.
+        s.view = super::MainView::Agenda;
+        s.note_tab();
+        let fresh = s.db.drugs().unwrap();
+        assert_eq!(
+            fresh.iter().find(|d| d.id == id).unwrap().dci,
+            "acide acétylsalicylique"
+        );
+    }
+
+    #[test]
+    fn a_table_cell_and_a_day_note_are_written_on_leaving() {
+        let (mut s, _swept) = scratch_session("leave-open");
+        s.table_selected = 0;
+        let t = &crate::tables::TABLES[0];
+        s.table_edit = Some((0, 0, "corrigé".to_owned()));
+        s.trans_note_text = "Livraison à 14 h".to_owned();
+        s.activate_tab(&super::WorkTab::Registres);
+        assert!(s.table_edit.is_none());
+        let cells = s.db.table_cells(t.short).unwrap();
+        assert_eq!(cells.get(&(0, 0)).map(String::as_str), Some("corrigé"));
+        assert!(s.trans_note_text.is_empty());
+        let notes =
+            s.db.notes_for(crate::db::NoteSubject::Transmission, 0)
+                .unwrap();
+        assert!(notes.iter().any(|n| n.body == "Livraison à 14 h"));
+    }
+
+    #[test]
+    fn a_register_line_being_typed_is_kept_and_never_written_on_leaving() {
+        let (mut s, _swept) = scratch_session("leave-stup");
+        let id =
+            s.db.add_stupefiant(0, "Oxycodone LP 10 mg", "comprimé", 14.0)
+                .unwrap();
+        s.activate_tab(&super::WorkTab::Registres);
+        assert!(s.stup_summary.iter().any(|l| l.product.id == id));
+        s.stup_open = Some(id);
+        s.stup_new_qty = "28".to_owned();
+        s.stup_new_ordo = "48213".to_owned();
+        s.activate_tab(&super::WorkTab::Agenda);
+        s.activate_tab(&super::WorkTab::Registres);
+        assert_eq!(s.stup_new_qty, "28");
+        assert_eq!(s.stup_new_ordo, "48213");
+        assert!(s.db.stup_moves(id).unwrap().is_empty());
     }
 
     #[test]
