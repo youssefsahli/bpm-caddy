@@ -45275,6 +45275,35 @@ impl Db {
     /// c'est `renewal::read` qui dit qu'il manque la date, et une ligne
     /// absente se lirait « pas d'ordonnance », ce qui n'est pas la même
     /// chose.
+    /// Every ordonnance written on a line of any file, for the
+    /// counter's « À renouveler » : (patient, prescription). One query
+    /// over the lines that carry a date, not one per file.
+    pub fn all_prescriptions(&self) -> Result<Vec<(i64, crate::renewal::Prescription)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT patient_id, prescribed_on, duration_days, renewals, dispensed,
+                        dispensed_on
+                   FROM patient_drugs WHERE prescribed_on <> ''",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get(0)?,
+                    crate::renewal::Prescription {
+                        prescribed_on: r.get(1)?,
+                        duration_days: r.get::<_, i64>(2)?.clamp(0, 3650) as u32,
+                        renewals: r.get::<_, i64>(3)?.clamp(0, 60) as u32,
+                        dispensed: r.get::<_, i64>(4)?.clamp(0, 60) as u32,
+                        dispensed_on: r.get(5)?,
+                    },
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
     pub fn patient_prescriptions(
         &self,
         patient_id: i64,

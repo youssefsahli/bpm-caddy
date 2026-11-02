@@ -276,6 +276,49 @@ pub fn group(lines: &[(String, Prescription)]) -> Vec<(Prescription, Vec<String>
     out
 }
 
+/// **Les dossiers à renouveler**, pour le comptoir : ceux dont une
+/// ordonnance en est à sa dernière délivrance, ou s'est finie depuis
+/// `over_days` jours au plus — au-delà, le patient a vu son médecin
+/// ailleurs ou n'en a plus besoin, et la liste ne dirait plus rien.
+///
+/// Une ligne par dossier, la plus pressée : une ordonnance finie passe
+/// devant une dernière délivrance, puis le premier dernier jour.
+/// Rendu : (dossier, état, dernier jour couvert, ISO), le plus pressé
+/// d'abord.
+pub fn due(
+    rows: &[(i64, Prescription)],
+    today: &str,
+    notice_days: u32,
+    over_days: i64,
+) -> Vec<(i64, State, String)> {
+    let mut out: Vec<(i64, State, String)> = Vec::new();
+    for (patient, p) in rows {
+        let stand = read(p, today, notice_days);
+        let Some(ends) = stand.ends_on else { continue };
+        let keep = match stand.state {
+            State::Last => true,
+            State::Over => crate::date::days_between(&ends, today).is_some_and(|d| d <= over_days),
+            _ => false,
+        };
+        if !keep {
+            continue;
+        }
+        let rank = |s: &State| u8::from(*s != State::Over);
+        match out.iter_mut().find(|(id, _, _)| id == patient) {
+            Some(seen) => {
+                if (rank(&stand.state), ends.as_str()) < (rank(&seen.1), seen.2.as_str()) {
+                    *seen = (*patient, stand.state, ends);
+                }
+            }
+            None => out.push((*patient, stand.state, ends)),
+        }
+    }
+    out.sort_by(|a, b| {
+        (u8::from(a.1 != State::Over), &a.2).cmp(&(u8::from(b.1 != State::Over), &b.2))
+    });
+    out
+}
+
 /// Comment l'avancement se dessine.
 ///
 /// Quatre, parce que les officines ne se ressemblent pas et que la
@@ -341,6 +384,27 @@ mod tests {
             dispensed,
             dispensed_on: String::new(),
         }
+    }
+
+    /// Le comptoir : dernière délivrance et ordonnance finie depuis
+    /// peu, une ligne par dossier, la finie d'abord ; une ordonnance
+    /// en cours ou finie depuis longtemps n'y est pas.
+    #[test]
+    fn the_files_to_renew_are_the_last_step_and_the_recently_over() {
+        let today = "2026-07-10";
+        let rows = vec![
+            (1, p("2026-05-01", 30, 2, 3)),
+            (2, p("2026-06-01", 30, 0, 1)),
+            (2, p("2026-06-15", 30, 2, 3)),
+            (3, p("2026-07-01", 30, 2, 1)),
+            (4, p("2026-01-01", 30, 0, 1)),
+        ];
+        let due = due(&rows, today, 7, 30);
+        let ids: Vec<i64> = due.iter().map(|d| d.0).collect();
+        assert_eq!(ids, vec![2, 1], "{due:?}");
+        assert_eq!(due[0].1, State::Over);
+        assert_eq!(due[0].2, "2026-06-30");
+        assert_eq!(due[1].1, State::Last);
     }
 
     /// **Une délivrance d'avant l'ordonnance n'est pas la sienne** : la

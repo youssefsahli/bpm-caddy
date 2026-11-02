@@ -65,6 +65,7 @@ fn adopt_officine(config: &mut Config, session: &mut Session) {
     }
     session.cycle_months = config.rules.cycle_months.max(1);
     session.loc_notice_days = config.locations.notice_days;
+    session.rx_notice_days = config.ordonnance.notice_days;
     match session.db.officine() {
         Some(shared) => {
             config.pharmacy = shared.clone();
@@ -4205,6 +4206,9 @@ impl PatientTab {
     ];
 }
 
+/// Combien de jours une ordonnance finie reste dans « À renouveler ».
+const RENEW_OVER_DAYS: i64 = 30;
+
 /// Le rang d'une ligne de « À dire » : l'ordre où elles se lisent.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 enum SayRank {
@@ -6191,6 +6195,11 @@ struct Session {
     /// Dashboard: patients whose file moved most recently, and the
     /// notes written today (day notes and transmissions).
     recent: Vec<(Patient, String)>,
+    /// Les dossiers à renouveler (`renewal::due`), relus avec le reste
+    /// du tableau du jour.
+    renew_due: Vec<(i64, crate::renewal::State, String)>,
+    /// `[ordonnance] notice_days`, poussé ici comme `loc_notice_days`.
+    rx_notice_days: u32,
     today_notes: Vec<Note>,
     /// Path of the last CSV export, shown under the export button.
     export_notice: Option<String>,
@@ -7522,6 +7531,8 @@ impl Session {
             summaries: Vec::new(),
             appointments: Vec::new(),
             recent: Vec::new(),
+            renew_due: Vec::new(),
+            rx_notice_days: 7,
             today_notes: Vec::new(),
             export_notice: None,
             today: String::new(),
@@ -17477,6 +17488,12 @@ impl Session {
         self.tomorrow = self.db.tomorrow_iso().unwrap_or_default();
         self.agenda_week = self.db.week_dates(self.agenda_offset).unwrap_or_default();
         self.recent = self.db.recent_patients(6).unwrap_or_default();
+        self.renew_due = crate::renewal::due(
+            &self.db.all_prescriptions().unwrap_or_default(),
+            &self.today,
+            self.rx_notice_days,
+            RENEW_OVER_DAYS,
+        );
         self.vacc_today = self.db.vaccinations_on(&self.today).unwrap_or(0);
         // Les actions en retard du registre qualité : la barre d'état le
         // dit, quand ce poste charge la gestion.
@@ -28618,6 +28635,59 @@ impl App {
         });
     }
 
+    /// « À renouveler » : un dossier par ligne, la date, et un clic
+    /// l'ouvre.
+    fn home_renew(ui: &mut egui::Ui, session: &Session, rect: egui::Rect) -> Option<i64> {
+        let rows: Vec<(String, bool, i64)> = session
+            .renew_due
+            .iter()
+            .filter_map(|(id, state, ends)| {
+                let p = session.patients.iter().find(|p| p.id == *id)?;
+                let over = *state == crate::renewal::State::Over;
+                let day = db::format_french_date(ends);
+                let say = if over {
+                    trf("home_renew_over", day)
+                } else {
+                    trf("home_renew_last", day)
+                };
+                Some((format!("{}  {say}", p.full_name()), over, *id))
+            })
+            .collect();
+        if rows.is_empty() {
+            ui.painter().text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                tr("home_renew_empty"),
+                egui::FontId::proportional(motif::pt(ui, 12.0)),
+                motif::text_dim(),
+            );
+            return None;
+        }
+        let mut open = None;
+        motif::inside(ui, rect, |ui| {
+            ui.spacing_mut().scroll.floating = false;
+            egui::ScrollArea::vertical()
+                .id_salt("home_renew")
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 1.0;
+                    for (text, over, id) in &rows {
+                        let label = if *over {
+                            egui::RichText::new(text).color(motif::alert())
+                        } else {
+                            egui::RichText::new(text)
+                        };
+                        if motif::list_row(ui, label, false)
+                            .on_hover_text(tr("dash_open_patient"))
+                            .clicked()
+                        {
+                            open = Some(*id);
+                        }
+                    }
+                });
+        });
+        open
+    }
+
     /// What the counter needs before anyone has typed anything: the
     /// day's rendez-vous, the files the team touched last, and what was
     /// written today. The search screen used to be a box on an empty
@@ -28653,24 +28723,41 @@ impl App {
             .max(1) as f32;
         let recent_rows = session.recent.len().max(1) as f32;
         let band = |share: f32, rows: f32| chrome + whole_rows(share - chrome, row, 1.0, rows);
-        let rects: [egui::Rect; 3] = if split {
-            let top_h = band(body.height() * 0.55, today_rows.max(recent_rows));
+        // « À renouveler » partage la rangée des notes : deux listes
+        // courtes en haut, deux en bas.
+        let rects: [egui::Rect; 4] = if split {
+            let top_h = band(body.height() * 0.5, today_rows.max(recent_rows));
             let rows = motif::split_rows(body, &[top_h, 0.0], 8.0);
             let top = motif::split_columns(rows[0], 2, 8.0);
-            [top[0], top[1], rows[1]]
+            let bottom = motif::split_columns(rows[1], 2, 8.0);
+            [top[0], top[1], bottom[0], bottom[1]]
         } else {
+            // En quarts, chaque liste n'y gardait qu'une rangée à
+            // 1024x700 en texte 1,6 : les tiers restent, et le dernier
+            // se partage.
             let third = (body.height() - 16.0) / 3.0;
             let heads = [band(third, today_rows), band(third, recent_rows), 0.0];
             let rows = motif::split_rows(body, &heads, 8.0);
-            [rows[0], rows[1], rows[2]]
+            let bottom = motif::split_columns(rows[2], 2, 8.0);
+            [rows[0], rows[1], bottom[0], bottom[1]]
         };
-        let titles = [tr("home_today"), tr("dash_recent"), tr("dash_today_notes")];
+        let titles = [
+            tr("home_today"),
+            tr("dash_recent"),
+            tr("home_renew"),
+            tr("dash_today_notes"),
+        ];
         for (i, (title, rect)) in titles.iter().zip(rects).enumerate() {
             motif::panel(ui, rect, Some(title), |ui| {
                 let body = ui.max_rect();
                 match i {
                     0 => open_patient = Self::home_today(ui, session, body),
                     1 => open_recent = Self::dash_recent(ui, session, body),
+                    2 => {
+                        if let Some(id) = Self::home_renew(ui, session, body) {
+                            open_patient = Some(id);
+                        }
+                    }
                     _ => Self::dash_today_notes(ui, session, body),
                 }
             });
@@ -37686,7 +37773,7 @@ impl App {
         // The name is a heading and the birth date follows it.
         let heading = egui::TextStyle::Heading.resolve(ui.style());
         let body = egui::TextStyle::Body.resolve(ui.style());
-        let born = Self::born_text(patient);
+        let born = Self::born_text(patient, session);
         needed += ui.fonts(|f| {
             f.layout_no_wrap(patient.full_name(), heading, motif::text())
                 .size()
@@ -39223,7 +39310,7 @@ impl App {
             // lui dit, et rien ne l'arrête — c'est la même famille que
             // le titre de `motif::panel` qui débordait sur le panneau
             // d'à côté.
-            let born = Self::born_text(patient);
+            let born = Self::born_text(patient, session);
             let body = egui::TextStyle::Body.resolve(ui.style());
             let born_w = ui.fonts(|f| {
                 f.layout_no_wrap(born.clone(), body, motif::text_dim())
@@ -41085,12 +41172,30 @@ impl App {
     /// « Né(e) le … », ou ce qui en tient lieu quand la date n'a pas été
     /// saisie — elle est facultative, et « Né(e) le » suivi de rien se lit
     /// comme un défaut d'affichage.
-    fn born_text(patient: &Patient) -> String {
+    ///
+    /// Suivi de l'âge et du DFG le plus récent, daté : les deux chiffres
+    /// qu'on demande avant de délivrer, sur la ligne qu'on lit d'abord.
+    fn born_text(patient: &Patient, session: &Session) -> String {
         if patient.birth_date.trim().is_empty() {
-            tr("patient_born_unknown").to_owned()
-        } else {
-            trf("patient_born", db::format_french_date(&patient.birth_date))
+            return tr("patient_born_unknown").to_owned();
         }
+        let mut out = trf("patient_born", db::format_french_date(&patient.birth_date));
+        if let Some(age) = db::age_on(&patient.birth_date, &session.today) {
+            out.push_str(" · ");
+            out.push_str(&trf("patient_age", age));
+        }
+        let same = session.viewing.as_ref().is_some_and(|v| v.id == patient.id);
+        if let (true, Some(dfg)) = (same, session.renal_dfg) {
+            out.push_str(" · ");
+            out.push_str(&trn(
+                "patient_dfg",
+                &[
+                    &format!("{}", dfg.round()),
+                    &db::format_french_date(&session.renal_dfg_on),
+                ],
+            ));
+        }
+        out
     }
 
     /// Pourquoi une ligne de TROD ne s'applique pas, en une phrase.

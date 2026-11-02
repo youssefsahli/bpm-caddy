@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **« À dire » on the patient file.** A file now opens on a tab that gathers what its tables already read — revue, interactions, kidney (with the latest DFG), biology, overdue monitoring, the elderly table's « à éviter », a finished or last-step ordonnance, vaccines due — most urgent first (Alerte, À adapter, À surveiller, À proposer), each in its table's own words, with a link to the tab that says more. The Fil sits beside it on a wide window. Recomputed when one of those readings changes, never per frame.
+- **Age and latest DFG on the file's first line.** « Né(e) le 03/07/1958 · 68 ans · DFG 52 le 20/08/2026 », the two figures asked before dispensing.
+- **« À renouveler » on the Comptoir home.** The files whose ordonnance is at its last dispensing, or ended within the last thirty days (in red), most pressing first; a click opens the file. One query over the lines that carry a prescription date, read with the rest of the day's board.
 
 ## [0.449.0] - 2026-11-02
 

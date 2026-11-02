@@ -74,6 +74,13 @@ disparaît au premier dossier.
 
 # Recherche
 
+Champ vide, le Comptoir montre la journée : les rendez-vous du jour,
+les derniers dossiers, **À renouveler** et les notes du jour. « À
+renouveler » liste les dossiers dont une ordonnance en est à sa
+dernière délivrance (fin le…) ou s'est finie depuis trente jours au
+plus (finie le…, en rouge), la plus pressée d'abord. Un clic ouvre le
+dossier.
+
 « Chercher… » cherche partout d'un seul champ : les vues elles-mêmes, les
 dossiers, les fiches, les tables de conversion, les préparations, les
 protocoles, les dispositifs, les compléments nutritionnels, le registre,
