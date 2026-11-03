@@ -81311,7 +81311,7 @@ impl App {
             // underneath it.
             let body =
                 egui::Rect::from_min_max(body.min, egui::pos2(body.right() - 14.0, body.bottom()));
-            let wide = body.width() >= chars_wide(ui, 148.0);
+            let wide = body.width() >= chars_wide(ui, 96.0);
             let (main, side_rect) = if wide {
                 let side_w = (body.width() * 0.28).clamp(260.0, 380.0);
                 (
@@ -81559,8 +81559,24 @@ impl App {
                 .y
             });
             let folded_h = 16.0 + caption_h + 9.0 + Self::row_height(ui) + 4.0;
+            // **Les notes gardent de quoi se lire.** À 1024x700 la colonne
+            // fait quatre cents pixels : la fiche technique en prenait la
+            // moitié, les patients le quart du reste, et « Notes datées »
+            // disait « panneau trop court » au-dessus de sa seule note.
             let tech_h = if session.drug_tech_open {
-                (side_rect.height() * 0.46).clamp(180.0, 460.0)
+                // Sur des rangées entières : arrêtée au milieu d'une
+                // rangée de pastilles, la fiche se lisait cassée.
+                let raw = (side_rect.height() * 0.36)
+                    .min(460.0)
+                    .max(folded_h.min(180.0));
+                let chrome = motif::panel_chrome(ui, true);
+                chrome
+                    + whole_rows(
+                        raw - chrome,
+                        Self::row_height(ui),
+                        ui.spacing().item_spacing.y,
+                        f32::INFINITY,
+                    )
             } else {
                 folded_h
             };
@@ -81569,7 +81585,7 @@ impl App {
                 // flex there is, so two of them would overlap and the
                 // last would be drawn past the bottom of the card.
                 let left = (side_rect.height() - tech_h - 16.0).max(80.0);
-                let rows = motif::split_rows(side_rect, &[tech_h, left * 0.45, 0.0], 8.0);
+                let rows = motif::split_rows(side_rect, &[tech_h, left * 0.32, 0.0], 8.0);
                 (rows[0], rows[1], rows[2])
             } else {
                 // Under the monograph the three share the width, but not
