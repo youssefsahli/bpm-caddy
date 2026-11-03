@@ -138,8 +138,11 @@ en dit plus. Un entretien est proposé quand le traitement l'appelle et
 que le dossier n'en porte aucun de ce type : AVK (warfarine,
 fluindione, acénocoumarol), AOD (apixaban, rivaroxaban, dabigatran,
 édoxaban), bilan partagé à partir de cinq traitements. « Créer
-l'acte » le met dans « À proposer » du suivi. Le fil s'affiche à
-droite quand la fenêtre est assez large.
+l'acte » le met dans « À proposer » du suivi. Quand un traitement
+du dossier est un produit suivi au registre des stupéfiants,
+« Inscrire » ouvre le registre sur ce produit, en délivrance, pour ce
+dossier : il reste le numéro d'ordonnancier, le prescripteur et la
+quantité. Le fil s'affiche à droite quand la fenêtre est assez large.
 
 Saisie courte des dates : `230826` ou `2308` donne `23/08/2026`. Pour
 une date déjà passée (délivrance, ordonnance, registre, pièce, vaccin,

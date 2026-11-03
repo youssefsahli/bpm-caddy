@@ -5785,6 +5785,9 @@ struct Session {
     say_stale: bool,
     /// Le délai de renouvellement avec lequel il a été lu.
     say_notice: u32,
+    /// Les traitements du dossier que le registre suit : (produit,
+    /// libellé), pour « Inscrire » depuis « À dire ».
+    say_stups: Vec<(i64, String)>,
     /// The viewed patient's dated notes, newest first.
     patient_notes: Vec<Note>,
     /// Le fil du dossier : tout ce que la base sait de ce patient, dans
@@ -7504,6 +7507,7 @@ impl Session {
             say_today: Vec::new(),
             say_stale: true,
             say_notice: 0,
+            say_stups: Vec::new(),
             patient_notes: Vec::new(),
             patient_fil: Vec::new(),
             patient_tab: PatientTab::default(),
@@ -11625,6 +11629,20 @@ impl Session {
     /// Une liste de quarante produits ouverte sur le premier par ordre
     /// alphabétique n'apprend rien ; celui qui est sous son seuil ou
     /// qu'on n'a pas recompté, si.
+    /// « Inscrire » depuis le dossier : le registre ouvert sur ce
+    /// produit, en délivrance, pour le dossier à l'écran.
+    fn register_from_file(&mut self, product: i64) {
+        self.stup_open = Some(product);
+        self.stup_file_pick = None;
+        self.open_registres(RegistreTab::Stupefiants);
+        let (stock, to_destroy) = self
+            .stup_summary
+            .iter()
+            .find(|s| s.product.id == product)
+            .map_or((0.0, 0.0), |s| (s.stock, s.to_destroy));
+        App::stup_kind_picked(self, crate::ordonnancier::Kind::Sortie, stock, to_destroy);
+    }
+
     fn open_registres(&mut self, tab: RegistreTab) {
         self.view = MainView::Registres;
         self.registre_tab = tab;
@@ -17418,6 +17436,15 @@ impl Session {
         // Stable : dans un rang, l'ordre des tables.
         out.sort_by_key(|l| l.rank);
         self.say_today = out;
+        let ids: Vec<i64> = self.patient_treats.iter().map(|d| d.id).collect();
+        self.say_stups = self
+            .db
+            .stupefiants()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|s| !s.archived && s.drug_id != 0 && ids.contains(&s.drug_id))
+            .map(|s| (s.id, s.label))
+            .collect();
     }
 
     /// (Re)read the patient's carnet and destinations. Called on open
@@ -30626,7 +30653,33 @@ impl App {
         };
         let mut go: Option<PatientTab> = None;
         let mut create: Option<InterviewKind> = None;
+        let mut write: Option<i64> = None;
         motif::panel(ui, list, Some(tr("say_title")), |ui| {
+            // Ce que le registre suit dans ce traitement : la délivrance
+            // s'inscrit d'ici, le produit et le dossier repris.
+            if !session.say_stups.is_empty() {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(egui::RichText::new(tr("say_stup")).color(motif::text_dim()));
+                    for (id, label) in &session.say_stups {
+                        let b = ui
+                            .push_id(("stup", id), |ui| {
+                                motif::badge(
+                                    ui,
+                                    &trf("say_stup_write", label),
+                                    None,
+                                    motif::bg(),
+                                    true,
+                                )
+                                .on_hover_cursor(egui::CursorIcon::PointingHand)
+                            })
+                            .inner;
+                        if b.clicked() {
+                            write = Some(*id);
+                        }
+                    }
+                });
+                motif::separator(ui);
+            }
             egui::ScrollArea::vertical()
                 .id_salt("patient_say")
                 .auto_shrink([false, false])
@@ -30698,6 +30751,9 @@ impl App {
         });
         if let Some(tab) = go {
             session.patient_tab = tab;
+        }
+        if let Some(id) = write {
+            session.register_from_file(id);
         }
         // L'acte à proposer, créé d'un clic : il rejoint « À proposer »
         // dans le suivi des entretiens.
@@ -115233,6 +115289,38 @@ mod tests {
         s.refresh_vacc_due();
         s.refresh_say(30);
         assert!(!s.say_today.is_empty());
+    }
+
+    #[test]
+    fn a_followed_stupefiant_is_written_from_the_file_as_a_dispensing() {
+        let (mut s, _swept) = scratch_session("say-stup");
+        let p = s.patients[0].clone();
+        let drug =
+            s.db.drugs()
+                .unwrap()
+                .into_iter()
+                .find(|d| d.dci.to_lowercase().contains("morphine"))
+                .expect("une fiche de morphine livrée");
+        let product =
+            s.db.add_stupefiant(drug.id, "Morphine test 10 mg", "gélule", 0.0)
+                .unwrap();
+        s.db.add_patient_drug(p.id, drug.id).unwrap();
+        s.open_patient(p.clone());
+        s.refresh_say(30);
+        assert!(
+            s.say_stups.iter().any(|(id, _)| *id == product),
+            "{:?}",
+            s.say_stups
+        );
+        s.register_from_file(product);
+        assert!(s.view == super::MainView::Registres);
+        assert_eq!(s.stup_open, Some(product));
+        assert_eq!(s.stup_new_kind, crate::ordonnancier::Kind::Sortie);
+        assert_eq!(
+            s.viewing.as_ref().map(|v| v.id),
+            Some(p.id),
+            "le dossier reste celui du patient"
+        );
     }
 
     #[test]
