@@ -45772,17 +45772,36 @@ impl App {
             // Seulement si la ligne entière tient : une ligne qui se replie
             // de toute façon n'a pas de colonnes, et des cases à la mesure
             // du plus long la feraient se replier plus tôt.
-            let columns = Self::group_width(
-                ui,
-                [
-                    Self::field_width(ui, [tr("agenda_hour_hint")].into_iter()).max(56.0),
-                    kind_w,
-                    name_w,
-                    phone_w,
-                    Self::button_width(ui, tr("agenda_move")),
-                ]
-                .into_iter(),
-            ) <= ui.available_width();
+            // **Le téléphone cède le premier** : dans le panneau étroit à
+            // côté de la semaine, la ligne entière ne tenait pas et chaque
+            // rendez-vous se repliait sur deux ou trois lignes, « Déplacer »
+            // seul sur la sienne. Sans le numéro (il passe au survol du
+            // nom), heure, nature, nom et « Déplacer » tiennent sur une.
+            let fits = |with_phone: bool| {
+                Self::group_width(
+                    ui,
+                    [
+                        Self::field_width(ui, [tr("agenda_hour_hint")].into_iter()).max(56.0),
+                        kind_w,
+                        name_w,
+                        if with_phone { phone_w } else { 0.0 },
+                        Self::button_width(ui, tr("agenda_move")),
+                    ]
+                    .into_iter()
+                    .filter(|w| *w > 0.0),
+                ) <= ui.available_width()
+            };
+            let hour_w = Self::field_width(ui, [tr("agenda_hour_hint")].into_iter()).max(56.0);
+            let one_line_phone = fits(true);
+            let one_line = one_line_phone || fits(false);
+            // Plus étroit encore (1280 de large, la semaine prend le reste) :
+            // deux lignes alignées, heure, nature et nom sur la première,
+            // téléphone et « Déplacer » sous le nom.
+            let two_lines = !one_line
+                && Self::group_width(ui, [hour_w, kind_w, name_w].into_iter())
+                    <= ui.available_width();
+            let columns = one_line || two_lines;
+            let show_phone = one_line_phone || !one_line;
             let cell = |ui: &mut egui::Ui, w: f32, add: &mut dyn FnMut(&mut egui::Ui)| {
                 if !columns {
                     add(ui);
@@ -45798,105 +45817,129 @@ impl App {
                 );
             };
             for rdv in &rdvs {
-                ui.horizontal_wrapped(|ui| {
-                    // The hour, typed the fast way: 9, 9h30, 930, 09:30.
-                    // `filter` and not « ask whether, then unwrap »: the
-                    // two readings of the same Option are one line apart
-                    // today and will not always be, and an `unwrap` on
-                    // state that « must » be open takes the whole
-                    // application down at the counter.
-                    let editing = session
-                        .rdv_time_edit
-                        .as_mut()
-                        .filter(|(id, _)| *id == rdv.id);
-                    if let Some((_, text)) = editing {
-                        let field = motif::field_sized(
-                            ui,
-                            egui::vec2(
-                                Self::field_width(ui, [tr("agenda_hour_hint")].into_iter())
-                                    .max(56.0),
-                                Self::button_height(ui),
-                            ),
-                            egui::TextEdit::singleline(text)
-                                .hint_text(motif::hint(tr("agenda_hour_hint"))),
-                        );
-                        if field.lost_focus() {
-                            set_time = Some((rdv.id, text.clone(), rdv.time.clone()));
+                let mut part = |ui: &mut egui::Ui, second: bool| {
+                    if !second {
+                        // The hour, typed the fast way: 9, 9h30, 930, 09:30.
+                        // `filter` and not « ask whether, then unwrap »: the
+                        // two readings of the same Option are one line apart
+                        // today and will not always be, and an `unwrap` on
+                        // state that « must » be open takes the whole
+                        // application down at the counter.
+                        let editing = session
+                            .rdv_time_edit
+                            .as_mut()
+                            .filter(|(id, _)| *id == rdv.id);
+                        if let Some((_, text)) = editing {
+                            let field = motif::field_sized(
+                                ui,
+                                egui::vec2(
+                                    Self::field_width(ui, [tr("agenda_hour_hint")].into_iter())
+                                        .max(56.0),
+                                    Self::button_height(ui),
+                                ),
+                                egui::TextEdit::singleline(text)
+                                    .hint_text(motif::hint(tr("agenda_hour_hint"))),
+                            );
+                            if field.lost_focus() {
+                                set_time = Some((rdv.id, text.clone(), rdv.time.clone()));
+                            } else {
+                                field.request_focus();
+                            }
                         } else {
-                            field.request_focus();
-                        }
-                    } else {
-                        let shown = if rdv.time.is_empty() {
-                            tr("agenda_no_hour").to_owned()
-                        } else {
-                            rdv.time.clone()
-                        };
-                        if ui
-                            .add_sized(
-                                [56.0, 20.0],
-                                egui::Button::new(
-                                    egui::RichText::new(shown)
-                                        .size(motif::pt(ui, 12.0))
-                                        .strong(),
+                            let shown = if rdv.time.is_empty() {
+                                tr("agenda_no_hour").to_owned()
+                            } else {
+                                rdv.time.clone()
+                            };
+                            if ui
+                                .add_sized(
+                                    [56.0, 20.0],
+                                    egui::Button::new(
+                                        egui::RichText::new(shown)
+                                            .size(motif::pt(ui, 12.0))
+                                            .strong(),
+                                    )
+                                    .fill(motif::bg()),
                                 )
-                                .fill(motif::bg()),
-                            )
-                            .on_hover_text(tr("agenda_hour_tooltip"))
-                            .clicked()
-                        {
-                            session.rdv_time_edit = Some((rdv.id, rdv.time.clone()));
+                                .on_hover_text(tr("agenda_hour_tooltip"))
+                                .clicked()
+                            {
+                                session.rdv_time_edit = Some((rdv.id, rdv.time.clone()));
+                            }
                         }
-                    }
-                    cell(ui, kind_w, &mut |ui| {
-                        ui.label(
-                            egui::RichText::new(format!("  {}  ", rdv.kind.label()))
-                                .size(motif::pt(ui, 11.0))
-                                .color(motif::on_fill(kind_color(rdv.kind)))
-                                .background_color(kind_color(rdv.kind)),
-                        );
-                    });
-                    cell(ui, name_w, &mut |ui| {
-                        if ui
-                            .selectable_label(false, &rdv.patient_name)
-                            .on_hover_text(tr("dash_open_patient"))
-                            .clicked()
-                        {
-                            *open_id = Some(rdv.patient_id);
-                        }
-                    });
-                    if !rdv.phone.is_empty() || (columns && phone_w > ui.spacing().item_spacing.x) {
-                        cell(ui, phone_w, &mut |ui| {
+                        cell(ui, kind_w, &mut |ui| {
                             ui.label(
-                                egui::RichText::new(&rdv.phone)
+                                egui::RichText::new(format!("  {}  ", rdv.kind.label()))
                                     .size(motif::pt(ui, 11.0))
-                                    .color(motif::text_dim()),
+                                    .color(motif::on_fill(kind_color(rdv.kind)))
+                                    .background_color(kind_color(rdv.kind)),
                             );
                         });
-                    }
-                    // Moving a rendez-vous without opening the record.
-                    let moving = session
-                        .rdv_move_edit
-                        .as_mut()
-                        .filter(|(id, _)| *id == rdv.id);
-                    if let Some((_, text)) = moving {
-                        let field = motif::field(
-                            ui,
-                            Self::date_field_width(ui),
-                            egui::TextEdit::singleline(text)
-                                .hint_text(motif::hint(tr("itv_rdv_hint"))),
-                        );
-                        if field.lost_focus() {
-                            move_rdv = Some((rdv.id, text.clone(), rdv.date.clone()));
-                        } else {
-                            field.request_focus();
+                        cell(ui, name_w, &mut |ui| {
+                            let hover = if show_phone || rdv.phone.is_empty() {
+                                tr("dash_open_patient").to_owned()
+                            } else {
+                                format!("{}\n{}", rdv.phone, tr("dash_open_patient"))
+                            };
+                            if ui
+                                .selectable_label(false, &rdv.patient_name)
+                                .on_hover_text(hover)
+                                .clicked()
+                            {
+                                *open_id = Some(rdv.patient_id);
+                            }
+                        });
+                    } else {
+                        if show_phone
+                            && (!rdv.phone.is_empty()
+                                || (columns && phone_w > ui.spacing().item_spacing.x))
+                        {
+                            cell(ui, phone_w, &mut |ui| {
+                                ui.label(
+                                    egui::RichText::new(&rdv.phone)
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                );
+                            });
                         }
-                    } else if motif::button(ui, tr("agenda_move"))
-                        .on_hover_text(tr("agenda_move_tooltip"))
-                        .clicked()
-                    {
-                        session.rdv_move_edit = Some((rdv.id, db::format_french_date(&rdv.date)));
+                        // Moving a rendez-vous without opening the record.
+                        let moving = session
+                            .rdv_move_edit
+                            .as_mut()
+                            .filter(|(id, _)| *id == rdv.id);
+                        if let Some((_, text)) = moving {
+                            let field = motif::field(
+                                ui,
+                                Self::date_field_width(ui),
+                                egui::TextEdit::singleline(text)
+                                    .hint_text(motif::hint(tr("itv_rdv_hint"))),
+                            );
+                            if field.lost_focus() {
+                                move_rdv = Some((rdv.id, text.clone(), rdv.date.clone()));
+                            } else {
+                                field.request_focus();
+                            }
+                        } else if motif::button(ui, tr("agenda_move"))
+                            .on_hover_text(tr("agenda_move_tooltip"))
+                            .clicked()
+                        {
+                            session.rdv_move_edit =
+                                Some((rdv.id, db::format_french_date(&rdv.date)));
+                        }
                     }
-                });
+                };
+                if two_lines {
+                    ui.horizontal(|ui| part(ui, false));
+                    ui.horizontal(|ui| {
+                        ui.add_space(hour_w + ui.spacing().item_spacing.x);
+                        part(ui, true);
+                    });
+                } else {
+                    ui.horizontal_wrapped(|ui| {
+                        part(ui, false);
+                        part(ui, true);
+                    });
+                }
             }
             for ev in session.events.clone() {
                 // Même raison qu'au-dessus : un intitulé long poussait

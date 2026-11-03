@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Ctrl+K opens on the open file.** With a file open, the empty box lists its tabs first (À dire, Biologie, Vaccinations, Entretiens) and « Note pour l'équipe », before favourites and recent places; typed, they rank with the other files.
 
+### Fixed
+
+- **Agenda, « Journée du » beside the week.** At 1280 wide each rendez-vous wrapped on two or three ragged lines, « Déplacer » alone on its own. Now one line when it fits (the phone goes to the name's hover first), else two aligned lines: hour, type, name; then phone and « Déplacer ».
+
 ## [0.450.0] - 2026-11-03
 
 ### Added
