@@ -6393,6 +6393,8 @@ struct Session {
     /// « Planifier » ouvert sur une carte « À proposer » : l'acte et ce
     /// qui est tapé (« 051126 9h30 »).
     board_plan: Option<(i64, String)>,
+    /// « Nouveau rendez-vous » de l'agenda (Ctrl+R), ouvert.
+    new_rdv: Option<NewRdv>,
     /// L'entretien mené à l'écran, quand il y en a un.
     conduct: Option<Conduct>,
     /// `[ordonnance] notice_days`, poussé ici comme `loc_notice_days`.
@@ -7737,6 +7739,7 @@ impl Session {
             dash_figures: false,
             board_kind: None,
             board_plan: None,
+            new_rdv: None,
             conduct: None,
             rx_notice_days: 7,
             today_notes: Vec::new(),
@@ -8981,27 +8984,51 @@ impl Session {
         self.rdv_time_edit = None;
     }
 
-    /// Planifier un acte « à proposer » d'après ce qui est tapé : le jour
-    /// (« 051126 », « 0511 »), puis l'heure si elle suit (« 9h30 »).
-    fn plan_typed(&mut self, id: i64, typed: &str) {
+    /// « 051126 9h30 » : le jour (ISO) et l'heure (vide si absente).
+    fn read_rdv(&self, typed: &str) -> Result<(String, String), String> {
         let mut words = typed.split_whitespace();
         let day = words.next().unwrap_or("");
         let hour = words.collect::<Vec<_>>().join(" ");
-        let year = self.db.current_year();
-        let iso = match db::parse_french_date(day, year, db::YearHint::Future) {
-            Ok(iso) => iso,
+        let iso = db::parse_french_date(day, self.db.current_year(), db::YearHint::Future)?;
+        let time = if hour.is_empty() {
+            String::new()
+        } else {
+            db::parse_hour(&hour).ok_or_else(|| tr("agenda_bad_hour").to_owned())?
+        };
+        Ok((iso, time))
+    }
+
+    /// Le rendez-vous de « Nouveau rendez-vous » : l'acte créé au dossier,
+    /// planifié au jour et à l'heure tapés. Rien n'est écrit tant que le
+    /// dossier et le jour ne se lisent pas.
+    fn book_rdv(&mut self, f: &NewRdv) -> Result<(), String> {
+        let pid = f.patient.ok_or_else(|| tr("rdv_new_pick").to_owned())?;
+        if f.when.trim().is_empty() {
+            return Err(tr("rdv_new_when_missing").to_owned());
+        }
+        let (iso, time) = self.read_rdv(&f.when)?;
+        let by = self.operator.clone();
+        let id = self.db.add_interview_by(pid, f.kind, "", &by)?;
+        if !self.db.plan_interview(id, &iso, &time)? {
+            self.stale("itv_stale");
+        }
+        self.refresh_dashboard();
+        self.load_day();
+        if self.viewing.as_ref().map(|p| p.id) == Some(pid) {
+            self.reload_interviews(pid);
+        }
+        Ok(())
+    }
+
+    /// Planifier un acte « à proposer » d'après ce qui est tapé : le jour
+    /// (« 051126 », « 0511 »), puis l'heure si elle suit (« 9h30 »).
+    fn plan_typed(&mut self, id: i64, typed: &str) {
+        let (iso, time) = match self.read_rdv(typed) {
+            Ok(t) => t,
             Err(e) => {
                 self.error = Some(e);
                 return;
             }
-        };
-        let time = if hour.is_empty() {
-            String::new()
-        } else if let Some(t) = db::parse_hour(&hour) {
-            t
-        } else {
-            self.error = Some(tr("agenda_bad_hour").to_owned());
-            return;
         };
         match self.db.plan_interview(id, &iso, &time) {
             Ok(true) => self.error = None,
@@ -23359,6 +23386,34 @@ fn restore_view(session: &mut Session, key: &str, caisse_expected: bool) {
     }
     session.view = view;
 }
+/// Le rendez-vous pris de l'agenda, au téléphone : le dossier cherché
+/// par son nom, le type d'acte, le jour et l'heure.
+impl NewRdv {
+    fn blank() -> Self {
+        Self {
+            query: String::new(),
+            patient: None,
+            kind: InterviewKind::ALL[0],
+            when: String::new(),
+            error: None,
+            focused: false,
+            to_when: false,
+        }
+    }
+}
+
+#[derive(Clone)]
+struct NewRdv {
+    query: String,
+    patient: Option<i64>,
+    kind: InterviewKind,
+    when: String,
+    error: Option<String>,
+    focused: bool,
+    /// Le dossier choisi : le curseur passe au jour.
+    to_when: bool,
+}
+
 /// Les raccourcis auxquels l'application répond, **écrits une fois**.
 ///
 /// La fenêtre `F12` les montre, et le mode d'emploi imprimé les
@@ -23370,7 +23425,7 @@ fn restore_view(session: &mut Session, key: &str, caisse_expected: bool) {
 /// aussi.
 ///
 /// Une clé vide ouvre un groupe.
-pub fn key_rows() -> [(&'static str, &'static str); 30] {
+pub fn key_rows() -> [(&'static str, &'static str); 31] {
     [
         ("", tr("keys_group_workspace")),
         // Pas l'infobulle du bouton : elle dit sa touche entre
@@ -23398,6 +23453,7 @@ pub fn key_rows() -> [(&'static str, &'static str); 30] {
         ("Ctrl+N", tr("keys_new_act")),
         ("N", tr("keys_note")),
         ("P", tr("keys_plan")),
+        ("Ctrl+R", tr("keys_new_rdv")),
         ("1 … 9, 0", tr("keys_act_digit")),
         ("← →", tr("keys_arrows")),
         ("Alt + ← →", tr("keys_patient_tabs")),
@@ -23971,6 +24027,19 @@ impl App {
                             session.agenda_mode = AgendaMode::Day;
                             session.agenda_places = [false, true];
                             session.view = MainView::Agenda;
+                        }
+                        // « Nouveau rendez-vous », un dossier déjà
+                        // choisi : la fenêtre telle qu'on la remplit.
+                        Ok("agenda_rdv") => {
+                            session.refresh_dashboard();
+                            session.view = MainView::Agenda;
+                            let mut f = NewRdv::blank();
+                            if let Some(p) = session.patients.first() {
+                                f.query = p.full_name();
+                                f.patient = Some(p.id);
+                            }
+                            f.when = "0511 9h30".to_owned();
+                            session.new_rdv = Some(f);
                         }
                         // Le planning de l'équipe : la grille
                         // semaine x personne, avec ses totaux.
@@ -46533,6 +46602,128 @@ impl App {
         }
     }
 
+    /// « Nouveau rendez-vous » : le dossier par son nom, le type, le
+    /// jour et l'heure, Entrée. L'acte naît planifié.
+    fn new_rdv_dialog(ctx: &egui::Context, session: &mut Session) {
+        let Some(mut f) = session.new_rdv.take() else {
+            return;
+        };
+        let mut close = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
+        let mut book = false;
+        let screen = ctx.screen_rect().size();
+        let shown = egui::Window::new(tr("rdv_new_title"))
+            .collapsible(false)
+            .resizable(false)
+            .max_width((screen.x - 40.0).max(320.0))
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                let w = chars_wide(ui, 34.0).min(screen.x - 80.0);
+                let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
+                ui.label(egui::RichText::new(tr("rdv_new_patient")).color(motif::text_dim()));
+                let q = motif::field(
+                    ui,
+                    w,
+                    egui::TextEdit::singleline(&mut f.query)
+                        .hint_text(motif::hint(tr("rdv_new_patient_hint"))),
+                );
+                if !f.focused {
+                    q.request_focus();
+                    f.focused = true;
+                }
+                if q.changed() {
+                    f.patient = None;
+                }
+                if f.patient.is_none() && f.query.trim().chars().count() >= 2 {
+                    let words: Vec<&str> = f.query.split_whitespace().collect();
+                    let hits: Vec<(i64, String)> = session
+                        .patients
+                        .iter()
+                        .filter(|p| {
+                            let name = p.full_name();
+                            words
+                                .iter()
+                                .all(|w| crate::fuzzy::contains_folded(&name, w))
+                        })
+                        .take(6)
+                        .map(|p| {
+                            (
+                                p.id,
+                                format!(
+                                    "{} · {}",
+                                    p.full_name(),
+                                    db::format_french_date(&p.birth_date)
+                                ),
+                            )
+                        })
+                        .collect();
+                    if hits.is_empty() {
+                        ui.label(egui::RichText::new(tr("rdv_new_none")).color(motif::text_dim()));
+                    }
+                    let mut pick: Option<(i64, String)> = None;
+                    for (id, label) in &hits {
+                        if motif::list_row(ui, egui::RichText::new(label), false).clicked() {
+                            pick = Some((*id, label.clone()));
+                        }
+                    }
+                    if q.lost_focus() && enter {
+                        pick = hits.first().cloned();
+                    }
+                    if let Some((id, _)) = pick {
+                        f.patient = Some(id);
+                        if let Some(p) = session.patients.iter().find(|p| p.id == id) {
+                            f.query = p.full_name();
+                        }
+                        f.error = None;
+                        f.to_when = true;
+                    }
+                }
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new(tr("rdv_new_kind")).color(motif::text_dim()));
+                let options: Vec<(InterviewKind, String)> = InterviewKind::ALL
+                    .iter()
+                    .map(|k| (*k, k.label().to_owned()))
+                    .collect();
+                motif::select(ui, "rdv_new_kind", w, &mut f.kind, &options);
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new(tr("rdv_new_when")).color(motif::text_dim()));
+                let when = motif::field(
+                    ui,
+                    w,
+                    egui::TextEdit::singleline(&mut f.when)
+                        .hint_text(motif::hint(tr("board_plan_hint"))),
+                );
+                if std::mem::take(&mut f.to_when) {
+                    when.request_focus();
+                }
+                if when.lost_focus() && enter {
+                    book = true;
+                }
+                if let Some(e) = &f.error {
+                    ui.colored_label(motif::alert(), e.as_str());
+                }
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    if motif::button(ui, tr("rdv_new_book")).clicked() {
+                        book = true;
+                    }
+                    if motif::button(ui, tr("rdv_new_cancel")).clicked() {
+                        close = true;
+                    }
+                });
+            });
+        motif::dialog_relief(ctx, &shown);
+        if close {
+            return;
+        }
+        if book {
+            match session.book_rdv(&f) {
+                Ok(()) => return,
+                Err(e) => f.error = Some(e),
+            }
+        }
+        session.new_rdv = Some(f);
+    }
+
     fn agenda_view(
         ui: &mut egui::Ui,
         ctx: &egui::Context,
@@ -46540,6 +46731,13 @@ impl App {
         operator: &str,
         config: &Config,
     ) {
+        if session.new_rdv.is_none()
+            && session.agenda_mode != AgendaMode::Planning
+            && ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::R))
+        {
+            session.new_rdv = Some(NewRdv::blank());
+        }
+        Self::new_rdv_dialog(ctx, session);
         // **Au planning, le clavier porte sur la case désignée** : Échap
         // la rend avant de quitter la vue — un second Échap quitte —,
         // Ctrl+C copie sa journée, Ctrl+V la colle sur une case libre.
@@ -46894,6 +47092,7 @@ impl App {
             .chain(
                 [
                     week_label.as_str(),
+                    tr("rdv_new_button"),
                     tr("dash_print"),
                     tr("agenda_print_week"),
                 ]
@@ -47037,6 +47236,12 @@ impl App {
                             ui.add_space(10.0);
                             Self::agenda_nav_buttons(ui, session);
                             {
+                                if motif::button(ui, tr("rdv_new_button"))
+                                    .on_hover_text(tr("rdv_new_key"))
+                                    .clicked()
+                                {
+                                    session.new_rdv = Some(NewRdv::blank());
+                                }
                                 if motif::button(ui, tr("agenda_print_week"))
                                     .on_hover_text(tr("agenda_print_week_tooltip"))
                                     .clicked()
@@ -116073,6 +116278,31 @@ mod tests {
                 .find(|r| r.id == id)
                 .map(|r| r.state)
         }
+    }
+
+    #[test]
+    fn a_rendez_vous_taken_by_phone_is_written_only_when_it_reads() {
+        let (mut s, _swept) = scratch_session("new-rdv");
+        let p = s.patients[0].clone();
+        let before = s.db.interview_board().unwrap().len();
+        let mut f = super::NewRdv::blank();
+        f.kind = InterviewKind::Aod;
+        f.when = "0511 9h30".to_owned();
+        // Pas de dossier choisi : rien n'est écrit.
+        assert!(s.book_rdv(&f).is_err());
+        f.patient = Some(p.id);
+        f.when = "0511 midi".to_owned();
+        assert!(s.book_rdv(&f).is_err());
+        assert_eq!(s.db.interview_board().unwrap().len(), before);
+        f.when = "051126 9h30".to_owned();
+        s.book_rdv(&f).unwrap();
+        let board = s.db.interview_board().unwrap();
+        assert_eq!(board.len(), before + 1);
+        assert!(board.iter().any(|r| r.patient_id == p.id
+            && r.kind == InterviewKind::Aod
+            && r.state == InterviewState::Scheduled
+            && r.scheduled_date == "2026-11-05"
+            && r.scheduled_time == "09:30"));
     }
 
     #[test]

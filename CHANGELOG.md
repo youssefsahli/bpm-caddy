@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Today's entretien at the top of « À dire ».** A file opened from the day's rendez-vous starts with « Aujourd'hui 09:00 · Entretien BPM » and « Commencer », which opens the guided interview; an overdue one gives its day.
 - **Guided interview: Échap suspends** (outside a field), and the band says which one of its type this is on the file (« 1er entretien », « 2e entretien »).
 - **« Noter au dossier » under « Pour <patient> » on a drug card** copies what the tables found for this file to its journal (« Fiche Eliquis : » then one line per finding with its conduct), signed and dated; the button then reads « Noté au journal du dossier. ».
+- **« Nouveau rendez-vous » in the agenda (Ctrl+R)**, for a booking taken by phone: the patient by name (matches narrow as you type, Entrée takes the first), the act, « 051126 9h30 », Entrée. The act is created on the file already planned; nothing is written unless both the file and the day read. Start view `agenda_rdv`.
 
 ### Fixed
 

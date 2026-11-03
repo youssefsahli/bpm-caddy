@@ -890,6 +890,11 @@ pas** : les entrées écartées restent tracées en trait contre la
 gouttière, et une entrée qui chevauche une entrée retenue reste affichée
 en entier, pour que les conflits restent visibles.
 
+**Nouveau rendez-vous** (Ctrl+R) : le patient par son nom (la liste
+s'affine à la frappe, Entrée prend le premier), l'acte, puis le jour
+et l'heure (« 051126 9h30 »), Entrée. L'acte est créé au dossier, déjà
+planifié ; rien n'est écrit si le dossier ou le jour ne se lisent pas.
+
 Les quatre affichages restent **synchronisés** : changer d'affichage
 conserve le jour consulté. Le jour détaillé est encadré dans la grille
 de la semaine comme dans celle du mois, et « Imprimer la semaine »
