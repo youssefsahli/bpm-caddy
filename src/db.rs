@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS interviews (
     theme       TEXT NOT NULL DEFAULT '',
     trod_result TEXT NOT NULL DEFAULT '',
     operator    TEXT NOT NULL DEFAULT '',
+    conduct     TEXT NOT NULL DEFAULT '',
     created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
     updated_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
@@ -1920,6 +1921,9 @@ const MIGRATIONS: &[&str] = &[
         post    INTEGER NOT NULL DEFAULT 0
     )",
     "ALTER TABLE account_homes ADD COLUMN post INTEGER NOT NULL DEFAULT 0",
+    // L'entretien mené à l'écran (`entretien::Record`) : ce qui est
+    // coché, noté, relevé, et le compte rendu.
+    "ALTER TABLE interviews ADD COLUMN conduct TEXT NOT NULL DEFAULT ''",
 ];
 
 /// Un paquet à faire : les trois fichiers ouverts par la session, la
@@ -2744,6 +2748,8 @@ pub struct BoardRow {
     /// ISO day of the last state change.
     pub updated_on: String,
     pub operator: String,
+    /// Mené à l'écran et suspendu : quelque chose est déjà relevé.
+    pub begun: bool,
 }
 
 /// One interview joined with its patient, for the CSV export.
@@ -46877,7 +46883,7 @@ impl Db {
             .prepare(
                 "SELECT i.id, i.patient_id, p.last_name || ' ' || p.first_name, i.kind, i.state,
                         COALESCE(substr(i.scheduled_date, 1, 10), ''), i.scheduled_time,
-                        substr(i.updated_at, 1, 10), i.operator
+                        substr(i.updated_at, 1, 10), i.operator, i.conduct <> ''
                  FROM interviews i JOIN patients p ON p.id = i.patient_id
                  WHERE i.state <> ?1
                     OR substr(i.updated_at, 1, 7) = strftime('%Y-%m', 'now', 'localtime')
@@ -46896,12 +46902,13 @@ impl Db {
                     r.get::<_, String>(6)?,
                     r.get::<_, String>(7)?,
                     r.get::<_, String>(8)?,
+                    r.get::<_, i64>(9)? != 0,
                 ))
             })
             .map_err(|e| e.to_string())?;
         let mut out = Vec::new();
         for row in rows {
-            let (id, patient_id, name, kind, state, day, time, updated, operator) =
+            let (id, patient_id, name, kind, state, day, time, updated, operator, begun) =
                 row.map_err(|e| e.to_string())?;
             let (Some(kind), Some(state)) =
                 (InterviewKind::parse(&kind), InterviewState::parse(&state))
@@ -46918,6 +46925,7 @@ impl Db {
                 scheduled_time: time,
                 updated_on: updated,
                 operator,
+                begun,
             });
         }
         Ok(out)
@@ -56484,6 +56492,73 @@ impl Db {
         self.set_state_cas(id, current, prev)
     }
 
+    /// L'entretien mené à l'écran, tel que la base le garde, et l'état de
+    /// l'acte. `None` : l'acte n'existe plus.
+    pub fn interview_conduct(&self, id: i64) -> Result<Option<(String, InterviewState)>, String> {
+        use rusqlite::OptionalExtension;
+        let row = self
+            .conn
+            .query_row(
+                "SELECT conduct, state FROM interviews WHERE id = ?1",
+                [id],
+                |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        Ok(row.and_then(|(c, s)| InterviewState::parse(&s).map(|s| (c, s))))
+    }
+
+    /// Enregistre l'entretien en cours, par comparaison : `false` si un
+    /// autre poste l'a changé depuis qu'on l'a lu.
+    pub fn save_interview_conduct(
+        &self,
+        id: i64,
+        before: &str,
+        after: &str,
+    ) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE interviews SET conduct = ?1, updated_at = datetime('now', 'localtime')
+                 WHERE id = ?2 AND conduct = ?3",
+                (after, id, before),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Termine l'entretien mené à l'écran : l'acte passe à « Réalisé »
+    /// depuis l'état affiché, avec ce qui a été relevé. Par comparaison
+    /// sur les deux.
+    pub fn finish_interview(
+        &self,
+        id: i64,
+        state: InterviewState,
+        before: &str,
+        after: &str,
+        minutes: i64,
+    ) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE interviews SET conduct = ?1, state = ?2,
+                        duration_minutes = CASE WHEN duration_minutes = 0 THEN ?3
+                                                ELSE duration_minutes END,
+                        updated_at = datetime('now', 'localtime')
+                 WHERE id = ?4 AND conduct = ?5 AND state = ?6",
+                (
+                    after,
+                    InterviewState::Performed.as_str(),
+                    minutes,
+                    id,
+                    before,
+                    state.as_str(),
+                ),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
     fn set_state_cas(
         &self,
         id: i64,
@@ -63685,6 +63760,37 @@ mod tests {
         assert_eq!(board[0].patient_name, "Martin Claire");
         assert!(db.advance_interview(a, InterviewState::Identified).unwrap());
         assert!(!db.advance_interview(a, InterviewState::Identified).unwrap());
+    }
+
+    #[test]
+    fn a_conducted_entretien_is_saved_by_comparison_and_finishes_once() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-conduct-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("conduct.db"), "secret").unwrap();
+        let pid = db.add_patient("Martin", "Paul", "1957-03-02").unwrap();
+        let a = db.add_interview(pid, InterviewKind::Aod).unwrap();
+        assert_eq!(
+            db.interview_conduct(a).unwrap(),
+            Some((String::new(), InterviewState::Identified))
+        );
+        assert!(db.save_interview_conduct(a, "", "step 1").unwrap());
+        // Un autre poste a lu la version vide : sa sauvegarde est refusée.
+        assert!(!db.save_interview_conduct(a, "", "step 2").unwrap());
+        assert!(db.interview_board().unwrap()[0].begun);
+        assert!(!db
+            .finish_interview(a, InterviewState::Identified, "", "step 2", 12)
+            .unwrap());
+        assert!(db
+            .finish_interview(a, InterviewState::Identified, "step 1", "step 2", 12)
+            .unwrap());
+        let i = &db.interviews_for(pid).unwrap()[0];
+        assert_eq!(i.state, InterviewState::Performed);
+        assert_eq!(i.duration_minutes, 12);
+        assert!(!db
+            .finish_interview(a, InterviewState::Identified, "step 2", "step 2", 12)
+            .unwrap());
+        assert_eq!(db.interview_conduct(999_999).unwrap(), None);
     }
 
     #[test]

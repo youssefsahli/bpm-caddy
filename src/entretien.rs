@@ -409,6 +409,203 @@ const CHECKLISTS: &[(&str, &[&str])] = &[
     ),
 ];
 
+/// Une étape de l'entretien mené à l'écran.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Step {
+    /// Des points à couvrir, qu'on coche.
+    Points { title: String, points: Vec<String> },
+    /// Le tableau du type d'acte, rempli pour cet entretien.
+    Table(FilledTable),
+    /// Le compte rendu au médecin.
+    Report,
+}
+
+/// Les étapes d'un entretien : ses points, son tableau quand le type
+/// en a un, puis le compte rendu.
+pub fn steps(title: &str, points: Vec<String>, table: Option<FilledTable>) -> Vec<Step> {
+    let mut out = Vec::new();
+    if !points.is_empty() {
+        out.push(Step::Points {
+            title: title.to_owned(),
+            points,
+        });
+    }
+    if let Some(t) = table {
+        out.push(Step::Table(t));
+    }
+    out.push(Step::Report);
+    out
+}
+
+/// Ce que l'entretien mené à l'écran a relevé, gardé sur l'acte
+/// (`interviews.conduct`) pour le reprendre après une interruption.
+///
+/// Les étapes sont adressées par leur rang, les points par le leur :
+/// c'est la liste que l'écran a montrée. Une liste réécrite entre deux
+/// séances décale les coches, pas le compte rendu, qui est du texte.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Record {
+    pub step: usize,
+    /// (étape, point) cochés.
+    pub ticked: std::collections::BTreeSet<(usize, usize)>,
+    /// La note de chaque étape.
+    pub notes: std::collections::BTreeMap<usize, String>,
+    /// (ligne, colonne) du tableau. Sur un tableau à lignes nommées, la
+    /// colonne choisie porte « x ».
+    pub cells: std::collections::BTreeMap<(usize, usize), String>,
+    /// Les lignes à remplir ouvertes, sur un tableau sans lignes nommées.
+    pub rows: usize,
+    pub report: String,
+}
+
+fn escape(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('\n', "\\n")
+}
+
+fn unescape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut it = s.chars();
+    while let Some(c) = it.next() {
+        if c == '\\' {
+            match it.next() {
+                Some('n') => out.push('\n'),
+                Some(o) => out.push(o),
+                None => {}
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+impl Record {
+    /// Une ligne par fait ; vide quand rien n'est relevé.
+    pub fn write(&self) -> String {
+        if *self == Record::default() {
+            return String::new();
+        }
+        let mut out = vec![format!("step {}", self.step)];
+        if self.rows > 0 {
+            out.push(format!("rows {}", self.rows));
+        }
+        for (s, p) in &self.ticked {
+            out.push(format!("tick {s} {p}"));
+        }
+        for (s, n) in &self.notes {
+            if !n.trim().is_empty() {
+                out.push(format!("note {s} {}", escape(n)));
+            }
+        }
+        for ((r, c), v) in &self.cells {
+            if !v.trim().is_empty() {
+                out.push(format!("cell {r} {c} {}", escape(v)));
+            }
+        }
+        if !self.report.trim().is_empty() {
+            out.push(format!("report {}", escape(&self.report)));
+        }
+        out.join("\n")
+    }
+
+    /// Ce que [`Self::write`] a écrit. Une ligne qu'on ne lit pas est
+    /// laissée : rien ne se perd à cause d'elle.
+    pub fn parse(text: &str) -> Record {
+        let mut r = Record::default();
+        for line in text.lines() {
+            let mut parts = line.splitn(2, ' ');
+            let (Some(key), rest) = (parts.next(), parts.next().unwrap_or("")) else {
+                continue;
+            };
+            let num = |s: &str| s.parse::<usize>().ok();
+            match key {
+                "step" => r.step = num(rest).unwrap_or(0),
+                "rows" => r.rows = num(rest).unwrap_or(0),
+                "tick" => {
+                    let mut p = rest.split(' ');
+                    if let (Some(a), Some(b)) = (p.next().and_then(num), p.next().and_then(num)) {
+                        r.ticked.insert((a, b));
+                    }
+                }
+                "note" => {
+                    let mut p = rest.splitn(2, ' ');
+                    if let Some(a) = p.next().and_then(num) {
+                        r.notes.insert(a, unescape(p.next().unwrap_or("")));
+                    }
+                }
+                "cell" => {
+                    let mut p = rest.splitn(3, ' ');
+                    if let (Some(a), Some(b)) = (p.next().and_then(num), p.next().and_then(num)) {
+                        r.cells.insert((a, b), unescape(p.next().unwrap_or("")));
+                    }
+                }
+                "report" => r.report = unescape(rest),
+                _ => {}
+            }
+        }
+        r
+    }
+
+    /// Les points cochés d'une étape, sur combien.
+    pub fn count(&self, step: usize, of: usize) -> usize {
+        self.ticked
+            .iter()
+            .filter(|(s, p)| *s == step && *p < of)
+            .count()
+    }
+
+    /// Le compte rendu tiré des étapes : les points abordés, les notes,
+    /// le tableau. Une ligne par fait, que le courrier imprime en liste.
+    pub fn draft(&self, steps: &[Step]) -> String {
+        let mut out: Vec<String> = Vec::new();
+        for (i, step) in steps.iter().enumerate() {
+            match step {
+                Step::Points { points, .. } => {
+                    for (n, p) in points.iter().enumerate() {
+                        if self.ticked.contains(&(i, n)) {
+                            out.push(p.clone());
+                        }
+                    }
+                }
+                Step::Table(t) if t.rows.is_empty() => {
+                    for row in 0..self.rows.max(1) {
+                        let line: Vec<String> = t
+                            .columns
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(c, col)| {
+                                let v = self.cells.get(&(row, c))?.trim();
+                                (!v.is_empty()).then(|| format!("{col} : {v}"))
+                            })
+                            .collect();
+                        if !line.is_empty() {
+                            out.push(line.join(" · "));
+                        }
+                    }
+                }
+                Step::Table(t) => {
+                    for (row, label) in t.rows.iter().enumerate() {
+                        let chosen =
+                            t.columns.iter().enumerate().skip(1).find(|(c, _)| {
+                                self.cells.get(&(row, *c)).is_some_and(|v| v == "x")
+                            });
+                        if let Some((_, col)) = chosen {
+                            out.push(format!("{label} : {col}"));
+                        }
+                    }
+                }
+                Step::Report => {}
+            }
+            if let Some(n) = self.notes.get(&i) {
+                for l in n.lines().map(str::trim).filter(|l| !l.is_empty()) {
+                    out.push(l.to_owned());
+                }
+            }
+        }
+        out.join("\n")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -559,5 +756,59 @@ mod tests {
         // The match ignores case and accents, as everywhere else.
         assert_eq!(checklist("observance").len(), checklist("Observance").len());
         assert!(!std::ptr::eq(checklist("biologie / inr"), COMMON));
+    }
+
+    #[test]
+    fn a_conducted_entretien_is_kept_and_read_back_whole() {
+        let mut r = Record {
+            step: 2,
+            rows: 2,
+            report: "Ligne une\nLigne \\ deux".into(),
+            ..Record::default()
+        };
+        r.ticked.insert((0, 1));
+        r.ticked.insert((0, 4));
+        r.notes
+            .insert(0, "Oubli le soir.\nPilulier proposé.".into());
+        r.cells.insert((1, 2), "Gingivorragies".into());
+        let text = r.write();
+        assert_eq!(Record::parse(&text), r);
+        assert_eq!(Record::default().write(), "", "rien relevé, rien écrit");
+        assert_eq!(Record::parse("bruit\nstep x\ntick 1"), Record::default());
+    }
+
+    #[test]
+    fn the_draft_report_says_what_was_ticked_noted_and_measured() {
+        let aod = resolve_table(
+            crate::db::InterviewKind::Aod,
+            &crate::content::Overrides::default(),
+        )
+        .unwrap();
+        let grades = resolve_table(
+            crate::db::InterviewKind::AnticancereuxLc,
+            &crate::content::Overrides::default(),
+        )
+        .unwrap();
+        let s = vec![
+            Step::Points {
+                title: "Observance".into(),
+                points: vec!["Oublis".into(), "Gêne".into()],
+            },
+            Step::Table(aod),
+            Step::Table(grades),
+            Step::Report,
+        ];
+        let mut r = Record::default();
+        r.ticked.insert((0, 1));
+        r.notes.insert(0, "Pilulier mis en place.".into());
+        r.cells.insert((0, 1), "1".into());
+        r.cells.insert((0, 2), "Non".into());
+        r.cells.insert((1, 2), "x".into());
+        assert_eq!(
+            r.draft(&s),
+            "Gêne\nPilulier mis en place.\nPrises oubliées : 1 · Saignement : Non\nNausées, vomissements : 1"
+        );
+        assert_eq!(r.count(0, 2), 1);
+        assert_eq!(steps("T", vec![], None), vec![Step::Report]);
     }
 }

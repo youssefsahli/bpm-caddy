@@ -103,7 +103,7 @@ card="$tmp/vitale.bin"
 demo_vitale_card "$card"
 
 views=(
-    verrou search dashboard chiffres patient patient_edit patient_new drugs drug_card drug_edit drug_kin
+    verrou search dashboard chiffres conduite conduite_cr patient patient_edit patient_new drugs drug_card drug_edit drug_kin
     agenda agenda_day agenda_filtre agenda_month planning planning_mois planning_saisie trame tables tables_search calc carnet
     vaccins bio watch rein grossesse age cyp ddi ddi_crush fiche_transmission qualite libelles listes cascades cascades_decrire cascades_boucle revue locations conciliation vaccine_map campagne campagne_rappels campagne_rdv campagne_parametrer campagne_entretiens ordonnance ordonnance_lignes vaccins_grossesse vaccins_catalogue ruptures reseau versions postes postes_seul postes_telephone connexions officines
     protocols protocol_open codex codex_open en_ligne dispositifs dispositif_open conseil_contention conseil_nutrition conseil_protections couverture

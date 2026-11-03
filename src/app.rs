@@ -4826,6 +4826,156 @@ impl ExportBox {
     }
 }
 
+/// L'entretien mené à l'écran : ses étapes, ce qui est relevé, et ce
+/// que la base en garde pour la comparaison.
+struct Conduct {
+    id: i64,
+    patient_id: i64,
+    kind: InterviewKind,
+    theme: String,
+    state: InterviewState,
+    scheduled: Option<String>,
+    scheduled_time: String,
+    operator: String,
+    steps: Vec<crate::entretien::Step>,
+    rec: crate::entretien::Record,
+    /// `interviews.conduct` tel qu'on l'a lu ou écrit.
+    stored: String,
+    opened: std::time::Instant,
+}
+
+impl Conduct {
+    /// Ce qu'on mène à l'écran : les accompagnements et la prévention.
+    /// Un TROD et une vaccination ont leur propre feuille.
+    fn applies(kind: InterviewKind) -> bool {
+        !kind.is_trod() && kind != InterviewKind::Vaccination
+    }
+}
+
+impl Session {
+    /// Ouvre l'entretien `id` à l'écran, repris où il s'était arrêté.
+    fn start_conduct(&mut self, id: i64, patient_id: i64, subjects: &[String]) {
+        let Some(p) = self.patients.iter().find(|p| p.id == patient_id).cloned() else {
+            self.stale("itv_stale");
+            return;
+        };
+        if self.viewing.as_ref().map(|v| v.id) != Some(patient_id) {
+            self.open_patient(p);
+        }
+        let Some(itv) = self.viewing_interviews.iter().find(|i| i.id == id).cloned() else {
+            self.stale("itv_stale");
+            return;
+        };
+        let stored = match self.db.interview_conduct(id) {
+            Ok(Some((c, _))) => c,
+            Ok(None) => {
+                self.stale("itv_stale");
+                return;
+            }
+            Err(e) => {
+                self.error = Some(e);
+                return;
+            }
+        };
+        let (title, points) = if itv.kind.is_prevention() {
+            (tr("conduct_subjects").to_owned(), subjects.to_vec())
+        } else {
+            let title = if itv.theme.trim().is_empty() {
+                tr("conduct_common").to_owned()
+            } else {
+                itv.theme.clone()
+            };
+            (title, crate::entretien::resolve(&itv.theme, &self.content))
+        };
+        let table = crate::entretien::resolve_table(itv.kind, &self.content);
+        let steps = crate::entretien::steps(&title, points, table);
+        let mut rec = crate::entretien::Record::parse(&stored);
+        rec.step = rec.step.min(steps.len().saturating_sub(1));
+        self.conduct = Some(Conduct {
+            id,
+            patient_id,
+            kind: itv.kind,
+            theme: itv.theme,
+            state: itv.state,
+            scheduled: itv.scheduled_date,
+            scheduled_time: itv.scheduled_time,
+            operator: itv.operator,
+            steps,
+            rec,
+            stored,
+            opened: std::time::Instant::now(),
+        });
+        self.view = MainView::Dashboard;
+    }
+
+    /// Relit l'entretien en cours depuis la base, après un refus.
+    fn reload_conduct(&mut self) {
+        let Some(c) = self.conduct.as_mut() else {
+            return;
+        };
+        match self.db.interview_conduct(c.id) {
+            Ok(Some((stored, state))) => {
+                let step = c.rec.step;
+                c.rec = crate::entretien::Record::parse(&stored);
+                c.rec.step = step.min(c.steps.len().saturating_sub(1));
+                c.stored = stored;
+                c.state = state;
+                if !matches!(
+                    state,
+                    InterviewState::Identified | InterviewState::Scheduled
+                ) {
+                    self.conduct = None;
+                }
+            }
+            Ok(None) => self.conduct = None,
+            Err(e) => self.error = Some(e),
+        }
+        self.stale("itv_stale");
+        self.refresh_dashboard();
+    }
+
+    /// Enregistre ce qui est relevé, s'il a changé.
+    fn save_conduct(&mut self) {
+        let Some(c) = self.conduct.as_mut() else {
+            return;
+        };
+        let after = c.rec.write();
+        if after == c.stored {
+            return;
+        }
+        match self.db.save_interview_conduct(c.id, &c.stored, &after) {
+            Ok(true) => c.stored = after,
+            Ok(false) => self.reload_conduct(),
+            Err(e) => self.error = Some(e),
+        }
+    }
+
+    /// Termine l'entretien : l'acte passe à « Réalisé ».
+    fn finish_conduct(&mut self) {
+        let Some(c) = self.conduct.as_ref() else {
+            return;
+        };
+        let after = c.rec.write();
+        let minutes = i64::try_from(c.opened.elapsed().as_secs() / 60)
+            .unwrap_or(0)
+            .max(1);
+        match self
+            .db
+            .finish_interview(c.id, c.state, &c.stored, &after, minutes)
+        {
+            Ok(true) => {
+                let pid = c.patient_id;
+                self.conduct = None;
+                self.error = None;
+                self.reload_interviews(pid);
+                self.refresh_dashboard();
+            }
+            Ok(false) => self.reload_conduct(),
+            Err(e) => self.error = Some(e),
+        }
+    }
+}
+
 /// Lequel des deux documents on est en train d'exporter.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum ExportTarget {
@@ -6205,6 +6355,8 @@ struct Session {
     dash_figures: bool,
     /// Le type que le suivi montre seul, ou tous.
     board_kind: Option<InterviewKind>,
+    /// L'entretien mené à l'écran, quand il y en a un.
+    conduct: Option<Conduct>,
     /// `[ordonnance] notice_days`, poussé ici comme `loc_notice_days`.
     rx_notice_days: u32,
     today_notes: Vec<Note>,
@@ -7542,6 +7694,7 @@ impl Session {
             board: Vec::new(),
             dash_figures: false,
             board_kind: None,
+            conduct: None,
             rx_notice_days: 7,
             today_notes: Vec::new(),
             export_notice: None,
@@ -23582,6 +23735,38 @@ impl App {
                             session.dash_figures = true;
                             session.view = MainView::Dashboard;
                         }
+                        // L'entretien mené à l'écran, sur le premier acte
+                        // qui s'y prête ; « conduite_cr » sur son compte
+                        // rendu, tiré des étapes.
+                        Ok(key @ ("conduite" | "conduite_cr")) => {
+                            session.refresh_dashboard();
+                            let first = session
+                                .board
+                                .iter()
+                                .find(|r| {
+                                    matches!(
+                                        r.state,
+                                        InterviewState::Identified | InterviewState::Scheduled
+                                    ) && Conduct::applies(r.kind)
+                                        && crate::entretien::kind_table(r.kind).is_some()
+                                })
+                                .map(|r| (r.id, r.patient_id));
+                            if let Some((id, pid)) = first {
+                                session.start_conduct(id, pid, &config.prevention.subjects);
+                            }
+                            if let Some(c) = session.conduct.as_mut() {
+                                c.rec.ticked.insert((0, 0));
+                                c.rec.ticked.insert((0, 2));
+                                c.rec.cells.insert((0, 0), "Ramipril".into());
+                                c.rec.cells.insert((0, 1), "Toux sèche".into());
+                                c.rec.step = 1.min(c.steps.len() - 1);
+                                if key == "conduite_cr" {
+                                    c.rec.step = c.steps.len() - 1;
+                                    c.rec.report = c.rec.draft(&c.steps);
+                                }
+                            }
+                            session.view = MainView::Dashboard;
+                        }
                         Ok("agenda_day") => {
                             session.refresh_dashboard();
                             session.agenda_mode = AgendaMode::Day;
@@ -28653,12 +28838,447 @@ impl App {
         });
     }
 
+    /// L'entretien mené à l'écran : les étapes à gauche, l'étape au
+    /// milieu, le traitement et les repères à droite quand la fenêtre
+    /// est large.
+    fn conduct_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
+        let Some(pid) = session.conduct.as_ref().map(|c| c.patient_id) else {
+            return;
+        };
+        // Le dossier sous l'écran est celui de l'entretien : ouvert
+        // ailleurs entre-temps, on le rouvre.
+        if session.viewing.as_ref().map(|v| v.id) != Some(pid) {
+            match session.patients.iter().find(|p| p.id == pid).cloned() {
+                Some(p) => session.open_patient(p),
+                None => {
+                    session.conduct = None;
+                    session.stale("itv_stale");
+                    return;
+                }
+            }
+        }
+        let Some(patient) = session.viewing.clone() else {
+            return;
+        };
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_secs(30));
+        let mut suspend = false;
+        let mut finish = false;
+        let mut print = false;
+        let mut go: Option<usize> = None;
+        let mut save = false;
+        // Le bandeau : l'acte, le patient, le rendez-vous, la durée.
+        {
+            let Some(c) = session.conduct.as_ref() else {
+                return;
+            };
+            let mut who = patient.full_name();
+            if let Some(age) = db::age_on(&patient.birth_date, &session.today) {
+                who.push_str(" · ");
+                who.push_str(&trf("patient_age", age));
+            }
+            let rdv = c.scheduled.as_deref().map(|d| {
+                format!("{} {}", db::format_french_date(d), c.scheduled_time)
+                    .trim()
+                    .to_owned()
+            });
+            let minutes = c.opened.elapsed().as_secs() / 60;
+            ui.add_space(4.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new(trf("conduct_title", c.kind.label()))
+                        .strong()
+                        .size(motif::pt(ui, 13.0)),
+                );
+                ui.label(who);
+                if let Some(rdv) = rdv {
+                    ui.label(egui::RichText::new(trf("conduct_rdv", rdv)).color(motif::text_dim()));
+                }
+                ui.label(
+                    egui::RichText::new(trf("conduct_minutes", minutes)).color(motif::text_dim()),
+                );
+                if motif::button(ui, tr("conduct_suspend")).clicked() {
+                    suspend = true;
+                }
+            });
+            ui.add_space(4.0);
+        }
+        let area = motif::visible_rect(ui).shrink2(egui::vec2(4.0, 0.0));
+        let gap = 8.0;
+        let wide = area.width() >= chars_wide(ui, 120.0);
+        let nav_w = chars_wide(ui, 20.0).min(area.width() * 0.25);
+        let side_w = if wide {
+            chars_wide(ui, 36.0).min(area.width() * 0.3)
+        } else {
+            0.0
+        };
+        let nav = egui::Rect::from_min_size(area.min, egui::vec2(nav_w, area.height()));
+        let main = egui::Rect::from_min_max(
+            egui::pos2(nav.right() + gap, area.top()),
+            egui::pos2(
+                area.right() - if wide { side_w + gap } else { 0.0 },
+                area.bottom(),
+            ),
+        );
+        let side = egui::Rect::from_min_max(egui::pos2(main.right() + gap, area.top()), area.max);
+        let Some(c) = session.conduct.as_mut() else {
+            return;
+        };
+        let step = c.rec.step.min(c.steps.len().saturating_sub(1));
+        // Les étapes, et ce qui est coché de chacune.
+        motif::panel(ui, nav, None, |ui| {
+            for (i, s) in c.steps.iter().enumerate() {
+                let label = match s {
+                    crate::entretien::Step::Points { title, points } => {
+                        format!("{title}  {}/{}", c.rec.count(i, points.len()), points.len())
+                    }
+                    crate::entretien::Step::Table(_) => tr("conduct_table_step").to_owned(),
+                    crate::entretien::Step::Report => tr("conduct_report_step").to_owned(),
+                };
+                if motif::list_row(ui, egui::RichText::new(label), i == step).clicked() && i != step
+                {
+                    go = Some(i);
+                }
+            }
+        });
+        // L'étape.
+        let title = match &c.steps[step] {
+            crate::entretien::Step::Points { title, .. } => title.clone(),
+            crate::entretien::Step::Table(t) => t.title.clone(),
+            crate::entretien::Step::Report => tr("conduct_report").to_owned(),
+        };
+        let last = step + 1 == c.steps.len();
+        motif::panel(ui, main, Some(&title), |ui| {
+            let inner = motif::visible_rect(ui);
+            let bar_h = Self::row_height(ui) + 8.0;
+            let body = egui::Rect::from_min_max(
+                inner.min,
+                egui::pos2(inner.right(), (inner.bottom() - bar_h).max(inner.top())),
+            );
+            let bar = egui::Rect::from_min_max(egui::pos2(inner.left(), body.bottom()), inner.max);
+            motif::inside(ui, body, |ui| {
+                ui.spacing_mut().scroll.floating = false;
+                egui::ScrollArea::vertical()
+                    .id_salt(("conduct_step", step))
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        save |= Self::conduct_step(ui, c, step);
+                    });
+            });
+            motif::inside(ui, bar, |ui| {
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    if motif::button_enabled(ui, tr("conduct_prev"), step > 0).clicked() {
+                        go = Some(step.saturating_sub(1));
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if last {
+                            if motif::button(ui, tr("conduct_finish")).clicked() {
+                                finish = true;
+                            }
+                            if motif::button(ui, tr("conduct_print")).clicked() {
+                                print = true;
+                            }
+                        } else if motif::button(ui, tr("conduct_next")).clicked() {
+                            go = Some(step + 1);
+                        }
+                    });
+                });
+            });
+        });
+        // Alt+flèches : l'étape d'avant, celle d'après.
+        let (back, fwd) = ui.input(|i| {
+            (
+                i.modifiers.alt && i.key_pressed(egui::Key::ArrowLeft),
+                i.modifiers.alt && i.key_pressed(egui::Key::ArrowRight),
+            )
+        });
+        if back && step > 0 {
+            go = Some(step - 1);
+        }
+        if fwd && !last {
+            go = Some(step + 1);
+        }
+        if wide {
+            Self::conduct_side(ui, session, &patient, side);
+        }
+        ui.allocate_space(area.size());
+        if let Some(n) = go {
+            if let Some(c) = session.conduct.as_mut() {
+                c.rec.step = n;
+                // Le compte rendu se remplit des étapes la première fois.
+                if matches!(c.steps.get(n), Some(crate::entretien::Step::Report))
+                    && c.rec.report.trim().is_empty()
+                {
+                    c.rec.report = c.rec.draft(&c.steps);
+                }
+            }
+            save = true;
+        }
+        if save || suspend || print {
+            session.save_conduct();
+        }
+        if print {
+            Self::print_conduct(session, &patient, config);
+        }
+        if finish {
+            session.finish_conduct();
+        } else if suspend {
+            session.conduct = None;
+            session.refresh_dashboard();
+        }
+    }
+
+    /// Le corps d'une étape. Vrai quand il faut enregistrer : une case
+    /// cochée, un champ quitté.
+    fn conduct_step(ui: &mut egui::Ui, c: &mut Conduct, step: usize) -> bool {
+        use crate::entretien::Step;
+        let mut save = false;
+        let width = ui.available_width();
+        match &c.steps[step] {
+            Step::Points { points, .. } => {
+                for (n, p) in points.iter().enumerate() {
+                    let mut on = c.rec.ticked.contains(&(step, n));
+                    let clicked = ui
+                        .horizontal_top(|ui| {
+                            let a = motif::checkbox(ui, &mut on, "").changed();
+                            let b = ui
+                                .add(
+                                    egui::Label::new(p.as_str())
+                                        .wrap()
+                                        .sense(egui::Sense::click()),
+                                )
+                                .clicked();
+                            if b {
+                                on = !on;
+                            }
+                            a || b
+                        })
+                        .inner;
+                    if clicked {
+                        if on {
+                            c.rec.ticked.insert((step, n));
+                        } else {
+                            c.rec.ticked.remove(&(step, n));
+                        }
+                        save = true;
+                    }
+                    ui.add_space(2.0);
+                }
+            }
+            Step::Table(t) if t.rows.is_empty() => {
+                let rows = c.rec.rows.max(1);
+                let col_w = chars_wide(ui, 18.0).min(width);
+                for row in 0..rows {
+                    ui.push_id(("conduct_row", row), |ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            for (col, name) in t.columns.iter().enumerate() {
+                                ui.vertical(|ui| {
+                                    ui.set_width(col_w);
+                                    // Une ligne, pour que les cases restent alignées.
+                                    ui.add(
+                                        egui::Label::new(egui::RichText::new(name).strong())
+                                            .truncate(),
+                                    );
+                                    let cell = c.rec.cells.entry((row, col)).or_default();
+                                    if motif::field(ui, col_w, egui::TextEdit::singleline(cell))
+                                        .lost_focus()
+                                    {
+                                        save = true;
+                                    }
+                                });
+                            }
+                        });
+                    });
+                    ui.add_space(6.0);
+                }
+                if rows < t.blank_rows.max(1) && motif::button(ui, tr("conduct_add_row")).clicked()
+                {
+                    c.rec.rows = rows + 1;
+                    save = true;
+                }
+            }
+            Step::Table(t) => {
+                egui::Grid::new(("conduct_grid", step))
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.label(
+                            egui::RichText::new(t.columns.first().map_or("", String::as_str))
+                                .strong(),
+                        );
+                        for col in t.columns.iter().skip(1) {
+                            ui.label(egui::RichText::new(col).strong());
+                        }
+                        ui.end_row();
+                        for (row, label) in t.rows.iter().enumerate() {
+                            ui.label(label);
+                            for col in 1..t.columns.len() {
+                                let on = c.rec.cells.get(&(row, col)).is_some_and(|v| v == "x");
+                                if motif::radio(ui, on, "").clicked() {
+                                    for k in 1..t.columns.len() {
+                                        c.rec.cells.remove(&(row, k));
+                                    }
+                                    if !on {
+                                        c.rec.cells.insert((row, col), "x".to_owned());
+                                    }
+                                    save = true;
+                                }
+                            }
+                            ui.end_row();
+                        }
+                    });
+            }
+            Step::Report => {
+                ui.label(
+                    egui::RichText::new(tr("conduct_report_hint"))
+                        .size(motif::pt(ui, 10.5))
+                        .color(motif::text_dim()),
+                );
+                // La place qui reste, moins la rangée du bouton dessous.
+                let h = (ui.available_height()
+                    - motif::button_height(ui)
+                    - ui.spacing().item_spacing.y * 2.0
+                    - 6.0)
+                    .max(Self::row_height(ui) * 4.0);
+                if motif::area(
+                    ui,
+                    egui::vec2(width, h),
+                    egui::TextEdit::multiline(&mut c.rec.report),
+                )
+                .lost_focus()
+                {
+                    save = true;
+                }
+                ui.add_space(4.0);
+                if motif::button(ui, tr("conduct_redraft")).clicked() {
+                    c.rec.report = c.rec.draft(&c.steps);
+                    save = true;
+                }
+                return save;
+            }
+        }
+        ui.add_space(8.0);
+        ui.label(egui::RichText::new(tr("conduct_note")).strong());
+        let note = c.rec.notes.entry(step).or_default();
+        if motif::area(
+            ui,
+            egui::vec2(width, Self::row_height(ui) * 2.5),
+            egui::TextEdit::multiline(note),
+        )
+        .lost_focus()
+        {
+            save = true;
+        }
+        save
+    }
+
+    /// À droite de l'entretien : le traitement, et les repères du
+    /// dossier.
+    fn conduct_side(ui: &mut egui::Ui, session: &Session, patient: &Patient, rect: egui::Rect) {
+        let Some(c) = session.conduct.as_ref() else {
+            return;
+        };
+        let parts = motif::split_rows(rect, &[(rect.height() * 0.6 - 4.0).max(0.0), 0.0], 8.0);
+        let (Some(top), Some(bottom)) = (parts.first().copied(), parts.get(1).copied()) else {
+            return;
+        };
+        motif::panel(ui, top, Some(tr("conduct_treats")), |ui| {
+            ui.spacing_mut().scroll.floating = false;
+            egui::ScrollArea::vertical()
+                .id_salt("conduct_treats")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    if session.patient_treats.is_empty() {
+                        ui.label(
+                            egui::RichText::new(tr("conduct_treats_none")).color(motif::text_dim()),
+                        );
+                    }
+                    for d in &session.patient_treats {
+                        ui.label(egui::RichText::new(&d.name).strong());
+                    }
+                });
+        });
+        motif::panel(ui, bottom, Some(tr("conduct_marks")), |ui| {
+            ui.spacing_mut().scroll.floating = false;
+            egui::ScrollArea::vertical()
+                .id_salt("conduct_marks")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.label(Self::born_text(patient, session));
+                    for i in session
+                        .viewing_interviews
+                        .iter()
+                        .filter(|i| i.kind == c.kind && i.id != c.id)
+                    {
+                        let day = i
+                            .scheduled_date
+                            .as_deref()
+                            .unwrap_or(&i.created_at)
+                            .get(..10)
+                            .map(db::format_french_date)
+                            .unwrap_or_default();
+                        let mut line = trn("conduct_before", &[&day, &i.state.label()]);
+                        if !i.operator.is_empty() {
+                            line.push_str(" · ");
+                            line.push_str(&i.operator);
+                        }
+                        ui.label(egui::RichText::new(line).color(motif::text_dim()));
+                    }
+                });
+        });
+    }
+
+    /// Le courrier au médecin, rempli du compte rendu de l'entretien.
+    fn print_conduct(session: &mut Session, patient: &Patient, config: &Config) {
+        let Some(c) = session.conduct.as_ref() else {
+            return;
+        };
+        let date = c
+            .scheduled
+            .as_deref()
+            .map(db::format_french_date)
+            .unwrap_or_else(|| db::format_french_date(&session.today));
+        let report = if c.rec.report.trim().is_empty() {
+            c.rec.draft(&c.steps)
+        } else {
+            c.rec.report.clone()
+        };
+        let lines: Vec<&str> = report
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .collect();
+        let after = c
+            .scheduled
+            .as_deref()
+            .filter(|d| *d > session.today.as_str())
+            .unwrap_or(&session.today);
+        let next_rdv = next_rdv_text(&session.viewing_interviews, after);
+        let signature = config.pharmacy.signature_for(&c.operator);
+        let done = crate::pdf::open_cr_letter(
+            patient,
+            c.kind,
+            &date,
+            &c.theme,
+            &session.patient_treats,
+            &config.pharmacy,
+            &config.cr_template_path(),
+            &signature,
+            &lines,
+            &next_rdv,
+        );
+        if let Err(e) = done {
+            session.error = Some(e);
+        }
+    }
+
     /// **Le suivi des entretiens**, une colonne par étape : à proposer,
     /// planifiés, faits (compte rendu à envoyer), à facturer, facturés
     /// ce mois. Le bouton d'une carte la passe à l'étape suivante, son
     /// nom ouvre le dossier. Sur une fenêtre étroite, les colonnes
     /// deviennent une liste par étape.
-    fn board_view(ui: &mut egui::Ui, session: &mut Session) {
+    fn board_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
         // Les types présents, pour le filtre.
         let mut kinds: Vec<InterviewKind> = Vec::new();
         for r in &session.board {
@@ -28711,11 +29331,13 @@ impl App {
         let wide = area.width() >= chars_wide(ui, 120.0);
         let mut open: Option<i64> = None;
         let mut advance: Option<(i64, InterviewState)> = None;
+        let mut conduct: Option<(i64, i64)> = None;
         let today = session.today.clone();
         let card = |ui: &mut egui::Ui,
                     r: &db::BoardRow,
                     open: &mut Option<i64>,
-                    advance: &mut Option<(i64, InterviewState)>| {
+                    advance: &mut Option<(i64, InterviewState)>,
+                    conduct: &mut Option<(i64, i64)>| {
             ui.push_id(r.id, |ui| {
                 if motif::list_row(ui, egui::RichText::new(&r.patient_name).strong(), false)
                     .on_hover_text(tr("dash_open_patient"))
@@ -28754,11 +29376,27 @@ impl App {
                     InterviewState::ReportSent => Some("board_mark_billed"),
                     _ => None,
                 };
-                if let Some(key) = next {
-                    ui.horizontal(|ui| {
+                let lead = matches!(
+                    r.state,
+                    InterviewState::Identified | InterviewState::Scheduled
+                ) && Conduct::applies(r.kind);
+                if next.is_some() || lead {
+                    ui.horizontal_wrapped(|ui| {
                         ui.add_space(8.0);
-                        if motif::button(ui, tr(key)).clicked() {
-                            *advance = Some((r.id, r.state));
+                        if lead {
+                            let key = if r.begun {
+                                "conduct_resume"
+                            } else {
+                                "conduct_start"
+                            };
+                            if motif::button(ui, tr(key)).clicked() {
+                                *conduct = Some((r.id, r.patient_id));
+                            }
+                        }
+                        if let Some(key) = next {
+                            if motif::button(ui, tr(key)).clicked() {
+                                *advance = Some((r.id, r.state));
+                            }
                         }
                     });
                 }
@@ -28782,7 +29420,7 @@ impl App {
                                 );
                             }
                             for r in &cols[i] {
-                                card(ui, r, &mut open, &mut advance);
+                                card(ui, r, &mut open, &mut advance, &mut conduct);
                             }
                         });
                 });
@@ -28799,7 +29437,7 @@ impl App {
                                     .strong(),
                             );
                             for r in col {
-                                card(ui, r, &mut open, &mut advance);
+                                card(ui, r, &mut open, &mut advance, &mut conduct);
                             }
                             ui.add_space(6.0);
                         }
@@ -28807,6 +29445,9 @@ impl App {
             });
         }
         ui.allocate_space(area.size());
+        if let Some((id, pid)) = conduct {
+            session.start_conduct(id, pid, &config.prevention.subjects);
+        }
         if let Some((id, state)) = advance {
             match session.db.advance_interview(id, state) {
                 Ok(true) => session.error = None,
@@ -88507,6 +89148,12 @@ impl App {
     fn dashboard_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
         // **Le suivi d'abord** : ce qu'il reste à faire, colonne par
         // étape. Les chiffres viennent en second.
+        //
+        // Un entretien en cours prend tout le poste, jusqu'à « Suspendre ».
+        if session.conduct.is_some() {
+            Self::conduct_view(ui, session, config);
+            return;
+        }
         ui.add_space(4.0);
         let tabs = [
             motif::Tab::new(tr("board_tab")),
@@ -88518,7 +89165,7 @@ impl App {
             session.dash_figures = i == 1;
         }
         if !session.dash_figures {
-            Self::board_view(ui, session);
+            Self::board_view(ui, session, config);
             return;
         }
         session.refresh_watchlist();

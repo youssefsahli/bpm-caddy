@@ -748,6 +748,16 @@ envoyé » et « Facturé » passent l'acte à l'étape suivante. Le filtre du
 haut ne montre qu'un type. Fenêtre étroite : une liste par étape.
 « Chiffres » garde le tableau de bord.
 
+**Mener l'entretien à l'écran.** « Commencer » sur une carte à proposer
+ou planifiée ouvre l'entretien : les points de la thématique à cocher,
+le tableau du type d'acte à remplir, une note par étape, puis le
+compte rendu, tiré de ce qui est coché, noté et relevé, à relire.
+« Imprimer le CR » sort le courrier au médecin ; « Terminer » passe
+l'acte à « Fait » et note la durée si elle ne l'était pas.
+« Suspendre » garde ce qui est relevé : la carte dit alors
+« Reprendre ». Alt+Gauche et Alt+Droite changent d'étape. TROD et
+vaccination gardent leur feuille.
+
 Un acte porte sa thématique, son état, sa date, sa durée et les
 initiales de l'intervenant. « Tout imprimer » produit la fiche
 d'entretien, le bilan et le plan de prise en un seul document.
