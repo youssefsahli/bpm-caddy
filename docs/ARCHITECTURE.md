@@ -2355,7 +2355,7 @@ add clicking and typing; it is not the price of entry.
 - `BPM_CADDY_PASSWORD=<pw>` — unlock silently at startup (not when
   config.toml does not read)
 - `BPM_CADDY_NO_KEYRING=1` — skip the OS credential manager
-- `BPM_CADDY_START_VIEW=verrou|search|dashboard|chiffres|conduite|conduite_cr|patient|patient_edit|patient_new|drugs|drug_card|agenda|agenda_day|
+- `BPM_CADDY_START_VIEW=verrou|search|dashboard|chiffres|conduite|conduite_cr|patient|patient_edit|patient_new|drugs|drug_card|drug_for|agenda|agenda_day|
   agenda_filtre|agenda_month|planning|planning_mois|planning_saisie|protocols|protocol_open|template|options|about|tables|
   tables_search|regles|mentions|honoraires|forfaits|modules|calc|carnet|vaccins|bio|watch|revue|conciliation|
   vaccine_map|campagne|campagne_rappels|campagne_rdv|campagne_parametrer|campagne_entretiens|vaccins_grossesse|vaccins_catalogue|ruptures|reseau|versions|postes|postes_seul|postes_telephone|connexions|officines|ordonnance|ordonnance_lignes|rein|grossesse|age|cyp|ddi|ddi_crush|fiche_transmission|qualite|libelles|listes|base|codex|

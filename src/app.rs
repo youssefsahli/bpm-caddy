@@ -4841,6 +4841,10 @@ impl ExportBox {
     }
 }
 
+/// Ce qui fait relire une fiche pour le dossier : la fiche, le
+/// dossier, le nombre de ses traitements et de ses résultats, son DFG.
+type CardFileKey = (i64, i64, usize, usize, u64);
+
 /// L'entretien mené à l'écran : ses étapes, ce qui est relevé, et ce
 /// que la base en garde pour la comparaison.
 struct Conduct {
@@ -5801,6 +5805,9 @@ struct Session {
     /// Les traitements du dossier que le registre suit : (produit,
     /// libellé), pour « Inscrire » depuis « À dire ».
     say_stups: Vec<(i64, String)>,
+    /// La fiche lue pour le dossier ouvert : la clé (fiche, dossier,
+    /// traitements, biologie, DFG) et ce que les tables en disent.
+    card_file: Option<(CardFileKey, Vec<CompanionSignal>)>,
     /// The viewed patient's dated notes, newest first.
     patient_notes: Vec<Note>,
     /// Le fil du dossier : tout ce que la base sait de ce patient, dans
@@ -7521,6 +7528,7 @@ impl Session {
             say_stale: true,
             say_notice: 0,
             say_stups: Vec::new(),
+            card_file: None,
             patient_notes: Vec::new(),
             patient_fil: Vec::new(),
             patient_tab: PatientTab::default(),
@@ -25513,9 +25521,16 @@ impl App {
                                 _ => 0,
                             };
                         }
-                        Ok(key @ ("drug_card" | "versions")) => {
+                        // « drug_for » : la même fiche, lue pour le premier
+                        // dossier, ouvert d'abord.
+                        Ok(key @ ("drug_card" | "versions" | "drug_for")) => {
                             if let Ok(list) = session.db.drugs() {
                                 session.set_drugs(list);
+                            }
+                            if key == "drug_for" {
+                                if let Some(p) = session.patients.first().cloned() {
+                                    session.open_patient(p);
+                                }
                             }
                             // BPM_CADDY_DRUG names the card to open, so
                             // a screenshot or a check can land on the
@@ -79973,6 +79988,16 @@ impl App {
             .map(|f| session.cascades_naming(&f.dci))
             .unwrap_or_default();
         let mut open_cascade: Option<i64> = None;
+        // La fiche lue pour le dossier ouvert, composée avant que la
+        // fiche ne soit empruntée pour le dessin.
+        let for_file: Option<(String, Vec<CompanionSignal>)> = match (
+            session.drug_reading,
+            session.viewing.as_ref().map(Patient::full_name),
+            session.drug_form.clone(),
+        ) {
+            (true, Some(name), Some(card)) => Some((name, Self::card_for_file(session, &card))),
+            _ => None,
+        };
         if let Some(form) = &mut session.drug_form {
             // ---- Card: monograph to read, or the editable form ----
             let reading = session.drug_reading;
@@ -80246,6 +80271,11 @@ impl App {
                     .show(ui, |ui| {
                         motif::page(ui, 900.0, |ui| {
                             ui.add_space(18.0);
+                            // Lue pour le dossier ouvert, en tête : ce
+                            // qu'on vient chercher quand un patient attend.
+                            if let Some((name, signals)) = &for_file {
+                                Self::card_file_block(ui, name, signals);
+                            }
                             if reading {
                                 follow_link = drug_monograph(
                                     ui,
@@ -90196,6 +90226,75 @@ impl App {
             &cascades,
             &session.content,
         )
+    }
+
+    /// « Pour <patient> » : une ligne par table qui parle, sa conduite
+    /// dessous ; une phrase quand toutes se taisent.
+    fn card_file_block(ui: &mut egui::Ui, name: &str, signals: &[CompanionSignal]) {
+        egui::Frame::none()
+            .fill(motif::bg_light())
+            .inner_margin(egui::Margin::same(8.0))
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.label(egui::RichText::new(trf("card_for", name)).strong());
+                ui.add_space(4.0);
+                if signals.is_empty() {
+                    ui.label(egui::RichText::new(tr("card_for_silent")).color(motif::text_dim()));
+                }
+                for s in signals {
+                    motif::badge(ui, &s.chip, Some(s.tone.mark()), s.tone.fill(), false);
+                    // La conduite, sans la phrase de portée du module.
+                    let said = s.hover.rsplit("\n\n").next().unwrap_or_default().trim();
+                    if !said.is_empty() {
+                        ui.label(egui::RichText::new(said).size(motif::pt(ui, 11.0)));
+                    }
+                    ui.add_space(4.0);
+                }
+            });
+        ui.add_space(12.0);
+    }
+
+    /// Ce que les tables disent de cette fiche pour le dossier ouvert —
+    /// les puces du compagnon, contre ses traitements. Relu quand la
+    /// fiche, le dossier, ses traitements, sa biologie ou son DFG
+    /// changent, jamais à chaque image.
+    fn card_for_file(session: &mut Session, card: &Drug) -> Vec<CompanionSignal> {
+        let Some(pid) = session.viewing.as_ref().map(|p| p.id) else {
+            return Vec::new();
+        };
+        let key = (
+            card.id,
+            pid,
+            session.patient_treats.len(),
+            session.bio_results.len(),
+            session.renal_dfg.map_or(0, f64::to_bits),
+        );
+        if let Some((k, signals)) = &session.card_file {
+            if *k == key {
+                return signals.clone();
+            }
+        }
+        let against: Vec<i64> = session
+            .patient_treats
+            .iter()
+            .map(|d| d.id)
+            .filter(|id| *id != card.id)
+            .collect();
+        // Ce qui lit le dossier. L'écrasement ne lit que la fiche ; la
+        // grossesse seulement quand le dossier en porte une en cours.
+        let pregnant = session.viewing.as_ref().is_some_and(|p| {
+            crate::vaccines::weeks_of_amenorrhea(&p.pregnancy_ddr, &session.today).is_some()
+        });
+        let signals: Vec<CompanionSignal> = Self::graph_pair_signals(session, card.id, &against)
+            .into_iter()
+            .filter(|s| match s.goes {
+                CompanionWhere::Cross(DdiSection::Crush) => false,
+                CompanionWhere::Cross(DdiSection::Gravidity) => pregnant,
+                _ => true,
+            })
+            .collect();
+        session.card_file = Some((key, signals.clone()));
+        signals
     }
 
     /// La petite fiche d'un nœud : ce que la carte peut dire d'un voisin
@@ -115313,6 +115412,48 @@ mod tests {
         s.refresh_vacc_due();
         s.refresh_say(30);
         assert!(!s.say_today.is_empty());
+    }
+
+    #[test]
+    fn a_card_read_for_the_open_file_says_only_what_reads_the_file() {
+        use super::{CompanionWhere, DdiSection};
+        let (mut s, _swept) = scratch_session("card-for");
+        let p = s.patients[0].clone();
+        let met =
+            s.db.drugs()
+                .unwrap()
+                .into_iter()
+                .find(|d| d.dci.to_lowercase().contains("metformine"))
+                .expect("une fiche de metformine livrée");
+        s.db.add_bio_result(
+            p.id,
+            &crate::db::BioResult {
+                id: 0,
+                code: "DFG".to_owned(),
+                label: "DFG".to_owned(),
+                value: 20.0,
+                unit: "mL/min".to_owned(),
+                taken_on: s.today.clone(),
+                remark: String::new(),
+            },
+        )
+        .unwrap();
+        s.open_patient(p);
+        let signals = App::card_for_file(&mut s, &met);
+        assert!(
+            signals
+                .iter()
+                .any(|x| x.goes == CompanionWhere::Cross(DdiSection::Renal)),
+            "le rein lit le DFG du dossier"
+        );
+        assert!(signals.iter().all(|x| !matches!(
+            x.goes,
+            CompanionWhere::Cross(DdiSection::Crush | DdiSection::Gravidity)
+        )));
+        // Mémorisé : la même question rend la même réponse sans relire.
+        assert!(s.card_file.is_some());
+        s.viewing = None;
+        assert!(App::card_for_file(&mut s, &met).is_empty());
     }
 
     #[test]

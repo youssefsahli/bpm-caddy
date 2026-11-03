@@ -124,6 +124,13 @@ Interface : « Feuille » présente la fiche comme une page imprimée ;
 modifie la taille du texte, réglée une fois pour toute l'application à
 « Taille du texte ».
 
+**Une fiche lue pour le dossier ouvert.** Quand un dossier est ouvert,
+la monographie commence par « Pour <patient> » : ce que les tables
+relèvent pour lui — rein avec son DFG, âge, interactions et revue avec
+ses traitements, surveillance, biologie, grossesse quand une DDR est
+notée —, chaque ligne avec sa conduite. Une phrase le dit quand aucune
+ne relève rien.
+
 # Dossier patient
 
 Le bandeau porte l'identité et les traitements ; en dessous, les actes,
