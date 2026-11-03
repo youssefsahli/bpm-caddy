@@ -152,7 +152,8 @@ du dossier est un produit suivi au registre des stupéfiants,
 dossier : il reste le numéro d'ordonnancier, le prescripteur et la
 quantité. Le fil s'affiche à droite quand la fenêtre est assez large.
 « N », hors d'un champ, ouvre le journal du dossier, champ prêt à
-taper : la note est signée, datée et lue par toute l'équipe. Ctrl+K
+taper : la note est signée, datée et lue par toute l'équipe. « P »
+imprime le plan de prise. Ctrl+K
 sur un dossier ouvert propose d'abord ses onglets (À dire, Biologie,
 Vaccinations, Entretiens) et « Note pour l'équipe ».
 

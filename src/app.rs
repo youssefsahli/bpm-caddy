@@ -23366,7 +23366,7 @@ fn restore_view(session: &mut Session, key: &str, caisse_expected: bool) {
 /// aussi.
 ///
 /// Une clé vide ouvre un groupe.
-pub fn key_rows() -> [(&'static str, &'static str); 29] {
+pub fn key_rows() -> [(&'static str, &'static str); 30] {
     [
         ("", tr("keys_group_workspace")),
         // Pas l'infobulle du bouton : elle dit sa touche entre
@@ -23393,6 +23393,7 @@ pub fn key_rows() -> [(&'static str, &'static str); 29] {
         ("Entrée", tr("keys_enter")),
         ("Ctrl+N", tr("keys_new_act")),
         ("N", tr("keys_note")),
+        ("P", tr("keys_plan")),
         ("1 … 9, 0", tr("keys_act_digit")),
         ("← →", tr("keys_arrows")),
         ("Alt + ← →", tr("keys_patient_tabs")),
@@ -29993,6 +29994,14 @@ impl App {
         {
             session.patient_tab = PatientTab::Acts;
             ctx.data_mut(|d| d.insert_temp(notes_focus_id("patient_notes"), true));
+        }
+        // « P » : le plan de prise du dossier, comme le bouton du même
+        // nom — la feuille qu'on remet au patient au comptoir.
+        if !ctx.wants_keyboard_input()
+            && !session.act_picker
+            && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::P))
+        {
+            Self::print_plan(session, patient, config, operator);
         }
 
         // An identity band across the top, then the two things the

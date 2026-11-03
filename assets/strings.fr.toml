@@ -68,6 +68,7 @@ keys_updown = "Parcourir la liste : patients, protocoles, préparations, disposi
 keys_enter = "Ouvrir la ligne sélectionnée"
 keys_new_act = "Choix rapide d'un nouvel entretien"
 keys_note = "Note au dossier ouvert, pour l'équipe"
+keys_plan = "Plan de prise du dossier ouvert"
 keys_act_digit = "Choisir l'acte dans le choix rapide"
 keys_arrows = "Semaine, mois ou jour précédent / suivant (agenda)"
 keys_patient_tabs = "Onglet précédent / suivant de la fiche patient (Alt + flèches)"

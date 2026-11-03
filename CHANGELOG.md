@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Ctrl+K opens on the open file.** With a file open, the empty box lists its tabs first (À dire, Biologie, Vaccinations, Entretiens) and « Note pour l'équipe », before favourites and recent places; typed, they rank with the other files.
 - **Plan an entretien from where it is proposed.** « Planifier » on a card « À proposer » of Suivi takes « 051126 9h30 » (hour optional): Entrée sets the day and hour and moves the act to « Planifiés » and the agenda, in one compare-and-set write. « Créer l'acte » in « À dire » opens the same field at once; Échap leaves the act to propose. Left open when changing view, it is planned anyway.
+- **« P » on an open file prints its plan de prise**, outside a field, like « N » for the note; listed under F12.
 
 ### Fixed
 
