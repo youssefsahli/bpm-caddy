@@ -30096,13 +30096,30 @@ impl App {
             let bottom = motif::split_columns(rows[2], 2, 8.0);
             [rows[0], rows[1], bottom[0], bottom[1]]
         };
+        // **Une base neuve dit par où commencer, dès le premier écran.**
+        // Les « Premiers pas » n'étaient qu'au deuxième onglet des
+        // Entretiens : une officine qui ouvre l'application tombait sur
+        // quatre panneaux vides. Tant qu'aucun dossier n'existe, ils
+        // prennent la place des deux du bas — « À renouveler » et les
+        // notes n'ont rien à dire avant le premier patient.
+        if session.patients.is_empty() {
+            let start = rects[2].union(rects[3]);
+            let mut step = None;
+            motif::panel(ui, start, Some(tr("dash_start")), |ui| {
+                step = Self::dash_start(ui, ui.max_rect());
+            });
+            if let Some(tool) = step {
+                session.go_to(Goto::Tool(tool));
+            }
+        }
         let titles = [
             tr("home_today"),
             tr("dash_recent"),
             tr("home_renew"),
             tr("dash_today_notes"),
         ];
-        for (i, (title, rect)) in titles.iter().zip(rects).enumerate() {
+        let panes = if session.patients.is_empty() { 2 } else { 4 };
+        for (i, (title, rect)) in titles.iter().zip(rects).enumerate().take(panes) {
             motif::panel(ui, rect, Some(title), |ui| {
                 let body = ui.max_rect();
                 match i {
@@ -90842,23 +90859,40 @@ impl App {
                         .wrap(),
                     );
                     ui.add_space(4.0);
-                    for (tool, key) in [
+                    let steps = [
                         (Tool::Options, "dash_start_officine"),
                         (Tool::Trame, "dash_start_trame"),
                         (Tool::Sauvegarde, "dash_start_base"),
                         (Tool::Postes, "dash_start_postes"),
                         (Tool::Reseau, "dash_start_reseau"),
-                    ] {
+                    ];
+                    // Les propos en colonne : chaque bouton dans une case
+                    // de la largeur du plus long.
+                    let cell = steps
+                        .iter()
+                        .filter(|(t, _)| t.available())
+                        .map(|(t, _)| Self::button_width(ui, t.title()))
+                        .fold(0.0_f32, f32::max);
+                    for (tool, key) in steps {
                         if !tool.available() {
                             continue;
                         }
                         // Le propos à droite du bouton, et **qui passe à
                         // la ligne sous lui-même** : dans une rangée
-                        // enveloppée il repartait sous le bouton.
-                        ui.horizontal_top(|ui| {
-                            if motif::button(ui, tool.title()).clicked() {
-                                chosen = Some(tool);
-                            }
+                        // enveloppée il repartait sous le bouton. Centré
+                        // sur le bouton : en haut, il flottait au-dessus
+                        // de son libellé.
+                        ui.horizontal(|ui| {
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(cell, motif::button_height(ui)),
+                                egui::Layout::left_to_right(egui::Align::Center),
+                                |ui| {
+                                    ui.set_width(cell);
+                                    if motif::button(ui, tool.title()).clicked() {
+                                        chosen = Some(tool);
+                                    }
+                                },
+                            );
                             ui.add(
                                 egui::Label::new(
                                     egui::RichText::new(tr(key))
