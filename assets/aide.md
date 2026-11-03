@@ -129,7 +129,8 @@ la monographie commence par « Pour <patient> » : ce que les tables
 relèvent pour lui — rein avec son DFG, âge, interactions et revue avec
 ses traitements, surveillance, biologie, grossesse quand une DDR est
 notée —, chaque ligne avec sa conduite. Une phrase le dit quand aucune
-ne relève rien.
+ne relève rien. « Noter au dossier » recopie ces lignes au journal du
+dossier, signées et datées, pour l'équipe et le prescripteur.
 
 # Dossier patient
 

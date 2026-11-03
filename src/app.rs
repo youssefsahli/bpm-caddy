@@ -5812,6 +5812,9 @@ struct Session {
     /// La fiche lue pour le dossier ouvert : la clé (fiche, dossier,
     /// traitements, biologie, DFG) et ce que les tables en disent.
     card_file: Option<(CardFileKey, Vec<CompanionSignal>)>,
+    /// La lecture de cette fiche déjà notée au journal de ce dossier
+    /// (fiche, dossier) : le bouton le dit au lieu de noter deux fois.
+    card_noted: Option<(i64, i64)>,
     /// The viewed patient's dated notes, newest first.
     patient_notes: Vec<Note>,
     /// Le fil du dossier : tout ce que la base sait de ce patient, dans
@@ -7539,6 +7542,7 @@ impl Session {
             say_notice: 0,
             say_stups: Vec::new(),
             card_file: None,
+            card_noted: None,
             patient_notes: Vec::new(),
             patient_fil: Vec::new(),
             patient_tab: PatientTab::default(),
@@ -80401,6 +80405,11 @@ impl App {
             (true, Some(name), Some(card)) => Some((name, Self::card_for_file(session, &card))),
             _ => None,
         };
+        let noted = session.card_noted.is_some_and(|(d, p)| {
+            session.drug_form.as_ref().map(|f| f.id) == Some(d)
+                && session.viewing.as_ref().map(|v| v.id) == Some(p)
+        });
+        let mut note_file = false;
         if let Some(form) = &mut session.drug_form {
             // ---- Card: monograph to read, or the editable form ----
             let reading = session.drug_reading;
@@ -80677,7 +80686,7 @@ impl App {
                             // Lue pour le dossier ouvert, en tête : ce
                             // qu'on vient chercher quand un patient attend.
                             if let Some((name, signals)) = &for_file {
-                                Self::card_file_block(ui, name, signals);
+                                note_file = Self::card_file_block(ui, name, signals, noted);
                             }
                             if reading {
                                 follow_link = drug_monograph(
@@ -81193,6 +81202,11 @@ impl App {
                     if let Err(e) = open::that_detached(source.url(card)) {
                         session.error = Some(trf("drug_lookup_error", e));
                     }
+                }
+            }
+            if note_file {
+                if let (Some(card), Some((_, signals))) = (session.drug_form.clone(), &for_file) {
+                    Self::note_card_on_file(session, card.id, card.name.trim(), signals);
                 }
             }
             if let Some(id) = open_cascade {
@@ -90633,7 +90647,14 @@ impl App {
 
     /// « Pour <patient> » : une ligne par table qui parle, sa conduite
     /// dessous ; une phrase quand toutes se taisent.
-    fn card_file_block(ui: &mut egui::Ui, name: &str, signals: &[CompanionSignal]) {
+    /// `true` : « Noter au dossier » pressé.
+    fn card_file_block(
+        ui: &mut egui::Ui,
+        name: &str,
+        signals: &[CompanionSignal],
+        noted: bool,
+    ) -> bool {
+        let mut note = false;
         egui::Frame::none()
             .fill(motif::bg_light())
             .inner_margin(egui::Margin::same(8.0))
@@ -90653,8 +90674,56 @@ impl App {
                     }
                     ui.add_space(4.0);
                 }
+                if !signals.is_empty() {
+                    if noted {
+                        ui.label(egui::RichText::new(tr("card_noted")).color(motif::text_dim()));
+                    } else if motif::button(ui, tr("card_note"))
+                        .on_hover_text(tr("card_note_tooltip"))
+                        .clicked()
+                    {
+                        note = true;
+                    }
+                }
             });
         ui.add_space(12.0);
+        note
+    }
+
+    /// Ce que la fiche relève pour le dossier, au journal du dossier :
+    /// signé, daté, lu par l'équipe et repris pour le prescripteur.
+    fn note_card_on_file(
+        session: &mut Session,
+        drug_id: i64,
+        drug: &str,
+        signals: &[CompanionSignal],
+    ) {
+        let Some(pid) = session.viewing.as_ref().map(|p| p.id) else {
+            return;
+        };
+        let mut body = trf("card_note_head", drug);
+        for s in signals {
+            let said = s.hover.rsplit("\n\n").next().unwrap_or_default().trim();
+            body.push('\n');
+            body.push_str(&s.chip);
+            if !said.is_empty() {
+                body.push_str(" : ");
+                body.push_str(said);
+            }
+        }
+        match session
+            .db
+            .add_note(NoteSubject::Patient, pid, &session.operator, &body)
+        {
+            Ok(_) => {
+                session.card_noted = Some((drug_id, pid));
+                session.patient_notes = session
+                    .db
+                    .notes_for(NoteSubject::Patient, pid)
+                    .unwrap_or_default();
+                session.refresh_fil();
+            }
+            Err(e) => session.error = Some(e),
+        }
     }
 
     /// Ce que les tables disent de cette fiche pour le dossier ouvert —
@@ -115884,6 +115953,18 @@ mod tests {
         )));
         // Mémorisé : la même question rend la même réponse sans relire.
         assert!(s.card_file.is_some());
+        // Noté au journal du dossier : la fiche, et chaque relevé.
+        let pid = s.viewing.as_ref().map(|v| v.id).unwrap();
+        App::note_card_on_file(&mut s, met.id, &met.name, &signals);
+        let notes =
+            s.db.notes_for(crate::db::NoteSubject::Patient, pid)
+                .unwrap();
+        let said = notes
+            .iter()
+            .find(|n| n.body.starts_with(&format!("Fiche {} :", met.name)))
+            .expect("la lecture notée au dossier");
+        assert!(said.body.contains(&signals[0].chip), "{}", said.body);
+        assert_eq!(s.card_noted, Some((met.id, pid)));
         s.viewing = None;
         assert!(App::card_for_file(&mut s, &met).is_empty());
     }

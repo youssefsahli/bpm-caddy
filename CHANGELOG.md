@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **« P » on an open file prints its plan de prise**, outside a field, like « N » for the note; listed under F12.
 - **Today's entretien at the top of « À dire ».** A file opened from the day's rendez-vous starts with « Aujourd'hui 09:00 · Entretien BPM » and « Commencer », which opens the guided interview; an overdue one gives its day.
 - **Guided interview: Échap suspends** (outside a field), and the band says which one of its type this is on the file (« 1er entretien », « 2e entretien »).
+- **« Noter au dossier » under « Pour <patient> » on a drug card** copies what the tables found for this file to its journal (« Fiche Eliquis : » then one line per finding with its conduct), signed and dated; the button then reads « Noté au journal du dossier. ».
 
 ### Fixed
 
