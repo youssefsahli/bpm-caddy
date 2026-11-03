@@ -7294,6 +7294,10 @@ struct Session {
     dispo_cursor: usize,
     codex_cursor: usize,
     protocol_cursor: usize,
+    /// Le protocole dont la croix a été pressée une fois : la seconde
+    /// le supprime. Un clic suffisait, sur une croix de dix-huit pixels
+    /// au bord de chaque rangée de la liste.
+    protocol_confirm_delete: Option<i64>,
     /// Ctrl+F asked for the open list's own search field.
     focus_list_search: bool,
     /// The rentals on the open file, the forfait being handed out, and
@@ -8081,6 +8085,7 @@ impl Session {
             dispo_cursor: 0,
             codex_cursor: 0,
             protocol_cursor: 0,
+            protocol_confirm_delete: None,
             focus_list_search: false,
             locations: Vec::new(),
             loc_pick: 0,
@@ -29759,6 +29764,9 @@ impl App {
                         };
                         format!("{day} {}", r.scheduled_time).trim().to_owned()
                     }
+                    _ if r.updated_on.get(..10) == Some(today.as_str()) => {
+                        tr("board_since_today").to_owned()
+                    }
                     _ => trf("board_since", db::format_french_date(&r.updated_on)),
                 };
                 let mut line = format!("{} · {when}", r.kind.label());
@@ -29793,8 +29801,13 @@ impl App {
                         ui,
                         [
                             8.0,
-                            if to_plan {
+                            // Le champ ne réserve sa place qu'ouvert : fermé,
+                            // il renvoyait « Commencer » à la ligne pour un
+                            // bouton plus étroit que lui.
+                            if to_plan && plan.as_ref().is_some_and(|(id, _)| *id == r.id) {
                                 Self::button_width(ui, tr("board_plan")).max(chars_wide(ui, 12.0))
+                            } else if to_plan {
+                                Self::button_width(ui, tr("board_plan"))
                             } else {
                                 0.0
                             },
@@ -29913,6 +29926,11 @@ impl App {
                 let title = format!("{} ({})", tr(titles[i]), cols[i].len());
                 motif::panel(ui, rect, Some(&title), |ui| {
                     ui.spacing_mut().scroll.floating = false;
+                    // Des boutons plus serrés dans une colonne : à
+                    // 1280x800, « Planifier » et « Commencer » se
+                    // posaient l'un sous l'autre pour une dizaine de
+                    // pixels, et chaque carte prenait trois rangées.
+                    ui.spacing_mut().button_padding.x *= 0.6;
                     egui::ScrollArea::vertical()
                         .id_salt(("board_col", i))
                         .auto_shrink([false, false])
@@ -74211,6 +74229,7 @@ impl App {
         let mut open: Option<db::Protocol> = None;
         let mut delete: Option<(i64, String)> = None;
         let selected = session.protocol_open.as_ref().map(|p| p.id);
+        let mut confirm_delete = session.protocol_confirm_delete;
         motif::panel(ui, rect, Some(tr("proto_list")), |ui| {
             let w = ui.available_width();
             let field = motif::field(
@@ -74323,7 +74342,13 @@ impl App {
                                 galley,
                                 ink,
                             );
-                            // The delete target is the row's right edge.
+                            // **La croix au bord de la rangée ouverte ou
+                            // survolée, et deux clics.** Une croix sur
+                            // chacune des rangées, qui supprimait au
+                            // premier clic : la liste de référence de
+                            // l'équipe se perdait d'un geste égaré. Armée,
+                            // la croix dit « Supprimer ? » en rouge.
+                            let armed = confirm_delete == Some(p.id);
                             let x = egui::Rect::from_center_size(
                                 egui::pos2(rect.right() - 12.0, rect.center().y),
                                 egui::vec2(18.0, 18.0),
@@ -74333,26 +74358,71 @@ impl App {
                                 ui.id().with(("proto_del", p.id)),
                                 egui::Sense::click(),
                             );
-                            ui.painter().text(
-                                x.center(),
-                                egui::Align2::CENTER_CENTER,
-                                "×",
-                                egui::FontId::proportional(motif::pt(ui, 14.0)),
-                                if hit.hovered() {
-                                    motif::alert()
-                                } else {
-                                    motif::text_dim()
-                                },
-                            );
-                            if hit.clicked() {
+                            let show =
+                                armed || selected == Some(p.id) || resp.hovered() || hit.hovered();
+                            if armed {
+                                let font = egui::FontId::proportional(motif::pt(ui, 11.0));
+                                let ask = ui.painter().layout_no_wrap(
+                                    tr("proto_delete_ask").to_owned(),
+                                    font,
+                                    motif::alert(),
+                                );
+                                let back = egui::Rect::from_min_max(
+                                    egui::pos2(x.right() - ask.size().x - 8.0, rect.top() + 1.0),
+                                    egui::pos2(rect.right(), rect.bottom() - 1.0),
+                                );
+                                ui.painter().rect_filled(back, 0.0, motif::bg());
+                                ui.painter().galley(
+                                    egui::pos2(
+                                        back.left() + 4.0,
+                                        back.center().y - ask.size().y / 2.0,
+                                    ),
+                                    ask,
+                                    motif::alert(),
+                                );
+                            } else if show {
+                                ui.painter().text(
+                                    x.center(),
+                                    egui::Align2::CENTER_CENTER,
+                                    "×",
+                                    egui::FontId::proportional(motif::pt(ui, 14.0)),
+                                    if hit.hovered() {
+                                        motif::alert()
+                                    } else if on {
+                                        motif::bg()
+                                    } else {
+                                        motif::text_dim()
+                                    },
+                                );
+                            }
+                            let hit = if armed {
+                                // Armée, toute la phrase rouge se clique.
+                                let wide = egui::Rect::from_min_max(
+                                    egui::pos2(rect.right() - chars_wide(ui, 14.0), rect.top()),
+                                    rect.max,
+                                );
+                                ui.interact(
+                                    wide,
+                                    ui.id().with(("proto_del_ask", p.id)),
+                                    egui::Sense::click(),
+                                )
+                            } else {
+                                hit
+                            };
+                            if hit.clicked() && armed {
                                 delete = Some((p.id, p.title.clone()));
+                                confirm_delete = None;
+                            } else if hit.clicked() && show {
+                                confirm_delete = Some(p.id);
                             } else if resp.clicked() {
+                                confirm_delete = None;
                                 open = Some(p.clone());
                             }
                         }
                     });
             });
         });
+        session.protocol_confirm_delete = confirm_delete;
         if let Some((id, title)) = delete {
             match session.db.delete_protocol(id, &title) {
                 Ok(true) => {}
