@@ -39461,6 +39461,86 @@ impl App {
     }
 
     /// The agenda's « Imprimer » menu: its label and room for the mark.
+    fn agenda_filter_menu_w(ui: &egui::Ui) -> f32 {
+        Self::button_width(ui, &trf("agenda_filter_menu_on", 99))
+            .max(Self::button_width(ui, tr("agenda_filter_menu")))
+            + chars_wide(ui, 3.0)
+    }
+
+    /// Le filtre de l'agenda en menu, quand la rangée des pastilles ne
+    /// tient pas : les mêmes choix, dans le même ordre, et le même effet
+    /// au clic — un lieu restreint ou rend tout, un type s'ajoute ou se
+    /// retire.
+    fn agenda_filter_menu(ui: &mut egui::Ui, session: &mut Session, kinds: &[InterviewKind]) {
+        let all_places = session.agenda_places == [true, true];
+        let mark = |on: bool, label: &str| {
+            if on {
+                trf("agenda_filter_item_on", label)
+            } else {
+                trf("agenda_filter_item_off", label)
+            }
+        };
+        let mut options = vec![
+            (
+                0usize,
+                mark(
+                    session.agenda_filter.is_empty() && all_places,
+                    tr("agenda_filter_all"),
+                ),
+            ),
+            (
+                1,
+                mark(
+                    session.agenda_places[0] && !all_places,
+                    tr("agenda_place_counter"),
+                ),
+            ),
+            (
+                2,
+                mark(
+                    session.agenda_places[1] && !all_places,
+                    tr("agenda_place_remote"),
+                ),
+            ),
+        ];
+        for (i, k) in kinds.iter().enumerate() {
+            options.push((3 + i, mark(session.agenda_filter.contains(k), k.label())));
+        }
+        let active = session.agenda_filter.len() + usize::from(!all_places);
+        let head = if active == 0 {
+            tr("agenda_filter_menu").to_owned()
+        } else {
+            trf("agenda_filter_menu_on", active)
+        };
+        let picked = motif::menu(
+            ui,
+            "agenda_filter_menu",
+            Self::agenda_filter_menu_w(ui),
+            &head,
+            &options,
+        )
+        .inner;
+        match picked {
+            Some(0) => {
+                session.agenda_filter.clear();
+                session.agenda_places = [true, true];
+            }
+            Some(i @ (1 | 2)) => {
+                let i = i - 1;
+                let only = session.agenda_places[i] && !all_places;
+                session.agenda_places = if only { [true, true] } else { [i == 0, i == 1] };
+            }
+            Some(i) => {
+                if let Some(k) = kinds.get(i - 3) {
+                    if !session.agenda_filter.remove(k) {
+                        session.agenda_filter.insert(*k);
+                    }
+                }
+            }
+            None => {}
+        }
+    }
+
     fn agenda_print_w(ui: &egui::Ui) -> f32 {
         Self::button_width(ui, tr("agenda_print")) + chars_wide(ui, 3.0)
     }
@@ -47279,38 +47359,54 @@ impl App {
             .map(|l| Self::button_width(ui, l))
             .sum::<f32>()
             + gap * 2.0;
-        let control_lines = Self::wrapped_rows_of(
-            ui,
-            body.width() - 30.0,
-            [
-                tr("agenda_mode_day"),
-                tr("agenda_mode_week"),
-                tr("agenda_mode_month"),
-                tr("agenda_mode_planning"),
-            ]
-            .into_iter()
-            .map(|l| Self::button_width(ui, l))
-            .chain(std::iter::once(nav_w))
-            .chain(
-                [week_label.as_str(), tr("rdv_new_button")]
-                    .into_iter()
-                    .map(|l| Self::button_width(ui, l)),
+        let controls = |menu: Option<f32>| {
+            Self::wrapped_rows_of(
+                ui,
+                body.width() - 30.0,
+                [
+                    tr("agenda_mode_day"),
+                    tr("agenda_mode_week"),
+                    tr("agenda_mode_month"),
+                    tr("agenda_mode_planning"),
+                ]
+                .into_iter()
+                .map(|l| Self::button_width(ui, l))
+                .chain(std::iter::once(nav_w))
+                .chain(
+                    [week_label.as_str(), tr("rdv_new_button")]
+                        .into_iter()
+                        .map(|l| Self::button_width(ui, l)),
+                )
+                .chain(std::iter::once(Self::agenda_print_w(ui)))
+                .chain(menu),
             )
-            .chain(std::iter::once(Self::agenda_print_w(ui))),
-        );
+        };
         let row = Self::row_height(ui) + ui.spacing().item_spacing.y + 8.0;
+        let info_h = if session.agenda_mode == AgendaMode::Planning && overdue.is_empty() {
+            6.0
+        } else {
+            Self::label_line(ui) + ui.spacing().item_spacing.y + 6.0
+        };
+        // **Les pastilles, ou un menu.** À 1024x700 en texte 1,6 la
+        // rangée des pastilles ne tient plus dans la part de la bande :
+        // elle défilait sous le pli, et rien ne disait qu'on pouvait
+        // filtrer. Elle devient alors « Filtrer », un menu au bout des
+        // boutons. Décidé sur l'estimation et non sur ce que la bande a
+        // pris à l'image d'avant : sans pastilles la bande rapetisse, et
+        // la décision basculerait d'une image à l'autre.
+        let filter_menu = session.agenda_mode != AgendaMode::Planning
+            && row * controls(None) + filter_h + info_h > body.height() * 0.45;
+        let (control_lines, filter_h) = if filter_menu {
+            (controls(Some(Self::agenda_filter_menu_w(ui))), 0.0)
+        } else {
+            (controls(None), filter_h)
+        };
         // L'estimation sert au premier dessin ; ensuite c'est ce que la
         // bande a réellement occupé qui décide, et celui-là tombe juste.
         let want = if session.agenda_band_h > 0.0 {
             session.agenda_band_h + 16.0
         } else {
-            row * control_lines
-                + filter_h
-                + if session.agenda_mode == AgendaMode::Planning && overdue.is_empty() {
-                    6.0
-                } else {
-                    Self::label_line(ui) + ui.spacing().item_spacing.y + 6.0
-                }
+            row * control_lines + filter_h + info_h
         };
         // However much the band would like, the calendar keeps most of
         // the screen: past the cap the band scrolls instead.
@@ -47464,6 +47560,9 @@ impl App {
                                     &options,
                                 )
                                 .inner;
+                                if filter_menu {
+                                    Self::agenda_filter_menu(ui, session, &shown_kinds);
+                                }
                                 if picked == Some(0) {
                                     print_week = true;
                                 }
@@ -47496,7 +47595,7 @@ impl App {
                         // Not in Planning: it filters appointments, and
                         // the planning shows none — two rows of buttons
                         // that change nothing on that screen.
-                        if session.agenda_mode != AgendaMode::Planning {
+                        if session.agenda_mode != AgendaMode::Planning && !filter_menu {
                             ui.horizontal_wrapped(|ui| {
                                 ui.label(
                                     egui::RichText::new(tr("agenda_filter"))
@@ -99680,13 +99779,24 @@ impl App {
                 // One page at a time: the fee matrix and the
                 // auto-lock timeout used to be the same five-screen
                 // scroll apart.
-                ui.horizontal_wrapped(|ui| {
-                    for page in OptionsPage::ALL {
-                        if motif::toggle(ui, page.label(), editor.page == page).clicked() {
-                            editor.page = page;
-                        }
+                // **Des onglets, comme partout ailleurs** : neuf boutons
+                // pleine taille faisaient deux rangées à 1024x700, la
+                // seconde pour « À propos » seul.
+                let tabs: Vec<motif::Tab> = OptionsPage::ALL
+                    .iter()
+                    .map(|p| motif::Tab::new(p.label()))
+                    .collect();
+                let on = OptionsPage::ALL
+                    .iter()
+                    .position(|p| *p == editor.page)
+                    .unwrap_or(0);
+                if let Some(motif::TabAction::Select(i)) =
+                    motif::tab_strip(ui, "options_pages", &tabs, on)
+                {
+                    if let Some(p) = OptionsPage::ALL.get(i) {
+                        editor.page = *p;
                     }
-                });
+                }
                 ui.add_space(6.0);
                 let page = editor.page;
                 // Les deux sens. Certaines pages portent une grille
