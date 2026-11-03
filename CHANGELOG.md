@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Référence, drug search: what was typed comes first.** « eli » gave Kaftrio (é-l-exacaftor … i-vacaftor) before Eliquis; a name or DCI that starts with the letters typed now ranks first, one that holds them in one piece next.
+- **Référence, drug search: what was typed comes first.** « eli » gave Kaftrio (é-l-exacaftor … i-vacaftor) before Eliquis; a name or DCI that starts with the letters typed now ranks first, one that holds them in one piece next. Patient search ranks the same way (`fuzzy::prefix_bonus`).
 - **Référence home: typing a name clears the title and the eleven tool buttons**, so the results start under the field; at 1024x700 with text at 1.6 the field sat at the bottom and its results below the screen. Start view `drug_search`.
 - « Patients sous ce traitement » lost its trailing colon, as a panel title.
 - **Agenda toolbar: one « Imprimer » menu** (« La semaine affichée », « La liste des rendez-vous ») instead of « Imprimer la semaine » beside a bare « Imprimer » that printed the list: the two read apart, and the toolbar keeps two rows at 1024x700 with text at 1.6.

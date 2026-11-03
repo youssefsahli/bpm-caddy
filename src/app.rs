@@ -12634,32 +12634,9 @@ impl Session {
         self.drug_hits_key = None;
     }
 
-    /// **Ce qui commence par la question passe devant ce qui l'épelle en
-    /// pointillé.** La note floue est gloutonne : « eli » notait 11 dans
-    /// « élexacaftor + … + ivacaftor » (deux débuts de mot) et 10 dans
-    /// « Eliquis », et Kaftrio sortait avant Eliquis. Le nom ou la DCI
-    /// qui commence par les lettres tapées gagne vingt, celui qui les
-    /// contient d'un seul tenant dix.
+    /// The better of [`fuzzy::prefix_bonus`] over the name and the DCI.
     fn drug_prefix_bonus(query: &str, d: &Drug) -> i32 {
-        let q = fuzzy::sort_key(query.trim());
-        if q.is_empty() {
-            return 0;
-        }
-        [d.name.as_str(), d.dci.as_str()]
-            .into_iter()
-            .filter(|t| !t.is_empty())
-            .map(|t| {
-                let t = fuzzy::sort_key(t);
-                if t.starts_with(&q) {
-                    20
-                } else if t.contains(&q) {
-                    10
-                } else {
-                    0
-                }
-            })
-            .max()
-            .unwrap_or(0)
+        fuzzy::prefix_bonus(query, &d.name).max(fuzzy::prefix_bonus(query, &d.dci))
     }
 
     fn drug_results(&self, limit: usize) -> Vec<Drug> {
@@ -17091,7 +17068,8 @@ impl Session {
             .filter_map(|(p, (k1, k2))| {
                 let a = fuzzy::score(&query, k1);
                 let b = fuzzy::score(&query, k2);
-                a.max(b).map(|s| (s, p))
+                let bonus = fuzzy::prefix_bonus(&query, k1).max(fuzzy::prefix_bonus(&query, k2));
+                a.max(b).map(|s| (s + bonus, p))
             })
             .collect();
         scored.sort_by_key(|&(s, _)| std::cmp::Reverse(s));

@@ -76,6 +76,31 @@ pub fn score(query: &str, target: &str) -> Option<i32> {
     None
 }
 
+/// **Ce qui commence par la question passe devant ce qui l'épelle en
+/// pointillé.** [`score`] est glouton : « eli » notait 11 dans
+/// « élexacaftor + … + ivacaftor » (deux débuts de mot) et 10 dans
+/// « Eliquis ». Une cible qui commence par les lettres tapées gagne
+/// vingt, une qui les contient d'un seul tenant dix. Ponctuation et
+/// espaces de la question ignorés, comme [`score`].
+pub fn prefix_bonus(query: &str, target: &str) -> i32 {
+    let q: String = query
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .map(fold)
+        .collect();
+    if q.is_empty() || target.is_empty() {
+        return 0;
+    }
+    let t = sort_key(target);
+    if t.starts_with(&q) {
+        20
+    } else if t.contains(&q) {
+        10
+    } else {
+        0
+    }
+}
+
 /// Lowercased, accent-stripped copy of `s` — a collation key so
 /// "Lefèvre" sorts with "Lefevre" instead of after "Z".
 pub fn sort_key(s: &str) -> String {
@@ -246,6 +271,19 @@ pub fn score_with_indices(query: &str, target: &str) -> Option<(i32, Vec<usize>)
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn what_starts_with_the_query_outranks_what_spells_it_apart() {
+        let spread = super::score("eli", "élexacaftor + tézacaftor + ivacaftor").unwrap()
+            + super::prefix_bonus("eli", "élexacaftor + tézacaftor + ivacaftor");
+        let prefix =
+            super::score("eli", "Eliquis").unwrap() + super::prefix_bonus("eli", "Eliquis");
+        assert!(prefix > spread);
+        assert_eq!(super::prefix_bonus("Lef", "lefèvre hélène"), 20);
+        assert_eq!(super::prefix_bonus("quis", "Eliquis"), 10);
+        assert_eq!(super::prefix_bonus("", "Eliquis"), 0);
+        assert_eq!(super::prefix_bonus("jean-p", "Jean Pierre"), 0);
+    }
     use super::score;
 
     /// Ce qu'un comptoir français tape et range : les accents d'ailleurs,
