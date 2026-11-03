@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Référence, drug search: what was typed comes first.** « eli » gave Kaftrio (é-l-exacaftor … i-vacaftor) before Eliquis; a name or DCI that starts with the letters typed now ranks first, one that holds them in one piece next.
+- **Référence home: typing a name clears the title and the eleven tool buttons**, so the results start under the field; at 1024x700 with text at 1.6 the field sat at the bottom and its results below the screen. Start view `drug_search`.
+- « Patients sous ce traitement » lost its trailing colon, as a panel title.
 - **Agenda toolbar: one « Imprimer » menu** (« La semaine affichée », « La liste des rendez-vous ») instead of « Imprimer la semaine » beside a bare « Imprimer » that printed the list: the two read apart, and the toolbar keeps two rows at 1024x700 with text at 1.6.
 - **Suivi cards are shorter**: the name and its line (type, day, operator) share one row, folding in two only in a narrow column. At 1024x700 with text at 1.6 a card took five rows and the screen showed two.
 - **An open file no longer sits under the Comptoir strip** (« Recherche » lit while the file was on screen): the file gets that row back; F1 or Échap return to the search.

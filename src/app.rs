@@ -12634,6 +12634,34 @@ impl Session {
         self.drug_hits_key = None;
     }
 
+    /// **Ce qui commence par la question passe devant ce qui l'épelle en
+    /// pointillé.** La note floue est gloutonne : « eli » notait 11 dans
+    /// « élexacaftor + … + ivacaftor » (deux débuts de mot) et 10 dans
+    /// « Eliquis », et Kaftrio sortait avant Eliquis. Le nom ou la DCI
+    /// qui commence par les lettres tapées gagne vingt, celui qui les
+    /// contient d'un seul tenant dix.
+    fn drug_prefix_bonus(query: &str, d: &Drug) -> i32 {
+        let q = fuzzy::sort_key(query.trim());
+        if q.is_empty() {
+            return 0;
+        }
+        [d.name.as_str(), d.dci.as_str()]
+            .into_iter()
+            .filter(|t| !t.is_empty())
+            .map(|t| {
+                let t = fuzzy::sort_key(t);
+                if t.starts_with(&q) {
+                    20
+                } else if t.contains(&q) {
+                    10
+                } else {
+                    0
+                }
+            })
+            .max()
+            .unwrap_or(0)
+    }
+
     fn drug_results(&self, limit: usize) -> Vec<Drug> {
         let mut scored: Vec<(i32, &Drug)> = self
             .drugs
@@ -12651,7 +12679,9 @@ impl Session {
                     .filter_map(|t| fuzzy::score(&self.drug_query, t))
                     .max()
                     .map(|s| s - 40);
-                a.max(b).max(side).map(|s| (s, d))
+                a.max(b)
+                    .max(side)
+                    .map(|s| (s + Self::drug_prefix_bonus(&self.drug_query, d), d))
             })
             .collect();
         scored.sort_by_key(|&(s, _)| std::cmp::Reverse(s));
@@ -24047,6 +24077,15 @@ impl App {
                         }
                         // « Nouveau rendez-vous », un dossier déjà
                         // choisi : la fenêtre telle qu'on la remplit.
+                        // La base des médicaments, un nom tapé : le titre
+                        // et les portes cèdent la place aux résultats.
+                        Ok("drug_search") => {
+                            if let Ok(list) = session.db.drugs() {
+                                session.set_drugs(list);
+                            }
+                            session.view = MainView::Drugs;
+                            session.drug_query = "eli".to_owned();
+                        }
                         Ok("agenda_rdv") => {
                             session.refresh_dashboard();
                             session.view = MainView::Agenda;
@@ -80526,7 +80565,12 @@ impl App {
         // The title block belongs to the base's index, not to an open
         // card: the tab already says which drug is on screen, and the
         // card needs every pixel of height it can get.
-        if session.drug_form.is_none() {
+        //
+        // **Ni pendant une recherche** : sous le titre et les onze portes,
+        // le champ tombait au bas de l'écran à 1024x700 en texte 1,6, et
+        // ses résultats en dessous de l'écran. Un nom tapé, le titre et
+        // les portes s'effacent ; le champ vidé, ils reviennent.
+        if session.drug_form.is_none() && session.drug_query.trim().is_empty() {
             motif::page(ui, 720.0, |ui| {
                 ui.add_space(24.0);
                 // The side doors go hard right when the title line has
@@ -80550,6 +80594,8 @@ impl App {
                     tr("codex_button"),
                     tr("dispo_button"),
                     tr("cascades_button"),
+                    tr("conseil_button"),
+                    tr("couv_button"),
                 ]
                 .into_iter()
                 .map(|l| Self::button_width(ui, l) + gap)
@@ -81700,7 +81746,10 @@ impl App {
             let search = motif::field(
                 ui,
                 ui.available_width(),
+                // Un id fixe : le titre effacé au premier caractère, le
+                // champ ne doit pas changer d'identité ni perdre la main.
                 egui::TextEdit::singleline(&mut session.drug_query)
+                    .id_salt("drug_search")
                     .hint_text(motif::hint(tr("drug_search_hint"))),
             );
             if !ctx.wants_keyboard_input() {
@@ -116349,6 +116398,30 @@ mod tests {
         s.reload_interviews(p.id);
         s.refresh_say(30);
         assert!(!wanted(&s), "{:?}", s.say_today);
+    }
+
+    #[test]
+    fn a_drug_whose_name_starts_with_the_query_comes_first() {
+        let card = |name: &str, dci: &str| crate::db::Drug {
+            name: name.into(),
+            dci: dci.into(),
+            ..Default::default()
+        };
+        let eliquis = card("Eliquis", "apixaban");
+        let kaftrio = card(
+            "Kaftrio (élexacaftor + tézacaftor + ivacaftor)",
+            "élexacaftor + tézacaftor + ivacaftor",
+        );
+        let score = |d: &crate::db::Drug| {
+            crate::fuzzy::score("eli", &d.name)
+                .max(crate::fuzzy::score("eli", &d.dci))
+                .unwrap()
+                + super::Session::drug_prefix_bonus("eli", d)
+        };
+        assert!(score(&eliquis) > score(&kaftrio));
+        assert_eq!(super::Session::drug_prefix_bonus("", &eliquis), 0);
+        assert_eq!(super::Session::drug_prefix_bonus("apix", &eliquis), 20);
+        assert_eq!(super::Session::drug_prefix_bonus("quis", &eliquis), 10);
     }
 
     #[test]
