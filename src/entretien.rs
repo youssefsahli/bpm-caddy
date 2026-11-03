@@ -606,6 +606,63 @@ impl Record {
     }
 }
 
+/// Les molécules qui appellent l'accompagnement AOD.
+const AOD_MOLECULES: &[&str] = &["apixaban", "rivaroxaban", "dabigatran", "édoxaban"];
+/// Les molécules qui appellent l'accompagnement AVK.
+const AVK_MOLECULES: &[&str] = &["warfarine", "fluindione", "acénocoumarol"];
+
+/// Un entretien que le traitement appelle et que le dossier n'a pas
+/// encore : le type, et ce qui l'appelle (le traitement, ou le nombre
+/// de traitements pour un bilan partagé).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Proposal {
+    pub kind: crate::db::InterviewKind,
+    pub because: String,
+}
+
+/// Les entretiens à proposer, sur les traitements du dossier
+/// (`(nom, dci)`) et les types d'acte qu'il porte déjà. Un type déjà au
+/// dossier, à quelque état que ce soit, n'est plus proposé : la suite
+/// est l'affaire du suivi.
+///
+/// Les molécules sont nommées, jamais une classe : « aod » est dans
+/// d'autres mots.
+pub fn proposals(
+    treats: &[(&str, &str)],
+    on_file: &[crate::db::InterviewKind],
+    bpm_min: usize,
+) -> Vec<Proposal> {
+    use crate::db::InterviewKind as K;
+    let mut out = Vec::new();
+    let first = |molecules: &[&str]| -> Option<String> {
+        treats.iter().find_map(|(name, dci)| {
+            let hay = crate::fuzzy::sort_key(&format!("{name} {dci}"));
+            molecules
+                .iter()
+                .any(|m| hay.contains(&crate::fuzzy::sort_key(m)))
+                .then(|| (*name).to_owned())
+        })
+    };
+    for (kind, molecules) in [(K::Avk, AVK_MOLECULES), (K::Aod, AOD_MOLECULES)] {
+        if on_file.contains(&kind) {
+            continue;
+        }
+        if let Some(name) = first(molecules) {
+            out.push(Proposal {
+                kind,
+                because: name,
+            });
+        }
+    }
+    if !on_file.contains(&K::Bpm) && treats.len() >= bpm_min {
+        out.push(Proposal {
+            kind: K::Bpm,
+            because: treats.len().to_string(),
+        });
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -810,5 +867,46 @@ mod tests {
         );
         assert_eq!(r.count(0, 2), 1);
         assert_eq!(steps("T", vec![], None), vec![Step::Report]);
+    }
+
+    #[test]
+    fn a_treatment_proposes_its_entretien_until_the_file_has_one() {
+        use crate::db::InterviewKind as K;
+        let treats = [
+            ("Eliquis", "apixaban"),
+            ("Kardégic", "acide acétylsalicylique"),
+            ("Coversyl", "périndopril"),
+            ("Tahor", "atorvastatine"),
+            ("Glucophage", "metformine"),
+        ];
+        let p = proposals(&treats, &[], 5);
+        assert_eq!(
+            p,
+            vec![
+                Proposal {
+                    kind: K::Aod,
+                    because: "Eliquis".into()
+                },
+                Proposal {
+                    kind: K::Bpm,
+                    because: "5".into()
+                },
+            ]
+        );
+        assert_eq!(proposals(&treats, &[K::Aod, K::Bpm], 5), vec![]);
+        assert_eq!(
+            proposals(&treats[1..], &[], 5),
+            vec![],
+            "quatre traitements, pas d'AOD"
+        );
+        // Le nom suffit quand la DCI manque, accents ou pas.
+        assert_eq!(
+            proposals(&[("Previscan fluindione", "")], &[], 5)[0].kind,
+            K::Avk
+        );
+        assert_eq!(
+            proposals(&[("Coumadine", "Warfarine")], &[], 5)[0].kind,
+            K::Avk
+        );
     }
 }

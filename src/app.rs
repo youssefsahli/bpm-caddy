@@ -4226,6 +4226,8 @@ struct SayLine {
     title: String,
     detail: String,
     go: Option<PatientTab>,
+    /// Un entretien à proposer : le type d'acte que le bouton crée.
+    act: Option<InterviewKind>,
 }
 
 /// Laquelle des trois moitiés des registres est à l'écran.
@@ -17277,6 +17279,7 @@ impl Session {
                 title: r.title.clone(),
                 detail: r.detail.clone(),
                 go: None,
+                act: None,
             });
         }
         for (head, sentence) in &self.patient_interactions {
@@ -17285,6 +17288,7 @@ impl Session {
                 title: head.clone(),
                 detail: sentence.clone(),
                 go: None,
+                act: None,
             });
         }
         // Le rein seulement quand un DFG est noté : sans lui, la table
@@ -17301,6 +17305,7 @@ impl Session {
                     title: trn("say_renal", &[&r.treatment, &format!("{}", dfg.round())]),
                     detail: r.conduct.clone(),
                     go: Some(PatientTab::Bio),
+                    act: None,
                 });
             }
         }
@@ -17315,6 +17320,7 @@ impl Session {
                     .to_owned(),
                 detail: f.text.clone(),
                 go: Some(PatientTab::Bio),
+                act: None,
             });
         }
         for d in &self.surveillance {
@@ -17334,6 +17340,7 @@ impl Session {
                 title: d.label.to_owned(),
                 detail: format!("{detail} {}", d.why).trim().to_owned(),
                 go: Some(PatientTab::Bio),
+                act: None,
             });
         }
         for e in &self.elderly {
@@ -17345,6 +17352,7 @@ impl Session {
                 title: e.treatment.clone(),
                 detail: e.risk.clone(),
                 go: None,
+                act: None,
             });
         }
         // L'ordonnance : une ligne par ordonnance, pas par médicament.
@@ -17370,6 +17378,7 @@ impl Session {
                 title: names.join(", "),
                 detail,
                 go: None,
+                act: None,
             });
         }
         for v in &self.vacc_due {
@@ -17381,6 +17390,29 @@ impl Session {
                 title: v.label.to_owned(),
                 detail: v.detail.clone(),
                 go: Some(PatientTab::Vaccins),
+                act: None,
+            });
+        }
+        // Les entretiens que le traitement appelle et que le dossier
+        // n'a pas encore.
+        let treats: Vec<(&str, &str)> = self
+            .patient_treats
+            .iter()
+            .map(|d| (d.name.as_str(), d.dci.as_str()))
+            .collect();
+        let on_file: Vec<InterviewKind> = self.viewing_interviews.iter().map(|i| i.kind).collect();
+        for p in crate::entretien::proposals(&treats, &on_file, db::BPM_MIN_TREATMENTS) {
+            let detail = if p.kind == InterviewKind::Bpm {
+                trf("say_itv_bpm", &p.because)
+            } else {
+                trf("say_itv_drug", &p.because)
+            };
+            out.push(SayLine {
+                rank: SayRank::Propose,
+                title: trf("say_itv", p.kind.label()),
+                detail,
+                go: None,
+                act: Some(p.kind),
             });
         }
         // Stable : dans un rang, l'ordre des tables.
@@ -17588,6 +17620,7 @@ impl Session {
         if let Ok(counts) = self.db.pending_counts() {
             self.pending = counts;
         }
+        self.say_stale = true;
         self.refresh_counts();
         self.refresh_fil();
     }
@@ -30592,6 +30625,7 @@ impl App {
             (rect, None)
         };
         let mut go: Option<PatientTab> = None;
+        let mut create: Option<InterviewKind> = None;
         motif::panel(ui, list, Some(tr("say_title")), |ui| {
             egui::ScrollArea::vertical()
                 .id_salt("patient_say")
@@ -30643,6 +30677,17 @@ impl App {
                                     go = Some(tab);
                                 }
                             }
+                            if let Some(kind) = line.act {
+                                let add = ui
+                                    .push_id(("act", i), |ui| {
+                                        motif::badge(ui, tr("say_itv_add"), None, motif::bg(), true)
+                                            .on_hover_cursor(egui::CursorIcon::PointingHand)
+                                    })
+                                    .inner;
+                                if add.clicked() {
+                                    create = Some(kind);
+                                }
+                            }
                         });
                         if !line.detail.is_empty() {
                             ui.label(egui::RichText::new(&line.detail).size(motif::pt(ui, 11.5)));
@@ -30653,6 +30698,18 @@ impl App {
         });
         if let Some(tab) = go {
             session.patient_tab = tab;
+        }
+        // L'acte à proposer, créé d'un clic : il rejoint « À proposer »
+        // dans le suivi des entretiens.
+        if let (Some(kind), Some(pid)) = (create, session.viewing.as_ref().map(|p| p.id)) {
+            let by = session.operator.clone();
+            match session.db.add_interview_by(pid, kind, "", &by) {
+                Ok(_) => {
+                    session.reload_interviews(pid);
+                    session.refresh_dashboard();
+                }
+                Err(e) => session.error = Some(e),
+            }
         }
         if let Some(fil) = fil {
             Self::patient_fil_pane(ui, session, fil);
@@ -115176,6 +115233,32 @@ mod tests {
         s.refresh_vacc_due();
         s.refresh_say(30);
         assert!(!s.say_today.is_empty());
+    }
+
+    #[test]
+    fn an_anticoagulant_proposes_its_entretien_until_the_act_exists() {
+        let (mut s, _swept) = scratch_session("say-itv");
+        let p = s.patients[0].clone();
+        let aod =
+            s.db.drugs()
+                .unwrap()
+                .into_iter()
+                .find(|d| d.dci.to_lowercase().contains("apixaban"))
+                .expect("une fiche d'apixaban livrée");
+        s.db.add_patient_drug(p.id, aod.id).unwrap();
+        s.open_patient(p.clone());
+        s.refresh_say(30);
+        let wanted = |s: &Session| {
+            s.say_today
+                .iter()
+                .any(|l| l.act == Some(InterviewKind::Aod) && l.rank == super::SayRank::Propose)
+        };
+        assert!(wanted(&s), "{:?}", s.say_today);
+        s.db.add_interview_by(p.id, InterviewKind::Aod, "", "YS")
+            .unwrap();
+        s.reload_interviews(p.id);
+        s.refresh_say(30);
+        assert!(!wanted(&s), "{:?}", s.say_today);
     }
 
     #[test]

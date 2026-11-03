@@ -132,9 +132,14 @@ le journal, la biologie, les vaccins et les pièces scannées.
 Le dossier s'ouvre sur **« À dire »** : ce que ses tables relèvent,
 le plus urgent d'abord. Alerte, à adapter (dose selon le DFG,
 interaction, sujet âgé), à surveiller (mesure en retard, dernière
-délivrance), à proposer (vaccin dû). Chaque ligne garde les mots de sa
-table ; « Biologie » ou « Vaccinations » ouvre l'onglet qui en dit
-plus. Le fil s'affiche à droite quand la fenêtre est assez large.
+délivrance), à proposer (vaccin dû, entretien). Chaque ligne garde les
+mots de sa table ; « Biologie » ou « Vaccinations » ouvre l'onglet qui
+en dit plus. Un entretien est proposé quand le traitement l'appelle et
+que le dossier n'en porte aucun de ce type : AVK (warfarine,
+fluindione, acénocoumarol), AOD (apixaban, rivaroxaban, dabigatran,
+édoxaban), bilan partagé à partir de cinq traitements. « Créer
+l'acte » le met dans « À proposer » du suivi. Le fil s'affiche à
+droite quand la fenêtre est assez large.
 
 Saisie courte des dates : `230826` ou `2308` donne `23/08/2026`. Pour
 une date déjà passée (délivrance, ordonnance, registre, pièce, vaccin,
