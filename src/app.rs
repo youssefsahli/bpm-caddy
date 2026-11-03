@@ -29053,7 +29053,12 @@ impl App {
         };
         ui.ctx()
             .request_repaint_after(std::time::Duration::from_secs(30));
-        let mut suspend = false;
+        // Échap, hors d'un champ, suspend : tout ce qui est relevé est
+        // gardé sur l'acte.
+        let mut suspend = !ui.ctx().wants_keyboard_input()
+            && ui
+                .ctx()
+                .input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
         let mut finish = false;
         let mut print = false;
         let mut go: Option<usize> = None;
@@ -29074,6 +29079,18 @@ impl App {
                     .to_owned()
             });
             let minutes = c.opened.elapsed().as_secs() / 60;
+            // Le rang de l'acte parmi ceux de ce type au dossier : le
+            // premier ne se mène pas comme le troisième.
+            let rank = session
+                .viewing_interviews
+                .iter()
+                .filter(|i| i.kind == c.kind && i.id <= c.id)
+                .count();
+            let rank = match rank {
+                0 => None,
+                1 => Some(tr("conduct_first").to_owned()),
+                n => Some(trf("conduct_nth", n)),
+            };
             ui.add_space(4.0);
             ui.horizontal_wrapped(|ui| {
                 ui.add_space(4.0);
@@ -29083,13 +29100,19 @@ impl App {
                         .size(motif::pt(ui, 13.0)),
                 );
                 ui.label(who);
+                if let Some(rank) = rank {
+                    ui.label(egui::RichText::new(rank).color(motif::text_dim()));
+                }
                 if let Some(rdv) = rdv {
                     ui.label(egui::RichText::new(trf("conduct_rdv", rdv)).color(motif::text_dim()));
                 }
                 ui.label(
                     egui::RichText::new(trf("conduct_minutes", minutes)).color(motif::text_dim()),
                 );
-                if motif::button(ui, tr("conduct_suspend")).clicked() {
+                if motif::button(ui, tr("conduct_suspend"))
+                    .on_hover_text(tr("conduct_suspend_key"))
+                    .clicked()
+                {
                     suspend = true;
                 }
             });

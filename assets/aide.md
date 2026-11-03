@@ -780,8 +780,9 @@ le tableau du type d'acte à remplir, une note par étape, puis le
 compte rendu, tiré de ce qui est coché, noté et relevé, à relire.
 « Imprimer le CR » sort le courrier au médecin ; « Terminer » passe
 l'acte à « Fait » et note la durée si elle ne l'était pas.
-« Suspendre » garde ce qui est relevé : la carte dit alors
-« Reprendre ». Alt+Gauche et Alt+Droite changent d'étape. TROD et
+« Suspendre » (Échap, hors d'un champ) garde ce qui est relevé : la
+carte dit alors « Reprendre ». Le bandeau dit le rang de l'acte parmi
+ceux de ce type au dossier (« 2e entretien »). Alt+Gauche et Alt+Droite changent d'étape. TROD et
 vaccination gardent leur feuille.
 
 Un acte porte sa thématique, son état, sa date, sa durée et les

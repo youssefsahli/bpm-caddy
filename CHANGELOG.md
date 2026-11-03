@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Plan an entretien from where it is proposed.** « Planifier » on a card « À proposer » of Suivi takes « 051126 9h30 » (hour optional): Entrée sets the day and hour and moves the act to « Planifiés » and the agenda, in one compare-and-set write. « Créer l'acte » in « À dire » opens the same field at once; Échap leaves the act to propose. Left open when changing view, it is planned anyway.
 - **« P » on an open file prints its plan de prise**, outside a field, like « N » for the note; listed under F12.
 - **Today's entretien at the top of « À dire ».** A file opened from the day's rendez-vous starts with « Aujourd'hui 09:00 · Entretien BPM » and « Commencer », which opens the guided interview; an overdue one gives its day.
+- **Guided interview: Échap suspends** (outside a field), and the band says which one of its type this is on the file (« 1er entretien », « 2e entretien »).
 
 ### Fixed
 
