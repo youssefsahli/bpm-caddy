@@ -81,6 +81,11 @@ dernière délivrance (fin le…) ou s'est finie depuis trente jours au
 plus (finie le…, en rouge), la plus pressée d'abord. Un clic ouvre le
 dossier.
 
+**Nouveau dossier**, à droite du champ (ou Ctrl+N, sans dossier ouvert),
+ouvre le formulaire de création sans recherche préalable ; Échap le
+ferme. Une recherche sans résultat propose le même formulaire, le nom
+déjà repris.
+
 « Chercher… » cherche partout d'un seul champ : les vues elles-mêmes, les
 onglets du dossier ouvert, les dossiers, les fiches, les tables de conversion, les préparations, les
 protocoles, les dispositifs, les compléments nutritionnels, le registre,

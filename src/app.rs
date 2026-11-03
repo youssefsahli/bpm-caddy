@@ -23425,7 +23425,7 @@ struct NewRdv {
 /// aussi.
 ///
 /// Une clé vide ouvre un groupe.
-pub fn key_rows() -> [(&'static str, &'static str); 31] {
+pub fn key_rows() -> [(&'static str, &'static str); 32] {
     [
         ("", tr("keys_group_workspace")),
         // Pas l'infobulle du bouton : elle dit sa touche entre
@@ -23451,6 +23451,7 @@ pub fn key_rows() -> [(&'static str, &'static str); 31] {
         ("↑ ↓", tr("keys_updown")),
         ("Entrée", tr("keys_enter")),
         ("Ctrl+N", tr("keys_new_act")),
+        ("Ctrl+N", tr("keys_new_file")),
         ("N", tr("keys_note")),
         ("P", tr("keys_plan")),
         ("Ctrl+R", tr("keys_new_rdv")),
@@ -28801,12 +28802,33 @@ impl App {
                 } else {
                     ui.add_space(8.0);
                 }
-                let search = motif::field(
-                    ui,
-                    ui.available_width(),
-                    egui::TextEdit::singleline(&mut session.query)
-                        .hint_text(motif::hint(tr("search_hint"))),
-                );
+                // **Un dossier se crée sans chercher d'abord un nom que
+                // personne ne porte** : le formulaire ne venait qu'après
+                // une recherche vide. Le bouton, sur la ligne de la
+                // recherche pour ne rien prendre aux listes du dessous, ou
+                // Ctrl+N ici, l'ouvre tout de suite.
+                let offer_new = idle && session.new_patient.is_none();
+                let gap = ui.spacing().item_spacing.x;
+                let button_w = if offer_new {
+                    Self::button_width(ui, tr("search_new_file")) + gap
+                } else {
+                    0.0
+                };
+                let (search, new_clicked) = ui
+                    .horizontal(|ui| {
+                        let search = motif::field(
+                            ui,
+                            (ui.available_width() - button_w).max(chars_wide(ui, 12.0)),
+                            egui::TextEdit::singleline(&mut session.query)
+                                .hint_text(motif::hint(tr("search_hint"))),
+                        );
+                        let clicked = offer_new
+                            && motif::button(ui, tr("search_new_file"))
+                                .on_hover_text(tr("search_new_file_key"))
+                                .clicked();
+                        (search, clicked)
+                    })
+                    .inner;
                 // Search is the default view: keep the bar focused.
                 if focus_search || !ctx.wants_keyboard_input() {
                     search.request_focus();
@@ -28814,6 +28836,13 @@ impl App {
                 if search.changed() {
                     session.selected = 0;
                     session.new_patient = None;
+                }
+                if offer_new {
+                    let key =
+                        ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::N));
+                    if key || new_clicked {
+                        session.new_patient = Some(PatientForm::default());
+                    }
                 }
             });
             ui.add_space(12.0);
@@ -28824,6 +28853,7 @@ impl App {
             // `refresh_patient_hits`, which rebuilds an empty memo.
             session.refresh_patient_hits();
             let results = std::mem::take(&mut session.patient_hits);
+            let mut cancel_new = false;
 
             // An empty query matches everyone, and that list is already
             // in the left dock: the middle of the screen is better spent
@@ -28916,7 +28946,7 @@ impl App {
                         }
                     });
                 });
-            } else if !session.query.trim().is_empty() {
+            } else if !idle || session.new_patient.is_some() {
                 // Before offering creation, re-read the patient list once:
                 // another PC may have just created the very patient being
                 // searched for (avoids duplicates on a shared database).
@@ -28976,7 +29006,11 @@ impl App {
                 });
                 let mut create = false;
                 ui.vertical_centered(|ui| {
-                    ui.label(tr("search_no_match"));
+                    ui.label(tr(if idle {
+                        "search_new_file"
+                    } else {
+                        "search_no_match"
+                    }));
                     ui.add_space(8.0);
 
                     let submitted = egui::Grid::new("new_patient")
@@ -28990,6 +29024,11 @@ impl App {
                                 chars_wide(ui, 30.0),
                                 egui::TextEdit::singleline(&mut form.last_name),
                             );
+                            // Ouvert par le bouton, la recherche est vide :
+                            // le nom prend la main, pas la recherche.
+                            if idle && !ui.ctx().wants_keyboard_input() {
+                                a.request_focus();
+                            }
                             ui.end_row();
                             Self::form_label(ui, tr("form_first_name"));
                             let b = motif::field_sized(
@@ -29032,6 +29071,10 @@ impl App {
                     }
                 });
 
+                if idle && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    cancel_new = true;
+                    create = false;
+                }
                 if create {
                     // Birth dates read two-digit years as the past ("49" → 1949),
                     // and never after today.
@@ -29091,7 +29134,10 @@ impl App {
             }
 
             session.patient_hits = results;
-            if idle {
+            if cancel_new {
+                session.new_patient = None;
+            }
+            if idle && session.new_patient.is_none() {
                 Self::home_panels(ui, session);
             }
             if let Some(err) = &session.error {

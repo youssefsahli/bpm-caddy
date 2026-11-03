@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **« Nouveau dossier » on the Comptoir home**, on the search field's line (Ctrl+N with no file open): opens the creation form without first searching a name nobody has; Échap closes it.
+
 ## [0.451.0] - 2026-11-03
 
 ### Added
