@@ -23425,6 +23425,22 @@ struct NewRdv {
 /// aussi.
 ///
 /// Une clé vide ouvre un groupe.
+/// When a file last moved, as the counter says it: « aujourd'hui 09:12 »,
+/// « hier 18:05 », else the day. A date alone gave five times
+/// « 03/11/2026 » in a row, and the hour is what tells them apart.
+fn recent_when(moved: &str, today: &str) -> String {
+    let day = moved.get(..10).unwrap_or(moved);
+    let hour = moved.get(11..16).unwrap_or("");
+    let yesterday = crate::date::add_days(today, -1).unwrap_or_default();
+    if hour.is_empty() || (day != today && day != yesterday) {
+        db::format_french_date(day)
+    } else if day == today {
+        trf("dash_recent_today", hour)
+    } else {
+        trf("dash_recent_yesterday", hour)
+    }
+}
+
 pub fn key_rows() -> [(&'static str, &'static str); 32] {
     [
         ("", tr("keys_group_workspace")),
@@ -93458,7 +93474,7 @@ impl App {
                         // entre les deux ne faisaient pas une colonne, et
                         // la date d'un nom court tombait sous le nom long
                         // du dessus.
-                        let day = db::format_french_date(&moved[..10.min(moved.len())]);
+                        let day = recent_when(moved, &session.today);
                         if motif::list_row_pair(ui, &p.full_name(), &day, false, 0.0)
                             .on_hover_text(tr("dash_open_patient"))
                             .clicked()
@@ -116282,6 +116298,24 @@ mod tests {
         s.reload_interviews(p.id);
         s.refresh_say(30);
         assert!(!wanted(&s), "{:?}", s.say_today);
+    }
+
+    #[test]
+    fn a_recent_file_says_today_and_yesterday_with_the_hour() {
+        let today = "2026-11-03";
+        assert_eq!(
+            super::recent_when("2026-11-03 09:12:44", today),
+            "aujourd'hui 09:12"
+        );
+        assert_eq!(
+            super::recent_when("2026-11-02 18:05:00", today),
+            "hier 18:05"
+        );
+        assert_eq!(
+            super::recent_when("2026-10-30 08:00:00", today),
+            "30/10/2026"
+        );
+        assert_eq!(super::recent_when("2026-11-03", today), "03/11/2026");
     }
 
     #[test]
