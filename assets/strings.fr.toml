@@ -1725,7 +1725,7 @@ itv_stale = "Entretien modifié sur un autre poste : liste actualisée."
 itv_date_fallback = "__ / __ / ____"
 
 # --- Tableau de bord ---
-dash_title = "Tableau de bord"
+dash_title = "Chiffres"
 board_tab = "Suivi"
 board_tab_figures = "Chiffres"
 board_all = "Tous"
