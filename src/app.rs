@@ -98393,7 +98393,12 @@ impl eframe::App for App {
                     if !views.contains(&lit) {
                         views.push(lit.clone());
                     }
-                    if views.len() > 1 {
+                    // **Pas de bande sous un dossier** : la sienne était
+                    // celle du Comptoir, « Recherche » allumé alors que le
+                    // dossier est à l'écran — une rangée prise au dossier
+                    // pour dire faux. Ses onglets à lui sont dans le
+                    // dossier ; Échap ou F1 ramènent à la recherche.
+                    if views.len() > 1 && file_on.is_none() {
                         let names: Vec<String> =
                             views.iter().map(|t| session.tab_label(t)).collect();
                         let subs: Vec<motif::Tab> =

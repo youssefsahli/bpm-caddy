@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An open file no longer sits under the Comptoir strip** (« Recherche » lit while the file was on screen): the file gets that row back; F1 or Échap return to the search.
 - **Stupéfiants register, folded lines.** In a pane too narrow for the nine columns, each line folds in two and had no header: « 12 » then « 12 » further on did not say which was the quantity and which the balance. The folded list now has its header (Date, Nature, Entrée, Sortie, Solde) at the first row's widths, when the pane holds it and a whole line.
 
 ### Added
