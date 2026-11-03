@@ -29698,12 +29698,6 @@ impl App {
                     plan: &mut Option<(i64, String)>,
                     planned: &mut Option<(i64, String)>| {
             ui.push_id(r.id, |ui| {
-                if motif::list_row(ui, egui::RichText::new(&r.patient_name).strong(), false)
-                    .on_hover_text(tr("dash_open_patient"))
-                    .clicked()
-                {
-                    *open = Some(r.patient_id);
-                }
                 let when = match r.state {
                     // Un acte à proposer peut déjà porter son rendez-vous
                     // (l'agenda le montre) : la carte dit ce jour-là.
@@ -29724,15 +29718,17 @@ impl App {
                     line.push_str(" · ");
                     line.push_str(&r.operator);
                 }
-                // Sous le nom, au même retrait que la rangée l'écrit.
-                ui.horizontal_wrapped(|ui| {
-                    ui.add_space(8.0);
-                    ui.label(
-                        egui::RichText::new(line)
-                            .size(motif::pt(ui, 10.5))
-                            .color(motif::text_dim()),
-                    );
-                });
+                // **Le nom et ce qui le suit sur une rangée**, qui se plie
+                // en deux dans une colonne étroite : sous le nom, la ligne
+                // en dessous et les blancs entre eux faisaient cinq rangées
+                // par carte, et à 1024x700 en texte 1,6 l'écran n'en
+                // montrait que deux.
+                if motif::list_row_pair(ui, &r.patient_name, &line, false, 0.0)
+                    .on_hover_text(tr("dash_open_patient"))
+                    .clicked()
+                {
+                    *open = Some(r.patient_id);
+                }
                 let next = match r.state {
                     InterviewState::Scheduled => Some("board_mark_performed"),
                     InterviewState::Performed => Some("board_mark_sent"),
