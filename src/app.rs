@@ -2819,6 +2819,11 @@ fn notes_row_width(ui: &egui::Ui) -> f32 {
     (right - ui.cursor().left()).max(60.0)
 }
 
+/// La clé par laquelle une touche demande le foyer d'un journal.
+fn notes_focus_id(id_salt: &str) -> egui::Id {
+    egui::Id::new(("notes_focus", id_salt))
+}
+
 fn notes_box_reserve(ui: &egui::Ui) -> f32 {
     // The field, the button's own padding, the gap the box leaves under
     // its well, and the row spacing either side of it.
@@ -2979,6 +2984,14 @@ fn notes_box(
                     egui::TextEdit::singleline(text).hint_text(motif::hint(tr("notes_add_hint"))),
                 )
                 .on_hover_text(tr("notes_markup_hint"));
+                // Demandé par une touche (« N » sur le dossier).
+                if ui
+                    .ctx()
+                    .data_mut(|d| d.remove_temp::<bool>(notes_focus_id(id_salt)))
+                    .unwrap_or(false)
+                {
+                    field.request_focus();
+                }
                 if !stacked {
                     pressed = motif::button(ui, tr("notes_add")).clicked();
                 }
@@ -23244,7 +23257,7 @@ fn restore_view(session: &mut Session, key: &str, caisse_expected: bool) {
 /// aussi.
 ///
 /// Une clé vide ouvre un groupe.
-pub fn key_rows() -> [(&'static str, &'static str); 28] {
+pub fn key_rows() -> [(&'static str, &'static str); 29] {
     [
         ("", tr("keys_group_workspace")),
         // Pas l'infobulle du bouton : elle dit sa touche entre
@@ -23270,6 +23283,7 @@ pub fn key_rows() -> [(&'static str, &'static str); 28] {
         ("↑ ↓", tr("keys_updown")),
         ("Entrée", tr("keys_enter")),
         ("Ctrl+N", tr("keys_new_act")),
+        ("N", tr("keys_note")),
         ("1 … 9, 0", tr("keys_act_digit")),
         ("← →", tr("keys_arrows")),
         ("Alt + ← →", tr("keys_patient_tabs")),
@@ -29759,6 +29773,16 @@ impl App {
                 session.viewing = None;
                 return;
             }
+        }
+        // « N » : un mot à l'équipe sur ce dossier — le journal du
+        // dossier, champ prêt à taper. Seulement hors d'un champ, sans
+        // modificateur : Ctrl+N reste le choix rapide des actes.
+        if !ctx.wants_keyboard_input()
+            && !session.act_picker
+            && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::N))
+        {
+            session.patient_tab = PatientTab::Acts;
+            ctx.data_mut(|d| d.insert_temp(notes_focus_id("patient_notes"), true));
         }
 
         // An identity band across the top, then the two things the

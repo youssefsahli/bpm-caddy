@@ -143,6 +143,8 @@ du dossier est un produit suivi au registre des stupéfiants,
 « Inscrire » ouvre le registre sur ce produit, en délivrance, pour ce
 dossier : il reste le numéro d'ordonnancier, le prescripteur et la
 quantité. Le fil s'affiche à droite quand la fenêtre est assez large.
+« N », hors d'un champ, ouvre le journal du dossier, champ prêt à
+taper : la note est signée, datée et lue par toute l'équipe.
 
 Saisie courte des dates : `230826` ou `2308` donne `23/08/2026`. Pour
 une date déjà passée (délivrance, ordonnance, registre, pièce, vaccin,
