@@ -12634,11 +12634,6 @@ impl Session {
         self.drug_hits_key = None;
     }
 
-    /// The better of [`fuzzy::prefix_bonus`] over the name and the DCI.
-    fn drug_prefix_bonus(query: &str, d: &Drug) -> i32 {
-        fuzzy::prefix_bonus(query, &d.name).max(fuzzy::prefix_bonus(query, &d.dci))
-    }
-
     fn drug_results(&self, limit: usize) -> Vec<Drug> {
         let mut scored: Vec<(i32, &Drug)> = self
             .drugs
@@ -12656,9 +12651,7 @@ impl Session {
                     .filter_map(|t| fuzzy::score(&self.drug_query, t))
                     .max()
                     .map(|s| s - 40);
-                a.max(b)
-                    .max(side)
-                    .map(|s| (s + Self::drug_prefix_bonus(&self.drug_query, d), d))
+                a.max(b).max(side).map(|s| (s, d))
             })
             .collect();
         scored.sort_by_key(|&(s, _)| std::cmp::Reverse(s));
@@ -17068,8 +17061,7 @@ impl Session {
             .filter_map(|(p, (k1, k2))| {
                 let a = fuzzy::score(&query, k1);
                 let b = fuzzy::score(&query, k2);
-                let bonus = fuzzy::prefix_bonus(&query, k1).max(fuzzy::prefix_bonus(&query, k2));
-                a.max(b).map(|s| (s + bonus, p))
+                a.max(b).map(|s| (s, p))
             })
             .collect();
         scored.sort_by_key(|&(s, _)| std::cmp::Reverse(s));
@@ -116376,30 +116368,6 @@ mod tests {
         s.reload_interviews(p.id);
         s.refresh_say(30);
         assert!(!wanted(&s), "{:?}", s.say_today);
-    }
-
-    #[test]
-    fn a_drug_whose_name_starts_with_the_query_comes_first() {
-        let card = |name: &str, dci: &str| crate::db::Drug {
-            name: name.into(),
-            dci: dci.into(),
-            ..Default::default()
-        };
-        let eliquis = card("Eliquis", "apixaban");
-        let kaftrio = card(
-            "Kaftrio (élexacaftor + tézacaftor + ivacaftor)",
-            "élexacaftor + tézacaftor + ivacaftor",
-        );
-        let score = |d: &crate::db::Drug| {
-            crate::fuzzy::score("eli", &d.name)
-                .max(crate::fuzzy::score("eli", &d.dci))
-                .unwrap()
-                + super::Session::drug_prefix_bonus("eli", d)
-        };
-        assert!(score(&eliquis) > score(&kaftrio));
-        assert_eq!(super::Session::drug_prefix_bonus("", &eliquis), 0);
-        assert_eq!(super::Session::drug_prefix_bonus("apix", &eliquis), 20);
-        assert_eq!(super::Session::drug_prefix_bonus("quis", &eliquis), 10);
     }
 
     #[test]

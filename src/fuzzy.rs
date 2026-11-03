@@ -68,7 +68,7 @@ pub fn score(query: &str, target: &str) -> Option<i32> {
             prev = i;
             q.next();
             if q.peek().is_none() {
-                return Some(total);
+                return Some(total + prefix_bonus(query, target));
             }
         }
         before = Some(c);
@@ -266,7 +266,7 @@ pub fn score_with_indices(query: &str, target: &str) -> Option<(i32, Vec<usize>)
             qi += 1;
         }
     }
-    (qi == q.len()).then_some((total, indices))
+    (qi == q.len()).then(|| (total + prefix_bonus(query, target), indices))
 }
 
 #[cfg(test)]
@@ -274,10 +274,8 @@ mod tests {
 
     #[test]
     fn what_starts_with_the_query_outranks_what_spells_it_apart() {
-        let spread = super::score("eli", "élexacaftor + tézacaftor + ivacaftor").unwrap()
-            + super::prefix_bonus("eli", "élexacaftor + tézacaftor + ivacaftor");
-        let prefix =
-            super::score("eli", "Eliquis").unwrap() + super::prefix_bonus("eli", "Eliquis");
+        let spread = super::score("eli", "élexacaftor + tézacaftor + ivacaftor").unwrap();
+        let prefix = super::score("eli", "Eliquis").unwrap();
         assert!(prefix > spread);
         assert_eq!(super::prefix_bonus("Lef", "lefèvre hélène"), 20);
         assert_eq!(super::prefix_bonus("quis", "Eliquis"), 10);
