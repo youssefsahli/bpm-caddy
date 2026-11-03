@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.451.0] - 2026-11-03
+
 ### Added
 
 - **Ctrl+K opens on the open file.** With a file open, the empty box lists its tabs first (À dire, Biologie, Vaccinations, Entretiens) and « Note pour l'équipe », before favourites and recent places; typed, they rank with the other files.
