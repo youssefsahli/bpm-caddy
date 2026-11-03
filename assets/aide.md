@@ -82,7 +82,7 @@ plus (finie le…, en rouge), la plus pressée d'abord. Un clic ouvre le
 dossier.
 
 « Chercher… » cherche partout d'un seul champ : les vues elles-mêmes, les
-dossiers, les fiches, les tables de conversion, les préparations, les
+onglets du dossier ouvert, les dossiers, les fiches, les tables de conversion, les préparations, les
 protocoles, les dispositifs, les compléments nutritionnels, le registre,
 les carnets de suivi, les scripts, les outils de calcul et les textes imprimés. Saisir le nom, un
 fragment du nom ou les initiales.
@@ -151,7 +151,9 @@ du dossier est un produit suivi au registre des stupéfiants,
 dossier : il reste le numéro d'ordonnancier, le prescripteur et la
 quantité. Le fil s'affiche à droite quand la fenêtre est assez large.
 « N », hors d'un champ, ouvre le journal du dossier, champ prêt à
-taper : la note est signée, datée et lue par toute l'équipe.
+taper : la note est signée, datée et lue par toute l'équipe. Ctrl+K
+sur un dossier ouvert propose d'abord ses onglets (À dire, Biologie,
+Vaccinations, Entretiens) et « Note pour l'équipe ».
 
 Saisie courte des dates : `230826` ou `2308` donne `23/08/2026`. Pour
 une date déjà passée (délivrance, ordonnance, registre, pièce, vaccin,

@@ -1204,6 +1204,7 @@ livre = "Une phrase qui n'est plus livrée"
             ("goto_kind_script", "les scripts"),
             ("goto_kind_tool", "les outils de calcul"),
             ("goto_kind_text", "les textes imprimés"),
+            ("goto_kind_file", "les onglets du dossier ouvert"),
         ];
         let sentence = AIDE
             .split("« Chercher… » cherche partout")

@@ -4136,6 +4136,10 @@ enum Goto {
     /// Un outil de l'officine, par la question qu'il répond — voir
     /// [`Tool`].
     Tool(Tool),
+    /// Un onglet du dossier ouvert.
+    FileTab(i64, PatientTab),
+    /// Le journal du dossier ouvert, champ prêt à taper (« N »).
+    FileNote(i64),
     /// A saved console script, by its name.
     Script(String),
     /// Not a destination but a question: search this word in the prose
@@ -6330,6 +6334,9 @@ struct Session {
     trans_note_confirm: Option<i64>,
     /// Two-step delete confirmation for one note.
     note_confirm: Option<i64>,
+    /// Le journal du dossier demandé par la boîte : le champ prend le
+    /// foyer au prochain dessin du dossier.
+    note_focus_pending: bool,
     /// In-progress text of the treatment picker.
     treat_query: String,
     /// Where the arrows sit in the add-a-treatment suggestions.
@@ -7703,6 +7710,7 @@ impl Session {
             trans_days: Vec::new(),
             note_text: String::new(),
             note_confirm: None,
+            note_focus_pending: false,
             trans_note_text: String::new(),
             trans_note_confirm: None,
             treat_query: String::new(),
@@ -9157,13 +9165,21 @@ impl Session {
                     // laissait derrière lui.
                     Goto::Tab(t) => tab_loaded(t),
                     Goto::Tool(t) => t.available(),
+                    Goto::FileTab(id, _) | Goto::FileNote(id) => {
+                        self.viewing.as_ref().is_some_and(|p| p.id == *id)
+                    }
                     _ => true,
                 })
                 .cloned()
                 .collect();
-            // **Les favoris avant tout** : ce qu'on a épinglé exprès passe
-            // devant ce qu'on a seulement visité.
-            let mut menu: Vec<GotoHit> = self.favorite_hits();
+            // **Le dossier ouvert d'abord** : ce qu'on fait pour le
+            // patient qui attend, puis les favoris.
+            let mut menu: Vec<GotoHit> = self.file_hits();
+            for h in self.favorite_hits() {
+                if !menu.iter().any(|r| r.dest == h.dest) {
+                    menu.push(h);
+                }
+            }
             for h in recent {
                 if !menu.iter().any(|r| r.dest == h.dest) {
                     menu.push(h);
@@ -9190,6 +9206,11 @@ impl Session {
                 });
             }
             return menu;
+        }
+        for h in self.file_hits() {
+            if let Some(sc) = fuzzy::score(q, &h.label) {
+                push(sc, PATIENT_BONUS + 1, h.dest, h.label, h.kind);
+            }
         }
         let lq = ligatures(q);
         for (p, (k1, k2)) in self.patients.iter().zip(self.search_keys.iter()) {
@@ -9656,6 +9677,34 @@ impl Session {
             .collect()
     }
 
+    /// Ce que la boîte propose pour le dossier ouvert : ses onglets de
+    /// comptoir, et une note pour l'équipe.
+    fn file_hits(&self) -> Vec<GotoHit> {
+        let Some(p) = self.viewing.as_ref() else {
+            return Vec::new();
+        };
+        let name = p.full_name();
+        let mut out: Vec<GotoHit> = [
+            (PatientTab::Comptoir, "patient_tab_comptoir"),
+            (PatientTab::Bio, "patient_tab_bio"),
+            (PatientTab::Vaccins, "patient_tab_vaccins"),
+            (PatientTab::Acts, "patient_tab_acts"),
+        ]
+        .into_iter()
+        .map(|(tab, key)| GotoHit {
+            dest: Goto::FileTab(p.id, tab),
+            label: format!("{} · {name}", tr(key)),
+            kind: tr("goto_kind_file"),
+        })
+        .collect();
+        out.push(GotoHit {
+            dest: Goto::FileNote(p.id),
+            label: format!("{} · {name}", tr("goto_file_note")),
+            kind: tr("goto_kind_file"),
+        });
+        out
+    }
+
     fn remember_goto(&mut self, hit: GotoHit) {
         self.goto_recent.retain(|h| h.dest != hit.dest);
         self.goto_recent.insert(0, hit);
@@ -9751,6 +9800,15 @@ impl Session {
                 self.calc_open = true;
             }
             Goto::Tool(tool) => self.open_tool(tool),
+            Goto::FileTab(id, tab) => {
+                self.activate_tab(&WorkTab::Patient(id));
+                self.patient_tab = tab;
+            }
+            Goto::FileNote(id) => {
+                self.activate_tab(&WorkTab::Patient(id));
+                self.patient_tab = PatientTab::Acts;
+                self.note_focus_pending = true;
+            }
             Goto::Script(name) => {
                 self.refresh_scripts();
                 let path = self.scripts_dir.join(format!("{name}.rhai"));
@@ -29788,6 +29846,9 @@ impl App {
                 session.viewing = None;
                 return;
             }
+        }
+        if std::mem::take(&mut session.note_focus_pending) {
+            ctx.data_mut(|d| d.insert_temp(notes_focus_id("patient_notes"), true));
         }
         // « N » : un mot à l'équipe sur ce dossier — le journal du
         // dossier, champ prêt à taper. Seulement hors d'un champ, sans
@@ -112141,6 +112202,35 @@ mod tests {
         // Trop lourd : refusé, et dit.
         let big = vec![0u8; crate::messages::MAX_FILE + 1];
         assert!(s.db.attach_file("x", "gros.bin", &big).is_err());
+    }
+
+    /// Ctrl+K sur un dossier ouvert : ses onglets et la note d'abord.
+    #[test]
+    fn the_jump_box_opens_on_the_file_at_the_counter() {
+        use super::{Goto, PatientTab};
+        let (mut s, _swept) = scratch_session("goto_file");
+        let p = s.patients[0].clone();
+        s.open_patient(p.clone());
+        let hits = s.goto_results(30);
+        assert_eq!(
+            hits.first().map(|h| h.dest.clone()),
+            Some(Goto::FileTab(p.id, PatientTab::Comptoir))
+        );
+        s.goto_query = "bio".to_owned();
+        assert!(s
+            .goto_results(30)
+            .iter()
+            .any(|h| h.dest == Goto::FileTab(p.id, PatientTab::Bio)));
+        s.patient_tab = PatientTab::Bio;
+        s.go_to(Goto::FileNote(p.id));
+        assert_eq!(s.patient_tab, PatientTab::Acts);
+        assert!(s.note_focus_pending);
+        s.viewing = None;
+        s.goto_query.clear();
+        assert!(s
+            .goto_results(30)
+            .iter()
+            .all(|h| !matches!(h.dest, Goto::FileTab(..) | Goto::FileNote(_))));
     }
 
     /// **Le texte classe, la nature départage** : « doli » trouve le
