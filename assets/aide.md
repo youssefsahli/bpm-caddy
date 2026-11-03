@@ -902,8 +902,8 @@ planifié ; rien n'est écrit si le dossier ou le jour ne se lisent pas.
 
 Les quatre affichages restent **synchronisés** : changer d'affichage
 conserve le jour consulté. Le jour détaillé est encadré dans la grille
-de la semaine comme dans celle du mois, et « Imprimer la semaine »
-imprime la semaine affichée.
+de la semaine comme dans celle du mois. « Imprimer » propose la
+semaine affichée ou la liste des rendez-vous.
 
 Le plan de journée affiche **un pointillé à l'heure courante**, avec un
 point rouge dans la marge, uniquement sur la journée du jour.

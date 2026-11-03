@@ -39378,6 +39378,11 @@ impl App {
         chars_wide(ui, 18.0).min(left).max(chars_wide(ui, 10.0))
     }
 
+    /// The agenda's « Imprimer » menu: its label and room for the mark.
+    fn agenda_print_w(ui: &egui::Ui) -> f32 {
+        Self::button_width(ui, tr("agenda_print")) + chars_wide(ui, 3.0)
+    }
+
     fn button_width(ui: &egui::Ui, label: &str) -> f32 {
         let font = egui::TextStyle::Button.resolve(ui.style());
         ui.fonts(|f| {
@@ -47154,15 +47159,11 @@ impl App {
             .map(|l| Self::button_width(ui, l))
             .chain(std::iter::once(nav_w))
             .chain(
-                [
-                    week_label.as_str(),
-                    tr("rdv_new_button"),
-                    tr("dash_print"),
-                    tr("agenda_print_week"),
-                ]
-                .into_iter()
-                .map(|l| Self::button_width(ui, l)),
-            ),
+                [week_label.as_str(), tr("rdv_new_button")]
+                    .into_iter()
+                    .map(|l| Self::button_width(ui, l)),
+            )
+            .chain(std::iter::once(Self::agenda_print_w(ui))),
         );
         let row = Self::row_height(ui) + ui.spacing().item_spacing.y + 8.0;
         // L'estimation sert au premier dessin ; ensuite c'est ce que la
@@ -47306,17 +47307,28 @@ impl App {
                                 {
                                     session.new_rdv = Some(NewRdv::blank());
                                 }
-                                if motif::button(ui, tr("agenda_print_week"))
-                                    .on_hover_text(tr("agenda_print_week_tooltip"))
-                                    .clicked()
-                                {
+                                // **Un seul « Imprimer », deux choses** :
+                                // côte à côte, « Imprimer la semaine » et
+                                // « Imprimer la liste » ne tenaient plus la
+                                // deuxième rangée à 1024x700 en texte 1,6,
+                                // et la troisième sortait de la bande.
+                                let mut options =
+                                    vec![(0u8, tr("agenda_print_week_item").to_owned())];
+                                if !session.appointments.is_empty() {
+                                    options.push((1u8, tr("agenda_print_list_item").to_owned()));
+                                }
+                                let picked = motif::menu(
+                                    ui,
+                                    "agenda_print_menu",
+                                    Self::agenda_print_w(ui),
+                                    tr("agenda_print"),
+                                    &options,
+                                )
+                                .inner;
+                                if picked == Some(0) {
                                     print_week = true;
                                 }
-                                if !session.appointments.is_empty()
-                                    && motif::button(ui, tr("dash_print"))
-                                        .on_hover_text(tr("dash_print_tooltip"))
-                                        .clicked()
-                                {
+                                if picked == Some(1) {
                                     let today = session
                                         .db
                                         .today_french()
