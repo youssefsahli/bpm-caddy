@@ -64820,7 +64820,9 @@ impl App {
                             let table_w = ui.available_width();
                             let narrow = Self::stup_widths(ui, table_w, false).narrow;
                             Self::stup_list(ui, "stup_register_grid", narrow, |ui| {
-                                if !narrow {
+                                if narrow {
+                                    Self::stup_header_folded(ui, table_w, false, true);
+                                } else {
                                     Self::stup_header(ui, false, true);
                                 }
                                 // Le registre se lit du plus récent au
@@ -68268,6 +68270,36 @@ impl App {
     }
 
     /// L'en-tête des trois listes de registre, dans les mêmes colonnes.
+    /// L'en-tête de la ligne pliée : le jour, la nature, ce qui entre,
+    /// ce qui sort, le solde, aux largeurs de la première rangée de
+    /// chaque ligne. Sans lui, « 12 » puis « 12 » plus loin ne disaient
+    /// pas lequel était la quantité et lequel le solde.
+    fn stup_header_folded(ui: &mut egui::Ui, width: f32, with_product: bool, with_balance: bool) {
+        // Dans un volet d'une rangée — 1024x700 en texte 1,6 —, l'en-tête
+        // prendrait la seule place d'une ligne : il ne vient qu'avec la
+        // place de lui-même et d'une ligne pliée entière.
+        if ui.clip_rect().height() < Self::rows_height(ui, 4.0) {
+            return;
+        }
+        let w = Self::stup_widths(ui, width, with_product);
+        let head = |ui: &mut egui::Ui, key: &'static str, cell: f32| {
+            let text = egui::RichText::new(tr(key))
+                .size(motif::pt(ui, 10.0))
+                .strong()
+                .color(motif::text_dim());
+            Self::grid_cell(ui, cell, text);
+        };
+        ui.horizontal(|ui| {
+            head(ui, "stup_col_day", w.date);
+            head(ui, "stup_col_kind", w.nature);
+            head(ui, "stup_col_in", w.qty);
+            head(ui, "stup_col_out", w.qty);
+            if with_balance {
+                head(ui, "stup_col_balance", w.qty);
+            }
+        });
+    }
+
     fn stup_header(ui: &mut egui::Ui, with_product: bool, with_balance: bool) {
         let head = |ui: &mut egui::Ui, key: &'static str, on: bool| {
             if on {
@@ -68542,7 +68574,9 @@ impl App {
                         let table_w = ui.available_width();
                         let narrow = Self::stup_widths(ui, table_w, true).narrow;
                         Self::stup_list(ui, "stup_destroy_grid", narrow, |ui| {
-                            if !narrow {
+                            if narrow {
+                                Self::stup_header_folded(ui, table_w, true, false);
+                            } else {
                                 Self::stup_header(ui, true, false);
                             }
                             for m in &session.stup_destruction {
@@ -68845,7 +68879,9 @@ impl App {
                             let table_w = ui.available_width();
                             let narrow = Self::stup_widths(ui, table_w, true).narrow;
                             Self::stup_list(ui, "stup_ordo_grid", narrow, |ui| {
-                                if !narrow {
+                                if narrow {
+                                    Self::stup_header_folded(ui, table_w, true, false);
+                                } else {
                                     Self::stup_header(ui, true, false);
                                 }
                                 for m in &session.stup_dispensings {
@@ -68923,7 +68959,9 @@ impl App {
                         let table_w = ui.available_width();
                         let narrow = Self::stup_widths(ui, table_w, true).narrow;
                         Self::stup_list(ui, "stup_journal_grid", narrow, |ui| {
-                            if !narrow {
+                            if narrow {
+                                Self::stup_header_folded(ui, table_w, true, false);
+                            } else {
                                 Self::stup_header(ui, true, false);
                             }
                             for m in &session.stup_recent {
