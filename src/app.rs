@@ -29541,7 +29541,11 @@ impl App {
                     *open = Some(r.patient_id);
                 }
                 let when = match r.state {
-                    InterviewState::Scheduled if !r.scheduled_date.is_empty() => {
+                    // Un acte à proposer peut déjà porter son rendez-vous
+                    // (l'agenda le montre) : la carte dit ce jour-là.
+                    InterviewState::Identified | InterviewState::Scheduled
+                        if !r.scheduled_date.is_empty() =>
+                    {
                         let day = if r.scheduled_date == today {
                             tr("board_today").to_owned()
                         } else {
@@ -30899,6 +30903,7 @@ impl App {
         let mut write: Option<i64> = None;
         let mut plan: Option<(i64, String)> = None;
         let mut drop_plan = false;
+        let mut start: Option<i64> = None;
         motif::panel(ui, list, Some(tr("say_title")), |ui| {
             // Ce que le registre suit dans ce traitement : la délivrance
             // s'inscrit d'ici, le produit et le dossier repris.
@@ -30923,6 +30928,51 @@ impl App {
                         }
                     }
                 });
+                motif::separator(ui);
+            }
+            // L'entretien prévu aujourd'hui (ou en retard) : le dossier
+            // s'ouvre depuis le rendez-vous, l'entretien se commence d'ici.
+            let due: Vec<(i64, InterviewKind, String, String)> = session
+                .viewing_interviews
+                .iter()
+                .filter(|i| {
+                    matches!(
+                        i.state,
+                        InterviewState::Identified | InterviewState::Scheduled
+                    ) && Conduct::applies(i.kind)
+                })
+                .filter_map(|i| {
+                    let day = i.scheduled_date.as_deref()?.get(..10)?;
+                    (!session.today.is_empty() && day <= session.today.as_str())
+                        .then(|| (i.id, i.kind, day.to_owned(), i.scheduled_time.clone()))
+                })
+                .collect();
+            for (id, kind, day, time) in &due {
+                ui.horizontal(|ui| {
+                    let when = if *day == session.today {
+                        tr("board_today").to_owned()
+                    } else {
+                        db::format_french_date(day)
+                    };
+                    let when = format!("{when} {time}");
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "{} · {}",
+                            when.trim(),
+                            trf("conduct_title", kind.label())
+                        ))
+                        .strong(),
+                    );
+                    if ui
+                        .push_id(("due", id), |ui| motif::button(ui, tr("conduct_start")))
+                        .inner
+                        .clicked()
+                    {
+                        start = Some(*id);
+                    }
+                });
+            }
+            if !due.is_empty() {
                 motif::separator(ui);
             }
             // L'acte qu'on vient de créer d'ici : le rendez-vous se tape
@@ -31034,6 +31084,9 @@ impl App {
         }
         if drop_plan {
             session.board_plan = None;
+        }
+        if let (Some(id), Some(pid)) = (start, session.viewing.as_ref().map(|p| p.id)) {
+            session.start_conduct(id, pid, &config.prevention.subjects);
         }
         if let Some((id, typed)) = plan {
             session.plan_typed(id, &typed);

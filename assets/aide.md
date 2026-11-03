@@ -146,7 +146,9 @@ que le dossier n'en porte aucun de ce type : AVK (warfarine,
 fluindione, acénocoumarol), AOD (apixaban, rivaroxaban, dabigatran,
 édoxaban), bilan partagé à partir de cinq traitements. « Créer
 l'acte » le met dans « À proposer » du suivi et ouvre le champ RDV :
-« 051126 9h30 » puis Entrée le planifie ; Échap le laisse à proposer. Quand un traitement
+« 051126 9h30 » puis Entrée le planifie ; Échap le laisse à proposer.
+Un entretien prévu ce jour, ou en retard, ouvre la liste avec
+« Commencer ». Quand un traitement
 du dossier est un produit suivi au registre des stupéfiants,
 « Inscrire » ouvre le registre sur ce produit, en délivrance, pour ce
 dossier : il reste le numéro d'ordonnancier, le prescripteur et la
