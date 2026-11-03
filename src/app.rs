@@ -65982,7 +65982,11 @@ impl App {
                 // les remplit. C'est la règle de cette maison : quand
                 // deux volets ne tiennent pas, celui où l'on tape
                 // gagne.
-                let nat_w = Self::scrolled_width(ui, split[0].width());
+                // Mesurée à la largeur du dessin : la bande des natures
+                // n'a pas de barre de défilement. Comptée sans elle, la
+                // largeur d'une barre fantôme faisait réserver une
+                // quatrième rangée vide entre les natures et la quantité.
+                let nat_w = split[0].width();
                 let asked = Self::wrapped_band_height(
                     ui,
                     nat_w,
@@ -66000,8 +66004,18 @@ impl App {
                 } else {
                     asked.min(room)
                 };
+                // Arrondie aux rangées entières, la hauteur pouvait ne
+                // plus laisser aux champs qu'un pixel (1024x700, texte
+                // 1,6 : quelques pixels de moins que deux rangées, donc
+                // une seule, prise par la nature). Une rangée de champs
+                // coupée au bas vaut mieux que pas de champ du tout.
+                let tall = if whole >= nat_h + gap + Self::row_height(ui) - 0.5 {
+                    whole
+                } else {
+                    split[0].height()
+                };
                 let bands = motif::split_rows(
-                    egui::Rect::from_min_size(split[0].min, egui::vec2(split[0].width(), whole)),
+                    egui::Rect::from_min_size(split[0].min, egui::vec2(split[0].width(), tall)),
                     &[nat_h, 0.0],
                     gap,
                 );
@@ -66141,13 +66155,38 @@ impl App {
                                 } else {
                                     vec![1.0, 2.0, 3.0, 7.0, 14.0, 28.0]
                                 };
-                                for n in steps {
-                                    if motif::toggle(
-                                        ui,
-                                        &crate::codex::format_quantity(n),
-                                        (typed - n).abs() < 1e-9,
-                                    )
-                                    .clicked()
+                                // **Une rangée, pas cinq et un orphelin.**
+                                // À 1280 de large « 28 » tombait seul sur
+                                // une seconde ligne : la marge des boutons
+                                // se resserre, mesurée, jusqu'à ce que la
+                                // série tienne, sans descendre sous deux
+                                // pixels.
+                                let labels: Vec<String> = steps
+                                    .iter()
+                                    .map(|n| crate::codex::format_quantity(*n))
+                                    .collect();
+                                let font = egui::TextStyle::Button.resolve(ui.style());
+                                let text: f32 = labels
+                                    .iter()
+                                    .map(|l| {
+                                        ui.fonts(|f| {
+                                            f.layout_no_wrap(l.clone(), font.clone(), motif::text())
+                                                .size()
+                                                .x
+                                        })
+                                    })
+                                    .sum();
+                                let count = labels.len().max(1) as f32;
+                                let spare = ui.available_width()
+                                    - text
+                                    - (count - 1.0) * ui.spacing().item_spacing.x;
+                                let pad = ui.spacing().button_padding.x;
+                                // `motif::button` ajoute quatre pixels à
+                                // la marge du style, de chaque côté.
+                                ui.spacing_mut().button_padding.x =
+                                    (spare / (2.0 * count) - 5.0).clamp(2.0_f32.min(pad), pad);
+                                for (n, label) in steps.into_iter().zip(&labels) {
+                                    if motif::toggle(ui, label, (typed - n).abs() < 1e-9).clicked()
                                     {
                                         set_qty = Some(n);
                                     }

@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Suivi cards whose buttons do not fit side by side** put one per line at the card's indent, instead of throwing the second one to the column's edge.
+- **Stupéfiants, « Écrire au registre ».** The kinds band was measured as if it had a scroll bar and reserved an empty fourth row above the quantity; the quick amounts (1 to 28) now tighten to one row instead of leaving « 28 » alone; at 1024x700 with text at 1.6 the fields band, rounded to whole rows, came down to one pixel and showed no quantity field at all — it now keeps the quantity row and scrolls.
 - **Agenda, « Journée du » beside the week.** At 1280 wide each rendez-vous wrapped on two or three ragged lines, « Déplacer » alone on its own. Now one line when it fits (the phone goes to the name's hover first), else two aligned lines: hour, type, name; then phone and « Déplacer ».
 
 ## [0.450.0] - 2026-11-03
