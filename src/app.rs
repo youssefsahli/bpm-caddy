@@ -29433,9 +29433,48 @@ impl App {
             }
             Step::Table(t) if t.rows.is_empty() => {
                 let rows = c.rec.rows.max(1);
-                let col_w = chars_wide(ui, 18.0).min(width);
+                // **Les colonnes se partagent la largeur**, titres une fois
+                // en tête : à dix-huit caractères chacune, trois colonnes
+                // laissaient la moitié du volet vide et tronquaient le
+                // titre de la dernière. Trop étroit pour elles, chaque case
+                // garde son titre au-dessus et la rangée se plie.
+                let n = t.columns.len().max(1) as f32;
+                let gap = ui.spacing().item_spacing.x;
+                let even = ((width - gap * (n - 1.0)) / n).floor();
+                let table = even >= chars_wide(ui, 14.0);
+                let col_w = if table {
+                    even
+                } else {
+                    chars_wide(ui, 18.0).min(width)
+                };
+                if table {
+                    ui.horizontal(|ui| {
+                        for name in &t.columns {
+                            ui.allocate_ui(egui::vec2(col_w, Self::label_line(ui)), |ui| {
+                                ui.set_width(col_w);
+                                ui.add(
+                                    egui::Label::new(egui::RichText::new(name).strong()).truncate(),
+                                )
+                                .on_hover_text(name);
+                            });
+                        }
+                    });
+                }
                 for row in 0..rows {
                     ui.push_id(("conduct_row", row), |ui| {
+                        if table {
+                            ui.horizontal(|ui| {
+                                for col in 0..t.columns.len() {
+                                    let cell = c.rec.cells.entry((row, col)).or_default();
+                                    if motif::field(ui, col_w, egui::TextEdit::singleline(cell))
+                                        .lost_focus()
+                                    {
+                                        save = true;
+                                    }
+                                }
+                            });
+                            return;
+                        }
                         ui.horizontal_wrapped(|ui| {
                             for (col, name) in t.columns.iter().enumerate() {
                                 ui.vertical(|ui| {
@@ -29455,7 +29494,7 @@ impl App {
                             }
                         });
                     });
-                    ui.add_space(6.0);
+                    ui.add_space(if table { 2.0 } else { 6.0 });
                 }
                 if rows < t.blank_rows.max(1) && motif::button(ui, tr("conduct_add_row")).clicked()
                 {
@@ -29732,12 +29771,6 @@ impl App {
                 // en dessous et les blancs entre eux faisaient cinq rangées
                 // par carte, et à 1024x700 en texte 1,6 l'écran n'en
                 // montrait que deux.
-                if motif::list_row_pair(ui, &r.patient_name, &line, false, 0.0)
-                    .on_hover_text(tr("dash_open_patient"))
-                    .clicked()
-                {
-                    *open = Some(r.patient_id);
-                }
                 let next = match r.state {
                     InterviewState::Scheduled => Some("board_mark_performed"),
                     InterviewState::Performed => Some("board_mark_sent"),
@@ -29749,16 +29782,14 @@ impl App {
                     InterviewState::Identified | InterviewState::Scheduled
                 ) && Conduct::applies(r.kind);
                 let to_plan = r.state == InterviewState::Identified;
-                if next.is_some() || lead || to_plan {
-                    // Deux boutons qui ne tiennent pas côte à côte : un par
-                    // ligne, au même retrait, plutôt que le second rejeté
-                    // au bord de la colonne.
-                    let start_key = if r.begun {
-                        "conduct_resume"
-                    } else {
-                        "conduct_start"
-                    };
-                    let one_line = Self::group_width(
+                let start_key = if r.begun {
+                    "conduct_resume"
+                } else {
+                    "conduct_start"
+                };
+                let has_buttons = next.is_some() || lead || to_plan;
+                let buttons_width = if has_buttons {
+                    Self::group_width(
                         ui,
                         [
                             8.0,
@@ -29776,64 +29807,103 @@ impl App {
                         ]
                         .into_iter()
                         .filter(|w| *w > 0.0),
-                    ) <= ui.available_width();
-                    ui.horizontal_wrapped(|ui| {
+                    )
+                } else {
+                    0.0
+                };
+                // **Les boutons au bout de la rangée du nom** quand la
+                // colonne est assez large : dessous, chaque carte prenait
+                // trois rangées, et la liste d'une fenêtre étroite n'en
+                // montrait que quatre.
+                let gap_x = ui.spacing().item_spacing.x;
+                let side = has_buttons
+                    && buttons_width + gap_x + chars_wide(ui, 34.0) <= ui.available_width();
+                let one_line = side || buttons_width <= ui.available_width();
+                let mut name_row = |ui: &mut egui::Ui| {
+                    if motif::list_row_pair(ui, &r.patient_name, &line, false, 0.0)
+                        .on_hover_text(tr("dash_open_patient"))
+                        .clicked()
+                    {
+                        *open = Some(r.patient_id);
+                    }
+                };
+                let mut draw_buttons = |ui: &mut egui::Ui| {
+                    if !side {
                         ui.add_space(8.0);
-                        let mut first = true;
-                        let mut gap = |ui: &mut egui::Ui| {
-                            if !first && !one_line {
-                                ui.end_row();
-                                ui.add_space(8.0);
-                            }
-                            first = false;
-                        };
-                        if to_plan {
-                            gap(ui);
-                            match plan.as_mut().filter(|(id, _)| *id == r.id) {
-                                Some((_, text)) => {
-                                    let field = motif::field(
-                                        ui,
-                                        chars_wide(ui, 12.0),
-                                        egui::TextEdit::singleline(text)
-                                            .hint_text(motif::hint(tr("board_plan_hint"))),
-                                    );
-                                    if field.lost_focus() {
-                                        let typed = text.clone();
-                                        let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
-                                        let escape = ui.input(|i| i.key_pressed(egui::Key::Escape));
-                                        if !escape && (enter || !typed.trim().is_empty()) {
-                                            *planned = Some((r.id, typed));
-                                        }
-                                        *plan = None;
-                                    } else {
-                                        field.request_focus();
+                    }
+                    let mut first = true;
+                    let mut gap = |ui: &mut egui::Ui| {
+                        if !first && !one_line {
+                            ui.end_row();
+                            ui.add_space(8.0);
+                        }
+                        first = false;
+                    };
+                    if to_plan {
+                        gap(ui);
+                        match plan.as_mut().filter(|(id, _)| *id == r.id) {
+                            Some((_, text)) => {
+                                let field = motif::field(
+                                    ui,
+                                    chars_wide(ui, 12.0),
+                                    egui::TextEdit::singleline(text)
+                                        .hint_text(motif::hint(tr("board_plan_hint"))),
+                                );
+                                if field.lost_focus() {
+                                    let typed = text.clone();
+                                    let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
+                                    let escape = ui.input(|i| i.key_pressed(egui::Key::Escape));
+                                    if !escape && (enter || !typed.trim().is_empty()) {
+                                        *planned = Some((r.id, typed));
                                     }
-                                }
-                                None => {
-                                    if motif::button(ui, tr("board_plan"))
-                                        .on_hover_text(tr("board_plan_hint"))
-                                        .clicked()
-                                    {
-                                        *plan = Some((r.id, String::new()));
-                                    }
+                                    *plan = None;
+                                } else {
+                                    field.request_focus();
                                 }
                             }
-                        }
-                        if lead {
-                            gap(ui);
-                            if motif::button(ui, tr(start_key)).clicked() {
-                                *conduct = Some((r.id, r.patient_id));
+                            None => {
+                                if motif::button(ui, tr("board_plan"))
+                                    .on_hover_text(tr("board_plan_hint"))
+                                    .clicked()
+                                {
+                                    *plan = Some((r.id, String::new()));
+                                }
                             }
                         }
-                        if let Some(key) = next {
-                            gap(ui);
-                            if motif::button(ui, tr(key)).clicked() {
-                                *advance = Some((r.id, r.state));
-                            }
+                    }
+                    if lead {
+                        gap(ui);
+                        if motif::button(ui, tr(start_key)).clicked() {
+                            *conduct = Some((r.id, r.patient_id));
                         }
+                    }
+                    if let Some(key) = next {
+                        gap(ui);
+                        if motif::button(ui, tr(key)).clicked() {
+                            *advance = Some((r.id, r.state));
+                        }
+                    }
+                };
+                if side {
+                    // Une rangée par carte : l'espace entre les rangées
+                    // tombe, le filet suffit à les séparer.
+                    ui.spacing_mut().item_spacing.y = 2.0;
+                    ui.horizontal(|ui| {
+                        let w = (ui.available_width() - buttons_width - gap_x).max(0.0);
+                        ui.allocate_ui_with_layout(
+                            egui::vec2(w, motif::button_height(ui)),
+                            egui::Layout::left_to_right(egui::Align::Center),
+                            &mut name_row,
+                        );
+                        draw_buttons(ui);
                     });
+                } else {
+                    name_row(ui);
+                    if has_buttons {
+                        ui.horizontal_wrapped(&mut draw_buttons);
+                    }
+                    ui.add_space(4.0);
                 }
-                ui.add_space(4.0);
                 motif::separator(ui);
             });
         };
@@ -33677,14 +33747,9 @@ impl App {
             let form_rows = Self::wrapped_rows_of(
                 ui,
                 form_w,
-                Self::carnet_form_widths(
-                    ui,
-                    session.vacc_edit.is_some(),
-                    form_w,
-                    &session.vacc_catalogue,
-                )
-                .into_iter()
-                .filter(|w| *w > 0.0),
+                Self::carnet_row_widths(ui, session, form_w)
+                    .into_iter()
+                    .filter(|w| *w > 0.0),
             );
             // Le lot lu contre le stock avant la mesure : la bande compte
             // l'avertissement de cette image-ci, pas de la précédente.
@@ -33748,6 +33813,7 @@ impl App {
         let editing = session.vacc_edit.as_ref().map(|v| v.id);
         let confirm = session.vacc_confirm;
         let today = session.today.clone();
+        let unbilled = Self::carnet_unbilled(session);
         let mut start_edit: Option<db::Vaccination> = None;
         let mut save_edit = false;
         let mut cancel_edit = false;
@@ -33788,8 +33854,7 @@ impl App {
             // gardait quatre-vingts pixels de vide sous le formulaire —
             // pris à la table au-dessus.
             let form_w = inner.width();
-            let widths =
-                Self::carnet_form_widths(ui, editing.is_some(), form_w, &session.vacc_catalogue);
+            let widths = Self::carnet_row_widths(ui, session, form_w);
             let form_rows =
                 Self::wrapped_rows_of(ui, form_w, widths.iter().copied().filter(|w| *w > 0.0));
             // Le formulaire prend ce qu'il a mesuré — une rangée de
@@ -34166,6 +34231,31 @@ impl App {
                             {
                                 print = true;
                             }
+                            // A dose given today and no act billed for it:
+                            // the officine is paid for the vaccination, and
+                            // a dose recorded without its acte is money the
+                            // team has already earned.
+                            if unbilled {
+                                let (rect, _) = ui.allocate_exact_size(
+                                    egui::vec2(Self::carnet_unbilled_w(ui), Self::row_height(ui)),
+                                    egui::Sense::hover(),
+                                );
+                                motif::inside(ui, rect, |ui| {
+                                    ui.horizontal_centered(|ui| {
+                                        ui.label(
+                                            egui::RichText::new(tr("vacc_not_billed"))
+                                                .size(motif::pt(ui, 11.0))
+                                                .color(motif::alert()),
+                                        );
+                                        if motif::button(ui, tr("vacc_bill"))
+                                            .on_hover_text(tr("vacc_bill_tooltip"))
+                                            .clicked()
+                                        {
+                                            bill = true;
+                                        }
+                                    });
+                                });
+                            }
                         });
                         // Une ligne, tronquée, la phrase entière au survol —
                         // comptée par `carnet_notice_h`. Pas pendant qu'on
@@ -34279,28 +34369,6 @@ impl App {
                                     .is_some_and(|f| entered(ui, std::slice::from_ref(f))))
                         {
                             add = true;
-                        }
-                        // A dose given today and no act billed for it:
-                        // the officine is paid for the vaccination, and
-                        // a dose recorded without its acte is money the
-                        // team has already earned.
-                        let given_today = lines.iter().any(|v| v.given_on == today);
-                        let billed_today =
-                            Session::vaccination_act_on(&session.viewing_interviews, &today);
-                        if given_today && !billed_today {
-                            ui.horizontal_wrapped(|ui| {
-                                ui.label(
-                                    egui::RichText::new(tr("vacc_not_billed"))
-                                        .size(motif::pt(ui, 11.0))
-                                        .color(motif::alert()),
-                                );
-                                if motif::button(ui, tr("vacc_bill"))
-                                    .on_hover_text(tr("vacc_bill_tooltip"))
-                                    .clicked()
-                                {
-                                    bill = true;
-                                }
-                            });
                         }
                         // Ce que la dose en cours de saisie appelle : la
                         // première remarque sur une ligne, toutes au survol.
@@ -36534,7 +36602,7 @@ impl App {
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         let avail = ui.available_width();
-                        let gap = 10.0;
+                        let gap = 8.0;
                         let cap = avail * 0.20;
                         let date_w = Self::widest(
                             ui,
@@ -36572,9 +36640,14 @@ impl App {
                             11.5,
                             [tr("loc_col_renewal"), "00/00/0000"].into_iter(),
                         );
+                        // Le bouton qui supprime porte deux libellés, la
+                        // croix puis « Confirmer ? » : la place est celle
+                        // du plus large, pour que la rangée ne se plie pas
+                        // au premier clic.
                         let btn_w = Self::button_width(ui, tr("loc_return"))
                             + Self::button_width(ui, tr("loc_renew"))
                             + Self::button_width(ui, tr("patient_delete_confirm"))
+                                .max(Self::button_width(ui, "×"))
                             + ui.spacing().item_spacing.x * 2.0;
                         let name_floor = Self::widest(ui, 12.0, [tr("loc_col_label")].into_iter());
                         let full = date_w + ended_w + due_w + renew_w + btn_w + gap * 5.0;
@@ -36869,7 +36942,7 @@ impl App {
                                             let label = if confirming {
                                                 tr("patient_delete_confirm")
                                             } else {
-                                                tr("patient_delete")
+                                                "×"
                                             };
                                             if motif::button(ui, label)
                                                 .on_hover_text(tr("loc_delete_tooltip"))
@@ -39627,7 +39700,7 @@ impl App {
     /// rangée qu'on puisse couper, et vingt pixels oubliés là coupent
     /// la deuxième rangée de puces par le milieu — ce qui se lit
     /// « cassé » et non « il y en a d'autres ».
-    const BAND_TREAT_GAP: f32 = 20.0;
+    const BAND_TREAT_GAP: f32 = 6.0;
 
     fn treat_chip(name: &str, strength: &str) -> String {
         let name = name.trim();
@@ -39950,16 +40023,37 @@ impl App {
     /// l'officine. Ni l'un ni l'autre n'est là la plupart du temps —
     /// trente-quatre pixels leur étaient pourtant réservés à chaque
     /// image, sur un panneau qui en compte cent soixante.
-    fn carnet_notice_h(ui: &egui::Ui, session: &Session, config: &Config) -> f32 {
-        let mut h = 0.0;
-        let given_today = session
+    /// Une dose écrite aujourd'hui sans son acte de vaccination.
+    fn carnet_unbilled(session: &Session) -> bool {
+        session
             .vaccinations
             .iter()
-            .any(|v| v.given_on == session.today);
-        let billed_today = Session::vaccination_act_on(&session.viewing_interviews, &session.today);
-        if given_today && !billed_today {
-            h += Self::row_height(ui) + ui.spacing().item_spacing.y;
+            .any(|v| v.given_on == session.today)
+            && !Session::vaccination_act_on(&session.viewing_interviews, &session.today)
+    }
+
+    /// La rangée de saisie du carnet **telle qu'elle se dessine** : ses
+    /// champs, ses boutons, et — une dose écrite aujourd'hui sans acte —
+    /// l'avis et « Créer l'acte » au bout des boutons, d'un seul tenant.
+    /// Sur sa propre rangée, l'avis prenait à la table la ligne qui lui
+    /// restait, et l'onglet ne montrait plus aucune dose.
+    fn carnet_row_widths(ui: &egui::Ui, session: &Session, width: f32) -> Vec<f32> {
+        let correcting = session.vacc_edit.is_some();
+        let mut widths = Self::carnet_form_widths(ui, correcting, width, &session.vacc_catalogue);
+        if !correcting && Self::carnet_unbilled(session) {
+            widths.push(Self::carnet_unbilled_w(ui));
         }
+        widths
+    }
+
+    fn carnet_unbilled_w(ui: &egui::Ui) -> f32 {
+        Self::widest(ui, 11.0, std::iter::once(tr("vacc_not_billed")))
+            + ui.spacing().item_spacing.x
+            + Self::button_width(ui, tr("vacc_bill"))
+    }
+
+    fn carnet_notice_h(ui: &egui::Ui, session: &Session, config: &Config) -> f32 {
+        let mut h = 0.0;
         if !config.disclaimers.vaccins.trim().is_empty() {
             h += ui.text_style_height(&egui::TextStyle::Body);
         }
@@ -40149,6 +40243,33 @@ impl App {
     }
 
     /// [`wrapped_rows_of`] for a row that is all buttons.
+    /// Les rangées de la bande de filtres de l'agenda : « Filtrer : »
+    /// et une pastille par lieu et par type d'acte, mesurés comme
+    /// `agenda_view` les pose.
+    fn agenda_filter_rows(ui: &egui::Ui, width: f32, kinds: &[InterviewKind]) -> f32 {
+        let text = |t: &str| {
+            ui.fonts(|f| {
+                f.layout_no_wrap(
+                    t.to_owned(),
+                    egui::FontId::proportional(motif::pt(ui, 11.0)),
+                    motif::text(),
+                )
+                .size()
+                .x
+            })
+        };
+        let chip = |t: &str| motif::badge_size(ui, t, false).x;
+        let gap = ui.spacing().item_spacing.x;
+        let mut widths = vec![
+            text(tr("agenda_filter")),
+            chip(tr("agenda_filter_all")),
+            chip(tr("agenda_place_counter")),
+            chip(tr("agenda_place_remote")) + 6.0 + gap,
+        ];
+        widths.extend(kinds.iter().map(|k| chip(k.label())));
+        Self::wrapped_rows_of(ui, width, widths.into_iter())
+    }
+
     fn wrapped_rows<'a>(ui: &egui::Ui, width: f32, labels: impl Iterator<Item = &'a str>) -> f32 {
         Self::wrapped_rows_of(ui, width, labels.map(|l| Self::button_width(ui, l)))
     }
@@ -47111,24 +47232,27 @@ impl App {
             "agenda_counts",
             &[&tally.kept, &tally.hidden, &tally.clashes],
         );
-        let filter_lines = if session.agenda_mode == AgendaMode::Planning {
+        // Le compteur aussi se mesure rempli : « {} rendez-vous
+        // affiché(s) » n'a pas la largeur de « 12 rendez-vous
+        // affiché(s) ».
+        // **Les types présents**, comme le filtre du suivi : treize
+        // pastilles dont la plupart ne filtrent rien sur cet agenda
+        // faisaient une rangée de plus. Un type choisi reste affiché.
+        let shown_kinds: Vec<InterviewKind> = InterviewKind::ALL
+            .iter()
+            .copied()
+            .filter(|k| {
+                session.agenda_filter.contains(k)
+                    || session.appointments.iter().any(|a| a.kind == *k)
+            })
+            .collect();
+        let filter_h = if session.agenda_mode == AgendaMode::Planning {
             0.0
         } else {
-            Self::wrapped_rows(
-                ui,
-                body.width() - 60.0,
-                [
-                    tr("agenda_place_counter"),
-                    tr("agenda_place_remote"),
-                    tr("agenda_filter_all"),
-                ]
-                .into_iter()
-                .chain(InterviewKind::ALL.iter().map(|k| k.label()))
-                // Le compteur aussi se mesure rempli : « {} rendez-vous
-                // affiché(s) » n'a pas la largeur de « 12 rendez-vous
-                // affiché(s) ».
-                .chain(std::iter::once(counts_label.as_str())),
-            )
+            let lines = Self::agenda_filter_rows(ui, body.width() - 30.0, &shown_kinds);
+            lines * motif::badge_size(ui, "X", false).y
+                + (lines - 1.0).max(0.0) * ui.spacing().item_spacing.y
+                + ui.spacing().item_spacing.y
         };
         // **On mesure la chaîne qu'on va dessiner, pas son gabarit.**
         // « Semaine du {} » fait dix caractères de moins que « Semaine
@@ -47180,7 +47304,13 @@ impl App {
         let want = if session.agenda_band_h > 0.0 {
             session.agenda_band_h + 16.0
         } else {
-            row * (control_lines + filter_lines) + if overdue.is_empty() { 6.0 } else { row + 6.0 }
+            row * control_lines
+                + filter_h
+                + if session.agenda_mode == AgendaMode::Planning && overdue.is_empty() {
+                    6.0
+                } else {
+                    Self::label_line(ui) + ui.spacing().item_spacing.y + 6.0
+                }
         };
         // However much the band would like, the calendar keeps most of
         // the screen: past the cap the band scrolls instead.
@@ -47373,11 +47503,28 @@ impl App {
                                         .size(motif::pt(ui, 11.0))
                                         .color(motif::text_dim()),
                                 );
-                                if motif::toggle(
+                                // **Des pastilles, comme le filtre du suivi** :
+                                // quatorze boutons pleine taille faisaient
+                                // trois rangées à 1024x700, et la bande
+                                // défilait pour montrer les derniers types.
+                                // Un lieu n'est enfoncé que s'il restreint :
+                                // les deux allumés, c'est « Tout ».
+                                let chip = |ui: &mut egui::Ui, label: &str, on: bool, fill| {
+                                    motif::badge(
+                                        ui,
+                                        label,
+                                        None,
+                                        if on { fill } else { motif::bg() },
+                                        !on,
+                                    )
+                                    .on_hover_cursor(egui::CursorIcon::PointingHand)
+                                };
+                                let all_places = session.agenda_places == [true, true];
+                                if chip(
                                     ui,
                                     tr("agenda_filter_all"),
-                                    session.agenda_filter.is_empty()
-                                        && session.agenda_places == [true, true],
+                                    session.agenda_filter.is_empty() && all_places,
+                                    motif::accent(),
                                 )
                                 .on_hover_text(tr("agenda_filter_tooltip"))
                                 .clicked()
@@ -47392,24 +47539,32 @@ impl App {
                                         .into_iter()
                                         .enumerate()
                                 {
-                                    if motif::toggle(ui, label, session.agenda_places[i])
+                                    let only = session.agenda_places[i] && !all_places;
+                                    if chip(ui, label, only, motif::accent())
                                         .on_hover_text(tr("agenda_place_tooltip"))
                                         .clicked()
                                     {
-                                        session.agenda_places[i] = !session.agenda_places[i];
+                                        session.agenda_places =
+                                            if only { [true, true] } else { [i == 0, i == 1] };
                                     }
                                 }
-                                for kind in InterviewKind::ALL {
+                                ui.add_space(6.0);
+                                for &kind in &shown_kinds {
                                     let on = session.agenda_filter.contains(&kind);
-                                    // The same sunken-when-on idiom as everywhere else,
-                                    // with the act's own colour as a marker so the
-                                    // filter row and the grid read as one thing.
-                                    let resp = motif::toggle(ui, kind.label(), on);
-                                    let dot = egui::Rect::from_center_size(
-                                        egui::pos2(resp.rect.left() + 6.0, resp.rect.center().y),
-                                        egui::vec2(4.0, resp.rect.height() - 10.0),
-                                    );
-                                    ui.painter().rect_filled(dot, 0.0, kind_color(kind));
+                                    // Allumée, la pastille prend la couleur de
+                                    // l'acte ; éteinte, elle en garde un trait :
+                                    // le filtre et la grille se lisent ensemble.
+                                    let resp = chip(ui, kind.label(), on, kind_color(kind));
+                                    if !on {
+                                        let dot = egui::Rect::from_min_size(
+                                            egui::pos2(
+                                                resp.rect.left() + 3.0,
+                                                resp.rect.top() + 3.0,
+                                            ),
+                                            egui::vec2(3.0, resp.rect.height() - 6.0),
+                                        );
+                                        ui.painter().rect_filled(dot, 0.0, kind_color(kind));
+                                    }
                                     if resp.clicked() {
                                         if on {
                                             session.agenda_filter.remove(&kind);
@@ -47418,49 +47573,61 @@ impl App {
                                         }
                                     }
                                 }
-                                // Le compteur, et c'est lui qui empêche de
-                                // croire une journée vide alors qu'elle est
-                                // filtrée. Le mot « masqués » y est nécessaire.
-                                ui.add_space(8.0);
-                                // **D'un seul tenant** : un libellé dans une
-                                // rangée qui enveloppe se replie *lui-même* au
-                                // bord, et « 7 rendez-vous » finissait la
-                                // rangée des filtres quand « affiché(s) ·
-                                // 0 masqué(s) » commençait la suivante.
-                                ui.add(
-                                    egui::Label::new(
-                                        egui::RichText::new(&counts_label)
-                                            .size(motif::pt(ui, 11.0))
-                                            .color(if tally.clashes > 0 {
-                                                motif::alert()
-                                            } else {
-                                                motif::text_dim()
-                                            }),
-                                    )
-                                    .wrap_mode(egui::TextWrapMode::Extend),
-                                )
-                                .on_hover_text(tr("agenda_counts_tooltip"));
                             });
                         }
-                        if !overdue.is_empty() {
-                            {
-                                ui.horizontal_wrapped(|ui| {
-                                    ui.label(
-                                        egui::RichText::new(trn(
-                                            "agenda_overdue_banner",
-                                            &[
-                                                &overdue.len(),
-                                                &db::format_french_date(&overdue[0].date),
-                                            ],
-                                        ))
-                                        .strong()
-                                        .color(motif::alert()),
+                        // **Le compteur et le retard sur une ligne, en petit** :
+                        // deux rangées de plus sous les filtres, et la bande
+                        // dépassait sa part — elle défilait, ou la semaine
+                        // perdait ses rendez-vous. Le compteur empêche de
+                        // croire vide une journée filtrée ; « masqués » y est
+                        // nécessaire.
+                        let counting = session.agenda_mode != AgendaMode::Planning;
+                        if counting || !overdue.is_empty() {
+                            ui.horizontal_wrapped(|ui| {
+                                let small = motif::pt(ui, 11.0);
+                                if counting {
+                                    // D'un seul tenant : « 7 rendez-vous » ne
+                                    // finit pas une rangée quand « affiché(s) »
+                                    // commence la suivante.
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(&counts_label).size(small).color(
+                                                if tally.clashes > 0 {
+                                                    motif::alert()
+                                                } else {
+                                                    motif::text_dim()
+                                                },
+                                            ),
+                                        )
+                                        .wrap_mode(egui::TextWrapMode::Extend),
+                                    )
+                                    .on_hover_text(tr("agenda_counts_tooltip"));
+                                }
+                                if !overdue.is_empty() {
+                                    if counting {
+                                        ui.add_space(12.0);
+                                    }
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(trn(
+                                                "agenda_overdue_banner",
+                                                &[
+                                                    &overdue.len(),
+                                                    &db::format_french_date(&overdue[0].date),
+                                                ],
+                                            ))
+                                            .size(small)
+                                            .strong()
+                                            .color(motif::alert()),
+                                        )
+                                        .wrap_mode(egui::TextWrapMode::Extend),
                                     );
                                     for rdv in overdue.iter().take(4) {
                                         if ui
                                             .selectable_label(
                                                 false,
                                                 egui::RichText::new(&rdv.patient_name)
+                                                    .size(small)
                                                     .color(motif::alert()),
                                             )
                                             .on_hover_text(tr("agenda_overdue_tooltip"))
@@ -47475,12 +47642,12 @@ impl App {
                                                 "dash_more",
                                                 overdue.len() - 4,
                                             ))
-                                            .size(motif::pt(ui, 11.0))
+                                            .size(small)
                                             .color(motif::alert()),
                                         );
                                     }
-                                });
-                            }
+                                }
+                            });
                         }
                     })
                     .content_size
@@ -102760,7 +102927,7 @@ mod tests {
     use super::{interviews_csv, App, Config, Session};
     use crate::agenda;
     use crate::db::{self, Appointment, ExportRow, InterviewKind, InterviewState};
-    use crate::strings::{tr, trn};
+    use crate::strings::tr;
     use eframe::egui;
 
     /// Une date de location est un jour passé : « 2812 » le 4 janvier
@@ -106162,18 +106329,10 @@ mod tests {
                     .into_iter()
                     .chain(InterviewKind::ALL.iter().map(|k| k.label()))
                     .collect();
-                    let tally = trn("agenda_counts", &[&12, &3, &1]);
                     // La même largeur que `agenda_view` mesure, et la
                     // même que le dessin reçoit.
                     let w = 720.0;
-                    let counted = App::wrapped_rows(
-                        ui,
-                        w,
-                        chips
-                            .iter()
-                            .copied()
-                            .chain(std::iter::once(tr("agenda_counts"))),
-                    );
+                    let counted = App::agenda_filter_rows(ui, w, &InterviewKind::ALL);
                     let drawn = ui
                         .scope(|ui| {
                             ui.set_max_width(w);
@@ -106182,11 +106341,12 @@ mod tests {
                                     egui::RichText::new(tr("agenda_filter"))
                                         .size(motif::pt(ui, 11.0)),
                                 );
-                                for c in &chips {
-                                    motif::toggle(ui, c, false);
+                                for (i, c) in chips.iter().enumerate() {
+                                    motif::badge(ui, c, None, motif::bg(), true);
+                                    if i == 2 {
+                                        ui.add_space(6.0);
+                                    }
                                 }
-                                ui.add_space(8.0);
-                                ui.label(egui::RichText::new(&tally).size(motif::pt(ui, 11.0)));
                             });
                         })
                         .response
@@ -106195,7 +106355,7 @@ mod tests {
                     *seen.borrow_mut() = (
                         counted,
                         drawn,
-                        App::row_height(ui),
+                        motif::badge_size(ui, "X", false).y,
                         ui.spacing().item_spacing.y,
                     );
                 });

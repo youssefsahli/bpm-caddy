@@ -135,6 +135,21 @@ pub fn nice_max(max: f64) -> f64 {
     }
 }
 
+/// As many gridlines as there are **different labels**: a top of 2
+/// cut in four, written in whole numbers, read « 0 0 1 2 2 » down the
+/// axis. Halve the count until every line says its own value.
+fn distinct_steps(max: f64, steps: usize, fmt: &dyn Fn(f64) -> String) -> usize {
+    let mut n = steps.max(1);
+    while n > 1 {
+        let labels: Vec<String> = (0..=n).map(|i| fmt(max * i as f64 / n as f64)).collect();
+        if labels.windows(2).all(|w| w[0] != w[1]) {
+            break;
+        }
+        n /= 2;
+    }
+    n
+}
+
 /// Horizontal gridlines with their values down the left gutter.
 /// Returns the plot area left of the labels.
 fn grid(
@@ -144,6 +159,7 @@ fn grid(
     steps: usize,
     fmt: &dyn Fn(f64) -> String,
 ) -> egui::Rect {
+    let steps = distinct_steps(max, steps, fmt);
     let font = egui::FontId::proportional(crate::pt(ui, 9.5));
     let gutter = (0..=steps)
         .map(|i| {
@@ -1430,7 +1446,7 @@ fn legend_impl(
 
 #[cfg(test)]
 mod tests {
-    use super::nice_max;
+    use super::{distinct_steps, nice_max};
     use eframe::egui;
 
     /// Le lavis sous une courbe qui plonge ne monte pas au-dessus du
@@ -1863,6 +1879,14 @@ mod tests {
             super::series_color(3),
             super::series_color(super::SERIES_LEN + 3)
         );
+    }
+
+    #[test]
+    fn every_gridline_says_its_own_value() {
+        let whole = |v: f64| format!("{}", v.round());
+        assert_eq!(distinct_steps(2.0, 4, &whole), 2);
+        assert_eq!(distinct_steps(1.0, 4, &whole), 1);
+        assert_eq!(distinct_steps(20.0, 4, &whole), 4);
     }
 
     #[test]
