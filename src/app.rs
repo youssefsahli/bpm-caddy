@@ -28932,8 +28932,14 @@ impl App {
                                 job.append(&ch.to_string(), 0.0, fmt);
                             }
                             let pending = session.pending.get(&p.id).copied().unwrap_or(0);
-                            let mut rest =
-                                trf("search_born", db::format_french_date(&p.birth_date));
+                            // L'âge à côté de la date : deux homonymes se
+                            // départagent d'un coup d'œil, sans calcul.
+                            let mut born = db::format_french_date(&p.birth_date);
+                            if let Some(a) = db::age_on(&p.birth_date, &session.today) {
+                                born.push_str(", ");
+                                born.push_str(&trf("patient_age", a));
+                            }
+                            let mut rest = trf("search_born", born);
                             match pending {
                                 0 => {}
                                 1 => rest.push_str(tr("search_pending_one")),

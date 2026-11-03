@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **« Nouveau dossier » on the Comptoir home**, on the search field's line (Ctrl+N with no file open): opens the creation form without first searching a name nobody has; Échap closes it.
+- **Patient search results give the age** beside the birth date (« né(e) le 03/07/1958, 68 ans »), and the field's hint says what it reads: « Nom, date de naissance, tél. ou NIR ».
 
 ## [0.451.0] - 2026-11-03
 

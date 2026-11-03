@@ -1482,7 +1482,7 @@ tpl_reset_tooltip = "Revenir au modèle par défaut (non enregistré)"
 tpl_close = "Fermer"
 
 # --- Recherche patients ---
-search_hint = "Rechercher un patient…"
+search_hint = "Nom, date de naissance, tél. ou NIR"
 status_summary = "{} patient(s)   ·   {} entretien(s) en cours   ·   {} médicaments"
 search_born = "   (né(e) le {})"
 search_pending_one = "   ·  1 entretien en cours"
