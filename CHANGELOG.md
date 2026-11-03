@@ -11,9 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Ctrl+K opens on the open file.** With a file open, the empty box lists its tabs first (À dire, Biologie, Vaccinations, Entretiens) and « Note pour l'équipe », before favourites and recent places; typed, they rank with the other files.
+- **Plan an entretien from where it is proposed.** « Planifier » on a card « À proposer » of Suivi takes « 051126 9h30 » (hour optional): Entrée sets the day and hour and moves the act to « Planifiés » and the agenda, in one compare-and-set write. « Créer l'acte » in « À dire » opens the same field at once; Échap leaves the act to propose. Left open when changing view, it is planned anyway.
 
 ### Fixed
 
+- **Suivi cards whose buttons do not fit side by side** put one per line at the card's indent, instead of throwing the second one to the column's edge.
 - **Agenda, « Journée du » beside the week.** At 1280 wide each rendez-vous wrapped on two or three ragged lines, « Déplacer » alone on its own. Now one line when it fits (the phone goes to the name's hover first), else two aligned lines: hour, type, name; then phone and « Déplacer ».
 
 ## [0.450.0] - 2026-11-03

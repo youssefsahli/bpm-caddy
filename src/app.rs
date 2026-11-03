@@ -6387,6 +6387,9 @@ struct Session {
     dash_figures: bool,
     /// Le type que le suivi montre seul, ou tous.
     board_kind: Option<InterviewKind>,
+    /// « Planifier » ouvert sur une carte « À proposer » : l'acte et ce
+    /// qui est tapé (« 051126 9h30 »).
+    board_plan: Option<(i64, String)>,
     /// L'entretien mené à l'écran, quand il y en a un.
     conduct: Option<Conduct>,
     /// `[ordonnance] notice_days`, poussé ici comme `loc_notice_days`.
@@ -7729,6 +7732,7 @@ impl Session {
             board: Vec::new(),
             dash_figures: false,
             board_kind: None,
+            board_plan: None,
             conduct: None,
             rx_notice_days: 7,
             today_notes: Vec::new(),
@@ -8703,6 +8707,11 @@ impl Session {
                 _ => self.rdv_time_edit = None,
             }
         }
+        if let Some((id, typed)) = self.board_plan.take() {
+            if !typed.trim().is_empty() {
+                self.plan_typed(id, &typed);
+            }
+        }
         if let Some((id, typed)) = self.rdv_move_edit.clone() {
             match self
                 .appointments
@@ -8966,6 +8975,40 @@ impl Session {
             self.refresh_dashboard();
         }
         self.rdv_time_edit = None;
+    }
+
+    /// Planifier un acte « à proposer » d'après ce qui est tapé : le jour
+    /// (« 051126 », « 0511 »), puis l'heure si elle suit (« 9h30 »).
+    fn plan_typed(&mut self, id: i64, typed: &str) {
+        let mut words = typed.split_whitespace();
+        let day = words.next().unwrap_or("");
+        let hour = words.collect::<Vec<_>>().join(" ");
+        let year = self.db.current_year();
+        let iso = match db::parse_french_date(day, year, db::YearHint::Future) {
+            Ok(iso) => iso,
+            Err(e) => {
+                self.error = Some(e);
+                return;
+            }
+        };
+        let time = if hour.is_empty() {
+            String::new()
+        } else if let Some(t) = db::parse_hour(&hour) {
+            t
+        } else {
+            self.error = Some(tr("agenda_bad_hour").to_owned());
+            return;
+        };
+        match self.db.plan_interview(id, &iso, &time) {
+            Ok(true) => self.error = None,
+            Ok(false) => self.stale("itv_stale"),
+            Err(e) => self.error = Some(e),
+        }
+        self.refresh_dashboard();
+        self.load_day();
+        if let Some(pid) = self.viewing.as_ref().map(|p| p.id) {
+            self.reload_interviews(pid);
+        }
     }
 
     /// Move a rendez-vous to the day typed.
@@ -29479,12 +29522,16 @@ impl App {
         let mut open: Option<i64> = None;
         let mut advance: Option<(i64, InterviewState)> = None;
         let mut conduct: Option<(i64, i64)> = None;
+        let mut plan = session.board_plan.take();
+        let mut planned: Option<(i64, String)> = None;
         let today = session.today.clone();
         let card = |ui: &mut egui::Ui,
                     r: &db::BoardRow,
                     open: &mut Option<i64>,
                     advance: &mut Option<(i64, InterviewState)>,
-                    conduct: &mut Option<(i64, i64)>| {
+                    conduct: &mut Option<(i64, i64)>,
+                    plan: &mut Option<(i64, String)>,
+                    planned: &mut Option<(i64, String)>| {
             ui.push_id(r.id, |ui| {
                 if motif::list_row(ui, egui::RichText::new(&r.patient_name).strong(), false)
                     .on_hover_text(tr("dash_open_patient"))
@@ -29527,20 +29574,85 @@ impl App {
                     r.state,
                     InterviewState::Identified | InterviewState::Scheduled
                 ) && Conduct::applies(r.kind);
-                if next.is_some() || lead {
+                let to_plan = r.state == InterviewState::Identified;
+                if next.is_some() || lead || to_plan {
+                    // Deux boutons qui ne tiennent pas côte à côte : un par
+                    // ligne, au même retrait, plutôt que le second rejeté
+                    // au bord de la colonne.
+                    let start_key = if r.begun {
+                        "conduct_resume"
+                    } else {
+                        "conduct_start"
+                    };
+                    let one_line = Self::group_width(
+                        ui,
+                        [
+                            8.0,
+                            if to_plan {
+                                Self::button_width(ui, tr("board_plan")).max(chars_wide(ui, 12.0))
+                            } else {
+                                0.0
+                            },
+                            if lead {
+                                Self::button_width(ui, tr(start_key))
+                            } else {
+                                0.0
+                            },
+                            next.map_or(0.0, |k| Self::button_width(ui, tr(k))),
+                        ]
+                        .into_iter()
+                        .filter(|w| *w > 0.0),
+                    ) <= ui.available_width();
                     ui.horizontal_wrapped(|ui| {
                         ui.add_space(8.0);
+                        let mut first = true;
+                        let mut gap = |ui: &mut egui::Ui| {
+                            if !first && !one_line {
+                                ui.end_row();
+                                ui.add_space(8.0);
+                            }
+                            first = false;
+                        };
+                        if to_plan {
+                            gap(ui);
+                            match plan.as_mut().filter(|(id, _)| *id == r.id) {
+                                Some((_, text)) => {
+                                    let field = motif::field(
+                                        ui,
+                                        chars_wide(ui, 12.0),
+                                        egui::TextEdit::singleline(text)
+                                            .hint_text(motif::hint(tr("board_plan_hint"))),
+                                    );
+                                    if field.lost_focus() {
+                                        let typed = text.clone();
+                                        let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
+                                        let escape = ui.input(|i| i.key_pressed(egui::Key::Escape));
+                                        if !escape && (enter || !typed.trim().is_empty()) {
+                                            *planned = Some((r.id, typed));
+                                        }
+                                        *plan = None;
+                                    } else {
+                                        field.request_focus();
+                                    }
+                                }
+                                None => {
+                                    if motif::button(ui, tr("board_plan"))
+                                        .on_hover_text(tr("board_plan_hint"))
+                                        .clicked()
+                                    {
+                                        *plan = Some((r.id, String::new()));
+                                    }
+                                }
+                            }
+                        }
                         if lead {
-                            let key = if r.begun {
-                                "conduct_resume"
-                            } else {
-                                "conduct_start"
-                            };
-                            if motif::button(ui, tr(key)).clicked() {
+                            gap(ui);
+                            if motif::button(ui, tr(start_key)).clicked() {
                                 *conduct = Some((r.id, r.patient_id));
                             }
                         }
                         if let Some(key) = next {
+                            gap(ui);
                             if motif::button(ui, tr(key)).clicked() {
                                 *advance = Some((r.id, r.state));
                             }
@@ -29567,7 +29679,15 @@ impl App {
                                 );
                             }
                             for r in &cols[i] {
-                                card(ui, r, &mut open, &mut advance, &mut conduct);
+                                card(
+                                    ui,
+                                    r,
+                                    &mut open,
+                                    &mut advance,
+                                    &mut conduct,
+                                    &mut plan,
+                                    &mut planned,
+                                );
                             }
                         });
                 });
@@ -29584,7 +29704,15 @@ impl App {
                                     .strong(),
                             );
                             for r in col {
-                                card(ui, r, &mut open, &mut advance, &mut conduct);
+                                card(
+                                    ui,
+                                    r,
+                                    &mut open,
+                                    &mut advance,
+                                    &mut conduct,
+                                    &mut plan,
+                                    &mut planned,
+                                );
                             }
                             ui.add_space(6.0);
                         }
@@ -29592,6 +29720,12 @@ impl App {
             });
         }
         ui.allocate_space(area.size());
+        session.board_plan = plan;
+        if let Some((id, typed)) = planned {
+            if !typed.trim().is_empty() {
+                session.plan_typed(id, &typed);
+            }
+        }
         if let Some((id, pid)) = conduct {
             session.start_conduct(id, pid, &config.prevention.subjects);
         }
@@ -30754,6 +30888,8 @@ impl App {
         let mut go: Option<PatientTab> = None;
         let mut create: Option<InterviewKind> = None;
         let mut write: Option<i64> = None;
+        let mut plan: Option<(i64, String)> = None;
+        let mut drop_plan = false;
         motif::panel(ui, list, Some(tr("say_title")), |ui| {
             // Ce que le registre suit dans ce traitement : la délivrance
             // s'inscrit d'ici, le produit et le dossier repris.
@@ -30776,6 +30912,38 @@ impl App {
                         if b.clicked() {
                             write = Some(*id);
                         }
+                    }
+                });
+                motif::separator(ui);
+            }
+            // L'acte qu'on vient de créer d'ici : le rendez-vous se tape
+            // tout de suite, sans passer par le suivi. Entrée planifie,
+            // Échap le laisse dans « À proposer ».
+            let fresh = session.board_plan.as_ref().and_then(|(id, _)| {
+                session
+                    .viewing_interviews
+                    .iter()
+                    .find(|i| i.id == *id && i.state == InterviewState::Identified)
+                    .map(|i| i.kind)
+            });
+            if let (Some(kind), Some((id, text))) = (fresh, session.board_plan.as_mut()) {
+                let id = *id;
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(egui::RichText::new(trf("say_itv_plan", kind.label())).strong());
+                    let field = motif::field(
+                        ui,
+                        chars_wide(ui, 12.0),
+                        egui::TextEdit::singleline(text)
+                            .hint_text(motif::hint(tr("board_plan_hint"))),
+                    );
+                    if field.lost_focus() {
+                        let escape = ui.input(|i| i.key_pressed(egui::Key::Escape));
+                        if !escape && !text.trim().is_empty() {
+                            plan = Some((id, text.clone()));
+                        }
+                        drop_plan = true;
+                    } else {
+                        field.request_focus();
                     }
                 });
                 motif::separator(ui);
@@ -30855,14 +31023,21 @@ impl App {
         if let Some(id) = write {
             session.register_from_file(id);
         }
+        if drop_plan {
+            session.board_plan = None;
+        }
+        if let Some((id, typed)) = plan {
+            session.plan_typed(id, &typed);
+        }
         // L'acte à proposer, créé d'un clic : il rejoint « À proposer »
         // dans le suivi des entretiens.
         if let (Some(kind), Some(pid)) = (create, session.viewing.as_ref().map(|p| p.id)) {
             let by = session.operator.clone();
             match session.db.add_interview_by(pid, kind, "", &by) {
-                Ok(_) => {
+                Ok(id) => {
                     session.reload_interviews(pid);
                     session.refresh_dashboard();
+                    session.board_plan = Some((id, String::new()));
                 }
                 Err(e) => session.error = Some(e),
             }
@@ -115645,6 +115820,54 @@ mod tests {
         s.reload_interviews(p.id);
         s.refresh_say(30);
         assert!(!wanted(&s), "{:?}", s.say_today);
+    }
+
+    #[test]
+    fn an_entretien_to_propose_takes_its_rendez_vous_as_typed() {
+        let (mut s, _swept) = scratch_session("plan-typed");
+        let p = s.patients[0].clone();
+        s.open_patient(p.clone());
+        let id =
+            s.db.add_interview_by(p.id, InterviewKind::Aod, "", "YS")
+                .unwrap();
+        // Une heure illisible : rien n'est écrit, et c'est dit.
+        s.plan_typed(id, "051126 midi et quart");
+        assert!(s.error.is_some());
+        let state = |s: &Session| {
+            s.db.interview_board()
+                .unwrap()
+                .into_iter()
+                .find(|r| r.id == id)
+                .map(|r| (r.state, r.scheduled_date, r.scheduled_time))
+        };
+        assert_eq!(state(&s).map(|t| t.0), Some(InterviewState::Identified));
+        s.plan_typed(id, "051126 9h30");
+        assert_eq!(
+            state(&s),
+            Some((
+                InterviewState::Scheduled,
+                "2026-11-05".to_owned(),
+                "09:30".to_owned()
+            ))
+        );
+        assert!(s
+            .viewing_interviews
+            .iter()
+            .any(|i| i.id == id && i.state == InterviewState::Scheduled));
+        // Laissé ouvert en changeant de vue : planifié quand même.
+        let other =
+            s.db.add_interview_by(p.id, InterviewKind::Aod, "", "YS")
+                .unwrap();
+        s.board_plan = Some((other, "0611".to_owned()));
+        s.save_open_edits();
+        assert_eq!(state_of(&s, other), Some(InterviewState::Scheduled));
+        fn state_of(s: &Session, id: i64) -> Option<InterviewState> {
+            s.db.interview_board()
+                .unwrap()
+                .into_iter()
+                .find(|r| r.id == id)
+                .map(|r| r.state)
+        }
     }
 
     #[test]

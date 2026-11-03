@@ -56559,6 +56559,29 @@ impl Db {
         Ok(changed == 1)
     }
 
+    /// Planifier un acte « à proposer » : jour, heure, et l'acte passe
+    /// en « Planifiés », d'un seul `UPDATE`. Comparaison sur l'état : un
+    /// acte planifié, fait ou supprimé entre-temps sur un autre poste
+    /// répond `false` et rien n'est écrit.
+    pub fn plan_interview(&self, id: i64, date: &str, time: &str) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE interviews SET scheduled_date = ?1, scheduled_time = ?2, state = ?3,
+                        updated_at = datetime('now', 'localtime')
+                 WHERE id = ?4 AND state = ?5",
+                (
+                    date,
+                    time,
+                    InterviewState::Scheduled.as_str(),
+                    id,
+                    InterviewState::Identified.as_str(),
+                ),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
     fn set_state_cas(
         &self,
         id: i64,
@@ -63760,6 +63783,31 @@ mod tests {
         assert_eq!(board[0].patient_name, "Martin Claire");
         assert!(db.advance_interview(a, InterviewState::Identified).unwrap());
         assert!(!db.advance_interview(a, InterviewState::Identified).unwrap());
+    }
+
+    #[test]
+    fn an_entretien_to_propose_is_planned_once_with_its_day_and_hour() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-plan-itv-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("plan.db"), "secret").unwrap();
+        let pid = db.add_patient("Martin", "Paul", "1957-03-02").unwrap();
+        let id = db.add_interview(pid, InterviewKind::Aod).unwrap();
+        assert!(db.plan_interview(id, "2026-11-05", "09:30").unwrap());
+        let row = |db: &Db| {
+            db.interview_board()
+                .unwrap()
+                .into_iter()
+                .find(|r| r.id == id)
+                .unwrap()
+        };
+        let r = row(&db);
+        assert_eq!(r.state, InterviewState::Scheduled);
+        assert_eq!(r.scheduled_date, "2026-11-05");
+        assert_eq!(r.scheduled_time, "09:30");
+        // Déjà planifié (un autre poste) : refusé, rien ne change.
+        assert!(!db.plan_interview(id, "2026-11-06", "").unwrap());
+        assert_eq!(row(&db).scheduled_date, "2026-11-05");
     }
 
     #[test]
