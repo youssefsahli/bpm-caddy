@@ -7301,6 +7301,10 @@ struct Session {
     /// La ligne de liste de contrôle dont la croix a été pressée une
     /// fois : la seconde la supprime.
     checklist_confirm_delete: Option<i64>,
+    /// Le nœud de protocole dont la croix a été pressée une fois.
+    proto_node_confirm: Option<i64>,
+    /// La posologie de la fiche dont la croix a été pressée une fois.
+    poso_confirm: Option<i64>,
     /// Ctrl+F asked for the open list's own search field.
     focus_list_search: bool,
     /// The rentals on the open file, the forfait being handed out, and
@@ -8090,6 +8094,8 @@ impl Session {
             protocol_cursor: 0,
             protocol_confirm_delete: None,
             checklist_confirm_delete: None,
+            proto_node_confirm: None,
+            poso_confirm: None,
             focus_list_search: false,
             locations: Vec::new(),
             loc_pick: 0,
@@ -60477,7 +60483,7 @@ impl App {
                                 let title = format!("{}. {}", i + 1, item.text);
                                 let arming = session.checklist_confirm_delete == Some(item.id);
                                 let delete_label = if arming {
-                                    tr("proto_delete_ask")
+                                    tr("itv_delete_confirm")
                                 } else {
                                     tr("itv_delete")
                                 };
@@ -60487,7 +60493,7 @@ impl App {
                                         Self::button_width(ui, "‹"),
                                         Self::button_width(ui, "›"),
                                         Self::button_width(ui, tr("listes_edit")),
-                                        Self::button_width(ui, tr("proto_delete_ask"))
+                                        Self::button_width(ui, tr("itv_delete_confirm"))
                                             .max(Self::button_width(ui, tr("itv_delete"))),
                                     ]
                                     .into_iter(),
@@ -74565,6 +74571,8 @@ impl App {
         let mut print = false;
         let mut add: Option<(Option<i64>, db::Branch, db::NodeKind)> = None;
         let mut delete: Option<(i64, String)> = None;
+        let node_confirm = session.proto_node_confirm;
+        let mut node_arm: Option<Option<i64>> = None;
         let mut save_edit = false;
         let mut rename: Option<(String, String)> = None;
         motif::panel(ui, rect, Some(tr("proto_sheet")), |ui| {
@@ -74844,11 +74852,24 @@ impl App {
                                                 db::NodeKind::Question,
                                             ));
                                         }
-                                        if motif::button(ui, tr("itv_delete"))
-                                            .on_hover_text(tr("proto_delete_node"))
-                                            .clicked()
+                                        let arming = node_confirm == Some(node.id);
+                                        if motif::button(
+                                            ui,
+                                            if arming {
+                                                tr("itv_delete_confirm")
+                                            } else {
+                                                tr("itv_delete")
+                                            },
+                                        )
+                                        .on_hover_text(tr("proto_delete_node"))
+                                        .clicked()
                                         {
-                                            delete = Some((node.id, node.text.clone()));
+                                            if arming {
+                                                delete = Some((node.id, node.text.clone()));
+                                                node_arm = Some(None);
+                                            } else {
+                                                node_arm = Some(Some(node.id));
+                                            }
                                         }
                                     });
                                 }
@@ -74919,6 +74940,9 @@ impl App {
                 }
                 reload(session);
             }
+        }
+        if let Some(next) = node_arm {
+            session.proto_node_confirm = next;
         }
         if let Some((id, text)) = delete {
             match session.db.delete_protocol_node(proto.id, id, &text) {
@@ -81279,6 +81303,8 @@ impl App {
             let mut poso_save = false;
             let mut poso_start_edit: Option<db::Posologie> = None;
             let mut poso_delete: Option<(i64, String)> = None;
+            let poso_confirm = session.poso_confirm;
+            let mut poso_arm: Option<Option<i64>> = None;
             let mut print_mono = false;
             let mut open_calc = false;
             let mut open_patient_id: Option<i64> = None;
@@ -81658,10 +81684,24 @@ impl App {
                                                     {
                                                         poso_start_edit = Some(p.clone());
                                                     }
-                                                    if motif::button(ui, tr("itv_delete")).clicked()
+                                                    let arming = poso_confirm == Some(p.id);
+                                                    if motif::button(
+                                                        ui,
+                                                        if arming {
+                                                            tr("itv_delete_confirm")
+                                                        } else {
+                                                            tr("itv_delete")
+                                                        },
+                                                    )
+                                                    .clicked()
                                                     {
-                                                        poso_delete =
-                                                            Some((p.id, p.indication.clone()));
+                                                        if arming {
+                                                            poso_delete =
+                                                                Some((p.id, p.indication.clone()));
+                                                            poso_arm = Some(None);
+                                                        } else {
+                                                            poso_arm = Some(Some(p.id));
+                                                        }
                                                     }
                                                 });
                                             }
@@ -82040,6 +82080,9 @@ impl App {
             }
             if poso_save {
                 session.save_poso_edit();
+            }
+            if let Some(next) = poso_arm {
+                session.poso_confirm = next;
             }
             if let Some((id, indication)) = poso_delete {
                 let drug_id = session.drug_form.as_ref().map(|d| d.id).unwrap_or(0);
