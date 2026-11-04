@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.453.0] - 2026-11-04
+
 ### Added
 
 - **Stupéfiants register: « Réceptions » and « Délivrances » columns under the history.** Each lists its lines newest first, with its count and total (cancelled lines struck through, not counted): day, quantity, wholesaler, delivery note and lot for a reception; day, quantity, ordonnancier number, file and prescriber for a dispensing. The combined history stays on top; on a pane too short for three lists, the history alone.
