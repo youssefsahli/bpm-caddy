@@ -90619,11 +90619,16 @@ impl App {
                 // tableau de bord : deux voies dès que la fenêtre les
                 // porte, la plus courte servie d'abord.
                 let cols = motif::column_count(w, 340.0, 2);
+                // **Des hauteurs en points, qui suivent le texte** : en
+                // pixels, à `text_scale = 1,6`, le graphe mensuel
+                // grossissait ses graduations dans un panneau qui ne
+                // grandissait pas, et sa légende n'avait plus la place
+                // d'un seul nom — « +2 », sous un graphe à deux séries.
                 let panels: Vec<(&str, f32)> = vec![
-                    (tr("dash_monthly"), 232.0),
-                    (tr("fin_per_state"), 190.0),
-                    (tr("fin_per_kind"), 232.0),
-                    (tr("fin_per_year"), 232.0),
+                    (tr("dash_monthly"), motif::pt(ui, 232.0)),
+                    (tr("fin_per_state"), motif::pt(ui, 190.0)),
+                    (tr("fin_per_kind"), motif::pt(ui, 232.0)),
+                    (tr("fin_per_year"), motif::pt(ui, 232.0)),
                 ];
                 let mut y = vec![full.top() + kpi_rect.height() + gutter; cols];
                 let lanes = motif::split_columns(
@@ -90981,28 +90986,28 @@ impl App {
                 // euros, et son voisin « Actes par thématique » dit du
                 // même mois ce qui se raconte devant quelqu'un.
                 let mut panels: Vec<(&str, f32)> = vec![
-                    (tr("dash_pipeline"), 172.0),
-                    (tr("dash_per_kind"), 232.0),
-                    (tr("dash_rdv"), 232.0),
-                    (tr("dash_recent"), 190.0),
-                    (tr("dash_today_notes"), 190.0),
+                    (tr("dash_pipeline"), motif::pt(ui, 172.0)),
+                    (tr("dash_per_kind"), motif::pt(ui, 232.0)),
+                    (tr("dash_rdv"), motif::pt(ui, 232.0)),
+                    (tr("dash_recent"), motif::pt(ui, 190.0)),
+                    (tr("dash_today_notes"), motif::pt(ui, 190.0)),
                 ];
                 // The call list only claims a panel when it has
                 // something to say: an empty « rien à revoir » box on
                 // every dashboard would train the eye to skip it.
                 if !session.bio_watch.is_empty() {
-                    panels.insert(3, (tr("dash_bio"), 190.0));
+                    panels.insert(3, (tr("dash_bio"), motif::pt(ui, 190.0)));
                 }
                 // Same rule for the sequences waiting on a rendez-vous:
                 // the panel appears when there is one, and not before.
                 if !session.to_schedule.is_empty() {
-                    panels.insert(3, (tr("dash_schedule"), 190.0));
+                    panels.insert(3, (tr("dash_schedule"), motif::pt(ui, 190.0)));
                 }
                 // And for the rentals whose ordonnance has lapsed: a
                 // forfait runs on by itself, and this is the only place
                 // it comes back into view before an indu does.
                 if !session.loc_watch.is_empty() {
-                    panels.insert(3, (tr("loc_due_title"), 190.0));
+                    panels.insert(3, (tr("loc_due_title"), motif::pt(ui, 190.0)));
                 }
                 // Les ruptures en cours — celles de l'officine et celles
                 // que le réseau a signalées —, avec ce qui a été donné à
@@ -94015,7 +94020,16 @@ impl App {
             );
             return;
         }
-        let rows = motif::split_rows(rect, &[0.0, 16.0], 4.0);
+        // La légende à la hauteur qu'elle prend, mesurée par la
+        // disposition qui la dessine : seize pixels fixes ne portaient
+        // plus une ligne de légende dès `text_scale = 1,25`, et la bande
+        // ne montrait que « +2 » — le compte de ses deux noms.
+        let legend_items = [
+            (tr("dash_legend_billed"), motif::accent()),
+            (tr("dash_legend_pending"), motif::chart::series_color(1)),
+        ];
+        let legend_h = motif::chart::legend_height(ui, &legend_items, rect.width());
+        let rows = motif::split_rows(rect, &[0.0, legend_h], 4.0);
         // "2026-08" → "08/26"
         let labels: Vec<String> = per_month
             .iter()
@@ -94048,13 +94062,7 @@ impl App {
             );
         }
         motif::inside(ui, rows[1], |ui| {
-            motif::chart::legend(
-                ui,
-                &[
-                    (tr("dash_legend_billed"), motif::accent()),
-                    (tr("dash_legend_pending"), motif::chart::series_color(1)),
-                ],
-            );
+            motif::chart::legend(ui, &legend_items);
         });
     }
 
