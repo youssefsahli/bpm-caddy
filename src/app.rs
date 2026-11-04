@@ -29541,9 +29541,36 @@ impl App {
                 } else {
                     chars_wide(ui, 18.0).min(width)
                 };
+                // **Chaque titre a d'abord sa largeur**, le reste se
+                // partage : à parts égales, « Proposition au
+                // prescripteur » se lisait tronqué à côté de
+                // « Médicament » qui laissait de la place. Trop étroit
+                // pour tous les titres, les parts restent égales.
+                let widths: Vec<f32> = {
+                    let font = egui::TextStyle::Body.resolve(ui.style());
+                    let heads: Vec<f32> = t
+                        .columns
+                        .iter()
+                        .map(|name| {
+                            ui.fonts(|f| {
+                                f.layout_no_wrap(name.clone(), font.clone(), motif::text())
+                                    .size()
+                                    .x
+                            }) + gap
+                        })
+                        .collect();
+                    let room = width - gap * (n - 1.0);
+                    let sum: f32 = heads.iter().sum();
+                    if table && sum <= room {
+                        let extra = ((room - sum) / n).floor();
+                        heads.iter().map(|h| (h + extra).floor()).collect()
+                    } else {
+                        vec![col_w; t.columns.len()]
+                    }
+                };
                 if table {
                     ui.horizontal(|ui| {
-                        for name in &t.columns {
+                        for (name, &col_w) in t.columns.iter().zip(&widths) {
                             ui.allocate_ui(egui::vec2(col_w, Self::label_line(ui)), |ui| {
                                 ui.set_width(col_w);
                                 ui.add(
@@ -29558,7 +29585,7 @@ impl App {
                     ui.push_id(("conduct_row", row), |ui| {
                         if table {
                             ui.horizontal(|ui| {
-                                for col in 0..t.columns.len() {
+                                for (col, &col_w) in widths.iter().enumerate() {
                                     let cell = c.rec.cells.entry((row, col)).or_default();
                                     if motif::field(ui, col_w, egui::TextEdit::singleline(cell))
                                         .lost_focus()
