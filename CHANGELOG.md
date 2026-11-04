@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **StupControl: the workbooks are read and written here, no program launched.** `src/classeur.rs` ports StupControl's own engine rule for rule: the header pair found among a sheet's first rows, retyped headers kept as one product, TOTAUX never counted, the stock carried from the previous year's closing Bilan; a line goes into the first free row above TOTAUX (empty rows packed first when the sheet is full), its Bilan as StupControl's `IFERROR(INT(…))` formula, through a temporary file, a check that the file did not change meanwhile, a copy in `.backups/` and an atomic swap, with its line in StupControl's audit log. A test runs both engines on copies of the same registers and compares every answer, every cell and every audit action. Options › Modules asks only for StupControl's settings file (empty: its own); the program path is gone.
+
+### Fixed
+
+- **« Tester » in the StupControl window no longer fails with a firewall message.** Launching the program could fail with « Permission denied », which the error wording took for a network refusal; nothing is launched any more.
+
 ## [0.452.0] - 2026-11-03
 
 ### Added

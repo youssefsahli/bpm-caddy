@@ -441,10 +441,10 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # demarrage = ""
 
 # [stupcontrol]
-# Où est StupControl sur ce poste, quand le module est chargé. Vide : là
-# où il s'installe d'ordinaire. La date de départ et la correspondance
-# des produits sont de l'officine, dans le registre.
-# programme = ""
+# Les réglages de StupControl sur ce poste (son config.json : où sont
+# les registres, quels produits suivre), quand le module est chargé.
+# Vide : les siens. La date de départ et la correspondance des produits
+# sont de l'officine, dans le registre.
 # configuration = ""
 
 # [prevention]
@@ -601,15 +601,14 @@ impl ModulesConfig {
     }
 }
 
-/// **StupControl, sur ce poste** — voir `src/stupcontrol.rs`. Le chemin
-/// du programme (vide : là où il s'installe d'ordinaire) et, s'il le
-/// faut, celui de son fichier de réglages (vide : le sien). La date de
+/// **StupControl, sur ce poste** — voir `src/stupcontrol.rs` et
+/// `src/classeur.rs`. Le fichier de réglages de StupControl, s'il le
+/// faut (vide : le sien) ; il dit où sont les registres. La date de
 /// départ et la correspondance des produits sont de l'officine, dans le
 /// registre.
 #[derive(Deserialize, Serialize, Clone, PartialEq, Debug, Default)]
 #[serde(default)]
 pub struct StupControlConfig {
-    pub programme: String,
     pub configuration: String,
 }
 

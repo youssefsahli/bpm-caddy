@@ -1493,10 +1493,13 @@ rythme de référence.
 
 Pour une officine qui tient aussi son registre dans les classeurs
 LibreOffice de StupControl (un fichier par produit et par année, un
-onglet par mois). Module à activer dans Options › Modules, sur le poste
-où StupControl est installé ; renseigner son chemin s'il n'est pas à
-son emplacement habituel. StupControl doit être en version 1.22 ou
-ultérieure.
+onglet par mois). Module à activer dans Options › Modules, sur un poste
+qui voit le répertoire des registres. BPM-Caddy lit et écrit les
+classeurs lui-même, exactement comme StupControl : le programme n'est
+pas lancé. Il lit les réglages de StupControl (son fichier
+`config.json` : où sont les registres, quels produits suivre) ;
+renseigner leur chemin s'ils ne sont pas à leur emplacement habituel.
+« Tester » dit où sont les registres.
 
 Le bouton « StupControl… » du registre ouvre la fenêtre de
 rapprochement :
@@ -1513,9 +1516,11 @@ rapprochement :
 
 Les lignes présentes des deux côtés sont appariées : une délivrance par
 son numéro d'ordonnancier, le reste par date, sens, quantité et nom. Une
-ligne du registre absente du classeur y est ajoutée par StupControl —
-sauvegarde du fichier avant écriture, refus tant qu'il est ouvert dans
-LibreOffice —, avec le nom du patient repris du dossier. Une ligne du
+ligne du registre absente du classeur y est ajoutée comme StupControl
+l'ajoute — première ligne libre au-dessus de TOTAUX, bilan en formule,
+sauvegarde du fichier dans `.backups/` avant écriture, refus tant qu'il
+est ouvert dans LibreOffice, ligne au journal d'audit de StupControl —,
+avec le nom du patient repris du dossier. Une ligne du
 classeur absente du registre y est inscrite (opérateur « StupControl »),
 rattachée au dossier seulement si un seul dossier porte ce nom ; le nom
 lui-même n'est pas écrit au registre.
@@ -1531,7 +1536,7 @@ Ne sont jamais forcés, et sont listés :
 
 - une ligne du classeur que le registre refuse — délivrance sans numéro
   d'ordonnancier, numéro non numérique ou déjà inscrit, date illisible ;
-- une ligne que StupControl n'a pas pu ajouter (classeur ouvert, onglet
+- une ligne qui n'a pas pu être ajoutée (classeur ouvert, onglet
   plein, colonnes patient non identifiées) : elle repart au
   rapprochement suivant ;
 - une ligne déjà rapprochée qui ne figure plus dans le classeur.

@@ -44,8 +44,10 @@ line in that test.
   `timeline`, `graph`, `scans`, `codebar`, `vitale`/`winscard`,
   `bulletin`, `content`, `script` (Rhai console), `telemetry`, `audit`,
   `stupcontrol` (the register kept in step with StupControl's
-  LibreOffice workbooks, through the installed program's headless
-  `--bridge`: pairing, export, import, gaps said never filled),
+  LibreOffice workbooks: pairing, export, import, gaps said never
+  filled) over `classeur` (StupControl's .ods engine ported rule for
+  rule — reading, stock, adding a line with lock, backup, atomic swap
+  and audit; a test runs it beside the Java program on the same files),
   `replica` (what travels between posts, field-by-field apply, and
   `admissible`: an op only through its table's stream), `reach` (a post
   reachable from the internet: IPv6, UPnP, published addresses) and

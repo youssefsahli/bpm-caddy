@@ -6,17 +6,16 @@
 //!
 //! # Par où l'on passe
 //!
-//! Par StupControl lui-même, jamais par les classeurs directement. Un
-//! classeur de registre est fragile : des en-têtes écrits à la main, une
-//! ligne TOTAUX que le mois suivant lit par adresse, des bilans tirés
-//! jusqu'en bas, des reports d'une année sur l'autre par lien externe.
-//! StupControl sait les lire et y ajouter une ligne sans rien casser —
-//! sauvegarde avant écriture, enregistrement atomique, refus tant que
-//! LibreOffice tient le fichier, journal d'audit. Un deuxième moteur ici
-//! serait deux façons d'écrire le même registre légal. Le programme
-//! installé est donc lancé sans fenêtre (`StupControl --bridge requête
-//! réponse`), une requête par appel : lire depuis une date, ajouter des
-//! lignes.
+//! Par les classeurs, comme StupControl lui-même : [`crate::classeur`]
+//! est la traduction de son moteur, règle pour règle — les en-têtes
+//! écrits à la main, la ligne TOTAUX que le mois suivant lit par adresse,
+//! les bilans tirés jusqu'en bas, les reports d'une année sur l'autre par
+//! lien externe ; sauvegarde avant écriture, enregistrement atomique,
+//! refus tant que LibreOffice tient le fichier, journal d'audit de
+//! StupControl. Un seul moteur, deux langues : un test les fait tourner
+//! côte à côte sur les mêmes classeurs. Le programme n'est plus lancé.
+//! Les réglages de StupControl (`config.json`) disent où sont les
+//! registres et quels produits suivre.
 //!
 //! # Ce qui se rapproche
 //!
@@ -57,8 +56,6 @@ use crate::db::{Db, StupMove};
 use crate::ordonnancier::Kind;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
 
 /// La date de départ du rapprochement, ISO, dans `stup_settings`.
 pub const SINCE_KEY: &str = "stupcontrol_since";
@@ -147,8 +144,9 @@ pub struct Outcome {
     pub error: Option<String>,
 }
 
-/// **Ce par quoi l'on parle à StupControl.** Le programme installé
-/// ([`Program`]) ; un double en mémoire dans les tests.
+/// **Ce par quoi l'on parle aux classeurs de StupControl.** Les
+/// classeurs eux-mêmes ([`crate::classeur::Native`]) ; un double en
+/// mémoire dans les tests.
 pub trait Bridge {
     fn read(&self, since: &str) -> Result<Answer, String>;
     fn add(&self, entries: &[Entry]) -> Result<Vec<Outcome>, String>;
@@ -881,137 +879,6 @@ pub fn sync(db: &Db, bridge: &dyn Bridge, today: &str, preview: bool) -> Result<
     Ok(report)
 }
 
-/// **Le programme StupControl installé**, lancé sans fenêtre pour une
-/// requête.
-pub struct Program {
-    pub exe: PathBuf,
-    /// Le fichier de réglages de StupControl, vide pour le sien.
-    pub config: String,
-    pub patience: Duration,
-}
-
-/// Où StupControl s'installe d'ordinaire, quand le chemin n'est pas
-/// écrit dans les options.
-pub fn find_program(written: &str) -> Option<PathBuf> {
-    let written = written.trim();
-    if !written.is_empty() {
-        let p = PathBuf::from(written);
-        return p.exists().then_some(p);
-    }
-    let mut candidates: Vec<PathBuf> = Vec::new();
-    if cfg!(windows) {
-        for var in ["LOCALAPPDATA", "ProgramFiles", "ProgramFiles(x86)"] {
-            if let Ok(base) = std::env::var(var) {
-                // L'installation (jpackage) ou l'archive zip, qui se lance
-                // par un .bat.
-                let dir = Path::new(&base).join("StupControl");
-                candidates.push(dir.join("StupControl.exe"));
-                candidates.push(dir.join("StupControl.bat"));
-            }
-        }
-    } else if cfg!(target_os = "macos") {
-        candidates.push(PathBuf::from(
-            "/Applications/StupControl.app/Contents/MacOS/StupControl",
-        ));
-    } else {
-        candidates.push(PathBuf::from("/opt/stupcontrol/bin/StupControl"));
-        if let Ok(home) = std::env::var("HOME") {
-            candidates.push(
-                Path::new(&home)
-                    .join("StupControl")
-                    .join("bin")
-                    .join("StupControl"),
-            );
-        }
-    }
-    candidates.into_iter().find(|p| p.exists())
-}
-
-impl Program {
-    fn call(&self, request: serde_json::Value) -> Result<serde_json::Value, String> {
-        static CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let dir = std::env::temp_dir().join(format!(
-            "bpm-caddy-stupcontrol-{}-{}",
-            std::process::id(),
-            CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-        let answer = self.call_in(&dir, request);
-        let _ = std::fs::remove_dir_all(&dir);
-        answer
-    }
-
-    fn call_in(
-        &self,
-        dir: &Path,
-        mut request: serde_json::Value,
-    ) -> Result<serde_json::Value, String> {
-        if !self.config.trim().is_empty() {
-            request["config"] = serde_json::Value::String(self.config.trim().to_owned());
-        }
-        let req = dir.join("requete.json");
-        let resp = dir.join("reponse.json");
-        std::fs::write(&req, request.to_string()).map_err(|e| e.to_string())?;
-        let mut child = std::process::Command::new(&self.exe)
-            .arg("--bridge")
-            .arg(&req)
-            .arg(&resp)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .map_err(|e| crate::strings::trf("stc_err_launch", e))?;
-        let deadline = Instant::now() + self.patience;
-        loop {
-            match child.try_wait() {
-                Ok(Some(_)) => break,
-                Ok(None) if Instant::now() < deadline => {
-                    std::thread::sleep(Duration::from_millis(100));
-                }
-                _ => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return Err(crate::strings::tr("stc_err_timeout").to_owned());
-                }
-            }
-        }
-        let text = std::fs::read_to_string(&resp)
-            .map_err(|_| crate::strings::tr("stc_err_no_answer").to_owned())?;
-        let value: serde_json::Value =
-            serde_json::from_str(&text).map_err(|e| crate::strings::trf("stc_err_answer", e))?;
-        if value["ok"].as_bool() != Some(true) {
-            return Err(crate::strings::trf(
-                "stc_err_refused",
-                value["error"].as_str().unwrap_or("?"),
-            ));
-        }
-        Ok(value)
-    }
-
-    /// Le programme répond-il, et sur quel répertoire ?
-    pub fn ping(&self) -> Result<Answer, String> {
-        let value = self.call(serde_json::json!({"op": "ping"}))?;
-        serde_json::from_value(value).map_err(|e| crate::strings::trf("stc_err_answer", e))
-    }
-}
-
-impl Bridge for Program {
-    fn read(&self, since: &str) -> Result<Answer, String> {
-        let value = self.call(serde_json::json!({"op": "read", "since": since}))?;
-        serde_json::from_value(value).map_err(|e| crate::strings::trf("stc_err_answer", e))
-    }
-
-    fn add(&self, entries: &[Entry]) -> Result<Vec<Outcome>, String> {
-        let value = self.call(serde_json::json!({"op": "add", "entries": entries}))?;
-        let outcomes: Vec<Outcome> = serde_json::from_value(value["results"].clone())
-            .map_err(|e| crate::strings::trf("stc_err_answer", e))?;
-        if outcomes.len() != entries.len() {
-            return Err(crate::strings::tr("stc_err_short_answer").to_owned());
-        }
-        Ok(outcomes)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1478,18 +1345,16 @@ mod tests {
         assert_eq!(db.stupcontrol_mapping().unwrap(), vec![(b, KEY.to_owned())]);
     }
 
-    /// **Le vrai StupControl, de bout en bout** : une délivrance de
-    /// BPM-Caddy écrite dans un vrai classeur, relue, et un second passage
-    /// qui ne fait plus rien. Lancé quand `BPM_CADDY_STUPCONTROL` désigne
-    /// le programme construit (`./gradlew installDist`) et
-    /// `BPM_CADDY_STUPCONTROL_SAMPLE` l'arbre d'exemple
+    /// **De bout en bout, sur de vrais classeurs** : une délivrance de
+    /// BPM-Caddy écrite dans le classeur, relue, et un second passage qui
+    /// ne fait plus rien. Lancé quand `BPM_CADDY_STUPCONTROL_SAMPLE`
+    /// désigne l'arbre d'exemple de StupControl
     /// (`scripts/scaffold_tree.py`) ; sinon, rien à dire.
+    #[cfg(feature = "desktop")]
     #[test]
-    fn the_installed_program_writes_and_reads_a_real_register() {
-        let (Ok(exe), Ok(sample)) = (
-            std::env::var("BPM_CADDY_STUPCONTROL"),
-            std::env::var("BPM_CADDY_STUPCONTROL_SAMPLE"),
-        ) else {
+    fn a_real_register_is_written_and_read_back() {
+        use std::path::Path;
+        let Ok(sample) = std::env::var("BPM_CADDY_STUPCONTROL_SAMPLE") else {
             return;
         };
         let (swept, db) = officine("real");
@@ -1508,10 +1373,9 @@ mod tests {
             .to_string(),
         )
         .unwrap();
-        let program = Program {
-            exe: PathBuf::from(exe),
+        let program = crate::classeur::Native {
             config: config.to_string_lossy().into_owned(),
-            patience: Duration::from_secs(120),
+            audit: Some(swept.0.join("audit.log")),
         };
         assert_eq!(program.ping().unwrap().data_dir, data.to_string_lossy());
         let stup = db
@@ -1552,7 +1416,8 @@ mod tests {
         );
     }
 
-    fn copy_tree(from: &Path, to: &Path) {
+    #[cfg(feature = "desktop")]
+    fn copy_tree(from: &std::path::Path, to: &std::path::Path) {
         std::fs::create_dir_all(to).unwrap();
         for entry in std::fs::read_dir(from).unwrap() {
             let entry = entry.unwrap();

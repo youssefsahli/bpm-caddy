@@ -11284,8 +11284,7 @@ impl Session {
     }
 
     /// **StupControl, sur son fil**, avec sa propre connexion à la base :
-    /// le programme met quelques secondes à lire les classeurs, parfois
-    /// sur un partage.
+    /// lire les classeurs prend un moment, parfois sur un partage.
     fn start_stupcontrol(&mut self, job: StcJob, config: &Config) {
         if self.stc.job.is_some() {
             return;
@@ -11293,14 +11292,13 @@ impl Session {
         let Some(path) = self.db.path() else {
             return;
         };
-        let Some(exe) = crate::stupcontrol::find_program(&config.stupcontrol.programme) else {
-            self.stc.note = Some((true, tr("stc_no_program").to_owned()));
+        if crate::classeur::settings_file(&config.stupcontrol.configuration).is_none() {
+            self.stc.note = Some((true, tr("stc_no_settings").to_owned()));
             return;
-        };
-        let program = crate::stupcontrol::Program {
-            exe,
+        }
+        let program = crate::classeur::Native {
             config: config.stupcontrol.configuration.clone(),
-            patience: Duration::from_secs(300),
+            audit: None,
         };
         let password = self.password.clone();
         let today = self.today.clone();
@@ -11330,8 +11328,7 @@ impl Session {
                     self.stc.job = None;
                     match done {
                         Ok(StcDone::Ping(a)) => {
-                            self.stc.note =
-                                Some((false, trn("stc_ping_ok", &[&a.version, &a.data_dir])));
+                            self.stc.note = Some((false, trf("stc_ping_ok", &a.data_dir)));
                         }
                         Ok(StcDone::Report(r)) => {
                             let key = if r.preview {
@@ -24312,7 +24309,7 @@ impl App {
                             session.stc.products = products.clone();
                             session.stc.note = Some((true, trn("stc_done", &[&3, &2, &41])));
                             session.stc.report = Some(crate::stupcontrol::Report {
-                                version: "1.22.0".to_owned(),
+                                version: String::new(),
                                 data_dir: "\\\\NAS\\Stupefiants".to_owned(),
                                 imported: 3,
                                 exported: 2,
@@ -89096,7 +89093,7 @@ impl App {
             .filter(|s| !s.product.archived)
             .map(|s| (s.product.id, s.product.label.clone()))
             .collect();
-        let program = crate::stupcontrol::find_program(&config.stupcontrol.programme);
+        let program = crate::classeur::settings_file(&config.stupcontrol.configuration);
         let busy = session.stc.job.is_some();
         let mut start: Option<StcJob> = None;
         let mut close = false;
@@ -89122,8 +89119,8 @@ impl App {
                 ui.add_space(4.0);
                 ui.horizontal_wrapped(|ui| {
                     ui.label(dim(&match &program {
-                        Some(p) => trf("stc_program_found", p.display()),
-                        None => tr("stc_no_program").to_owned(),
+                        Some(p) => trf("stc_settings_found", p.display()),
+                        None => tr("stc_no_settings").to_owned(),
                     }));
                     if ui
                         .add_enabled_ui(!busy && program.is_some(), |ui| {
@@ -89272,7 +89269,7 @@ impl App {
                             ui.add_space(6.0);
                             motif::section(ui, tr("stc_report_title"));
                             if !r.data_dir.is_empty() {
-                                ui.label(dim(&trn("stc_ping_ok", &[&r.version, &r.data_dir])));
+                                ui.label(dim(&trf("stc_ping_ok", &r.data_dir)));
                             }
                             for (label, ours, theirs) in &r.gaps {
                                 ui.add(
@@ -102423,21 +102420,9 @@ impl App {
                                     editor.cfg.modules.set(m, on);
                                 }
                             }
-                            // Où est StupControl sur ce poste : vide, là où il
-                            // s'installe d'ordinaire.
+                            // Les réglages de StupControl sur ce poste : vide,
+                            // les siens.
                             if editor.cfg.modules.stupcontrol {
-                                ui.horizontal_wrapped(|ui| {
-                                    ui.label(dim(tr("opts_stc_programme")));
-                                    motif::field(
-                                        ui,
-                                        chars_wide(ui, 40.0),
-                                        egui::TextEdit::singleline(
-                                            &mut editor.cfg.stupcontrol.programme,
-                                        )
-                                        .hint_text(motif::hint(tr("opts_stc_programme_hint"))),
-                                    )
-                                    .on_hover_text(tr("opts_stc_programme_tooltip"));
-                                });
                                 ui.horizontal_wrapped(|ui| {
                                     ui.label(dim(tr("opts_stc_configuration")));
                                     motif::field(
@@ -102450,11 +102435,11 @@ impl App {
                                     )
                                     .on_hover_text(tr("opts_stc_configuration_tooltip"));
                                 });
-                                ui.label(dim(&match crate::stupcontrol::find_program(
-                                    &editor.cfg.stupcontrol.programme,
+                                ui.label(dim(&match crate::classeur::settings_file(
+                                    &editor.cfg.stupcontrol.configuration,
                                 ) {
-                                    Some(p) => trf("stc_program_found", p.display()),
-                                    None => tr("stc_no_program").to_owned(),
+                                    Some(p) => trf("stc_settings_found", p.display()),
+                                    None => tr("stc_no_settings").to_owned(),
                                 }));
                             }
                             ui.add_space(8.0);

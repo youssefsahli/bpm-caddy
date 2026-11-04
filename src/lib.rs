@@ -20,6 +20,8 @@ pub mod caisse;
 pub mod campagne;
 pub mod cascade;
 pub mod classes;
+#[cfg(feature = "desktop")]
+pub mod classeur;
 pub mod codebar;
 pub mod codex;
 pub mod compression;
