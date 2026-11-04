@@ -89663,6 +89663,7 @@ impl App {
                                 ("stc_failed_title", &r.failed),
                                 ("stc_lost_title", &r.lost),
                                 ("stc_warnings_title", &r.warnings),
+                                ("stc_unlinked_title", &r.unlinked),
                             ] {
                                 if list.is_empty() {
                                     continue;

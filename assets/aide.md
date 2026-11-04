@@ -1573,6 +1573,10 @@ devant un produit versé l'en retire.
   les lignes des classeurs depuis la date de départ (tout l'historique
   si elle est vide), appariées à celles déjà au registre, avec les mêmes
   refus qu'un rapprochement. Rien n'est écrit dans les classeurs.
+  Une délivrance dont le nom ne désigne aucun dossier (une faute de
+  frappe, un nom d'usage) ou en désigne plusieurs est inscrite sans
+  dossier et listée : elle n'est jamais rattachée au dossier qui lui
+  ressemble.
 
 Les classeurs se recopient d'une année sur l'autre, avec leurs fautes :
 la reprise les contrôle année par année et liste, sous « À vérifier dans

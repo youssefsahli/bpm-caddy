@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   opening stock and the closing balance are sums, each workbook is still
   checked on its own, and lines sent from BPM-Caddy go to the first one.
 
+- StupControl takeover lists the deliveries inscribed without a patient
+  file: the workbook's name matched no file (a typo) or several. They are
+  never linked to the closest-looking file.
+
 ### Fixed
 
 - Stupéfiants register: in a narrow panel (« Dernières lignes », destruction

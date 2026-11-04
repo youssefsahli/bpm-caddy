@@ -755,6 +755,11 @@ pub struct Report {
     pub unreadable: Vec<String>,
     /// Ce qu'une reprise a relevé dans les classeurs ([`traps`]).
     pub warnings: Vec<Refused>,
+    /// Les délivrances inscrites sans dossier : le nom du classeur n'est
+    /// celui d'aucun dossier (une faute, un nom d'usage), ou celui de
+    /// plusieurs. Inscrites quand même — la ligne est au registre —, et
+    /// dites, pour que la vigilance les rattache de l'œil.
+    pub unlinked: Vec<Refused>,
 }
 
 /// Le nom d'un produit de StupControl à l'écran : son libellé, et son
@@ -1119,6 +1124,7 @@ fn run(
                     continue;
                 }
             };
+            let mut unlinked = false;
             let mut m = StupMove {
                 id: 0,
                 stup_id,
@@ -1151,18 +1157,28 @@ fn run(
                     m.kind = Kind::Sortie.as_key().to_owned();
                     m.ordo_no = ordo_no;
                     m.patient_id = patient_for(&nom, &prenom, &patients);
+                    unlinked = m.patient_id == 0;
                 }
                 Taken::Perte { remark } => {
                     m.kind = Kind::Perte.as_key().to_owned();
                     m.remark = crate::strings::trf("stc_remark_said", remark);
                 }
             }
+            let said_unlinked = || refuse(String::new());
             if preview {
                 report.imported += 1;
+                if unlinked {
+                    report.unlinked.push(said_unlinked());
+                }
                 continue;
             }
             match db.add_stup_move_linked(&m, "import", today) {
-                Ok(_) => report.imported += 1,
+                Ok(_) => {
+                    report.imported += 1;
+                    if unlinked {
+                        report.unlinked.push(said_unlinked());
+                    }
+                }
                 Err(e) => report.refused.push(refuse(e)),
             }
         }
@@ -1959,6 +1975,49 @@ mod tests {
         db.add_stupcontrol_key(a, EG).unwrap();
         db.remove_stupcontrol_key(a, EG).unwrap();
         assert_eq!(db.stupcontrol_keys(a).unwrap(), vec![KEY]);
+    }
+
+    /// **Un nom mal écrit au classeur** : la délivrance est inscrite, sans
+    /// dossier, et dite — jamais rattachée au dossier qui lui ressemble.
+    #[test]
+    fn a_misspelt_name_is_inscribed_without_a_file_and_said() {
+        let (_swept, db) = officine("unlinked");
+        let dupont = db.add_patient("Dupont", "Albert", "1950-01-01").unwrap();
+        let stup = db
+            .add_stupefiant(0, "Skenan LP 30 mg", "gélule", 0.0)
+            .unwrap();
+        db.set_stupcontrol_map(stup, KEY).unwrap();
+        let mut p = product(KEY, "Skenan LP 30 mg", "Skenan LP 30 mg");
+        p.movements = vec![
+            line("E", "2025-01-02", 28.0, "Cerp", "", ""),
+            line("S", "2025-01-10", 7.0, "DUPONT", "Albert", "18412"),
+            line("S", "2025-01-20", 7.0, "Dupond", "Albert", "18413"),
+        ];
+        p.years = vec![year(2025, 0.0, 14.0)];
+        p.stock = Some(14.0);
+        let fake = Fake {
+            products: RefCell::new(vec![p]),
+            refuse: RefCell::new(None),
+            added: RefCell::new(Vec::new()),
+        };
+        let seen = take_over(&db, &fake, "2026-03-10", true).unwrap();
+        assert_eq!(seen.unlinked.len(), 1, "{:?}", seen.unlinked);
+        let done = take_over(&db, &fake, "2026-03-10", false).unwrap();
+        assert_eq!(done.imported, 3);
+        assert_eq!(done.unlinked.len(), 1);
+        assert!(
+            done.unlinked[0].line.contains("Dupond"),
+            "{:?}",
+            done.unlinked
+        );
+        let files: Vec<i64> = db
+            .stup_moves(stup)
+            .unwrap()
+            .iter()
+            .filter(|m| m.kind == Kind::Sortie.as_key())
+            .map(|m| m.patient_id)
+            .collect();
+        assert_eq!(files, vec![dupont, 0]);
     }
 
     const EG: &str = "methadone-eg.ods|méthadone eg 10 mg";
