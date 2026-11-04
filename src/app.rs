@@ -77078,21 +77078,31 @@ impl App {
                         "compte_when",
                         &[&db::format_french_date(&post.entry.jour), &post.entry.debut],
                     );
-                    ui.horizontal_wrapped(|ui| {
-                        ui.add_space(4.0);
-                        ui.label(egui::RichText::new(author.as_str()).strong());
-                        ui.label(
-                            egui::RichText::new(trn("news_meta", &[&when, &reach]))
-                                .size(motif::pt(ui, 11.0))
-                                .color(motif::text_dim()),
-                        );
-                    });
-                    ui.horizontal(|ui| {
-                        ui.add_space(12.0);
-                        ui.add(egui::Label::new(post.entry.texte.as_str()).wrap());
-                    });
-                    ui.horizontal_wrapped(|ui| {
-                        ui.add_space(12.0);
+                    // **Les gestes sur la ligne de l'auteur**, à droite, quand
+                    // elle a la place : sur leur propre rangée, « Masquer »
+                    // et « Bloquer » doublaient la hauteur de chaque billet
+                    // pour deux boutons qu'on touche rarement.
+                    let meta = trn("news_meta", &[&when, &reach]);
+                    let gestures: Vec<&str> = if mine {
+                        vec![tr("news_delete")]
+                    } else if me.is_some() {
+                        vec![tr("news_mute"), tr("news_block")]
+                    } else {
+                        Vec::new()
+                    };
+                    let gestures_w =
+                        Self::group_width(ui, gestures.iter().map(|g| Self::button_width(ui, g)));
+                    let head_w =
+                        4.0 + Self::widest_in(
+                            ui,
+                            egui::TextStyle::Body.resolve(ui.style()),
+                            [author.as_str()].into_iter(),
+                        ) + ui.spacing().item_spacing.x
+                            + Self::widest(ui, 11.0, [meta.as_str()].into_iter());
+                    let beside = !gestures.is_empty()
+                        && head_w + 2.0 * ui.spacing().item_spacing.x + gestures_w
+                            <= ui.available_width();
+                    let mut gesture_row = |ui: &mut egui::Ui| {
                         if mine {
                             if motif::button(ui, tr("news_delete")).clicked() {
                                 act = Some(Act::Delete(Box::new(post.clone())));
@@ -77117,7 +77127,49 @@ impl App {
                                 ));
                             }
                         }
+                    };
+                    let head_h = if beside {
+                        Self::button_height(ui)
+                    } else {
+                        Self::label_line(ui)
+                    };
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(ui.available_width(), head_h),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| {
+                            ui.add_space(4.0);
+                            ui.label(egui::RichText::new(author.as_str()).strong());
+                            ui.label(
+                                egui::RichText::new(meta.as_str())
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            );
+                            if beside {
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        // Dessinés de droite à gauche : l'ordre
+                                        // lu reste « Masquer », « Bloquer ».
+                                        ui.allocate_ui_with_layout(
+                                            egui::vec2(gestures_w, head_h),
+                                            egui::Layout::left_to_right(egui::Align::Center),
+                                            |ui| gesture_row(ui),
+                                        );
+                                    },
+                                );
+                            }
+                        },
+                    );
+                    ui.horizontal(|ui| {
+                        ui.add_space(12.0);
+                        ui.add(egui::Label::new(post.entry.texte.as_str()).wrap());
                     });
+                    if !beside && !gestures.is_empty() {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.add_space(12.0);
+                            gesture_row(ui);
+                        });
+                    }
                     motif::separator(ui);
                 }
                 if hidden > 0 {

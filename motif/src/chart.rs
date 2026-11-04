@@ -215,6 +215,16 @@ pub fn bars(
             .flat_map(|g| g.values.iter().copied())
             .fold(0.0_f64, f64::max),
     );
+    // **The captions get a strip of their own.** They were drawn eight
+    // pixels under the grid's floor, which is the frame's own bottom:
+    // four pixels past the bevel and clipped, so every bar chart showed
+    // bars with nothing to say which week or month each one was.
+    let caption_font = egui::FontId::proportional(crate::pt(ui, 9.5));
+    let caption_h = ui.fonts(|f| f.row_height(&caption_font)) + 4.0;
+    let plot = egui::Rect::from_min_max(
+        plot.min,
+        egui::pos2(plot.right(), (plot.bottom() - caption_h).max(plot.top())),
+    );
     let area = grid(ui, plot, max, 4, fmt);
     let resp = ui.interact(rect, ui.id().with("motif_bars"), egui::Sense::hover());
     let pointer = resp.hover_pos();
@@ -259,10 +269,10 @@ pub fn bars(
         let every = (60.0 / slot).ceil() as usize;
         if every <= 1 || i % every == 0 {
             ui.painter().text(
-                egui::pos2(x0 + slot / 2.0, area.bottom() + 8.0),
+                egui::pos2(x0 + slot / 2.0, area.bottom() + caption_h / 2.0),
                 egui::Align2::CENTER_CENTER,
                 g.label,
-                egui::FontId::proportional(crate::pt(ui, 9.5)),
+                caption_font.clone(),
                 if over {
                     crate::text()
                 } else {
