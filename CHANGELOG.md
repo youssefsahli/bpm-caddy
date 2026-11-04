@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **StupControl: take the register over and keep it here.** « Reprendre… » in the StupControl window (two clicks) writes every workbook line since the start date (the whole history when it is empty) under the followed products each StupControl product is linked to, after the workbook's balance on the day before as an inventory named « Report du registre StupControl ». Lines already in the register pair instead of doubling, refusals are listed as in a sync, nothing is written to the workbooks, and syncing stops. No product is created: a StupControl product with no link is listed and left out until it is linked. « Aperçu de la reprise » says what it would do; running it again writes nothing twice.
+- **The takeover checks the workbooks year by year** and lists what to verify: a year with no workbook or no column for the product (with the columns it has), a header read despite a typo (same doses, one header that close), a year that does not open at the previous year's closing Bilan, quantities or a Bilan that are not whole numbers. Taking the whole history starts from the first year's opening Bilan and follows the lines, so an error in the workbooks shows as a final gap against their last Bilan instead of vanishing into the carried stock.
+
 ### Changed
 
 - **StupControl: the workbooks are read and written here, no program launched.** `src/classeur.rs` ports StupControl's own engine rule for rule: the header pair found among a sheet's first rows, retyped headers kept as one product, TOTAUX never counted, the stock carried from the previous year's closing Bilan; a line goes into the first free row above TOTAUX (empty rows packed first when the sheet is full), its Bilan as StupControl's `IFERROR(INT(…))` formula, through a temporary file, a check that the file did not change meanwhile, a copy in `.backups/` and an atomic swap, with its line in StupControl's audit log. A test runs both engines on copies of the same registers and compares every answer, every cell and every audit action. Options › Modules asks only for StupControl's settings file (empty: its own); the program path is gone.

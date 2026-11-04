@@ -11311,6 +11311,16 @@ impl Session {
                         crate::stupcontrol::sync(&db, &program, &today, job == StcJob::Preview)
                     })
                     .map(StcDone::Report),
+                StcJob::TakePreview | StcJob::Take => Db::open(&path, &password)
+                    .and_then(|db| {
+                        crate::stupcontrol::take_over(
+                            &db,
+                            &program,
+                            &today,
+                            job == StcJob::TakePreview,
+                        )
+                    })
+                    .map(StcDone::Report),
             };
             let _ = tx.send(out);
         });
@@ -11331,15 +11341,28 @@ impl Session {
                             self.stc.note = Some((false, trf("stc_ping_ok", &a.data_dir)));
                         }
                         Ok(StcDone::Report(r)) => {
-                            let key = if r.preview {
-                                "stc_preview_done"
-                            } else {
-                                "stc_done"
-                            };
                             let troubled =
                                 !(r.refused.is_empty() && r.failed.is_empty() && r.lost.is_empty());
-                            self.stc.note =
-                                Some((troubled, trn(key, &[&r.imported, &r.exported, &r.paired])));
+                            let said = if r.takeover {
+                                trn(
+                                    if r.preview {
+                                        "stc_take_preview_done"
+                                    } else {
+                                        "stc_take_done"
+                                    },
+                                    &[&r.openings, &r.imported, &r.paired, &r.kept],
+                                )
+                            } else {
+                                trn(
+                                    if r.preview {
+                                        "stc_preview_done"
+                                    } else {
+                                        "stc_done"
+                                    },
+                                    &[&r.imported, &r.exported, &r.paired],
+                                )
+                            };
+                            self.stc.note = Some((troubled, said));
                             self.stc.products = r.products.clone();
                             if !r.preview {
                                 self.reload_stup();
@@ -11375,7 +11398,11 @@ impl Session {
             .db
             .stup_setting(crate::stupcontrol::SINCE_KEY)
             .is_some();
-        if auto && since && self.serves() {
+        let taken = self
+            .db
+            .stup_setting(crate::stupcontrol::TAKEN_KEY)
+            .is_some();
+        if auto && since && !taken && self.serves() {
             self.start_stupcontrol(StcJob::Sync, config);
         }
     }
@@ -20207,6 +20234,8 @@ struct StcState {
     note: Option<(bool, String)>,
     job: Option<std::sync::mpsc::Receiver<Result<StcDone, String>>>,
     auto_next: Option<Instant>,
+    /// « Reprendre… » cliqué une fois : le second clic confirme.
+    take_armed: bool,
 }
 
 enum StcDone {
@@ -20219,6 +20248,8 @@ enum StcJob {
     Ping,
     Preview,
     Sync,
+    TakePreview,
+    Take,
 }
 
 /// La fenêtre du réseau d'officines : ce que la base en dit, une tâche
@@ -89075,11 +89106,12 @@ impl App {
     /// **La fenêtre StupControl** : la date de départ, la correspondance
     /// des produits, l'aperçu, le rapprochement et ce qu'il a dit.
     fn stupcontrol_window(ctx: &egui::Context, session: &mut Session, config: &Config) {
-        use crate::stupcontrol::{AUTO_KEY, SINCE_KEY};
+        use crate::stupcontrol::{AUTO_KEY, SINCE_KEY, TAKEN_KEY};
         if !session.stc.open {
             return;
         }
         let since = session.db.stup_setting(SINCE_KEY).unwrap_or_default();
+        let taken = session.db.stup_setting(TAKEN_KEY);
         let auto = session.db.stup_setting(AUTO_KEY).as_deref() == Some("1");
         let mapping: std::collections::HashMap<i64, String> = session
             .db
@@ -89116,6 +89148,18 @@ impl App {
                         .color(motif::text_dim())
                 };
                 ui.add(egui::Label::new(dim(tr("stc_scope"))).wrap());
+                if let Some(day) = &taken {
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(trf(
+                                "stc_taken",
+                                crate::db::format_french_date(day),
+                            ))
+                            .strong(),
+                        )
+                        .wrap(),
+                    );
+                }
                 ui.add_space(4.0);
                 ui.horizontal_wrapped(|ui| {
                     ui.label(dim(&match &program {
@@ -89153,29 +89197,57 @@ impl App {
                     }
                 });
                 let mut on = auto;
-                if motif::checkbox(ui, &mut on, tr("stc_auto"))
-                    .on_hover_text(tr("stc_auto_tooltip"))
-                    .changed()
+                if taken.is_none()
+                    && motif::checkbox(ui, &mut on, tr("stc_auto"))
+                        .on_hover_text(tr("stc_auto_tooltip"))
+                        .changed()
                 {
                     set_auto = Some(on);
                 }
                 ui.horizontal_wrapped(|ui| {
-                    let can = !busy && program.is_some() && !since.is_empty();
-                    if ui
-                        .add_enabled_ui(can, |ui| motif::button(ui, tr("stc_preview")))
-                        .inner
-                        .on_hover_text(tr("stc_preview_tooltip"))
-                        .clicked()
+                    let can = !busy && program.is_some() && !since.is_empty() && taken.is_none();
+                    if taken.is_none()
+                        && ui
+                            .add_enabled_ui(can, |ui| motif::button(ui, tr("stc_preview")))
+                            .inner
+                            .on_hover_text(tr("stc_preview_tooltip"))
+                            .clicked()
                     {
                         start = Some(StcJob::Preview);
                     }
-                    if ui
-                        .add_enabled_ui(can, |ui| motif::button(ui, tr("stc_sync")))
-                        .inner
-                        .on_hover_text(tr("stc_sync_tooltip"))
-                        .clicked()
+                    if taken.is_none()
+                        && ui
+                            .add_enabled_ui(can, |ui| motif::button(ui, tr("stc_sync")))
+                            .inner
+                            .on_hover_text(tr("stc_sync_tooltip"))
+                            .clicked()
                     {
                         start = Some(StcJob::Sync);
+                    }
+                    let can_take = !busy && program.is_some();
+                    if ui
+                        .add_enabled_ui(can_take, |ui| motif::button(ui, tr("stc_take_preview")))
+                        .inner
+                        .on_hover_text(tr("stc_take_preview_tooltip"))
+                        .clicked()
+                    {
+                        start = Some(StcJob::TakePreview);
+                    }
+                    let (label, tip) = if session.stc.take_armed {
+                        ("stc_take_confirm", "stc_take_confirm_tooltip")
+                    } else {
+                        ("stc_take", "stc_take_tooltip")
+                    };
+                    if ui
+                        .add_enabled_ui(can_take, |ui| motif::button(ui, tr(label)))
+                        .inner
+                        .on_hover_text(tr(tip))
+                        .clicked()
+                    {
+                        if session.stc.take_armed {
+                            start = Some(StcJob::Take);
+                        }
+                        session.stc.take_armed = !session.stc.take_armed;
                     }
                     if motif::button(ui, tr("stc_close")).clicked() {
                         close = true;
@@ -89237,7 +89309,11 @@ impl App {
                             // proche.
                             if !r.unmapped.is_empty() {
                                 ui.add_space(6.0);
-                                ui.label(dim(tr("stc_unmapped")));
+                                ui.label(dim(tr(if r.takeover || taken.is_some() {
+                                    "stc_take_unmapped"
+                                } else {
+                                    "stc_unmapped"
+                                })));
                                 for p in &r.unmapped {
                                     ui.horizontal_wrapped(|ui| {
                                         ui.label(crate::stupcontrol::shown_label(p));
@@ -89297,6 +89373,7 @@ impl App {
                                 ("stc_refused_title", &r.refused),
                                 ("stc_failed_title", &r.failed),
                                 ("stc_lost_title", &r.lost),
+                                ("stc_warnings_title", &r.warnings),
                             ] {
                                 if list.is_empty() {
                                     continue;
@@ -89308,13 +89385,12 @@ impl App {
                                         .color(motif::alert()),
                                 );
                                 for x in list {
-                                    ui.add(
-                                        egui::Label::new(trn(
-                                            "stc_issue",
-                                            &[&x.product, &x.line, &x.reason],
-                                        ))
-                                        .wrap(),
-                                    );
+                                    let said = if x.reason.is_empty() {
+                                        trn("stc_warning", &[&x.product, &x.line])
+                                    } else {
+                                        trn("stc_issue", &[&x.product, &x.line, &x.reason])
+                                    };
+                                    ui.add(egui::Label::new(said).wrap());
                                 }
                             }
                         }

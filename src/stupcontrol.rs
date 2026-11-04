@@ -63,6 +63,11 @@ pub const SINCE_KEY: &str = "stupcontrol_since";
 pub const AUTO_KEY: &str = "stupcontrol_auto";
 /// `stupcontrol_map:<id du produit>` = la clé du produit de StupControl.
 pub const MAP_PREFIX: &str = "stupcontrol_map:";
+/// Le jour, ISO, où le registre a été **repris** des classeurs : depuis,
+/// il est tenu ici seul et les classeurs ne sont plus rapprochés.
+pub const TAKEN_KEY: &str = "stupcontrol_taken";
+/// Ce que lit une reprise sans date de départ : tout l'historique.
+const EVERYTHING: &str = "1900-01-01";
 
 /// Un produit tel que StupControl le décrit : sa clé est le fichier et
 /// l'en-tête de colonne, en minuscules (`methadone.ods|méthadone 10 mg`).
@@ -84,6 +89,91 @@ pub struct Product {
     pub stock: Option<f64>,
     #[serde(default)]
     pub movements: Vec<Line>,
+    /// Ce que dit chaque année, de la première lue à la dernière : lu
+    /// seulement pour une reprise ([`Bridge::survey`]).
+    #[serde(default)]
+    pub years: Vec<YearRead>,
+}
+
+/// **Une année d'un produit**, telle qu'une reprise la contrôle. Les
+/// en-têtes se recopient d'une année sur l'autre, avec leurs fautes :
+/// ce qui ne se lit pas se dit ici, et ne s'absorbe pas dans le stock
+/// reporté.
+#[derive(Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct YearRead {
+    pub year: i64,
+    /// `2025/oxy.ods` ; vide quand l'année n'a pas de classeur.
+    pub file: String,
+    /// L'en-tête lu ; vide quand aucune colonne ne correspond.
+    pub header: String,
+    /// L'en-tête a été lu malgré une faute de frappe.
+    pub lenient: bool,
+    /// Les en-têtes du classeur, quand aucun ne correspond.
+    pub headers: Vec<String>,
+    /// Le stock à l'ouverture de l'année et son dernier Bilan.
+    pub opening: Option<f64>,
+    pub closing: Option<f64>,
+    /// Entrées moins sorties de l'année.
+    pub net: f64,
+    /// Les lignes en quantité non entière.
+    pub fractions: usize,
+}
+
+/// **Le bilan qu'une reprise retient** : la dernière cellule Bilan lue
+/// dans les classeurs, celle que l'officine voit, et non le stock que
+/// StupControl en recalcule — il ignore un en-tête mal recopié et
+/// additionne d'une année sur l'autre ce qui ne s'y suit pas. Celui de
+/// StupControl à défaut d'année lue.
+pub fn bilan(p: &Product) -> Option<f64> {
+    p.years.iter().rev().find_map(|y| y.closing).or(p.stock)
+}
+
+/// Un nombre d'unités qui n'est pas entier.
+fn fractional(v: f64) -> bool {
+    (v - v.round()).abs() > 1e-6
+}
+
+/// **Ce qu'il faut vérifier dans les classeurs d'un produit** avant de
+/// les reprendre : une année sans classeur ou sans colonne, un en-tête
+/// lu malgré une faute, une année qui ne s'ouvre pas où la précédente
+/// s'est fermée, une quantité ou un bilan non entiers.
+pub fn traps(p: &Product) -> Vec<String> {
+    use crate::strings::{decimal, trf, trn};
+    let mut out = Vec::new();
+    let mut last: Option<(i64, f64)> = None;
+    for y in &p.years {
+        if y.file.is_empty() {
+            out.push(trf("stc_trap_no_file", y.year));
+            continue;
+        }
+        if y.header.is_empty() {
+            out.push(trn(
+                "stc_trap_no_column",
+                &[&y.file, &p.specialite, &y.headers.join(", ")],
+            ));
+            last = None;
+            continue;
+        }
+        if y.lenient {
+            out.push(trn("stc_trap_lenient", &[&y.file, &y.header]));
+        }
+        if y.fractions > 0 {
+            out.push(trn("stc_trap_fractions", &[&y.file, &y.fractions]));
+        }
+        if let (Some((year, closed)), Some(opened)) = (last, y.opening) {
+            if (closed - opened).abs() > 1e-6 {
+                out.push(trn(
+                    "stc_trap_break",
+                    &[&y.file, &decimal(opened, 2), &year, &decimal(closed, 2)],
+                ));
+            }
+        }
+        last = y.closing.map(|c| (y.year, c));
+    }
+    if let Some(stock) = p.stock.filter(|v| fractional(*v)) {
+        out.push(trf("stc_trap_stock", decimal(stock, 2)));
+    }
+    out
 }
 
 /// Une ligne lue dans un onglet. `date` est ISO, ou absente quand la
@@ -150,6 +240,10 @@ pub struct Outcome {
 pub trait Bridge {
     fn read(&self, since: &str) -> Result<Answer, String>;
     fn add(&self, entries: &[Entry]) -> Result<Vec<Outcome>, String>;
+    /// Une lecture pour une reprise : la même, et ce que dit chaque année.
+    fn survey(&self, since: &str) -> Result<Answer, String> {
+        self.read(since)
+    }
 }
 
 /// Le sens d'une ligne de classeur.
@@ -574,6 +668,13 @@ pub struct Refused {
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Report {
     pub preview: bool,
+    /// Une reprise ([`take_over`]) plutôt qu'un rapprochement.
+    pub takeover: bool,
+    /// Les stocks reportés des classeurs, un par produit qui en avait.
+    pub openings: usize,
+    /// Les lignes de BPM-Caddy absentes des classeurs, laissées telles
+    /// quelles par une reprise.
+    pub kept: usize,
     pub version: String,
     pub data_dir: String,
     pub imported: usize,
@@ -591,6 +692,8 @@ pub struct Report {
     /// Tous les produits de StupControl : (clé, libellé), pour choisir.
     pub products: Vec<(String, String)>,
     pub unreadable: Vec<String>,
+    /// Ce qu'une reprise a relevé dans les classeurs ([`traps`]).
+    pub warnings: Vec<Refused>,
 }
 
 /// Le nom d'un produit de StupControl à l'écran : son libellé, et son
@@ -649,13 +752,101 @@ fn move_said(m: &StupMove) -> String {
 /// liée (le programme s'arrête entre les deux) se paire au passage
 /// suivant : elle y est, sous la même clé.
 pub fn sync(db: &Db, bridge: &dyn Bridge, today: &str, preview: bool) -> Result<Report, String> {
+    if db.stup_setting(TAKEN_KEY).is_some() {
+        return Err(crate::strings::tr("stc_err_taken").to_owned());
+    }
+    run(db, bridge, today, preview, false)
+}
+
+/// **Reprendre le registre des classeurs**, pour le tenir ici seul, ou
+/// dire ce que cela ferait (`preview`).
+///
+/// Produit par produit déjà suivi et rapproché — les produits de
+/// BPM-Caddy restent ceux de l'officine : un produit de StupControl sans
+/// correspondance est montré, et repris une fois associé. Pour chacun :
+///
+/// * **le stock reporté** : le Bilan du classeur la veille du premier jour
+///   repris, inscrit en inventaire nommé « report » quand le registre ne
+///   le porte pas déjà — c'est ce que fait l'ouverture d'un registre ;
+/// * **toutes les lignes** des classeurs depuis la date de départ (tout,
+///   quand elle est vide), appariées à celles déjà au registre, avec les
+///   mêmes règles et les mêmes refus qu'un rapprochement ;
+/// * rien n'est écrit dans les classeurs : ce que le registre porte de
+///   plus y reste.
+///
+/// Puis le registre se dit repris ([`TAKEN_KEY`]) et le rapprochement
+/// s'arrête. Une reprise se relance sans rien doubler : ce qu'elle a
+/// inscrit est lié, et le stock reporté est déjà au registre.
+pub fn take_over(
+    db: &Db,
+    bridge: &dyn Bridge,
+    today: &str,
+    preview: bool,
+) -> Result<Report, String> {
+    let report = run(db, bridge, today, preview, true)?;
+    if !preview {
+        db.set_stup_setting(TAKEN_KEY, today)?;
+        db.set_stup_setting(AUTO_KEY, "")?;
+    }
+    Ok(report)
+}
+
+/// Le solde d'une suite de lignes du registre, dans l'ordre du registre.
+fn balance_of(moves: &[&StupMove]) -> f64 {
+    let mut sorted: Vec<&StupMove> = moves.to_vec();
+    sorted.sort_by(|a, b| a.happened_on.cmp(&b.happened_on).then(a.id.cmp(&b.id)));
+    let lines: Vec<crate::ordonnancier::Move> = sorted
+        .iter()
+        .map(|m| crate::ordonnancier::Move {
+            kind: Kind::from_key(&m.kind),
+            quantity: m.quantity,
+            day: &m.happened_on,
+            seq: m.id,
+            cancels: m.cancels,
+            expected: m.expected,
+        })
+        .collect();
+    crate::ordonnancier::balance(&lines).stock
+}
+
+/// **Le stock d'un classeur la veille de `start`** : son Bilan, moins ce
+/// que les lignes lues depuis y ont fait.
+pub fn balance_before(stock: f64, lines: &[Line], start: &str) -> f64 {
+    lines
+        .iter()
+        .filter(|l| l.date.as_deref().is_none_or(|d| d >= start))
+        .fold(stock, |b, l| match Side::of(&l.kind) {
+            Some(Side::E) => b - l.units,
+            Some(Side::S) => b + l.units,
+            None => b,
+        })
+}
+
+fn run(
+    db: &Db,
+    bridge: &dyn Bridge,
+    today: &str,
+    preview: bool,
+    takeover: bool,
+) -> Result<Report, String> {
     let since = db.stup_setting(SINCE_KEY).unwrap_or_default();
-    if since.trim().is_empty() {
+    let since = since.trim().to_owned();
+    if since.is_empty() && !takeover {
         return Err(crate::strings::tr("stc_err_no_since").to_owned());
     }
-    let answer = bridge.read(since.trim())?;
+    let since = if since.is_empty() {
+        EVERYTHING.to_owned()
+    } else {
+        since
+    };
+    let answer = if takeover {
+        bridge.survey(&since)?
+    } else {
+        bridge.read(&since)?
+    };
     let mut report = Report {
         preview,
+        takeover,
         version: answer.version.clone(),
         data_dir: answer.data_dir.clone(),
         unreadable: answer.unreadable.clone(),
@@ -695,11 +886,31 @@ pub fn sync(db: &Db, bridge: &dyn Bridge, today: &str, preview: bool) -> Result<
         let Some(product) = products.get(&stup_id) else {
             continue;
         };
+        for said in traps(theirs) {
+            report.warnings.push(Refused {
+                product: product.label.clone(),
+                line: said,
+                reason: String::new(),
+            });
+        }
         let all = db.stup_moves(stup_id)?;
         let by_id: HashMap<i64, &StupMove> = all.iter().map(|m| (m.id, m)).collect();
+        // Le premier jour repris : la date de départ, ou la première ligne
+        // datée des classeurs quand une reprise prend tout. Ce qui précède
+        // au registre est compté dans le stock reporté.
+        let start = if since == EVERYTHING {
+            theirs.movements.iter().filter_map(|l| l.date.clone()).min()
+        } else {
+            Some(since.clone())
+        };
+        let from = if takeover {
+            start.clone().unwrap_or_else(|| since.clone())
+        } else {
+            since.clone()
+        };
         let ours: Vec<Ours> = all
             .iter()
-            .filter(|m| m.happened_on.as_str() >= since.trim())
+            .filter(|m| m.happened_on.as_str() >= from.as_str())
             .filter_map(|m| {
                 let target = by_id.get(&m.cancels).copied();
                 let patient = names
@@ -728,6 +939,80 @@ pub fn sync(db: &Db, bridge: &dyn Bridge, today: &str, preview: bool) -> Result<
                     line: move_said(m),
                     reason: crate::strings::tr("stc_lost").to_owned(),
                 });
+            }
+        }
+        // Le stock reporté : celui du classeur la veille du premier jour
+        // repris, quand le registre ne le porte pas déjà.
+        if takeover {
+            if let (Some(start), Some(stock)) = (start.clone(), bilan(theirs)) {
+                let before: Vec<&StupMove> = all
+                    .iter()
+                    .filter(|m| m.happened_on.as_str() < start.as_str())
+                    .collect();
+                let ours_then = balance_of(&before);
+                // Tout l'historique : le stock d'ouverture de la première
+                // année, et la suite des lignes. Une année perdue ou un
+                // bilan faux se lit alors en écart au bout, au lieu de se
+                // fondre dans le report.
+                let first = theirs
+                    .years
+                    .iter()
+                    .find(|y| !y.header.is_empty())
+                    .and_then(|y| y.opening);
+                let theirs_then = match first {
+                    Some(o) if since == EVERYTHING => o,
+                    _ => balance_before(stock, &theirs.movements, &start),
+                };
+                let day = crate::date::add_days(&start, -1).unwrap_or_else(|| start.clone());
+                if !same_units(ours_then, theirs_then) {
+                    let said = || {
+                        format!(
+                            "{} — {}",
+                            crate::db::format_french_date(&day),
+                            crate::strings::decimal(theirs_then, 2)
+                        )
+                    };
+                    if theirs_then < 0.0 {
+                        report.refused.push(Refused {
+                            product: product.label.clone(),
+                            line: said(),
+                            reason: crate::strings::tr("stc_refused_opening").to_owned(),
+                        });
+                    } else if preview {
+                        report.openings += 1;
+                    } else {
+                        let m = StupMove {
+                            id: 0,
+                            stup_id,
+                            kind: Kind::Inventaire.as_key().to_owned(),
+                            happened_on: day.clone(),
+                            quantity: theirs_then,
+                            ordo_year: 0,
+                            ordo_no: 0,
+                            patient_id: 0,
+                            prescriber: String::new(),
+                            supplier: String::new(),
+                            reference: String::new(),
+                            lot: String::new(),
+                            expiry: String::new(),
+                            expected: ours_then,
+                            operator: crate::strings::tr("stc_operator").to_owned(),
+                            remark: crate::strings::trf(
+                                "stc_opening_remark",
+                                crate::db::format_french_date(&day),
+                            ),
+                            cancels: 0,
+                        };
+                        match db.add_stup_move_linked(&m, "report", today) {
+                            Ok(_) => report.openings += 1,
+                            Err(e) => report.refused.push(Refused {
+                                product: product.label.clone(),
+                                line: said(),
+                                reason: e,
+                            }),
+                        }
+                    }
+                }
             }
         }
         // Les lignes du classeur, dans l'ordre des jours.
@@ -797,6 +1082,10 @@ pub fn sync(db: &Db, bridge: &dyn Bridge, today: &str, preview: bool) -> Result<
                 Err(e) => report.refused.push(refuse(e)),
             }
         }
+        if takeover {
+            report.kept += decided.export.len();
+            continue;
+        }
         for id in &decided.export {
             let Some(o) = ours.iter().find(|o| o.id == *id) else {
                 continue;
@@ -864,7 +1153,12 @@ pub fn sync(db: &Db, bridge: &dyn Bridge, today: &str, preview: bool) -> Result<
         let Some(&stup_id) = by_key.get(theirs.key.as_str()) else {
             continue;
         };
-        let (Some(ours), Some(stock)) = (standing.get(&stup_id), theirs.stock) else {
+        let stock = if takeover {
+            bilan(theirs)
+        } else {
+            theirs.stock
+        };
+        let (Some(ours), Some(stock)) = (standing.get(&stup_id), stock) else {
             continue;
         };
         let stock = stock + exported_effect.get(&stup_id).copied().unwrap_or(0.0);
@@ -1110,7 +1404,63 @@ mod tests {
             min_stock: 0,
             stock: Some(0.0),
             movements: Vec::new(),
+            years: Vec::new(),
         }
+    }
+
+    fn year(y: i64, opening: f64, closing: f64) -> YearRead {
+        YearRead {
+            year: y,
+            file: format!("{y}/oxy.ods"),
+            header: "Oxycodone 10".into(),
+            opening: Some(opening),
+            closing: Some(closing),
+            ..Default::default()
+        }
+    }
+
+    /// **Les pièges des classeurs se disent** : une année sans classeur ou
+    /// sans colonne, un en-tête lu malgré sa faute, une année qui ne
+    /// s'ouvre pas où la précédente s'est fermée, un bilan non entier.
+    #[test]
+    fn what_the_workbooks_get_wrong_is_said_year_by_year() {
+        let mut p = product("oxy.ods|oxycodone 10", "Oxycodone 10", "Oxycodone 10");
+        assert!(traps(&p).is_empty());
+        let mut lenient = year(2024, 41.0, 30.0);
+        lenient.lenient = true;
+        lenient.header = "Oxycodonne 10".into();
+        lenient.fractions = 2;
+        let missing = YearRead {
+            year: 2025,
+            file: "2025/oxy.ods".into(),
+            headers: vec!["Oxycodone Biogaran 10".into()],
+            ..Default::default()
+        };
+        let none = YearRead {
+            year: 2026,
+            ..Default::default()
+        };
+        p.years = vec![
+            year(2022, 10.0, 20.0),
+            year(2023, 20.0, 40.0),
+            lenient,
+            missing,
+            none,
+            year(2027, 47.6, 47.6),
+        ];
+        p.stock = Some(47.6);
+        let said = traps(&p);
+        assert_eq!(said.len(), 6, "{said:#?}");
+        assert!(said[0].contains("Oxycodonne 10"));
+        assert!(said[1].contains("2 ligne"));
+        assert!(
+            said[2].contains("41") && said[2].contains("40"),
+            "{}",
+            said[2]
+        );
+        assert!(said[3].contains("Oxycodone Biogaran 10"));
+        assert!(said[4].contains("2026"));
+        assert!(said[5].contains("47,6"), "{}", said[5]);
     }
 
     #[test]
@@ -1276,6 +1626,122 @@ mod tests {
         assert_eq!(db.stup_moves(stup).unwrap().len(), moves.len());
     }
 
+    /// **Une reprise** inscrit tout l'historique des classeurs sous les
+    /// produits suivis qui les désignent, avec le stock reporté la veille
+    /// du premier jour, n'écrit rien aux classeurs, arrête le
+    /// rapprochement, et se relance sans rien doubler.
+    #[test]
+    fn a_takeover_carries_the_stock_and_the_history_into_the_followed_products() {
+        let (_swept, db) = officine("take");
+        let stup = db
+            .add_stupefiant(0, "Méthadone 10 mg", "gélule", 0.0)
+            .unwrap();
+        db.set_stupcontrol_map(stup, KEY).unwrap();
+        let dupont = db.add_patient("Dupont", "Albert", "1950-01-01").unwrap();
+        let mut sortie = mv(0, Kind::Sortie, "2026-03-03", 7.0);
+        sortie.stup_id = stup;
+        sortie.ordo_no = 18412;
+        sortie.patient_id = dupont;
+        db.add_stup_move(&sortie).unwrap();
+
+        let mut p = product(KEY, "Méthadone 10 mg", "Méthadone 10 mg");
+        p.stock = Some(30.0);
+        p.movements = vec![
+            line("E", "2026-03-02", 28.0, "Cerp", "", ""),
+            line("S", "2026-03-03", 7.0, "DUPONT", "Albert", "18412"),
+            line("S", "2026-03-04", 5.0, "MARTIN", "Paul", "18500"),
+        ];
+        let mut other = product("skenan.ods|skenan 10", "Skenan 10 mg", "Skenan 10");
+        other.stock = Some(12.0);
+        other.movements = vec![line("E", "2026-03-02", 12.0, "Cerp", "", "")];
+        let fake = Fake {
+            products: RefCell::new(vec![p, other]),
+            refuse: RefCell::new(None),
+            added: RefCell::new(Vec::new()),
+        };
+
+        let seen = take_over(&db, &fake, "2026-03-10", true).unwrap();
+        assert!(seen.takeover && seen.preview);
+        assert_eq!(
+            (seen.openings, seen.imported, seen.paired, seen.kept),
+            (1, 2, 1, 0)
+        );
+        assert!(
+            db.stup_setting(TAKEN_KEY).is_none(),
+            "un aperçu n'écrit rien"
+        );
+        assert_eq!(db.stup_moves(stup).unwrap().len(), 1);
+
+        let done = take_over(&db, &fake, "2026-03-10", false).unwrap();
+        assert_eq!((done.openings, done.imported, done.paired), (1, 2, 1));
+        assert!(done.refused.is_empty(), "{:?}", done.refused);
+        assert!(done.gaps.is_empty(), "{:?}", done.gaps);
+        assert!(
+            fake.added.borrow().is_empty(),
+            "rien n'est écrit aux classeurs"
+        );
+        // Le produit sans correspondance est dit, et rien n'est créé pour lui.
+        assert_eq!(done.unmapped.len(), 1);
+        assert_eq!(db.stupefiants().unwrap().len(), 1);
+        let moves = db.stup_moves(stup).unwrap();
+        let opening = moves
+            .iter()
+            .find(|m| m.kind == Kind::Inventaire.as_key())
+            .unwrap();
+        assert_eq!(
+            (opening.happened_on.as_str(), opening.quantity),
+            ("2026-03-01", 14.0)
+        );
+        assert!(opening.remark.contains("01/03/2026"));
+        let standing = db.stup_summary().unwrap();
+        assert_eq!(standing[0].stock, 30.0);
+
+        assert_eq!(db.stup_setting(TAKEN_KEY).as_deref(), Some("2026-03-10"));
+        assert!(sync(&db, &fake, "2026-03-11", false).is_err());
+
+        let again = take_over(&db, &fake, "2026-03-11", false).unwrap();
+        assert!(again.warnings.is_empty());
+        assert_eq!((again.openings, again.imported, again.paired), (0, 0, 3));
+        assert_eq!(db.stup_moves(stup).unwrap().len(), moves.len());
+    }
+
+    /// **Tout l'historique** part du stock d'ouverture de la première
+    /// année : un bilan faux plus loin se lit en écart, au lieu de se
+    /// fondre dans le stock reporté.
+    #[test]
+    fn a_whole_takeover_starts_from_the_first_year_and_says_the_gap() {
+        let (_swept, db) = officine("whole");
+        let stup = db.add_stupefiant(0, "Oxycodone 10", "gélule", 0.0).unwrap();
+        db.set_stupcontrol_map(stup, KEY).unwrap();
+        let mut p = product(KEY, "Oxycodone 10", "Oxycodone 10");
+        p.movements = vec![
+            line("E", "2025-01-10", 28.0, "Cerp", "", ""),
+            line("E", "2026-01-10", 28.0, "Cerp", "", ""),
+        ];
+        // 2025 s'ouvre à 20 et se ferme à 48 ; 2026 repart de 47,6.
+        p.years = vec![year(2025, 20.0, 48.0), year(2026, 47.6, 75.6)];
+        p.stock = Some(75.6);
+        let fake = Fake {
+            products: RefCell::new(vec![p]),
+            refuse: RefCell::new(None),
+            added: RefCell::new(Vec::new()),
+        };
+        let done = take_over(&db, &fake, "2026-03-10", false).unwrap();
+        assert_eq!((done.openings, done.imported), (1, 2));
+        let opening = db
+            .stup_moves(stup)
+            .unwrap()
+            .into_iter()
+            .find(|m| m.kind == Kind::Inventaire.as_key())
+            .unwrap();
+        assert_eq!(
+            (opening.happened_on.as_str(), opening.quantity),
+            ("2025-01-09", 20.0)
+        );
+        assert_eq!(done.gaps, vec![("Oxycodone 10".to_owned(), 76.0, 75.6)]);
+        assert_eq!(done.warnings.len(), 2, "{:?}", done.warnings);
+    }
+
     /// **Un classeur ouvert dans LibreOffice** refuse la ligne : elle est
     /// dite, et repart au passage suivant.
     #[test]
@@ -1350,6 +1816,95 @@ mod tests {
     /// ne fait plus rien. Lancé quand `BPM_CADDY_STUPCONTROL_SAMPLE`
     /// désigne l'arbre d'exemple de StupControl
     /// (`scripts/scaffold_tree.py`) ; sinon, rien à dire.
+    /// **Une reprise sur de vrais classeurs**, tout l'historique : le
+    /// stock reporté vient de la première année, le solde final tombe sur
+    /// le bilan, et un en-tête configuré avec une faute se lit quand même,
+    /// en le disant. Rien n'est écrit aux classeurs.
+    #[cfg(feature = "desktop")]
+    #[test]
+    fn a_real_register_is_taken_over() {
+        use std::path::Path;
+        let Ok(sample) = std::env::var("BPM_CADDY_STUPCONTROL_SAMPLE") else {
+            return;
+        };
+        let (swept, db) = officine("real-take");
+        let data = swept.0.join("registres");
+        copy_tree(Path::new(&sample), &data);
+        let before = std::fs::read(data.join("2025/skenan.ods")).unwrap();
+        let config = swept.0.join("stupcontrol.json");
+        std::fs::write(
+            &config,
+            serde_json::json!({
+                "dataDir": data,
+                "drugs": [{"commercialName": "Skenan LP 10 mg", "fileName": "skenan.ods",
+                           "specialite": "Skenen LP 10 mg", "minStock": 0}],
+                "repartiteurs": [],
+                "patientColumns": {}
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let program = crate::classeur::Native {
+            config: config.to_string_lossy().into_owned(),
+            audit: Some(swept.0.join("audit.log")),
+        };
+        let strict = program.read(EVERYTHING).unwrap();
+        assert!(
+            strict.products[0].movements.is_empty(),
+            "StupControl ne lit pas l'en-tête mal écrit"
+        );
+        let stup = db
+            .add_stupefiant(0, "Skenan LP 10 mg", "gélule", 0.0)
+            .unwrap();
+        let key = &strict.products[0].key;
+        db.set_stupcontrol_map(stup, key).unwrap();
+        let done = take_over(&db, &program, "2026-03-10", false).unwrap();
+        assert!(done.imported > 0, "{done:?}");
+        assert_eq!(done.openings, 1);
+        assert!(
+            done.warnings
+                .iter()
+                .any(|w| w.line.contains("Skenan LP 10 mg")),
+            "{:?}",
+            done.warnings
+        );
+        // Le classeur d'exemple porte une date impossible et un numéro
+        // d'ordonnancier écrit deux fois : refusés, dits, et l'écart au
+        // bout le montre au lieu d'être fondu dans le stock reporté.
+        assert!(
+            done.refused.iter().any(|r| r.line.starts_with("31/02/25")),
+            "{:?}",
+            done.refused
+        );
+        let read = program.survey(EVERYTHING).unwrap();
+        let first = read.products[0].years[0].opening.unwrap();
+        let moves = db.stup_moves(stup).unwrap();
+        let opening = moves
+            .iter()
+            .find(|m| m.kind == Kind::Inventaire.as_key())
+            .unwrap();
+        assert_eq!(opening.quantity, first);
+        let ours = db
+            .stup_summary()
+            .unwrap()
+            .into_iter()
+            .find(|s| s.product.id == stup)
+            .unwrap()
+            .stock;
+        assert_eq!(done.gaps.len(), 1);
+        assert!(same_units(done.gaps[0].1, ours));
+        assert!(
+            !done
+                .warnings
+                .iter()
+                .any(|w| w.line.contains("pas de classeur")),
+            "{:?}",
+            done.warnings
+        );
+        assert_eq!(std::fs::read(data.join("2025/skenan.ods")).unwrap(), before);
+        assert!(!swept.0.join("audit.log").exists());
+    }
+
     #[cfg(feature = "desktop")]
     #[test]
     fn a_real_register_is_written_and_read_back() {

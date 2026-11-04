@@ -1544,6 +1544,39 @@ Ne sont jamais forcés, et sont listés :
 Un écart entre le solde du registre et le bilan du classeur est
 signalé, jamais comblé : il s'explique, au besoin par un inventaire.
 
+### Reprendre le registre de StupControl
+
+Pour quitter les classeurs et tenir le registre dans BPM-Caddy seul.
+Associer d'abord chaque produit de StupControl au produit suivi qui lui
+correspond (« Associer à… » ou la liste des correspondances) : la
+reprise inscrit sous les produits de BPM-Caddy, elle n'en crée pas. Un
+produit de StupControl sans correspondance est listé et n'est pas repris.
+
+- **Aperçu de la reprise** dit ce qu'elle ferait, sans rien écrire.
+- **Reprendre…**, puis **Confirmer la reprise** : pour chaque produit
+  associé, le bilan du classeur la veille du premier jour repris est
+  inscrit en inventaire « Report du registre StupControl », puis toutes
+  les lignes des classeurs depuis la date de départ (tout l'historique
+  si elle est vide), appariées à celles déjà au registre, avec les mêmes
+  refus qu'un rapprochement. Rien n'est écrit dans les classeurs.
+
+Les classeurs se recopient d'une année sur l'autre, avec leurs fautes :
+la reprise les contrôle année par année et liste, sous « À vérifier dans
+les classeurs », une année sans classeur ou sans la colonne du produit
+(avec les colonnes présentes), un en-tête lu malgré une faute de frappe
+(même dosage, un seul en-tête aussi proche), une année qui ne s'ouvre pas
+au bilan de clôture de la précédente, une quantité ou un bilan non
+entiers. Sans date de départ, le stock reporté est celui de l'ouverture
+de la première année, et les lignes suivent : une erreur des classeurs
+apparaît en écart final avec leur dernier bilan, au lieu d'être fondue
+dans le report. Cet écart se règle par un inventaire compté.
+
+Ensuite le rapprochement s'arrête et les classeurs ne sont plus mis à
+jour. Une reprise peut être relancée (après correction d'une ligne
+refusée, par exemple) : elle n'inscrit rien deux fois. Les noms des
+patients lus dans les classeurs ne sont pas repris : une délivrance est
+rattachée au dossier seulement quand un seul porte ce nom.
+
 « Rapprocher automatiquement » relance le rapprochement toutes les cinq
 minutes sur le poste qui sert l'officine. À activer après un premier
 rapprochement vérifié.

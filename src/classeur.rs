@@ -930,6 +930,9 @@ struct Acc {
     monthly: [[f64; 2]; 12],
     movements: Vec<Movement>,
     closing: [f64; 12],
+    /// The first Bilan of each month less what its own row did: what the
+    /// month opened at. Not StupControl's — the takeover's check.
+    opening: [f64; 12],
     captured: [bool; 12],
     last_movement_month: usize,
 }
@@ -940,6 +943,7 @@ impl Acc {
             monthly: [[0.0; 2]; 12],
             movements: Vec::new(),
             closing: [f64::NAN; 12],
+            opening: [f64::NAN; 12],
             captured: [false; 12],
             last_movement_month: 0,
         }
@@ -991,6 +995,72 @@ impl FileData {
 
     pub fn movements(&self, specialite: &str) -> Option<&[Movement]> {
         self.find(specialite).map(|a| a.movements.as_slice())
+    }
+
+    /// What the year opened at: the first month's first Bilan, less what
+    /// its own row did.
+    pub fn opening(&self, specialite: &str) -> Option<f64> {
+        let a = self.find(specialite)?;
+        a.opening.iter().find(|v| !v.is_nan()).copied()
+    }
+}
+
+/// **The header a misspelt name designates**, when StupControl's own
+/// matching finds none: the same doses, and the words within one typing
+/// slip per six letters, of one header only. « Oxycodonne 10 » reads
+/// « Oxycodone 10 » ; « Oxycodone 20 » never does.
+pub fn closest_header(query: &str, candidates: &[String]) -> Option<usize> {
+    fn split(s: &str) -> (Vec<String>, String) {
+        let n = norm_specialite(s);
+        let mut doses: Vec<String> = n
+            .split(' ')
+            .filter(|t| t.chars().any(|c| c.is_ascii_digit()))
+            .map(str::to_owned)
+            .collect();
+        doses.sort();
+        let words = n
+            .split(' ')
+            .filter(|t| !t.chars().any(|c| c.is_ascii_digit()))
+            .collect::<Vec<_>>()
+            .join(" ");
+        (doses, words)
+    }
+    fn distance(a: &str, b: &str) -> usize {
+        let a: Vec<char> = a.chars().collect();
+        let b: Vec<char> = b.chars().collect();
+        let mut row: Vec<usize> = (0..=b.len()).collect();
+        for i in 1..=a.len() {
+            let mut prev = row[0];
+            row[0] = i;
+            for j in 1..=b.len() {
+                let here = row[j];
+                row[j] = if a[i - 1] == b[j - 1] {
+                    prev
+                } else {
+                    1 + prev.min(row[j]).min(row[j - 1])
+                };
+                prev = here;
+            }
+        }
+        row[b.len()]
+    }
+    let (doses, words) = split(query);
+    if words.is_empty() {
+        return None;
+    }
+    let allowed = (words.chars().count() / 6).max(1);
+    let hits: Vec<usize> = candidates
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| {
+            let (d, w) = split(c);
+            d == doses && distance(&w, &words) <= allowed
+        })
+        .map(|(i, _)| i)
+        .collect();
+    match hits.as_slice() {
+        [one] => Some(*one),
+        _ => None,
     }
 }
 
@@ -1279,6 +1349,11 @@ fn record_row(
         let movement = e.is_some_and(|v| v > 0.0) || s.is_some_and(|v| v > 0.0);
         if let Some(bc) = p.b {
             if let Some(b) = vals.get(&bc) {
+                if acc.opening[month - 1].is_nan() {
+                    let e = e.filter(|v| *v > 0.0).unwrap_or(0.0);
+                    let s = s.filter(|v| *v > 0.0).unwrap_or(0.0);
+                    acc.opening[month - 1] = *b - e + s;
+                }
                 if movement || !acc.captured[month - 1] {
                     acc.closing[month - 1] = *b;
                     acc.captured[month - 1] = true;
@@ -3100,6 +3175,24 @@ impl Native {
 
 impl Bridge for Native {
     fn read(&self, since: &str) -> Result<Answer, String> {
+        self.gather(since, false)
+    }
+
+    fn survey(&self, since: &str) -> Result<Answer, String> {
+        self.gather(since, true)
+    }
+
+    fn add(&self, entries: &[Entry]) -> Result<Vec<Outcome>, String> {
+        self.add_entries(entries)
+    }
+}
+
+impl Native {
+    /// `Bridge.read`, rule for rule; with `survey`, also what each year
+    /// says ([`crate::stupcontrol::YearRead`]) and a misspelt header read
+    /// under the name it designates ([`closest_header`]) — what a
+    /// takeover needs and StupControl never did.
+    fn gather(&self, since: &str, survey: bool) -> Result<Answer, String> {
         let ready = self.ready()?;
         let (sy, sm, sd) = iso_date(since).ok_or_else(|| trf("cls_err_since", since))?;
         let dir = &ready.settings.data_dir;
@@ -3113,23 +3206,69 @@ impl Bridge for Native {
                 continue;
             }
             let mut lines = Vec::new();
-            for &year in &years {
-                if year < sy {
+            let mut surveyed = Vec::new();
+            // From this product's first workbook to its last: a year
+            // without one in between is a hole, one outside is not.
+            let held: Vec<i64> = years
+                .iter()
+                .copied()
+                .filter(|&y| y >= sy && resolve_file(dir, &d, y).exists())
+                .collect();
+            let span = held.first().copied().unwrap_or(1)..=held.last().copied().unwrap_or(0);
+            for year in span {
+                let file = resolve_file(dir, &d, year);
+                let shown = format!("{year}/{}", d.file_name);
+                let mut read = crate::stupcontrol::YearRead {
+                    year,
+                    file: shown.clone(),
+                    ..Default::default()
+                };
+                if !years.contains(&year) || !file.exists() {
+                    read.file.clear();
+                    if survey {
+                        surveyed.push(read);
+                    }
                     continue;
                 }
-                let file = resolve_file(dir, &d, year);
                 if session.read(&file).is_none() {
                     if session.unreadable(&file) {
-                        unreadable.push(format!("{year}/{}", d.file_name));
+                        unreadable.push(shown);
                     }
                     continue;
                 }
                 let Some(fd) = session.read(&file) else {
                     continue;
                 };
-                let Some(moves) = fd.movements(&d.specialite) else {
+                let header = match fd.movements(&d.specialite) {
+                    Some(_) => Some(d.specialite.clone()),
+                    None if survey => closest_header(&d.specialite, fd.products()).map(|i| {
+                        read.lenient = true;
+                        fd.products()[i].clone()
+                    }),
+                    None => None,
+                };
+                let Some(header) = header else {
+                    if survey {
+                        read.headers = fd.products().to_vec();
+                        surveyed.push(read);
+                    }
                     continue;
                 };
+                let Some(moves) = fd.movements(&header) else {
+                    continue;
+                };
+                if survey {
+                    read.header = if read.lenient {
+                        header.clone()
+                    } else {
+                        d.specialite.clone()
+                    };
+                    read.opening = fd.opening(&header);
+                    read.closing = fd.current_balance(&header);
+                    read.net = fd.monthly(&header).map(|m| sum_net(&m)).unwrap_or(0.0);
+                    read.fractions = moves.iter().filter(|m| m.units != m.units.trunc()).count();
+                    surveyed.push(read);
+                }
                 for m in moves {
                     let day = register_date(&m.date);
                     let in_window = match day {
@@ -3162,6 +3301,7 @@ impl Bridge for Native {
                 min_stock: d.min_stock,
                 stock: Some(stock),
                 movements: lines,
+                years: surveyed,
             });
         }
         Ok(Answer {
@@ -3172,7 +3312,7 @@ impl Bridge for Native {
         })
     }
 
-    fn add(&self, entries: &[Entry]) -> Result<Vec<Outcome>, String> {
+    fn add_entries(&self, entries: &[Entry]) -> Result<Vec<Outcome>, String> {
         let ready = self.ready()?;
         let audit = self.audit();
         audit.log("PASSERELLE_BPM", &format!("ajouts={}", entries.len()));
@@ -3247,6 +3387,27 @@ fn add_one(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **Un en-tête mal recopié** se lit sous le nom qu'il désigne : même
+    /// dosage, une faute de frappe ; jamais un autre dosage, jamais deux.
+    #[test]
+    fn a_misspelt_header_is_read_only_when_one_header_is_that_close() {
+        let h = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            closest_header("Oxycodone 10", &h(&["Oxycodonne 10", "Skenan 10"])),
+            Some(0)
+        );
+        assert_eq!(closest_header("Oxycodone 10", &h(&["Oxycodone 20"])), None);
+        assert_eq!(
+            closest_header("Méthadone 40 mg", &h(&["Metadone 40 mg"])),
+            Some(0)
+        );
+        assert_eq!(
+            closest_header("Oxycodone 10", &h(&["Oxycodonne 10", "Oxycodone 10."])),
+            None
+        );
+        assert_eq!(closest_header("Oxycodone 10", &h(&["Fentanyl 10"])), None);
+    }
 
     #[test]
     fn a_specialite_finds_its_one_column() {
