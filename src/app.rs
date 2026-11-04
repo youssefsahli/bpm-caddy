@@ -34193,23 +34193,33 @@ impl App {
                                         } else {
                                             name
                                         };
-                                        ui.scope(|ui| {
-                                            ui.set_width(name_w);
-                                            ui.vertical(|ui| {
-                                                ui.add(egui::Label::new(name).truncate());
-                                                if !foot.is_empty() {
-                                                    ui.add(
-                                                        egui::Label::new(
-                                                            egui::RichText::new(foot.join(" · "))
+                                        // Sans pied, le nom se centre sur la
+                                        // rangée comme les autres cases : en
+                                        // haut, il ne tombait pas en face de
+                                        // sa date.
+                                        if foot.is_empty() {
+                                            Self::grid_cell(ui, name_w, name);
+                                        } else {
+                                            ui.scope(|ui| {
+                                                ui.set_width(name_w);
+                                                ui.vertical(|ui| {
+                                                    ui.add(egui::Label::new(name).truncate());
+                                                    if !foot.is_empty() {
+                                                        ui.add(
+                                                            egui::Label::new(
+                                                                egui::RichText::new(
+                                                                    foot.join(" · "),
+                                                                )
                                                                 .size(motif::pt(ui, 10.5))
                                                                 .italics()
                                                                 .color(motif::text_faint()),
-                                                        )
-                                                        .wrap(),
-                                                    );
-                                                }
+                                                            )
+                                                            .wrap(),
+                                                        );
+                                                    }
+                                                });
                                             });
-                                        });
+                                        }
                                         if cols >= 4 {
                                             Self::grid_cell(
                                                 ui,
