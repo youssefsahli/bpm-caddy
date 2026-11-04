@@ -22877,20 +22877,33 @@ fn act_picker_window(ctx: &egui::Context, session: &mut Session) -> Option<Inter
                 .id_salt("act_picker_body")
                 .max_height(room)
                 .show(ui, |ui| {
+                    // **Une colonne de boutons d'une seule largeur**, celle
+                    // de l'acte le plus long : chaque bouton prenait la
+                    // largeur de son texte au-delà d'un plancher fixe, et
+                    // la colonne se lisait en dents de scie, les pastilles
+                    // de couleur alignées sur rien.
+                    let labels: Vec<String> = InterviewKind::ALL
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, kind)| format!("{}  ·  {}", (i + 1) % 10, kind.label()))
+                        .collect();
+                    let width = labels
+                        .iter()
+                        .map(|l| App::button_width(ui, l))
+                        .fold(0.0, f32::max);
+                    // Compact rows: one line of the button font and its
+                    // padding, so nine acts of ten stand on screen at 1,6.
+                    let height = ui.text_style_height(&egui::TextStyle::Button)
+                        + ui.spacing().button_padding.y * 2.0;
                     egui::Grid::new("act_picker")
                         .num_columns(2)
                         .spacing([10.0, 6.0])
                         .show(ui, |ui| {
-                            for (i, kind) in InterviewKind::ALL.into_iter().enumerate() {
+                            for (kind, label) in InterviewKind::ALL.into_iter().zip(&labels) {
                                 if ui
                                     .add_sized(
-                                        [190.0, 24.0],
-                                        egui::Button::new(format!(
-                                            "{}  ·  {}",
-                                            (i + 1) % 10,
-                                            kind.label()
-                                        ))
-                                        .fill(motif::bg()),
+                                        [width, height],
+                                        egui::Button::new(label.as_str()).fill(motif::bg()),
                                     )
                                     .clicked()
                                 {
