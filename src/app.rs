@@ -41254,35 +41254,25 @@ impl App {
         if let Some(form) = &mut session.edit_patient {
             ui.add_space(8.0);
             let dim = |t: &str| egui::RichText::new(t).color(motif::text_dim());
+            // **Une largeur pour toutes les cases** : chacune prenait
+            // la sienne (trente caractères, ou son invite et un plancher),
+            // et la colonne se lisait en escalier.
+            let w = chars_wide(ui, 30.0).min(ui.available_width() * 0.7);
             egui::Grid::new("edit_patient")
                 .min_col_width(chars_wide(ui, 14.0))
                 .num_columns(2)
                 .spacing([12.0, 8.0])
                 .show(ui, |ui| {
                     Self::form_label(ui, tr("form_last_name"));
-                    motif::field(
-                        ui,
-                        chars_wide(ui, 30.0),
-                        egui::TextEdit::singleline(&mut form.last_name),
-                    );
+                    motif::field(ui, w, egui::TextEdit::singleline(&mut form.last_name));
                     ui.end_row();
                     Self::form_label(ui, tr("form_first_name"));
-                    motif::field_sized(
-                        ui,
-                        egui::vec2(
-                            Self::field_width(ui, [tr("form_birth_hint")].into_iter()).max(240.0),
-                            Self::button_height(ui),
-                        ),
-                        egui::TextEdit::singleline(&mut form.first_name),
-                    );
+                    motif::field(ui, w, egui::TextEdit::singleline(&mut form.first_name));
                     ui.end_row();
                     Self::form_label(ui, tr("form_birth"));
-                    motif::field_sized(
+                    motif::field(
                         ui,
-                        egui::vec2(
-                            Self::field_width(ui, [tr("form_birth_hint")].into_iter()).max(240.0),
-                            Self::button_height(ui),
-                        ),
+                        w,
                         egui::TextEdit::singleline(&mut form.birth_date)
                             .hint_text(motif::hint(tr("form_birth_hint"))),
                     );
@@ -41291,45 +41281,31 @@ impl App {
                     Self::sex_choice(ui, &mut form.sex);
                     ui.end_row();
                     Self::form_label(ui, tr("form_phone"));
-                    motif::field_sized(
+                    motif::field(
                         ui,
-                        egui::vec2(
-                            Self::field_width(ui, [tr("form_phone_hint")].into_iter()).max(240.0),
-                            Self::button_height(ui),
-                        ),
+                        w,
                         egui::TextEdit::singleline(&mut form.phone)
                             .hint_text(motif::hint(tr("form_phone_hint"))),
                     );
                     ui.end_row();
                     Self::form_label(ui, tr("form_comment"));
-                    motif::field_sized(
+                    motif::field(
                         ui,
-                        egui::vec2(
-                            Self::field_width(ui, [tr("form_comment_hint")].into_iter()).max(240.0),
-                            Self::button_height(ui),
-                        ),
+                        w,
                         egui::TextEdit::singleline(&mut form.notes)
                             .hint_text(motif::hint(tr("form_comment_hint"))),
                     );
                     ui.end_row();
                     Self::form_label(ui, tr("form_physician"));
-                    motif::field_sized(
+                    motif::field(
                         ui,
-                        egui::vec2(
-                            Self::field_width(ui, [tr("form_physician_hint")].into_iter())
-                                .max(240.0),
-                            Self::button_height(ui),
-                        ),
+                        w,
                         egui::TextEdit::singleline(&mut form.physician)
                             .hint_text(motif::hint(tr("form_physician_hint"))),
                     );
                     ui.end_row();
                     Self::form_label(ui, tr("form_email"));
-                    motif::field(
-                        ui,
-                        chars_wide(ui, 30.0),
-                        egui::TextEdit::singleline(&mut form.email),
-                    );
+                    motif::field(ui, w, egui::TextEdit::singleline(&mut form.email));
                     ui.end_row();
                     Self::form_label(ui, tr("form_address"));
                     motif::field(
