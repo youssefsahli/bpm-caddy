@@ -3686,6 +3686,141 @@ mod tests {
         assert_eq!(years(&data.to_string_lossy()), vec![2025]);
         let _ = std::fs::remove_dir_all(&dir);
     }
+    /// A cell's text as StupControl reads it: spaces, tabs and line
+    /// breaks spelled out, one line per paragraph.
+    #[test]
+    fn a_cell_reads_its_spaces_tabs_and_paragraphs() {
+        let xml = br#"<table:table-cell xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"><text:p>Du<text:s text:c="2"/>pont<text:tab/>A<text:line-break/>B</text:p><text:p>C<text:s/><text:span>D</text:span></text:p></table:table-cell>"#;
+        let nodes = parse_dom(xml).unwrap();
+        let Some(Node::El(cell)) = nodes.iter().find(|n| matches!(n, Node::El(_))) else {
+            panic!("no element");
+        };
+        let ns = Ns::of(cell).unwrap();
+        assert_eq!(display_text(cell, &ns), "Du  pont\tA\nB\nC D");
+    }
+
+    /// The bridge itself, from StupControl's settings file to the
+    /// answer: lines added and refused, the stock carried over a year
+    /// with no workbook, a broken workbook named, a missing column and
+    /// a misspelt header said year by year.
+    #[test]
+    fn the_bridge_reads_and_writes_a_tree_of_registers() {
+        use crate::stupcontrol::{Bridge, Entry};
+        let dir = temp("bridge");
+        let data = dir.join("registres");
+        for y in ["2023", "2024", "2025"] {
+            std::fs::create_dir_all(data.join(y)).unwrap();
+        }
+        workbook(&data.join("2023"), "methadone.ods", &[], true, 5);
+        workbook(&data.join("2025"), "methadone.ods", &[], true, 5);
+        std::fs::write(data.join("2025").join("broken.ods"), b"not a zip").unwrap();
+        let config = dir.join("config.json");
+        let drug = |spec: &str, file: &str| serde_json::json!({"commercialName": spec, "fileName": file, "specialite": spec});
+        std::fs::write(
+            &config,
+            serde_json::json!({
+                "dataDir": data,
+                "drugs": [drug("Méthadone 10 mg", "methadone.ods"),
+                          drug("Méthadone 5 mg", "methadone.ods"),
+                          drug("Méthdone 40 mg", "methadone.ods"),
+                          drug("Cassé 1 mg", "broken.ods")],
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let native = Native {
+            config: config.to_string_lossy().into_owned(),
+            audit: Some(dir.join("audit.log")),
+        };
+        assert_eq!(native.ping().unwrap().data_dir, data.to_string_lossy());
+        assert!(native.read("hier").is_err());
+        let nowhere = Native {
+            config: dir.join("absent.json").to_string_lossy().into_owned(),
+            audit: None,
+        };
+        assert!(nowhere.read("2025-01-01").is_err());
+
+        let key = "methadone.ods|méthadone 10 mg".to_owned();
+        let entry = |key: &str, kind: &str, date: &str, units: f64, ordo: &str| Entry {
+            key: key.to_owned(),
+            kind: kind.to_owned(),
+            date: date.to_owned(),
+            units,
+            nom: "Fournisseur".to_owned(),
+            prenom: String::new(),
+            ordo: ordo.to_owned(),
+        };
+        let out = native
+            .add(&[
+                entry(&key, "E", "2025-03-02", 10.0, ""),
+                entry(&key, "S", "2025-03-03", 3.0, "18001"),
+                entry("inconnu|x", "E", "2025-03-02", 1.0, ""),
+                entry(&key, "E", "2025-13-40", 1.0, ""),
+                entry(&key, "X", "2025-03-02", 1.0, ""),
+                entry(&key, "E", "2024-03-02", 1.0, ""),
+            ])
+            .unwrap();
+        let codes: Vec<Option<&str>> = out.iter().map(|o| o.code.as_deref()).collect();
+        assert_eq!(
+            codes,
+            vec![
+                None,
+                None,
+                Some("produit"),
+                Some("date"),
+                Some("nature"),
+                Some("fichier")
+            ]
+        );
+
+        let read = native.read("2025-01-01").unwrap();
+        assert_eq!(read.unreadable, vec!["2025/broken.ods".to_owned()]);
+        let p = read.products.iter().find(|p| p.key == key).unwrap();
+        let moved: Vec<(&str, f64, &str)> = p
+            .movements
+            .iter()
+            .map(|l| (l.kind.as_str(), l.units, l.ordo.as_str()))
+            .collect();
+        assert_eq!(moved, vec![("E", 10.0, ""), ("S", 3.0, "18001")]);
+        assert_eq!(p.movements[0].date.as_deref(), Some("2025-03-02"));
+        assert_eq!(p.stock, Some(47.0));
+        assert!(p.years.is_empty(), "a plain read surveys nothing");
+
+        let survey = native.survey("2023-01-01").unwrap();
+        let p = survey.products.iter().find(|p| p.key == key).unwrap();
+        let years: Vec<(i64, bool)> = p
+            .years
+            .iter()
+            .map(|y| (y.year, y.file.is_empty()))
+            .collect();
+        assert_eq!(years, vec![(2023, false), (2024, true), (2025, false)]);
+        assert_eq!(p.years[2].closing, Some(47.0));
+        assert_eq!(p.years[2].net, 7.0);
+        let five = survey
+            .products
+            .iter()
+            .find(|p| p.specialite == "Méthadone 5 mg")
+            .unwrap();
+        assert!(five.movements.is_empty());
+        assert!(five.years[0]
+            .headers
+            .contains(&"Méthadone 10 mg".to_owned()));
+        let typo = survey
+            .products
+            .iter()
+            .find(|p| p.specialite == "Méthdone 40 mg")
+            .unwrap();
+        assert!(
+            typo.years
+                .iter()
+                .filter(|y| !y.file.is_empty())
+                .all(|y| y.lenient && y.header == "Méthadone 40 mg"),
+            "{:?}",
+            typo.years
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// **The same registers, the same answers as StupControl itself.**
     /// Run when `BPM_CADDY_STUPCONTROL` names the built program
     /// (`./gradlew installDist`, with `JAVA_HOME` set) and

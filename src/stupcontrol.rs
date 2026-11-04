@@ -1742,6 +1742,48 @@ mod tests {
         assert_eq!(done.warnings.len(), 2, "{:?}", done.warnings);
     }
 
+    /// Un classeur qui s'ouvre en négatif ne donne pas de stock reporté :
+    /// il est refusé et dit, l'aperçu comme la reprise ; une casse
+    /// devient une perte.
+    #[test]
+    fn a_negative_opening_is_refused_and_a_breakage_is_a_loss() {
+        let (_swept, db) = officine("negative");
+        let stup = db.add_stupefiant(0, "Oxycodone 10", "gélule", 0.0).unwrap();
+        db.set_stupcontrol_map(stup, KEY).unwrap();
+        let mut p = product(KEY, "Oxycodone 10", "Oxycodone 10");
+        p.movements = vec![
+            line("E", "2025-01-10", 28.0, "Cerp", "", ""),
+            line("S", "2025-01-12", 1.0, "Casse", "", ""),
+        ];
+        p.years = vec![year(2025, -5.0, 22.0)];
+        p.stock = Some(22.0);
+        let fake = Fake {
+            products: RefCell::new(vec![p]),
+            refuse: RefCell::new(None),
+            added: RefCell::new(Vec::new()),
+        };
+        let seen = take_over(&db, &fake, "2026-03-10", true).unwrap();
+        assert_eq!((seen.openings, seen.imported), (0, 2));
+        assert_eq!(seen.refused.len(), 1, "{:?}", seen.refused);
+        assert!(
+            db.stup_moves(stup).unwrap().is_empty(),
+            "an aperçu writes nothing"
+        );
+        let done = take_over(&db, &fake, "2026-03-10", false).unwrap();
+        assert_eq!((done.openings, done.imported), (0, 2));
+        assert_eq!(
+            done.refused[0].reason,
+            crate::strings::tr("stc_refused_opening")
+        );
+        let moves = db.stup_moves(stup).unwrap();
+        assert!(moves.iter().all(|m| m.kind != Kind::Inventaire.as_key()));
+        assert!(moves.iter().any(|m| m.kind == Kind::Perte.as_key()));
+        assert!(
+            fake.added.borrow().is_empty(),
+            "a takeover writes no workbook"
+        );
+    }
+
     /// **Un classeur ouvert dans LibreOffice** refuse la ligne : elle est
     /// dite, et repart au passage suivant.
     #[test]
