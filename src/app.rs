@@ -83839,12 +83839,14 @@ impl App {
             // hauteur entière à chacun : ils se superposent.
             let gutter = 8.0;
             let avail = (rows[1].height() - gutter).max(1.0);
-            // Cinq lignes suffisent à la synthèse : l'écart est en
-            // tête avec la phrase qui le commente, et le reste se
-            // déroule. Un plancher plus haut mangeait le tiroir, qui
-            // est le volet où l'on tape.
+            // Quatre lignes suffisent à la synthèse : son titre, l'écart
+            // en tête et la phrase qui le commente, le reste se déroule.
+            // À cinq, à 1024x700 en `text_scale = 1,6`, le tiroir — le
+            // volet où l'on tape — ne montrait qu'une rangée de coupures
+            // sur sept ; à quatre, il en montre deux, l'écart toujours
+            // lisible dessous.
             let cap = avail * 0.45;
-            let sum_h = (5.0 * line).min(cap);
+            let sum_h = (4.0 * line).min(cap);
             // **Le tiroir s'arrête sur une coupure entière**, et ce qui
             // reste va à la synthèse. Taillé au pixel, il tranchait la
             // ligne des 100 € en son milieu à 1024x700 : un champ coupé
@@ -83875,8 +83877,25 @@ impl App {
             // de sa grille — le défaut d'egui —, la région posait sa
             // barre au milieu du tiroir, à l'endroit où la grille
             // s'arrête, ce qui se lit comme une colonne de plus.
+            // **Et la région s'arrête sur une coupure entière**, dans
+            // les deux dispositions : côte à côte, à 1024x700 en
+            // `text_scale = 1,25`, la ligne du « 1 € » montrait le haut
+            // de son champ au bas du tiroir.
+            let head_h = ui
+                .text_style_height(&egui::TextStyle::Body)
+                .max(ui.spacing().interact_size.y);
+            let room = ui.available_height();
+            let count_h = head_h
+                + 3.0
+                + whole_rows(
+                    (room - head_h - 3.0).max(0.0),
+                    Self::button_height(ui),
+                    3.0,
+                    f32::INFINITY,
+                );
             egui::ScrollArea::vertical()
                 .id_salt("caisse_count")
+                .max_height(count_h.min(room))
                 .auto_shrink([false, true])
                 .show(ui, |ui| {
                     // Chaque colonne est aussi large que le plus large
@@ -84519,10 +84538,38 @@ impl App {
             let gutter = 8.0;
             let avail = (rows[1].height() - gutter).max(1.0);
             let side_h = (7.0 * line).min(avail * 0.4);
-            motif::split_rows(rows[1], &[avail - side_h, 0.0], gutter)
+            // **Et le tableau s'arrête sur un soir entier** : coupé à ce
+            // qui restait, le troisième soir montrait le haut de ses
+            // chiffres à 1024x700 en `text_scale = 1,6`, et un écart à
+            // moitié lu ne se lit pas. Une rangée de grille vaut au moins
+            // `interact_size.y`, l'en-tête compris ; le reste va à la
+            // synthèse.
+            let chrome = motif::panel_chrome(ui, true);
+            let grid_row = ui
+                .text_style_height(&egui::TextStyle::Body)
+                .max(ui.spacing().interact_size.y);
+            let table_h = chrome
+                + whole_rows(
+                    (avail - side_h - chrome).max(0.0),
+                    grid_row,
+                    4.0,
+                    f32::INFINITY,
+                );
+            motif::split_rows(rows[1], &[table_h.min(avail - side_h), 0.0], gutter)
         };
 
-        motif::panel(ui, panes[0], Some(tr("caisses_month_table")), |ui| {
+        // Le nombre de soirs dans le titre : le tableau s'arrête sur un
+        // soir entier et défile, et ce qui est sous le pli se compte.
+        let month_title = if session.caisse_counted.is_empty() {
+            tr("caisses_month_table").to_owned()
+        } else {
+            format!(
+                "{} ({})",
+                tr("caisses_month_table"),
+                session.caisse_counted.len()
+            )
+        };
+        motif::panel(ui, panes[0], Some(&month_title), |ui| {
             if session.caisse_period.is_empty() {
                 ui.label(
                     egui::RichText::new(tr("caisses_empty"))
