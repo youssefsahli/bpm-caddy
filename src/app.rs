@@ -24336,7 +24336,34 @@ impl App {
                                     "skenan.ods|skenan 10 oro".to_owned(),
                                     "SKENAN 10 ORO (skenan.ods)".to_owned(),
                                 ),
+                                (
+                                    "methadone-eg.ods|méthadone eg 10 mg".to_owned(),
+                                    "Méthadone EG 10 mg (methadone-eg.ods)".to_owned(),
+                                ),
                             ];
+                            // Une marque déjà versée dans le premier produit,
+                            // un générique encore à verser.
+                            if let Some(first) = session.stup_summary.first().map(|s| s.product.id)
+                            {
+                                let _ = session
+                                    .db
+                                    .set_stupcontrol_map(first, "methadone.ods|méthadone 10 mg");
+                                let _ = session.db.add_stupcontrol_key(
+                                    first,
+                                    "methadone-eg.ods|méthadone eg 10 mg",
+                                );
+                            }
+                            let biogaran = crate::stupcontrol::Product {
+                                key: "methadone-bgr.ods|méthadone biogaran 10 mg".to_owned(),
+                                label: "Méthadone Biogaran 10 mg".to_owned(),
+                                file: "methadone-bgr.ods".to_owned(),
+                                specialite: "Méthadone Biogaran 10 mg".to_owned(),
+                                units_per_box: 0,
+                                min_stock: 0,
+                                stock: Some(12.0),
+                                movements: Vec::new(),
+                                years: Vec::new(),
+                            };
                             session.stc.products = products.clone();
                             session.stc.note = Some((true, trn("stc_done", &[&3, &2, &41])));
                             session.stc.report = Some(crate::stupcontrol::Report {
@@ -24352,6 +24379,7 @@ impl App {
                                 }],
                                 gaps: vec![(label, 42.0, 35.0)],
                                 products,
+                                unmapped: vec![biogaran],
                                 ..Default::default()
                             });
                         }
@@ -89241,12 +89269,12 @@ impl App {
         let since = session.db.stup_setting(SINCE_KEY).unwrap_or_default();
         let taken = session.db.stup_setting(TAKEN_KEY);
         let auto = session.db.stup_setting(AUTO_KEY).as_deref() == Some("1");
-        let mapping: std::collections::HashMap<i64, String> = session
-            .db
-            .stupcontrol_mapping()
-            .unwrap_or_default()
-            .into_iter()
-            .collect();
+        // Les clés que désigne chaque produit suivi, la première d'abord.
+        let mut mapping: std::collections::HashMap<i64, Vec<String>> =
+            std::collections::HashMap::new();
+        for (id, key) in session.db.stupcontrol_mapping().unwrap_or_default() {
+            mapping.entry(id).or_default().push(key);
+        }
         let followed: Vec<(i64, String)> = session
             .stup_summary
             .iter()
@@ -89260,6 +89288,8 @@ impl App {
         let mut save_since = false;
         let mut set_auto: Option<bool> = None;
         let mut set_map: Option<(i64, String)> = None;
+        let mut add_key: Option<(i64, String)> = None;
+        let mut drop_key: Option<(i64, String)> = None;
         let mut follow: Option<crate::stupcontrol::Product> = None;
         let screen = ctx.screen_rect();
         let size = dialog_size(screen.size(), egui::vec2(760.0, 620.0));
@@ -89413,7 +89443,8 @@ impl App {
                             .show(ui, |ui| {
                                 for (id, label) in &followed {
                                     ui.label(label);
-                                    let mut current = mapping.get(id).cloned().unwrap_or_default();
+                                    let keys = mapping.get(id).cloned().unwrap_or_default();
+                                    let mut current = keys.first().cloned().unwrap_or_default();
                                     if !products.is_empty()
                                         && motif::select(
                                             ui,
@@ -89429,6 +89460,25 @@ impl App {
                                         ui.label(dim(&current));
                                     }
                                     ui.end_row();
+                                    // Les produits du classeur versés en plus.
+                                    for key in keys.iter().skip(1) {
+                                        ui.label("");
+                                        ui.horizontal(|ui| {
+                                            let label = products
+                                                .iter()
+                                                .find(|(k, _)| k == key)
+                                                .map(|(_, l)| l.as_str())
+                                                .unwrap_or(key.as_str());
+                                            ui.label(trf("stc_map_more", label));
+                                            if motif::button(ui, "×")
+                                                .on_hover_text(tr("stc_map_more_remove_tooltip"))
+                                                .clicked()
+                                            {
+                                                drop_key = Some((*id, key.clone()));
+                                            }
+                                        });
+                                        ui.end_row();
+                                    }
                                 }
                             });
                         if let Some(r) = &session.stc.report {
@@ -89445,20 +89495,50 @@ impl App {
                                 for p in &r.unmapped {
                                     ui.horizontal_wrapped(|ui| {
                                         ui.label(crate::stupcontrol::shown_label(p));
-                                        let near = followed.iter().find(|(id, label)| {
-                                            !mapping.contains_key(id)
-                                                && crate::stupcontrol::suggest(
-                                                    label,
-                                                    std::slice::from_ref(p),
-                                                )
-                                                .is_some()
+                                        let near = followed.iter().find(|(_, label)| {
+                                            crate::stupcontrol::suggest(
+                                                label,
+                                                std::slice::from_ref(p),
+                                            )
+                                            .is_some()
                                         });
                                         if let Some((id, label)) = near {
-                                            if motif::button(ui, &trf("stc_map_to", label))
-                                                .on_hover_text(tr("stc_map_to_tooltip"))
+                                            // Libre : il le désignera ; déjà
+                                            // rapproché : ce produit s'y verse.
+                                            let free = !mapping.contains_key(id);
+                                            let (text, tip) = if free {
+                                                ("stc_map_to", "stc_map_to_tooltip")
+                                            } else {
+                                                ("stc_pour_to", "stc_pour_to_tooltip")
+                                            };
+                                            if motif::button(ui, &trf(text, label))
+                                                .on_hover_text(tr(tip))
                                                 .clicked()
                                             {
-                                                set_map = Some((*id, p.key.clone()));
+                                                if free {
+                                                    set_map = Some((*id, p.key.clone()));
+                                                } else {
+                                                    add_key = Some((*id, p.key.clone()));
+                                                }
+                                            }
+                                        }
+                                        let into: Vec<(i64, String)> = followed
+                                            .iter()
+                                            .filter(|(id, _)| mapping.contains_key(id))
+                                            .cloned()
+                                            .collect();
+                                        if !into.is_empty() {
+                                            let w = chars_wide(ui, 16.0).min(ui.available_width());
+                                            if let Some(id) = motif::menu(
+                                                ui,
+                                                ("stc_pour", &p.key),
+                                                w,
+                                                tr("stc_pour"),
+                                                &into,
+                                            )
+                                            .inner
+                                            {
+                                                add_key = Some((id, p.key.clone()));
                                             }
                                         }
                                         if motif::button(ui, tr("stc_follow"))
@@ -89556,6 +89636,21 @@ impl App {
         }
         if let Some((id, key)) = set_map {
             if let Err(e) = session.db.set_stupcontrol_map(id, &key) {
+                session.stc.note = Some((true, e));
+            }
+        }
+        if let Some((id, key)) = add_key {
+            match session.db.add_stupcontrol_key(id, &key) {
+                Ok(()) => {
+                    if let Some(r) = &mut session.stc.report {
+                        r.unmapped.retain(|u| u.key != key);
+                    }
+                }
+                Err(e) => session.stc.note = Some((true, e)),
+            }
+        }
+        if let Some((id, key)) = drop_key {
+            if let Err(e) = session.db.remove_stupcontrol_key(id, &key) {
                 session.stc.note = Some((true, e));
             }
         }

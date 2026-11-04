@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- StupControl: several workbook products can pour into one followed
+  product (« Verser dans »), for generics kept in their own workbook or
+  a brand that changed. Their lines count together, the carried-over
+  opening stock and the closing balance are sums, each workbook is still
+  checked on its own, and lines sent from BPM-Caddy go to the first one.
+
 ## [0.453.0] - 2026-11-04
 
 ### Added

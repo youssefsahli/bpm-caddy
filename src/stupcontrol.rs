@@ -128,6 +128,67 @@ pub fn bilan(p: &Product) -> Option<f64> {
     p.years.iter().rev().find_map(|y| y.closing).or(p.stock)
 }
 
+/// Le stock d'ouverture de la première année lue d'un produit.
+fn first_opening(p: &Product) -> Option<f64> {
+    p.years
+        .iter()
+        .find(|y| !y.header.is_empty())
+        .and_then(|y| y.opening)
+}
+
+/// **Ce que le classeur dit d'un produit suivi**, quand plusieurs
+/// produits du classeur y sont versés (des génériques, des marques
+/// fondues) : leurs lignes ensemble, dans l'ordre des jours, et leurs
+/// stocks additionnés. Ce qui part d'ici va au premier.
+struct Merged {
+    stup_id: i64,
+    /// Le premier produit, les lignes et le stock de tous.
+    product: Product,
+    parts: Vec<Product>,
+    opening: Option<f64>,
+    bilan: Option<f64>,
+}
+
+fn sum_some(v: impl Iterator<Item = Option<f64>>) -> Option<f64> {
+    v.fold(None, |acc, x| match (acc, x) {
+        (None, x) => x,
+        (Some(a), Some(b)) => Some(a + b),
+        (a, None) => a,
+    })
+}
+
+fn merged(stup_id: i64, parts: Vec<Product>) -> Option<Merged> {
+    let first = parts.first()?.clone();
+    if parts.len() == 1 {
+        return Some(Merged {
+            stup_id,
+            opening: first_opening(&first),
+            bilan: bilan(&first),
+            product: first,
+            parts,
+        });
+    }
+    let mut product = first;
+    product.movements = parts.iter().flat_map(|p| p.movements.clone()).collect();
+    product
+        .movements
+        .sort_by(|a, b| (&a.date, a.year, a.month).cmp(&(&b.date, b.year, b.month)));
+    product.stock = sum_some(parts.iter().map(|p| p.stock));
+    product.years = Vec::new();
+    let opening = parts
+        .iter()
+        .map(first_opening)
+        .collect::<Option<Vec<f64>>>()
+        .map(|v| v.iter().sum());
+    Some(Merged {
+        stup_id,
+        opening,
+        bilan: sum_some(parts.iter().map(bilan)),
+        product,
+        parts,
+    })
+}
+
 /// Un nombre d'unités qui n'est pas entier.
 fn fractional(v: f64) -> bool {
     (v - v.round()).abs() > 1e-6
@@ -879,19 +940,47 @@ fn run(
         .collect();
     let mut entries: Vec<(i64, Entry, f64)> = Vec::new();
     let mut exported_effect: HashMap<i64, f64> = HashMap::new();
-    for theirs in &answer.products {
-        let Some(&stup_id) = by_key.get(theirs.key.as_str()) else {
-            continue;
-        };
+    // Chaque produit suivi, et ce que le classeur en dit : les produits
+    // qu'il désigne, le premier d'abord.
+    let groups: Vec<Merged> = {
+        let mut ids: Vec<i64> = Vec::new();
+        for p in &answer.products {
+            if let Some(id) = by_key.get(p.key.as_str()) {
+                if !ids.contains(id) {
+                    ids.push(*id);
+                }
+            }
+        }
+        ids.into_iter()
+            .filter_map(|id| {
+                let parts: Vec<Product> = mapping
+                    .iter()
+                    .filter(|(i, _)| *i == id)
+                    .filter_map(|(_, k)| answer.products.iter().find(|p| &p.key == k))
+                    .cloned()
+                    .collect();
+                merged(id, parts)
+            })
+            .collect()
+    };
+    for group in &groups {
+        let stup_id = group.stup_id;
+        let theirs = &group.product;
         let Some(product) = products.get(&stup_id) else {
             continue;
         };
-        for said in traps(theirs) {
-            report.warnings.push(Refused {
-                product: product.label.clone(),
-                line: said,
-                reason: String::new(),
-            });
+        for part in &group.parts {
+            for said in traps(part) {
+                report.warnings.push(Refused {
+                    product: if group.parts.len() > 1 {
+                        format!("{} ({})", product.label, shown_label(part))
+                    } else {
+                        product.label.clone()
+                    },
+                    line: said,
+                    reason: String::new(),
+                });
+            }
         }
         let all = db.stup_moves(stup_id)?;
         let by_id: HashMap<i64, &StupMove> = all.iter().map(|m| (m.id, m)).collect();
@@ -944,7 +1033,7 @@ fn run(
         // Le stock reporté : celui du classeur la veille du premier jour
         // repris, quand le registre ne le porte pas déjà.
         if takeover {
-            if let (Some(start), Some(stock)) = (start.clone(), bilan(theirs)) {
+            if let (Some(start), Some(stock)) = (start.clone(), group.bilan) {
                 let before: Vec<&StupMove> = all
                     .iter()
                     .filter(|m| m.happened_on.as_str() < start.as_str())
@@ -954,12 +1043,7 @@ fn run(
                 // année, et la suite des lignes. Une année perdue ou un
                 // bilan faux se lit alors en écart au bout, au lieu de se
                 // fondre dans le report.
-                let first = theirs
-                    .years
-                    .iter()
-                    .find(|y| !y.header.is_empty())
-                    .and_then(|y| y.opening);
-                let theirs_then = match first {
+                let theirs_then = match group.opening {
                     Some(o) if since == EVERYTHING => o,
                     _ => balance_before(stock, &theirs.movements, &start),
                 };
@@ -1149,14 +1233,12 @@ fn run(
         .into_iter()
         .map(|s| (s.product.id, s.stock))
         .collect();
-    for theirs in &answer.products {
-        let Some(&stup_id) = by_key.get(theirs.key.as_str()) else {
-            continue;
-        };
+    for group in &groups {
+        let stup_id = group.stup_id;
         let stock = if takeover {
-            bilan(theirs)
+            group.bilan
         } else {
-            theirs.stock
+            group.product.stock
         };
         let (Some(ours), Some(stock)) = (standing.get(&stup_id), stock) else {
             continue;
@@ -1851,6 +1933,112 @@ mod tests {
         db.set_stupcontrol_map(a, "").unwrap();
         db.set_stupcontrol_map(b, KEY).unwrap();
         assert_eq!(db.stupcontrol_mapping().unwrap(), vec![(b, KEY.to_owned())]);
+    }
+
+    /// Plusieurs produits du classeur versés dans un seul : chacun ne
+    /// l'est qu'une fois, la première clé se change sans perdre les
+    /// autres.
+    #[test]
+    fn several_spreadsheet_products_pour_into_one_followed_product() {
+        let (_swept, db) = officine("pour");
+        let a = db
+            .add_stupefiant(0, "Méthadone 10 mg", "gélule", 0.0)
+            .unwrap();
+        let b = db.add_stupefiant(0, "Autre", "gélule", 0.0).unwrap();
+        db.set_stupcontrol_map(a, KEY).unwrap();
+        db.add_stupcontrol_key(a, EG).unwrap();
+        db.add_stupcontrol_key(a, EG).unwrap();
+        assert_eq!(db.stupcontrol_keys(a).unwrap(), vec![KEY, EG]);
+        assert!(db.add_stupcontrol_key(b, EG).is_err());
+        assert!(db.set_stupcontrol_map(b, EG).is_err());
+        db.set_stupcontrol_map(a, "").unwrap();
+        assert_eq!(db.stupcontrol_keys(a).unwrap(), vec![EG]);
+        // La première change : EG l'était devenue.
+        db.set_stupcontrol_map(a, KEY).unwrap();
+        assert_eq!(db.stupcontrol_keys(a).unwrap(), vec![KEY]);
+        db.add_stupcontrol_key(a, EG).unwrap();
+        db.remove_stupcontrol_key(a, EG).unwrap();
+        assert_eq!(db.stupcontrol_keys(a).unwrap(), vec![KEY]);
+    }
+
+    const EG: &str = "methadone-eg.ods|méthadone eg 10 mg";
+
+    /// **Deux marques, un produit suivi** : la reprise inscrit les lignes
+    /// des deux, reporte la somme de leurs stocks d'ouverture et compare
+    /// au bout la somme de leurs bilans ; chaque marque dit ses pièges.
+    #[test]
+    fn two_brands_taken_over_into_one_product_add_up() {
+        let (_swept, db) = officine("brands");
+        let stup = db
+            .add_stupefiant(0, "Méthadone 10 mg", "gélule", 0.0)
+            .unwrap();
+        db.set_stupcontrol_map(stup, KEY).unwrap();
+        db.add_stupcontrol_key(stup, EG).unwrap();
+        let mut a = product(KEY, "Méthadone 10 mg", "Méthadone 10 mg");
+        a.movements = vec![line("E", "2025-02-10", 28.0, "Cerp", "", "")];
+        a.years = vec![year(2025, 10.0, 38.0)];
+        a.stock = Some(38.0);
+        let mut b = product(EG, "Méthadone EG 10 mg", "Méthadone EG 10 mg");
+        b.movements = vec![
+            line("E", "2025-01-05", 14.0, "OCP", "", ""),
+            line("E", "2025-03-01", 1.5, "OCP", "", ""),
+        ];
+        b.years = vec![year(2025, 4.0, 19.5)];
+        b.stock = Some(19.5);
+        let fake = Fake {
+            products: RefCell::new(vec![a, b]),
+            refuse: RefCell::new(None),
+            added: RefCell::new(Vec::new()),
+        };
+        let done = take_over(&db, &fake, "2026-03-10", false).unwrap();
+        assert_eq!((done.openings, done.imported), (1, 3));
+        assert!(done.unmapped.is_empty());
+        let moves = db.stup_moves(stup).unwrap();
+        let opening = moves
+            .iter()
+            .find(|m| m.kind == Kind::Inventaire.as_key())
+            .unwrap();
+        assert_eq!(
+            (opening.happened_on.as_str(), opening.quantity),
+            ("2025-01-04", 14.0)
+        );
+        assert!(done.gaps.is_empty(), "{:?}", done.gaps);
+        assert!(
+            done.warnings
+                .iter()
+                .any(|w| w.product.contains("Méthadone EG 10 mg")),
+            "{:?}",
+            done.warnings
+        );
+    }
+
+    /// Ce qui part d'ici va au premier produit désigné, et le solde se
+    /// compare à la somme des stocks.
+    #[test]
+    fn a_line_from_here_goes_to_the_first_brand() {
+        let (_swept, db) = officine("first-brand");
+        let stup = db
+            .add_stupefiant(0, "Méthadone 10 mg", "gélule", 0.0)
+            .unwrap();
+        db.set_stupcontrol_map(stup, KEY).unwrap();
+        db.add_stupcontrol_key(stup, EG).unwrap();
+        db.set_stup_setting(SINCE_KEY, "2026-03-01").unwrap();
+        let mut entree = mv(0, Kind::Entree, "2026-03-02", 28.0);
+        entree.stup_id = stup;
+        db.add_stup_move(&entree).unwrap();
+        let mut a = product(KEY, "Méthadone 10 mg", "Méthadone 10 mg");
+        a.stock = Some(0.0);
+        let mut b = product(EG, "Méthadone EG 10 mg", "Méthadone EG 10 mg");
+        b.stock = Some(0.0);
+        let fake = Fake {
+            products: RefCell::new(vec![b, a]),
+            refuse: RefCell::new(None),
+            added: RefCell::new(Vec::new()),
+        };
+        let done = sync(&db, &fake, "2026-03-10", false).unwrap();
+        assert_eq!(done.exported, 1);
+        assert_eq!(fake.added.borrow()[0].key, KEY);
+        assert!(done.gaps.is_empty(), "{:?}", done.gaps);
     }
 
     /// **De bout en bout, sur de vrais classeurs** : une délivrance de

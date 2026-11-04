@@ -54136,26 +54136,75 @@ impl Db {
                 .strip_prefix(crate::stupcontrol::MAP_PREFIX)
                 .and_then(|id| id.parse::<i64>().ok())
             {
-                out.push((id, value));
+                // Plusieurs produits du classeur versés dans un seul : une
+                // clé par ligne, la première reçoit ce qui part d'ici.
+                for k in value.lines().map(str::trim).filter(|k| !k.is_empty()) {
+                    out.push((id, k.to_owned()));
+                }
             }
         }
         Ok(out)
+    }
+
+    /// Les clés que désigne un produit suivi, la première d'abord.
+    pub fn stupcontrol_keys(&self, stup_id: i64) -> Result<Vec<String>, String> {
+        Ok(self
+            .stupcontrol_mapping()?
+            .into_iter()
+            .filter(|(id, _)| *id == stup_id)
+            .map(|(_, k)| k)
+            .collect())
+    }
+
+    fn write_stupcontrol_keys(&self, stup_id: i64, keys: &[String]) -> Result<(), String> {
+        let taken = self.stupcontrol_mapping()?;
+        if keys
+            .iter()
+            .any(|k| taken.iter().any(|(id, t)| *id != stup_id && t == k))
+        {
+            return Err(crate::strings::tr("stc_err_mapped_twice").to_owned());
+        }
+        self.set_stup_setting(
+            &format!("{}{stup_id}", crate::stupcontrol::MAP_PREFIX),
+            &keys.join("\n"),
+        )
+    }
+
+    /// Verser un produit de plus du classeur dans un produit suivi (un
+    /// générique, une marque fondue) : ses lignes et son stock comptent
+    /// avec ceux des autres, rien ne part vers lui.
+    pub fn add_stupcontrol_key(&self, stup_id: i64, key: &str) -> Result<(), String> {
+        let mut keys = self.stupcontrol_keys(stup_id)?;
+        if !key.is_empty() && !keys.iter().any(|k| k == key) {
+            keys.push(key.to_owned());
+        }
+        self.write_stupcontrol_keys(stup_id, &keys)
+    }
+
+    /// Ne plus verser ce produit du classeur dans celui-ci.
+    pub fn remove_stupcontrol_key(&self, stup_id: i64, key: &str) -> Result<(), String> {
+        let mut keys = self.stupcontrol_keys(stup_id)?;
+        keys.retain(|k| k != key);
+        self.write_stupcontrol_keys(stup_id, &keys)
     }
 
     /// Faire désigner un produit de StupControl par un produit suivi, ou
     /// défaire la correspondance (`key` vide). Un produit de StupControl
     /// n'est désigné que par un seul : deux registres versés dans une
     /// colonne compteraient chaque boîte deux fois.
+    ///
+    /// Les produits versés en plus restent ; la première clé seule change
+    /// (vide : la suivante devient la première).
     pub fn set_stupcontrol_map(&self, stup_id: i64, key: &str) -> Result<(), String> {
-        if !key.is_empty()
-            && self
-                .stupcontrol_mapping()?
-                .iter()
-                .any(|(id, k)| *id != stup_id && k == key)
-        {
-            return Err(crate::strings::tr("stc_err_mapped_twice").to_owned());
+        let mut keys = self.stupcontrol_keys(stup_id)?;
+        if !keys.is_empty() {
+            keys.remove(0);
         }
-        self.set_stup_setting(&format!("{}{stup_id}", crate::stupcontrol::MAP_PREFIX), key)
+        keys.retain(|k| k != key);
+        if !key.is_empty() {
+            keys.insert(0, key.to_owned());
+        }
+        self.write_stupcontrol_keys(stup_id, &keys)
     }
 
     /// Les lignes du registre déjà rapprochées de StupControl.

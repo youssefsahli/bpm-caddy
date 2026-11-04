@@ -1558,6 +1558,14 @@ correspond (« Associer à… » ou la liste des correspondances) : la
 reprise inscrit sous les produits de BPM-Caddy, elle n'en crée pas. Un
 produit de StupControl sans correspondance est listé et n'est pas repris.
 
+Plusieurs produits des classeurs pour un seul produit suivi (un
+générique tenu dans son propre classeur, une marque changée en cours
+d'année) : **Verser dans** sur le produit sans correspondance. Ses
+lignes et son stock comptent alors avec ceux du produit, le stock
+reporté et le bilan sont les sommes, et chaque classeur est contrôlé à
+part. Ce qui part de BPM-Caddy va au premier produit désigné ; le ×
+devant un produit versé l'en retire.
+
 - **Aperçu de la reprise** dit ce qu'elle ferait, sans rien écrire.
 - **Reprendre…**, puis **Confirmer la reprise** : pour chaque produit
   associé, le bilan du classeur la veille du premier jour repris est
