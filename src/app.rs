@@ -7298,6 +7298,9 @@ struct Session {
     /// le supprime. Un clic suffisait, sur une croix de dix-huit pixels
     /// au bord de chaque rangée de la liste.
     protocol_confirm_delete: Option<i64>,
+    /// La ligne de liste de contrôle dont la croix a été pressée une
+    /// fois : la seconde la supprime.
+    checklist_confirm_delete: Option<i64>,
     /// Ctrl+F asked for the open list's own search field.
     focus_list_search: bool,
     /// The rentals on the open file, the forfait being handed out, and
@@ -8086,6 +8089,7 @@ impl Session {
             codex_cursor: 0,
             protocol_cursor: 0,
             protocol_confirm_delete: None,
+            checklist_confirm_delete: None,
             focus_list_search: false,
             locations: Vec::new(),
             loc_pick: 0,
@@ -60373,6 +60377,8 @@ impl App {
         let mut rename = false;
         let mut save: Option<(i64, String, String, String, String)> = None;
         let mut remove: Option<(i64, String)> = None;
+        let mut arm: Option<i64> = None;
+        let mut disarm = false;
         let mut shift: Option<(i64, bool)> = None;
         let mut edit: Option<Option<(i64, String, String)>> = None;
         motif::panel(ui, rect, Some(&list.title), |ui| {
@@ -60464,18 +60470,33 @@ impl App {
                                     }
                                 });
                             } else {
-                                ui.label(
-                                    egui::RichText::new(format!("{}. {}", i + 1, item.text))
-                                        .size(motif::pt(ui, 12.0)),
+                                // **Les gestes sur la ligne du point**, à
+                                // droite, quand elle a la place : en
+                                // dessous, chaque point valait deux
+                                // rangées pour quatre boutons.
+                                let title = format!("{}. {}", i + 1, item.text);
+                                let arming = session.checklist_confirm_delete == Some(item.id);
+                                let delete_label = if arming {
+                                    tr("proto_delete_ask")
+                                } else {
+                                    tr("itv_delete")
+                                };
+                                let gestures_w = Self::group_width(
+                                    ui,
+                                    [
+                                        Self::button_width(ui, "‹"),
+                                        Self::button_width(ui, "›"),
+                                        Self::button_width(ui, tr("listes_edit")),
+                                        Self::button_width(ui, tr("proto_delete_ask"))
+                                            .max(Self::button_width(ui, tr("itv_delete"))),
+                                    ]
+                                    .into_iter(),
                                 );
-                                if !item.note.trim().is_empty() {
-                                    ui.label(
-                                        egui::RichText::new(item.note.as_str())
-                                            .size(motif::pt(ui, 10.5))
-                                            .color(motif::text_dim()),
-                                    );
-                                }
-                                ui.horizontal_wrapped(|ui| {
+                                let title_w = Self::widest(ui, 12.0, [title.as_str()].into_iter());
+                                let beside =
+                                    title_w + 2.0 * ui.spacing().item_spacing.x + gestures_w
+                                        <= ui.available_width();
+                                let mut gesture_row = |ui: &mut egui::Ui| {
                                     if motif::button_enabled(ui, "‹", i > 0)
                                         .on_hover_text(tr("listes_up"))
                                         .clicked()
@@ -60495,10 +60516,65 @@ impl App {
                                             item.note.clone(),
                                         )));
                                     }
-                                    if motif::button(ui, tr("itv_delete")).clicked() {
-                                        remove = Some((item.id, item.text.clone()));
+                                    let del = motif::button(ui, delete_label);
+                                    let del = if arming {
+                                        del.on_hover_text(tr("listes_delete_item_tooltip"))
+                                    } else {
+                                        del
+                                    };
+                                    if del.clicked() {
+                                        if arming {
+                                            remove = Some((item.id, item.text.clone()));
+                                            disarm = true;
+                                        } else {
+                                            arm = Some(item.id);
+                                        }
                                     }
-                                });
+                                };
+                                ui.allocate_ui_with_layout(
+                                    egui::vec2(
+                                        ui.available_width(),
+                                        if beside {
+                                            Self::button_height(ui)
+                                        } else {
+                                            Self::label_line(ui)
+                                        },
+                                    ),
+                                    egui::Layout::left_to_right(egui::Align::Center),
+                                    |ui| {
+                                        ui.label(
+                                            egui::RichText::new(title.as_str())
+                                                .size(motif::pt(ui, 12.0)),
+                                        );
+                                        if beside {
+                                            ui.with_layout(
+                                                egui::Layout::right_to_left(egui::Align::Center),
+                                                |ui| {
+                                                    ui.allocate_ui_with_layout(
+                                                        egui::vec2(
+                                                            gestures_w,
+                                                            Self::button_height(ui),
+                                                        ),
+                                                        egui::Layout::left_to_right(
+                                                            egui::Align::Center,
+                                                        ),
+                                                        |ui| gesture_row(ui),
+                                                    );
+                                                },
+                                            );
+                                        }
+                                    },
+                                );
+                                if !item.note.trim().is_empty() {
+                                    ui.label(
+                                        egui::RichText::new(item.note.as_str())
+                                            .size(motif::pt(ui, 10.5))
+                                            .color(motif::text_dim()),
+                                    );
+                                }
+                                if !beside {
+                                    ui.horizontal_wrapped(|ui| gesture_row(ui));
+                                }
                             }
                             ui.add_space(8.0);
                         }
@@ -60554,6 +60630,12 @@ impl App {
                 Err(e) => session.error = Some(e),
             }
             session.reload_checklist_items();
+        }
+        if let Some(id) = arm {
+            session.checklist_confirm_delete = Some(id);
+        }
+        if disarm {
+            session.checklist_confirm_delete = None;
         }
         if let Some((id, text)) = remove {
             match session.db.delete_checklist_item(id, &text) {
