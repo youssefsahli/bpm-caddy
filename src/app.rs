@@ -65281,6 +65281,27 @@ impl App {
                 }
                 ui.add_space(4.0);
                 let body = ui.available_rect_before_wrap();
+                // **L'historique en haut, réceptions et délivrances en
+                // dessous**, chacune dans sa colonne : ce qui est entré et
+                // ce qui est sorti se relisent chacun d'un regard, et le
+                // registre entier reste au-dessus. Sur un volet trop court
+                // pour trois listes lisibles, l'historique seul — il porte
+                // toutes les lignes.
+                let row = Self::row_height(ui);
+                let split = body.height() >= row * 9.0 && !session.stup_moves.is_empty();
+                let (body, columns) = if split {
+                    let cols_h = (body.height() * 0.5).max(row * 4.0);
+                    let parts = motif::split_rows(body, &[0.0, cols_h], 6.0);
+                    (parts[0], Some(parts[1]))
+                } else {
+                    (body, None)
+                };
+                if let Some(rect) = columns {
+                    let act = Self::stup_columns(ui, session, rect);
+                    if act != StupLineAction::None {
+                        line_action = act;
+                    }
+                }
                 let inner = motif::well(ui, body);
                 motif::inside(ui, inner, |ui| {
                     // Le registre se lit du plus récent au plus ancien : ce
@@ -68743,6 +68764,113 @@ impl App {
     /// Le solde d'un jour est celui de la dernière ligne écrite ce
     /// jour-là ou avant : entre deux mouvements il ne se passe rien, et
     /// c'est précisément ce que la courbe doit montrer.
+    /// **Réceptions et délivrances, chacune dans sa colonne**, du plus
+    /// récent au plus ancien, sous l'historique : le jour, la quantité, et
+    /// ce que la ligne cite — le grossiste et son bon, le numéro
+    /// d'ordonnancier, le dossier et le prescripteur. Une ligne annulée se
+    /// lit barrée, comme dans l'historique ; le titre dit combien et le
+    /// total, annulations déduites.
+    fn stup_columns(ui: &mut egui::Ui, session: &Session, rect: egui::Rect) -> StupLineAction {
+        use crate::ordonnancier::Kind;
+        let mut action = StupLineAction::None;
+        let halves = motif::split_columns(rect, 2, 6.0);
+        for (half, kind) in halves.iter().zip([Kind::Entree, Kind::Sortie]) {
+            let lines: Vec<&db::StupMove> = session
+                .stup_moves
+                .iter()
+                .rev()
+                .filter(|m| Kind::from_key(&m.kind) == kind)
+                .collect();
+            let total: f64 = lines
+                .iter()
+                .filter(|m| !session.stup_cancelled.contains(&m.id))
+                .map(|m| m.quantity)
+                .sum();
+            let (title, empty, salt) = match kind {
+                Kind::Entree => ("stup_side_in", "stup_side_in_none", "stup_side_in"),
+                _ => ("stup_side_out", "stup_side_out_none", "stup_side_out"),
+            };
+            let title = trn(
+                title,
+                &[&lines.len(), &crate::codex::format_quantity(total)],
+            );
+            motif::panel(ui, *half, Some(&title), |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt(salt)
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        if lines.is_empty() {
+                            ui.label(
+                                egui::RichText::new(tr(empty))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            );
+                            return;
+                        }
+                        let day_w = chars_wide(ui, 10.5);
+                        let qty_w = chars_wide(ui, 6.0);
+                        for m in lines {
+                            let cancelled = session.stup_cancelled.contains(&m.id);
+                            let dress = Self::stup_dress(cancelled);
+                            ui.horizontal_wrapped(|ui| {
+                                Self::stup_day(ui, m, cancelled, day_w);
+                                Self::grid_cell(
+                                    ui,
+                                    qty_w,
+                                    dress(
+                                        egui::RichText::new(crate::codex::format_quantity(
+                                            m.quantity,
+                                        ))
+                                        .size(motif::pt(ui, 11.0))
+                                        .strong(),
+                                    ),
+                                );
+                                let said: Vec<String> = match kind {
+                                    Kind::Entree => [&m.supplier, &m.reference, &m.lot]
+                                        .iter()
+                                        .map(|t| t.trim().to_owned())
+                                        .filter(|t| !t.is_empty())
+                                        .collect(),
+                                    _ => [&m.prescriber]
+                                        .iter()
+                                        .map(|t| t.trim().to_owned())
+                                        .filter(|t| !t.is_empty())
+                                        .collect(),
+                                };
+                                if kind == Kind::Sortie {
+                                    // Le numéro d'ordonnancier d'un bloc : il
+                                    // désigne la délivrance, il ne se coupe
+                                    // pas de son « n° ».
+                                    if m.ordo_no > 0 {
+                                        ui.label(dress(
+                                            egui::RichText::new(
+                                                trf("stup_side_ordo", m.ordo_no)
+                                                    .replace(' ', "\u{A0}"),
+                                            )
+                                            .size(motif::pt(ui, 11.0))
+                                            .monospace(),
+                                        ));
+                                    }
+                                    let act = Self::stup_file(ui, m);
+                                    if act != StupLineAction::None {
+                                        action = act;
+                                    }
+                                }
+                                if !said.is_empty() {
+                                    ui.label(dress(
+                                        egui::RichText::new(said.join(" · "))
+                                            .size(motif::pt(ui, 10.5))
+                                            .color(motif::text_dim()),
+                                    ));
+                                }
+                            });
+                        }
+                    });
+            });
+        }
+        action
+    }
+
     fn stup_daily_curve(
         moves: &[db::StupMove],
         running: &[crate::ordonnancier::Balance],

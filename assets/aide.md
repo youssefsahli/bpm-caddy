@@ -1443,6 +1443,12 @@ les produits effectivement comptés.
 Une ligne porte le **numéro de dossier**, jamais le nom : le registre
 est imprimé et consultable au comptoir.
 
+Sous l'historique d'un produit, deux colonnes : **Réceptions** (jour,
+quantité, grossiste, bon, lot) et **Délivrances** (jour, quantité, n°
+d'ordonnancier, dossier, prescripteur), du plus récent au plus ancien,
+avec leur nombre et leur total ; une ligne annulée y est barrée. Sur un
+écran trop court, l'historique seul, qui porte toutes les lignes.
+
 **Le numéro d'ordonnancier vient du logiciel de l'officine** : il
 numérote toutes les lignes de l'ordonnancier — listes I et II comme
 stupéfiants —, et chaque délivrance inscrite ici porte le sien, recopié
