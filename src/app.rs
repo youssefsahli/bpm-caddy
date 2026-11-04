@@ -29825,6 +29825,15 @@ impl App {
                     "conduct_start"
                 };
                 let has_buttons = next.is_some() || lead || to_plan;
+                // **La place de « Commencer » gardée** sur une carte qui
+                // ne se conduit pas : au bout de la rangée, son seul
+                // « Planifier » glissait sous les « Commencer » des cartes
+                // voisines, et la colonne de boutons se lisait de travers.
+                let start_slot = if to_plan && !lead {
+                    Self::button_width(ui, tr("conduct_start"))
+                } else {
+                    0.0
+                };
                 let buttons_width = if has_buttons {
                     Self::group_width(
                         ui,
@@ -29846,6 +29855,7 @@ impl App {
                                 0.0
                             },
                             next.map_or(0.0, |k| Self::button_width(ui, tr(k))),
+                            start_slot,
                         ]
                         .into_iter()
                         .filter(|w| *w > 0.0),
@@ -29918,6 +29928,9 @@ impl App {
                         if motif::button(ui, tr(start_key)).clicked() {
                             *conduct = Some((r.id, r.patient_id));
                         }
+                    }
+                    if side && start_slot > 0.0 {
+                        ui.add_space(start_slot + ui.spacing().item_spacing.x);
                     }
                     if let Some(key) = next {
                         gap(ui);
