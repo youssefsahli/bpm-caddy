@@ -7137,6 +7137,9 @@ struct Session {
     /// la recherche de patients du tiroir aurait inscrit une
     /// délivrance — dans un registre qu'on ne rature pas.
     stup_form_focus: bool,
+    /// La hauteur que le formulaire du registre a demandée à l'image
+    /// précédente pour tenir sans défiler ; 0 tant qu'il n'a rien dit.
+    stup_form_need: f32,
     /// Les délivrances de la fenêtre de vigilance, relues au
     /// chargement et jamais dans la boucle d'affichage.
     stup_watch: Vec<db::StupDispensing>,
@@ -8054,6 +8057,7 @@ impl Session {
             stup_pieces: std::collections::HashMap::new(),
             scan_linking: None,
             stup_form_focus: false,
+            stup_form_need: 0.0,
             stup_watch: Vec::new(),
             stup_scan: String::new(),
             stup_codes: Vec::new(),
@@ -64458,6 +64462,14 @@ impl App {
             let chrome = motif::panel_chrome(ui, true);
             let button = Self::button_height(ui) + 6.0 + 4.0;
             let asked = chrome + Self::rows_height(ui, 9.0) + gap_y + button;
+            // Ce qu'il a demandé à l'image d'avant, quand il l'a dit :
+            // une délivrance sans prescripteur à saisir ne prend pas neuf
+            // rangées, et le registre reprend le reste.
+            let asked = if session.stup_form_need > 0.0 {
+                session.stup_form_need.min(asked)
+            } else {
+                asked
+            };
             let floor = chrome + Self::rows_height(ui, 2.0) + gap_y + button;
             // Le plancher ne passe pas le volet : il laisse au registre
             // sa tête et une ligne.
@@ -66989,7 +67001,7 @@ impl App {
                 // ils ne bougent plus quand on change de nature.
                 motif::inside(ui, bands[1], |ui| {
                     ui.spacing_mut().scroll.floating = false;
-                    egui::ScrollArea::vertical()
+                    let shown = egui::ScrollArea::vertical()
                         .id_salt("stup_form")
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
@@ -67483,6 +67495,13 @@ impl App {
                             )
                             .has_focus();
                         });
+                    // Ce que le formulaire demande pour tenir sans
+                    // défiler : le volet s'y règle à l'image suivante.
+                    let need = rect.height() - shown.inner_rect.height() + shown.content_size.y;
+                    if (need - session.stup_form_need).abs() > 0.5 {
+                        session.stup_form_need = need;
+                        ui.ctx().request_repaint();
+                    }
                 });
             });
             motif::inside(ui, split[1], |ui| {
@@ -67918,7 +67937,17 @@ impl App {
         // quelque chose. En dessous, elle ne dirait plus rien.
         let narrow = width - (ledger + product + gap * 2.0) < 120.0;
         let mention = if narrow {
-            (width - no - product - file - gap * 3.0).max(120.0)
+            // Pliée, la mention qui ne tient pas au bout de la seconde
+            // rangée passe dessous, sur toute la largeur. Tenue à cent
+            // vingt pixels quand même, elle élargissait la ligne au-delà
+            // du panneau, et « Annuler… », posé contre le bord droit de
+            // ce qui était devenu plus large que lui, sortait tranché.
+            let left = width - no - product - file - gap * 3.0;
+            if left >= 120.0 {
+                left
+            } else {
+                width.max(1.0)
+            }
         } else {
             (width - (ledger + product + gap * 2.0)).max(120.0)
         };
@@ -68410,7 +68439,14 @@ impl App {
                 // **« Annuler… » au bout de cette rangée**, à droite :
                 // posé au bout de la mention, il passait à la ligne sous
                 // une remarque longue et tombait n'importe où sous la
-                // ligne, une fois à gauche, une fois au milieu.
+                // ligne, une fois à gauche, une fois au milieu. Sur un
+                // panneau où la rangée ne lui laisse pas sa largeur, il
+                // prend le bout de la rangée suivante plutôt que de
+                // déborder du panneau, tranché.
+                let left = ui.max_rect().right() - ui.cursor().min.x;
+                if left < Self::button_width(ui, tr("stup_cancel")) + ui.spacing().item_spacing.x {
+                    ui.end_row();
+                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let a = Self::stup_cancel_cell(ui, &v);
                     if a != StupLineAction::None {
@@ -69653,7 +69689,7 @@ impl App {
                             return;
                         }
                         ui.visuals_mut().faint_bg_color = motif::bg_dark();
-                        let table_w = ui.available_width();
+                        let table_w = Self::scrolled_width(ui, inner.width());
                         let narrow = Self::stup_widths(ui, table_w, true).narrow;
                         Self::stup_list(ui, "stup_journal_grid", narrow, |ui| {
                             if narrow {
