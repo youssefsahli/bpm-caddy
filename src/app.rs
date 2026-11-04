@@ -62868,9 +62868,14 @@ impl App {
                             .map(Grade::label),
                     )
                 }
-                None => chars_wide(ui, 16.0),
+                // Sur l'axe des demi-vies, la colonne porte aussi « ce qui
+                // dure au-delà » : à seize caractères la note
+                // s'enveloppait sur quatre lignes, et la rangée de la
+                // Cordarone en valait cinq. Trente-quatre la tiennent sur
+                // deux, et la liste des organes, courte, garde le reste.
+                None => chars_wide(ui, 34.0).min(body_w * 0.32),
             }
-            .min(body_w * 0.24);
+            .min(body_w * 0.32);
             let rest_w = (body_w - name_w - value_w - gapx * 2.0).max(chars_wide(ui, 10.0));
             // **`show_viewport` et non `show`** : c'est lui qui dit
             // quelle tranche du contenu est à l'écran, et le tableau ne
