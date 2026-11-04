@@ -69968,7 +69968,13 @@ impl App {
                                     )
                                     .size()
                                     .x;
-                                if note_w > ui.available_width() {
+                                // Ce qui reste **après les boutons** : dans
+                                // une rangée qui passe à la ligne,
+                                // `available_width` rend la largeur de la
+                                // rangée entière, et le test ne tombait
+                                // jamais.
+                                let left = ui.max_rect().right() - ui.cursor().min.x;
+                                if note_w > left {
                                     ui.end_row();
                                 }
                                 ui.label(text);
@@ -95296,49 +95302,34 @@ impl App {
         }
         ui.add_space(4.0);
         for (label, value, tone) in said {
-            // **L'étiquette et sa valeur ne se séparent pas.** « Lot »
-            // posé au bout d'une rangée et son numéro au début de la
-            // suivante ne nomment plus rien — c'est la règle que
-            // `keep_together` porte, et une fenêtre de six cents pixels
-            // est précisément où elle se vérifie.
+            // **Une ligne par renseignement, l'étiquette en tête et la
+            // valeur qui passe à la ligne sous elle si elle est longue.**
+            // Chaque paire était posée dans un bloc centré à la hauteur
+            // d'une ligne, et dans ce volet qui défile le bloc s'étirait :
+            // code, péremption et lot séparés par des lignes vides, et
+            // « Suivi au registre » coupé au bord, sa phrase — « Délivrance
+            // ouvre le registre » — jamais lue.
             let ink = match tone {
                 BoxTone::Plain => motif::text(),
                 BoxTone::Doubt => motif::warn(),
                 BoxTone::Stop => motif::alert(),
             };
             let (small, big) = (motif::pt(ui, 10.5), motif::pt(ui, 11.5));
-            // Mesuré dans la fonte qui dessinera, et les deux largeurs
-            // comptées en **un** article et une gouttière.
-            let wide = |ui: &egui::Ui, text: &str, size: f32| {
-                ui.fonts(|f| {
-                    f.layout_no_wrap(
-                        text.to_owned(),
-                        egui::FontId::proportional(size),
-                        motif::text(),
-                    )
-                    .size()
-                    .x
-                })
-            };
-            let w = Self::group_width(
-                ui,
-                [wide(ui, label, small), wide(ui, value, big)].into_iter(),
+            // **Un seul texte**, et non une rangée de deux étiquettes : une
+            // rangée ne descend jamais sous la hauteur d'un contrôle, et à
+            // 1,6 c'est deux lignes de texte par renseignement.
+            let mut job = egui::text::LayoutJob::default();
+            job.append(
+                label,
+                0.0,
+                egui::TextFormat::simple(egui::FontId::proportional(small), motif::text_dim()),
             );
-            let size = egui::vec2(w, Self::label_line(ui));
-            Self::keep_together(ui, size, |ui| {
-                ui.add(
-                    egui::Label::new(
-                        egui::RichText::new(label)
-                            .size(small)
-                            .color(motif::text_dim()),
-                    )
-                    .wrap_mode(egui::TextWrapMode::Extend),
-                );
-                ui.add(
-                    egui::Label::new(egui::RichText::new(value).size(big).color(ink))
-                        .wrap_mode(egui::TextWrapMode::Extend),
-                );
-            });
+            job.append(
+                value,
+                ui.spacing().item_spacing.x,
+                egui::TextFormat::simple(egui::FontId::proportional(big), ink),
+            );
+            ui.add(egui::Label::new(job).wrap());
         }
     }
 
