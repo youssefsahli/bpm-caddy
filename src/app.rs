@@ -101608,9 +101608,20 @@ impl App {
                                     ui.end_row();
                                     Self::form_label(ui, tr("opts_db_path"));
                                     ui.horizontal(|ui| {
+                                        // Le champ cède à « Parcourir… » :
+                                        // à trente-deux caractères sous une
+                                        // colonne d'étiquettes élargie par le
+                                        // texte à 1,6, le bouton sortait de la
+                                        // page, et la page entière défilait de
+                                        // côté — ses phrases coupées avec elle.
+                                        let browse = Self::button_width(ui, tr("opts_db_browse"))
+                                            + ui.spacing().item_spacing.x;
+                                        let path_w = (ui.available_width() - browse)
+                                            .min(chars_wide(ui, 32.0))
+                                            .max(chars_wide(ui, 12.0));
                                         motif::field(
                                             ui,
-                                            chars_wide(ui, 32.0),
+                                            path_w,
                                             egui::TextEdit::singleline(&mut editor.db_path_text),
                                         );
                                         if motif::button(ui, tr("opts_db_browse")).clicked() {
@@ -101940,7 +101951,7 @@ impl App {
                             // Maintenance: complete a base created before
                             // the starter list grew, or wipe everything
                             // (debug/demo — two clicks, never one).
-                            ui.horizontal(|ui| {
+                            ui.horizontal_wrapped(|ui| {
                                 if motif::button_enabled(ui, tr("opts_db_seed"), !maint_busy)
                                     .clicked()
                                 {

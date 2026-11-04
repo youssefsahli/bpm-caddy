@@ -357,6 +357,50 @@ mod tests {
         );
     }
 
+    /// `trf` fills **one** `{}`: a string that holds two shows the second
+    /// one raw. « Annuaire : 5 prescripteur(s), colonnes lues : {}. » was
+    /// on the Options page for every officine with an annuaire, the
+    /// columns known only during an import that has its own sentence.
+    #[test]
+    fn every_string_given_one_value_holds_one_placeholder() {
+        const SOURCES: &[(&str, &str)] = &[
+            ("app.rs", include_str!("app.rs")),
+            ("pdf.rs", include_str!("pdf.rs")),
+            ("config.rs", include_str!("config.rs")),
+            ("maintenance.rs", include_str!("maintenance.rs")),
+            ("audit.rs", include_str!("audit.rs")),
+            ("postes.rs", include_str!("postes.rs")),
+            ("network.rs", include_str!("network.rs")),
+        ];
+        let mut wrong: Vec<String> = Vec::new();
+        for (file, source) in SOURCES {
+            let call = "trf(\"";
+            let mut rest = *source;
+            while let Some(at) = rest.find(call) {
+                let before = rest[..at].chars().next_back().unwrap_or(' ');
+                rest = &rest[at + call.len()..];
+                if before.is_alphanumeric() || before == '_' {
+                    continue;
+                }
+                let Some(end) = rest.find('"') else { break };
+                let key = &rest[..end];
+                if let Some(text) = tr_lookup(key) {
+                    let holes = text.matches("{}").count();
+                    if holes != 1 {
+                        wrong.push(format!("{file} : {key} ({holes} « {{}} »)"));
+                    }
+                }
+            }
+        }
+        wrong.sort();
+        wrong.dedup();
+        assert!(
+            wrong.is_empty(),
+            "trf remplit une seule valeur ; ces textes n'en attendent pas une :\n{}",
+            wrong.join("\n")
+        );
+    }
+
     /// …and the other way round: a key nobody uses is dead weight.
     ///
     /// The file is the officine's to override, so every line in it is a
