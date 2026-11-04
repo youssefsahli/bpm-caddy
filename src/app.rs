@@ -38185,8 +38185,12 @@ impl App {
                         };
                         ui.horizontal(|ui| {
                             motif::badge(ui, label, Some(mark), color, true);
+                            // Le nom de l'analyse, comme les autres volets
+                            // la nomment : « K » ou « CREAT » se
+                            // déchiffrent, « Kaliémie » se lit.
+                            let named = crate::biology::find(f.code).map_or(f.code, |a| a.label);
                             ui.label(
-                                egui::RichText::new(f.code)
+                                egui::RichText::new(named)
                                     .size(motif::pt(ui, 10.5))
                                     .color(motif::text_dim()),
                             );

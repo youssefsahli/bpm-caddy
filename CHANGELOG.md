@@ -16,6 +16,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   opening stock and the closing balance are sums, each workbook is still
   checked on its own, and lines sent from BPM-Caddy go to the first one.
 
+### Fixed
+
+- Stupéfiants register: in a narrow panel (« Dernières lignes », destruction
+  and ordonnancier lists) a folded line no longer runs past the panel; the
+  « Annuler… » button was covering the quantity dispensed.
+- Biology interpretation names the analyte (« Kaliémie ») instead of its
+  code (« K »).
+- Layout: the quality declaration keeps « Type » with its list; the nurse
+  contact fields, the patient identity fields and an interview's table
+  columns line up; a vaccine row's name sits level with its date.
+
 ## [0.453.0] - 2026-11-04
 
 ### Added
