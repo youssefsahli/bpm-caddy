@@ -30821,15 +30821,33 @@ impl App {
                             );
                         }
                         let choice = &mut open.choice;
+                        // **La situation en colonne** : chaque bouton à la
+                        // largeur de son nom, les situations commençaient
+                        // chacune ailleurs et la liste se lisait en
+                        // escalier. Elles partent toutes au bout du nom le
+                        // plus long — dans la limite de trois cinquièmes de la
+                        // fenêtre, pour qu'un nom très long ne les écrase
+                        // pas.
+                        let names_w = offers
+                            .iter()
+                            .map(|o| Self::button_width(ui, &o.name))
+                            .fold(0.0, f32::max)
+                            .min(ui.available_width() * 0.6)
+                            + ui.spacing().item_spacing.x;
                         for atb in &offers {
                             let barrier = atb.barrier(&who);
                             let picked = choice.antibiotic == Some(atb.id);
                             let row = ui.horizontal(|ui| {
+                                let start = ui.cursor().min.x;
                                 let toggled = ui
                                     .add_enabled_ui(barrier.is_none() || picked, |ui| {
                                         motif::toggle(ui, &atb.name, picked)
                                     })
                                     .inner;
+                                let pad = start + names_w - ui.cursor().min.x;
+                                if pad > 0.0 {
+                                    ui.add_space(pad);
+                                }
                                 if toggled.clicked() {
                                     if picked {
                                         choice.antibiotic = None;
