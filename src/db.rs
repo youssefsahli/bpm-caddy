@@ -54221,6 +54221,19 @@ impl Db {
 
     /// Lier une ligne du registre à sa ligne de classeur. Une fois : un
     /// lien ne se réécrit pas.
+    /// Retirer le lien d'une ligne partie vers un classeur, quand le
+    /// report qui l'y avait écrite est défait : la ligne n'y est plus, elle
+    /// est de nouveau à reporter. La ligne du registre, elle, ne bouge pas.
+    pub fn drop_stup_link(&self, move_id: i64, origin: &str) -> Result<(), String> {
+        self.stups
+            .execute(
+                "DELETE FROM stup_links WHERE move_id = ?1 AND origin = ?2",
+                rusqlite::params![move_id, origin],
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
     pub fn add_stup_link(&self, move_id: i64, origin: &str, day: &str) -> Result<(), String> {
         self.stups
             .execute(

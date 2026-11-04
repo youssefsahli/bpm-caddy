@@ -1595,6 +1595,26 @@ refusée, par exemple) : elle n'inscrit rien deux fois. Les noms des
 patients lus dans les classeurs ne sont pas repris : une délivrance est
 rattachée au dossier seulement quand un seul porte ce nom.
 
+### Reporter aux classeurs après la reprise
+
+Pour garder les classeurs à jour pendant une transition, cocher
+**Reporter aux classeurs**. Rien ne part de lui-même :
+
+- **Aperçu du report** dit les lignes du registre, inscrites depuis la
+  reprise, qui manquent aux classeurs, sans rien écrire.
+- **Reporter…**, puis **Confirmer le report** : avant d'écrire, chaque
+  classeur touché est copié à côté des sauvegardes de la base
+  (`stupcontrol-reports`), puis les lignes y sont ajoutées comme
+  StupControl le ferait. Une ligne déjà au classeur est appariée, pas
+  réécrite. Le registre ne reçoit rien des classeurs : une ligne qui n'y
+  est que dans le classeur est listée sous « Au classeur, absent du
+  registre ».
+- **Défaire le dernier report…**, puis **Confirmer** : chaque classeur
+  revient à sa copie (refusé s'il est ouvert dans LibreOffice), et les
+  lignes redeviennent à reporter. Refusé en entier si un classeur a
+  changé depuis le report — une ligne tapée à la main y serait perdue.
+  Les reports se défont du plus récent au plus ancien.
+
 « Rapprocher automatiquement » relance le rapprochement toutes les cinq
 minutes sur le poste qui sert l'officine. À activer après un premier
 rapprochement vérifié.

@@ -66,6 +66,9 @@ pub const MAP_PREFIX: &str = "stupcontrol_map:";
 /// Le jour, ISO, où le registre a été **repris** des classeurs : depuis,
 /// il est tenu ici seul et les classeurs ne sont plus rapprochés.
 pub const TAKEN_KEY: &str = "stupcontrol_taken";
+/// « 1 » quand, le registre repris, ce qui s'y écrit **se reporte aux
+/// classeurs**, sur confirmation et réversiblement ([`push`]).
+pub const PUSH_KEY: &str = "stupcontrol_push";
 /// Ce que lit une reprise sans date de départ : tout l'historique.
 const EVERYTHING: &str = "1900-01-01";
 
@@ -304,6 +307,17 @@ pub trait Bridge {
     /// Une lecture pour une reprise : la même, et ce que dit chaque année.
     fn survey(&self, since: &str) -> Result<Answer, String> {
         self.read(since)
+    }
+    /// Les classeurs qu'écrire ces lignes toucherait, pour en garder une
+    /// copie avant ([`push`]). Aucun, pour un pont qui n'a pas de fichiers.
+    fn files_of(&self, _entries: &[Entry]) -> Vec<std::path::PathBuf> {
+        Vec::new()
+    }
+    /// Remettre un classeur tel que sa copie le garde, avec les mêmes
+    /// précautions qu'une écriture : pas ouvert dans LibreOffice, une
+    /// copie de sécurité avant, l'échange atomique.
+    fn restore(&self, _file: &std::path::Path, _copy: &std::path::Path) -> Result<(), String> {
+        Err(crate::strings::tr("stc_err_restore").to_owned())
     }
 }
 
@@ -731,6 +745,11 @@ pub struct Report {
     pub preview: bool,
     /// Une reprise ([`take_over`]) plutôt qu'un rapprochement.
     pub takeover: bool,
+    /// Un report des lignes d'ici vers les classeurs ([`push`]).
+    pub push: bool,
+    /// Ce qu'un report a trouvé au classeur sans ligne au registre : dit,
+    /// jamais inscrit — le registre est tenu ici.
+    pub unwritten: Vec<Refused>,
     /// Les stocks reportés des classeurs, un par produit qui en avait.
     pub openings: usize,
     /// Les lignes de BPM-Caddy absentes des classeurs, laissées telles
@@ -857,6 +876,185 @@ pub fn take_over(
     Ok(report)
 }
 
+/// **Reporter aux classeurs ce qui s'est écrit ici depuis la reprise**,
+/// ou dire ce que cela ferait (`preview`).
+///
+/// Les lignes du registre datées depuis la reprise et jamais parties
+/// sont rapprochées des classeurs comme au rapprochement — une ligne
+/// tapée aussi dans LibreOffice se paire, elle ne s'écrit pas deux fois
+/// —, puis écrites. Rien ne vient des classeurs : ce qu'ils portent de
+/// plus est dit ([`Report::unwritten`]), le registre étant tenu ici.
+///
+/// **Réversible** : avant d'écrire, chaque classeur touché est copié dans
+/// `undo_root`, avec ce qui a été écrit ; [`undo_push`] le remet.
+pub fn push(
+    db: &Db,
+    bridge: &dyn Bridge,
+    today: &str,
+    preview: bool,
+    undo_root: &std::path::Path,
+) -> Result<Report, String> {
+    if db.stup_setting(TAKEN_KEY).is_none() {
+        return Err(crate::strings::tr("stc_err_not_taken").to_owned());
+    }
+    run_with(db, bridge, today, preview, Mode::Push(undo_root))
+}
+
+/// Un report écrit : quand, les lignes parties, et pour chaque classeur
+/// la copie d'avant et l'empreinte d'après.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct Pushed {
+    pub at: String,
+    pub moves: Vec<i64>,
+    pub files: Vec<PushedFile>,
+    /// Le jour où il a été défait ; vide tant qu'il tient.
+    #[serde(default)]
+    pub undone: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct PushedFile {
+    pub file: String,
+    pub copy: String,
+    /// L'empreinte du classeur juste après le report : s'il a changé
+    /// depuis, le remettre effacerait ce qu'on y a écrit après.
+    pub after: String,
+}
+
+/// Une empreinte stable d'un fichier (FNV-1a, 64 bits, et sa taille) :
+/// elle doit se relire pareil d'une version du programme à l'autre.
+fn fingerprint(path: &std::path::Path) -> String {
+    let Ok(bytes) = std::fs::read(path) else {
+        return String::new();
+    };
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in &bytes {
+        h ^= u64::from(*b);
+        h = h.wrapping_mul(0x0100_0000_01b3);
+    }
+    format!("{}-{h:016x}", bytes.len())
+}
+
+const MANIFEST: &str = "report.json";
+
+/// Ce qu'un report garde pendant qu'il écrit.
+struct Journal {
+    dir: std::path::PathBuf,
+    pushed: Pushed,
+    files: Vec<(std::path::PathBuf, std::path::PathBuf)>,
+}
+
+impl Journal {
+    fn open(
+        root: &std::path::Path,
+        today: &str,
+        files: &[std::path::PathBuf],
+    ) -> Result<Journal, String> {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default();
+        let dir = root.join(format!("{stamp:024}"));
+        let failed = || crate::strings::trf("stc_err_undo_copy", root.display());
+        std::fs::create_dir_all(&dir).map_err(|_| failed())?;
+        let mut kept = Vec::new();
+        let mut seen = HashSet::new();
+        for (n, f) in files.iter().enumerate() {
+            if !seen.insert(f.clone()) || !f.exists() {
+                continue;
+            }
+            let copy = dir.join(format!("{n}.ods"));
+            if std::fs::copy(f, &copy).is_err() {
+                let _ = std::fs::remove_dir_all(&dir);
+                return Err(failed());
+            }
+            kept.push((f.clone(), copy));
+        }
+        Ok(Journal {
+            dir,
+            pushed: Pushed {
+                at: today.to_owned(),
+                ..Pushed::default()
+            },
+            files: kept,
+        })
+    }
+
+    /// Le report a écrit ce qu'il a pu : son manifeste, ou rien s'il n'a
+    /// rien écrit.
+    fn close(mut self) -> Result<(), String> {
+        if self.pushed.moves.is_empty() {
+            let _ = std::fs::remove_dir_all(&self.dir);
+            return Ok(());
+        }
+        self.pushed.files = self
+            .files
+            .iter()
+            .map(|(f, c)| PushedFile {
+                file: f.to_string_lossy().into_owned(),
+                copy: c.to_string_lossy().into_owned(),
+                after: fingerprint(f),
+            })
+            .collect();
+        let text = serde_json::to_string_pretty(&self.pushed).map_err(|e| e.to_string())?;
+        std::fs::write(self.dir.join(MANIFEST), text)
+            .map_err(|_| crate::strings::trf("stc_err_undo_copy", self.dir.display()))
+    }
+}
+
+/// **Le dernier report qui tient**, le plus récent d'abord : c'est lui
+/// qu'on défait, puis le précédent.
+pub fn last_push(undo_root: &std::path::Path) -> Option<(std::path::PathBuf, Pushed)> {
+    let mut dirs: Vec<std::path::PathBuf> = std::fs::read_dir(undo_root)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.join(MANIFEST).is_file())
+        .collect();
+    dirs.sort();
+    dirs.into_iter().rev().find_map(|d| {
+        let text = std::fs::read_to_string(d.join(MANIFEST)).ok()?;
+        let p: Pushed = serde_json::from_str(&text).ok()?;
+        p.undone.is_empty().then_some((d, p))
+    })
+}
+
+/// **Défaire le dernier report** : chaque classeur remis tel qu'il était
+/// avant, et les lignes reparties « à reporter ».
+///
+/// Refusé en entier si un classeur a changé depuis — une ligne tapée
+/// dans LibreOffice, un autre report : le remettre l'effacerait. Rien
+/// n'est alors touché, et le classeur en cause est nommé. Rend le nombre
+/// de lignes reparties.
+pub fn undo_push(
+    db: &Db,
+    bridge: &dyn Bridge,
+    today: &str,
+    undo_root: &std::path::Path,
+) -> Result<usize, String> {
+    let Some((dir, mut pushed)) = last_push(undo_root) else {
+        return Err(crate::strings::tr("stc_err_nothing_to_undo").to_owned());
+    };
+    for f in &pushed.files {
+        if fingerprint(std::path::Path::new(&f.file)) != f.after {
+            return Err(crate::strings::trf("stc_err_changed_since", &f.file));
+        }
+        if !std::path::Path::new(&f.copy).is_file() {
+            return Err(crate::strings::trf("stc_err_undo_copy", &f.copy));
+        }
+    }
+    for f in &pushed.files {
+        bridge.restore(std::path::Path::new(&f.file), std::path::Path::new(&f.copy))?;
+    }
+    for id in &pushed.moves {
+        db.drop_stup_link(*id, "export")?;
+    }
+    pushed.undone = today.to_owned();
+    let text = serde_json::to_string_pretty(&pushed).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join(MANIFEST), text).map_err(|e| e.to_string())?;
+    Ok(pushed.moves.len())
+}
+
 /// Le solde d'une suite de lignes du registre, dans l'ordre du registre.
 fn balance_of(moves: &[&StupMove]) -> f64 {
     let mut sorted: Vec<&StupMove> = moves.to_vec();
@@ -888,6 +1086,15 @@ pub fn balance_before(stock: f64, lines: &[Line], start: &str) -> f64 {
         })
 }
 
+/// Ce que fait un passage sur les classeurs.
+#[derive(Clone, Copy)]
+enum Mode<'a> {
+    Sync,
+    Takeover,
+    /// Le report, et où garder de quoi le défaire.
+    Push(&'a std::path::Path),
+}
+
 fn run(
     db: &Db,
     bridge: &dyn Bridge,
@@ -895,7 +1102,34 @@ fn run(
     preview: bool,
     takeover: bool,
 ) -> Result<Report, String> {
-    let since = db.stup_setting(SINCE_KEY).unwrap_or_default();
+    run_with(
+        db,
+        bridge,
+        today,
+        preview,
+        if takeover { Mode::Takeover } else { Mode::Sync },
+    )
+}
+
+fn run_with(
+    db: &Db,
+    bridge: &dyn Bridge,
+    today: &str,
+    preview: bool,
+    mode: Mode,
+) -> Result<Report, String> {
+    let takeover = matches!(mode, Mode::Takeover);
+    let undo_root = match mode {
+        Mode::Push(root) => Some(root),
+        _ => None,
+    };
+    let push = undo_root.is_some();
+    // Un report part de la reprise : ce qui la précède est aux classeurs.
+    let since = if push {
+        db.stup_setting(TAKEN_KEY).unwrap_or_default()
+    } else {
+        db.stup_setting(SINCE_KEY).unwrap_or_default()
+    };
     let since = since.trim().to_owned();
     if since.is_empty() && !takeover {
         return Err(crate::strings::tr("stc_err_no_since").to_owned());
@@ -913,6 +1147,7 @@ fn run(
     let mut report = Report {
         preview,
         takeover,
+        push,
         version: answer.version.clone(),
         data_dir: answer.data_dir.clone(),
         unreadable: answer.unreadable.clone(),
@@ -1117,6 +1352,10 @@ fn run(
                 line: line_said(l),
                 reason,
             };
+            if push {
+                report.unwritten.push(refuse(String::new()));
+                continue;
+            }
             let (day, quantity, taken) = match import_of(l) {
                 Ok(t) => t,
                 Err(r) => {
@@ -1213,10 +1452,26 @@ fn run(
         report.exported = entries.len();
     } else if !entries.is_empty() {
         let sent: Vec<Entry> = entries.iter().map(|(_, e, _)| e.clone()).collect();
-        let outcomes = bridge.add(&sent)?;
+        // Un report garde d'abord de quoi se défaire.
+        let mut journal = match undo_root {
+            Some(root) => Some(Journal::open(root, today, &bridge.files_of(&sent))?),
+            None => None,
+        };
+        let outcomes = match bridge.add(&sent) {
+            Ok(o) => o,
+            Err(e) => {
+                if let Some(j) = journal {
+                    let _ = j.close();
+                }
+                return Err(e);
+            }
+        };
         for ((id, entry, effect), outcome) in entries.iter().zip(outcomes.iter()) {
             let stup_id = by_key.get(entry.key.as_str()).copied().unwrap_or(0);
             if outcome.ok {
+                if let Some(j) = &mut journal {
+                    j.pushed.moves.push(*id);
+                }
                 db.add_stup_link(*id, "export", today)?;
                 report.exported += 1;
                 *exported_effect.entry(stup_id).or_insert(0.0) += effect;
@@ -1240,6 +1495,9 @@ fn run(
                         .unwrap_or_else(|| outcome.code.clone().unwrap_or_default()),
                 });
             }
+        }
+        if let Some(j) = journal {
+            j.close()?;
         }
     }
     // Les soldes, après ce qui vient d'être fait. Un aperçu compare ce qui
@@ -2283,5 +2541,119 @@ mod tests {
             added: RefCell::new(Vec::new()),
         };
         assert!(sync(&db, &fake, "2026-03-10", false).is_err());
+    }
+
+    /// Un StupControl en mémoire tenu dans un vrai fichier : chaque ligne
+    /// écrite y ajoute un octet, et le remettre rend aussi ce qu'il lisait.
+    struct OnDisk {
+        inner: Fake,
+        file: std::path::PathBuf,
+        before: Vec<Product>,
+    }
+
+    impl Bridge for OnDisk {
+        fn read(&self, since: &str) -> Result<Answer, String> {
+            self.inner.read(since)
+        }
+        fn add(&self, entries: &[Entry]) -> Result<Vec<Outcome>, String> {
+            let out = self.inner.add(entries)?;
+            let mut bytes = std::fs::read(&self.file).unwrap();
+            bytes.extend(out.iter().filter(|o| o.ok).map(|_| b'+'));
+            std::fs::write(&self.file, bytes).unwrap();
+            Ok(out)
+        }
+        fn files_of(&self, _entries: &[Entry]) -> Vec<std::path::PathBuf> {
+            vec![self.file.clone(), self.file.clone()]
+        }
+        fn restore(&self, file: &std::path::Path, copy: &std::path::Path) -> Result<(), String> {
+            std::fs::copy(copy, file).map_err(|e| e.to_string())?;
+            *self.inner.products.borrow_mut() = self.before.clone();
+            Ok(())
+        }
+    }
+
+    /// **Le report aux classeurs se défait** : il suit une reprise, n'écrit
+    /// rien en aperçu, garde une copie de chaque classeur avant d'écrire,
+    /// et le remet — sauf si le classeur a changé depuis, où rien n'est
+    /// touché.
+    #[test]
+    fn a_push_to_the_workbooks_is_written_on_confirmation_and_undone() {
+        let (swept, db) = officine("push");
+        let root = swept.0.join("reports");
+        let stup = db
+            .add_stupefiant(0, "Méthadone 10 mg", "gélule", 0.0)
+            .unwrap();
+        db.set_stupcontrol_map(stup, KEY).unwrap();
+        let dupont = db.add_patient("Dupont", "Albert", "1950-01-01").unwrap();
+        let mut p = product(KEY, "Méthadone 10 mg", "Méthadone 10 mg");
+        p.stock = Some(30.0);
+        p.movements = vec![line("E", "2026-03-02", 28.0, "Cerp", "", "")];
+        let file = swept.0.join("methadone.ods");
+        std::fs::write(&file, b"classeur").unwrap();
+        let bridge = OnDisk {
+            inner: Fake {
+                products: RefCell::new(vec![p]),
+                refuse: RefCell::new(None),
+                added: RefCell::new(Vec::new()),
+            },
+            file: file.clone(),
+            before: Vec::new(),
+        };
+        assert!(push(&db, &bridge, "2026-03-09", false, &root).is_err());
+        take_over(&db, &bridge, "2026-03-10", false).unwrap();
+        let before = bridge.inner.products.borrow().clone();
+        let bridge = OnDisk { before, ..bridge };
+        let mut sortie = mv(0, Kind::Sortie, "2026-03-12", 5.0);
+        sortie.stup_id = stup;
+        sortie.ordo_no = 18600;
+        sortie.patient_id = dupont;
+        db.add_stup_move(&sortie).unwrap();
+        // Au classeur, absent du registre : dit, jamais inscrit.
+        bridge.inner.products.borrow_mut()[0].movements.push(line(
+            "S",
+            "2026-03-11",
+            2.0,
+            "MARTIN",
+            "Paul",
+            "18599",
+        ));
+
+        let seen = push(&db, &bridge, "2026-03-12", true, &root).unwrap();
+        assert!(seen.push && seen.preview);
+        assert_eq!(seen.exported, 1);
+        assert_eq!(seen.unwritten.len(), 1, "{:?}", seen.unwritten);
+        assert_eq!(std::fs::read(&file).unwrap(), b"classeur");
+        assert!(last_push(&root).is_none(), "un aperçu ne garde rien");
+
+        let done = push(&db, &bridge, "2026-03-12", false, &root).unwrap();
+        assert_eq!(done.exported, 1);
+        assert_eq!(std::fs::read(&file).unwrap(), b"classeur+");
+        let (_, kept) = last_push(&root).unwrap();
+        assert_eq!(kept.at, "2026-03-12");
+        assert_eq!(kept.files.len(), 1, "un classeur copié une fois");
+        let again = push(&db, &bridge, "2026-03-13", false, &root).unwrap();
+        assert_eq!(again.exported, 0);
+        assert_eq!(
+            std::fs::read_dir(&root).unwrap().count(),
+            1,
+            "un report sans ligne ne garde rien"
+        );
+
+        // Le classeur a changé depuis : rien n'est défait.
+        std::fs::write(&file, b"classeur+!").unwrap();
+        assert!(undo_push(&db, &bridge, "2026-03-13", &root).is_err());
+        assert_eq!(std::fs::read(&file).unwrap(), b"classeur+!");
+        std::fs::write(&file, b"classeur+").unwrap();
+
+        assert_eq!(undo_push(&db, &bridge, "2026-03-13", &root), Ok(1));
+        assert_eq!(std::fs::read(&file).unwrap(), b"classeur");
+        assert!(last_push(&root).is_none());
+        assert!(undo_push(&db, &bridge, "2026-03-13", &root).is_err());
+        let back = push(&db, &bridge, "2026-03-13", true, &root).unwrap();
+        assert_eq!(back.exported, 1, "la ligne est de nouveau à reporter");
+
+        // Un pont sans fichiers ne sait rien remettre.
+        assert!(bridge.inner.restore(&file, &file).is_err());
+        assert!(bridge.inner.files_of(&[]).is_empty());
     }
 }

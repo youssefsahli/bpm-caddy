@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- StupControl: after a takeover, « Reporter aux classeurs » sends what
+  the register gains back to the workbooks, on confirmation only (a
+  preview first, then « Reporter… » and a second click). Each touched
+  workbook is copied before writing; « Défaire le dernier report… »
+  puts every workbook back and marks the lines as to be sent again. The
+  undo is refused whole when a workbook changed since, or is open in
+  LibreOffice. Lines only in the workbooks are listed, never inscribed.
+
 ## [0.454.0] - 2026-11-04
 
 ### Added

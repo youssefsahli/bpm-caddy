@@ -3185,6 +3185,62 @@ impl Bridge for Native {
     fn add(&self, entries: &[Entry]) -> Result<Vec<Outcome>, String> {
         self.add_entries(entries)
     }
+
+    fn files_of(&self, entries: &[Entry]) -> Vec<PathBuf> {
+        let Ok(ready) = self.ready() else {
+            return Vec::new();
+        };
+        let mut by_key: HashMap<String, Drug> = HashMap::new();
+        for d in active_drugs(&ready.settings) {
+            by_key.entry(d.alias_key()).or_insert(d);
+        }
+        let mut out: Vec<PathBuf> = Vec::new();
+        for e in entries {
+            let (Some(d), Some((y, _, _))) = (by_key.get(&e.key), iso_date(&e.date)) else {
+                continue;
+            };
+            let f = resolve_file(&ready.settings.data_dir, d, y);
+            if !out.contains(&f) {
+                out.push(f);
+            }
+        }
+        out
+    }
+
+    /// Un classeur remis d'après sa copie, comme une écriture le serait :
+    /// refusé s'il est ouvert dans LibreOffice, une copie de sécurité
+    /// avant, la copie relue, puis l'échange atomique.
+    fn restore(&self, file: &Path, copy: &Path) -> Result<(), String> {
+        let name = file_name(file);
+        check_lock(file).map_err(|f| f.msg)?;
+        let dir = file.parent().unwrap_or(Path::new("."));
+        let tmp = temp_in(dir).ok_or_else(|| trf("cls_err_write", &name))?;
+        if std::fs::copy(copy, &tmp).is_err() {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(trf("cls_err_write", &name));
+        }
+        if let Err(e) = validate(&tmp) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e);
+        }
+        let audit = self.audit();
+        if !backup(file) {
+            audit.log(
+                "SAUVEGARDE_ECHEC",
+                &format!("file={name} | copie de sécurité impossible avant annulation"),
+            );
+        }
+        if std::fs::rename(&tmp, file).is_err() && std::fs::copy(&tmp, file).is_err() {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(trf("cls_err_save", &name));
+        }
+        let _ = std::fs::remove_file(&tmp);
+        audit.log(
+            "ANNULATION_BPM",
+            &format!("file={name} | report de BPM-Caddy défait"),
+        );
+        Ok(())
+    }
 }
 
 impl Native {
@@ -3750,6 +3806,15 @@ mod tests {
             prenom: String::new(),
             ordo: ordo.to_owned(),
         };
+        let touched = native.files_of(&[
+            entry(&key, "E", "2025-03-02", 10.0, ""),
+            entry(&key, "S", "2025-03-03", 3.0, ""),
+            entry("inconnu|x", "E", "2025-03-02", 1.0, ""),
+        ]);
+        let target = data.join("2025").join("methadone.ods");
+        assert_eq!(touched, vec![target.clone()]);
+        let before = dir.join("before.ods");
+        std::fs::copy(&target, &before).unwrap();
         let out = native
             .add(&[
                 entry(&key, "E", "2025-03-02", 10.0, ""),
@@ -3818,6 +3883,29 @@ mod tests {
             "{:?}",
             typo.years
         );
+
+        // Remettre un classeur : pas s'il est ouvert, pas d'après une copie
+        // illisible, puis tel que la copie le garde.
+        let lock = lock_file(&target);
+        std::fs::write(&lock, b"x").unwrap();
+        assert!(native.restore(&target, &before).is_err());
+        std::fs::remove_file(&lock).unwrap();
+        let junk = dir.join("junk.ods");
+        std::fs::write(&junk, b"not a zip").unwrap();
+        assert!(native.restore(&target, &junk).is_err());
+        native.restore(&target, &before).unwrap();
+        assert_eq!(
+            std::fs::read(&target).unwrap(),
+            std::fs::read(&before).unwrap()
+        );
+        let read = native.read("2025-01-01").unwrap();
+        let p = read.products.iter().find(|p| p.key == key).unwrap();
+        assert!(p.movements.is_empty());
+        let log = std::fs::read_to_string(dir.join("audit.log")).unwrap();
+        assert!(log.contains("ANNULATION_BPM"));
+        assert!(nowhere
+            .files_of(&[entry(&key, "E", "2025-03-02", 1.0, "")])
+            .is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

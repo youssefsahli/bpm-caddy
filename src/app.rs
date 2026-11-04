@@ -11306,15 +11306,30 @@ impl Session {
         };
         let password = self.password.clone();
         let today = self.today.clone();
+        let undo_root = stc_undo_root(&path);
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let out = match job {
+                StcJob::PushPreview | StcJob::Push => Db::open(&path, &password)
+                    .and_then(|db| {
+                        crate::stupcontrol::push(
+                            &db,
+                            &program,
+                            &today,
+                            job == StcJob::PushPreview,
+                            &undo_root,
+                        )
+                    })
+                    .map(|r| StcDone::Report(Box::new(r))),
+                StcJob::Undo => Db::open(&path, &password)
+                    .and_then(|db| crate::stupcontrol::undo_push(&db, &program, &today, &undo_root))
+                    .map(StcDone::Undo),
                 StcJob::Ping => program.ping().map(StcDone::Ping),
                 StcJob::Preview | StcJob::Sync => Db::open(&path, &password)
                     .and_then(|db| {
                         crate::stupcontrol::sync(&db, &program, &today, job == StcJob::Preview)
                     })
-                    .map(StcDone::Report),
+                    .map(|r| StcDone::Report(Box::new(r))),
                 StcJob::TakePreview | StcJob::Take => Db::open(&path, &password)
                     .and_then(|db| {
                         crate::stupcontrol::take_over(
@@ -11324,7 +11339,7 @@ impl Session {
                             job == StcJob::TakePreview,
                         )
                     })
-                    .map(StcDone::Report),
+                    .map(|r| StcDone::Report(Box::new(r))),
             };
             let _ = tx.send(out);
         });
@@ -11340,14 +11355,28 @@ impl Session {
             match rx.try_recv() {
                 Ok(done) => {
                     self.stc.job = None;
+                    self.stc.last_push = None;
                     match done {
+                        Ok(StcDone::Undo(n)) => {
+                            self.stc.note = Some((false, trf("stc_undo_done", n)));
+                            self.reload_stup();
+                        }
                         Ok(StcDone::Ping(a)) => {
                             self.stc.note = Some((false, trf("stc_ping_ok", &a.data_dir)));
                         }
                         Ok(StcDone::Report(r)) => {
                             let troubled =
                                 !(r.refused.is_empty() && r.failed.is_empty() && r.lost.is_empty());
-                            let said = if r.takeover {
+                            let said = if r.push {
+                                trn(
+                                    if r.preview {
+                                        "stc_push_preview_done"
+                                    } else {
+                                        "stc_push_done"
+                                    },
+                                    &[&r.exported, &r.paired],
+                                )
+                            } else if r.takeover {
                                 trn(
                                     if r.preview {
                                         "stc_take_preview_done"
@@ -11371,7 +11400,7 @@ impl Session {
                             if !r.preview {
                                 self.reload_stup();
                             }
-                            self.stc.report = Some(r);
+                            self.stc.report = Some(*r);
                         }
                         Err(e) => self.stc.note = Some((true, plain_error(&e))),
                     }
@@ -20240,11 +20269,24 @@ struct StcState {
     auto_next: Option<Instant>,
     /// « Reprendre… » cliqué une fois : le second clic confirme.
     take_armed: bool,
+    /// « Reporter… » et « Défaire le dernier report… », de même.
+    push_armed: bool,
+    undo_armed: bool,
+    /// Le jour du dernier report encore défaisable : lu une fois à
+    /// l'ouverture et après chaque tâche, pas à chaque image.
+    last_push: Option<Option<String>>,
+}
+
+/// Où gardent les copies d'avant chaque report aux classeurs : à côté
+/// des sauvegardes de la base.
+fn stc_undo_root(db_path: &std::path::Path) -> std::path::PathBuf {
+    crate::db::backup_dir(db_path).join("stupcontrol-reports")
 }
 
 enum StcDone {
     Ping(crate::stupcontrol::Answer),
-    Report(crate::stupcontrol::Report),
+    Report(Box<crate::stupcontrol::Report>),
+    Undo(usize),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -20254,6 +20296,9 @@ enum StcJob {
     Sync,
     TakePreview,
     Take,
+    PushPreview,
+    Push,
+    Undo,
 }
 
 /// La fenêtre du réseau d'officines : ce que la base en dit, une tâche
@@ -89343,13 +89388,21 @@ impl App {
     /// **La fenêtre StupControl** : la date de départ, la correspondance
     /// des produits, l'aperçu, le rapprochement et ce qu'il a dit.
     fn stupcontrol_window(ctx: &egui::Context, session: &mut Session, config: &Config) {
-        use crate::stupcontrol::{AUTO_KEY, SINCE_KEY, TAKEN_KEY};
+        use crate::stupcontrol::{AUTO_KEY, PUSH_KEY, SINCE_KEY, TAKEN_KEY};
         if !session.stc.open {
             return;
         }
         let since = session.db.stup_setting(SINCE_KEY).unwrap_or_default();
         let taken = session.db.stup_setting(TAKEN_KEY);
         let auto = session.db.stup_setting(AUTO_KEY).as_deref() == Some("1");
+        let pushing = session.db.stup_setting(PUSH_KEY).as_deref() == Some("1");
+        if session.stc.last_push.is_none() {
+            session.stc.last_push = Some(session.db.path().and_then(|p| {
+                crate::stupcontrol::last_push(&stc_undo_root(&p)).map(|(_, x)| x.at)
+            }));
+        }
+        let last_push = session.stc.last_push.clone().flatten();
+        let mut set_push: Option<bool> = None;
         // Les clés que désigne chaque produit suivi, la première d'abord.
         let mut mapping: std::collections::HashMap<i64, Vec<String>> =
             std::collections::HashMap::new();
@@ -89442,6 +89495,70 @@ impl App {
                         .changed()
                 {
                     set_auto = Some(on);
+                }
+                let mut on = pushing;
+                if taken.is_some()
+                    && motif::checkbox(ui, &mut on, tr("stc_push"))
+                        .on_hover_text(tr("stc_push_tooltip"))
+                        .changed()
+                {
+                    set_push = Some(on);
+                }
+                if taken.is_some() && (pushing || last_push.is_some()) {
+                    ui.horizontal_wrapped(|ui| {
+                        let can = !busy && program.is_some();
+                        if pushing {
+                            if ui
+                                .add_enabled_ui(can, |ui| motif::button(ui, tr("stc_push_preview")))
+                                .inner
+                                .on_hover_text(tr("stc_push_preview_tooltip"))
+                                .clicked()
+                            {
+                                start = Some(StcJob::PushPreview);
+                            }
+                            let (label, tip) = if session.stc.push_armed {
+                                ("stc_push_confirm", "stc_push_confirm_tooltip")
+                            } else {
+                                ("stc_push_go", "stc_push_go_tooltip")
+                            };
+                            if ui
+                                .add_enabled_ui(can, |ui| motif::button(ui, tr(label)))
+                                .inner
+                                .on_hover_text(tr(tip))
+                                .clicked()
+                            {
+                                if session.stc.push_armed {
+                                    start = Some(StcJob::Push);
+                                }
+                                session.stc.push_armed = !session.stc.push_armed;
+                                session.stc.undo_armed = false;
+                            }
+                        }
+                        if let Some(day) = &last_push {
+                            let label = if session.stc.undo_armed {
+                                trf("stc_undo_confirm", crate::db::format_french_date(day))
+                            } else {
+                                tr("stc_undo").to_owned()
+                            };
+                            let tip = if session.stc.undo_armed {
+                                "stc_undo_confirm_tooltip"
+                            } else {
+                                "stc_undo_tooltip"
+                            };
+                            if ui
+                                .add_enabled_ui(can, |ui| motif::button(ui, &label))
+                                .inner
+                                .on_hover_text(tr(tip))
+                                .clicked()
+                            {
+                                if session.stc.undo_armed {
+                                    start = Some(StcJob::Undo);
+                                }
+                                session.stc.undo_armed = !session.stc.undo_armed;
+                                session.stc.push_armed = false;
+                            }
+                        }
+                    });
                 }
                 ui.horizontal_wrapped(|ui| {
                     let can = !busy && program.is_some() && !since.is_empty() && taken.is_none();
@@ -89664,6 +89781,7 @@ impl App {
                                 ("stc_lost_title", &r.lost),
                                 ("stc_warnings_title", &r.warnings),
                                 ("stc_unlinked_title", &r.unlinked),
+                                ("stc_unwritten_title", &r.unwritten),
                             ] {
                                 if list.is_empty() {
                                     continue;
@@ -89706,6 +89824,15 @@ impl App {
                     Err(e) => session.stc.note = Some((true, plain_error(&e))),
                 },
                 Err(e) => session.stc.note = Some((true, e)),
+            }
+        }
+        if let Some(on) = set_push {
+            session.stc.push_armed = false;
+            if let Err(e) = session
+                .db
+                .set_stup_setting(PUSH_KEY, if on { "1" } else { "" })
+            {
+                session.stc.note = Some((true, plain_error(&e)));
             }
         }
         if let Some(on) = set_auto {
