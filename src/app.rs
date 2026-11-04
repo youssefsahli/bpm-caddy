@@ -31792,19 +31792,36 @@ impl App {
                         }
                     });
                     let w = chars_wide(ui, 32.0).min(ui.available_width());
-                    ui.horizontal_wrapped(|ui| {
-                        Self::form_label(ui, tr("care_name"));
-                        let field = motif::field(ui, w, egui::TextEdit::singleline(&mut care.nom));
-                        dirty |= field.changed();
-                        save |= field.lost_focus();
-                    });
-                    ui.horizontal_wrapped(|ui| {
-                        Self::form_label(ui, tr("care_phone"));
-                        let field =
-                            motif::field(ui, w, egui::TextEdit::singleline(&mut care.telephone));
-                        dirty |= field.changed();
-                        save |= field.lost_focus();
-                    });
+                    // Les deux champs partent d'une même colonne : leur
+                    // largeur se prend sur le panneau, avant la grille
+                    // (dedans, la place est celle d'une case).
+                    let w = w
+                        .min(
+                            ui.available_width()
+                                - Self::button_width(ui, tr("care_name"))
+                                - ui.spacing().item_spacing.x,
+                        )
+                        .max(chars_wide(ui, 8.0));
+                    egui::Grid::new("care_contact")
+                        .num_columns(2)
+                        .spacing([8.0, 6.0])
+                        .show(ui, |ui| {
+                            Self::form_label(ui, tr("care_name"));
+                            let field =
+                                motif::field(ui, w, egui::TextEdit::singleline(&mut care.nom));
+                            dirty |= field.changed();
+                            save |= field.lost_focus();
+                            ui.end_row();
+                            Self::form_label(ui, tr("care_phone"));
+                            let field = motif::field(
+                                ui,
+                                w,
+                                egui::TextEdit::singleline(&mut care.telephone),
+                            );
+                            dirty |= field.changed();
+                            save |= field.lost_focus();
+                            ui.end_row();
+                        });
                     ui.add_space(6.0);
                     motif::section(ui, tr("care_style_title"));
                     let hint_of = |style: Style| match style {
@@ -57794,24 +57811,35 @@ impl App {
 
                     motif::section(ui, tr("qual_sec_declaration"));
                     ui.horizontal_wrapped(|ui| {
-                        ui.label(dim(tr("qual_date")));
+                        Self::form_label(ui, tr("qual_date"));
                         motif::field(
                             ui,
                             narrow(ui, 11.0),
                             egui::TextEdit::singleline(&mut e.date),
                         );
-                        ui.label(dim(tr("qual_by")));
+                        Self::form_label(ui, tr("qual_by"));
                         motif::field(
                             ui,
                             narrow(ui, 6.0),
                             egui::TextEdit::singleline(&mut d.declared_by),
                         );
-                        ui.label(dim(tr("qual_kind")));
                         let kinds: Vec<(String, String)> = qualite::KINDS
                             .iter()
                             .map(|k| ((*k).to_owned(), qual_kind_label(k).to_owned()))
                             .collect();
                         let w = motif::select_width(ui, kinds.iter().map(|(_, l)| l.as_str()));
+                        // « Type » et sa liste passent à la ligne ensemble.
+                        let font = egui::TextStyle::Body.resolve(ui.style());
+                        let label = ui.fonts(|f| {
+                            f.layout_no_wrap(tr("qual_kind").to_owned(), font, motif::text_dim())
+                                .size()
+                                .x
+                        });
+                        let left = ui.max_rect().right() - ui.cursor().min.x;
+                        if left < label + ui.spacing().item_spacing.x + w {
+                            ui.end_row();
+                        }
+                        Self::form_label(ui, tr("qual_kind"));
                         motif::select(ui, "qual_kind", w, &mut d.kind, &kinds);
                     });
                     ui.label(dim(tr("qual_what")));
