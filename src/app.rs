@@ -67934,11 +67934,35 @@ impl App {
     /// les sept sont écrites une fois et appelées depuis **deux**
     /// dispositions — les neuf colonnes quand le panneau les porte, la
     /// ligne pliée en deux quand il ne les porte pas.
+    /// « Annulée », ou le bouton qui annule : la fin de la mention dans
+    /// les neuf colonnes, la fin de la première rangée dans la ligne
+    /// pliée.
+    fn stup_cancel_cell(ui: &mut egui::Ui, v: &StupLineView) -> StupLineAction {
+        let kind = crate::ordonnancier::Kind::from_key(&v.m.kind);
+        if v.cancelled {
+            ui.label(
+                egui::RichText::new(tr("stup_is_cancelled"))
+                    .size(motif::pt(ui, 10.5))
+                    .color(motif::alert()),
+            );
+        } else if v.offer_cancel
+            && kind.can_be_cancelled()
+            && !v.cancelling
+            && motif::button(ui, tr("stup_cancel"))
+                .on_hover_text(tr("stup_cancel_tooltip"))
+                .clicked()
+        {
+            return StupLineAction::Ask(v.m.id);
+        }
+        StupLineAction::None
+    }
+
     fn stup_mention(
         ui: &mut egui::Ui,
         v: &StupLineView,
         w: f32,
         reason: &mut String,
+        with_cancel: bool,
     ) -> StupLineAction {
         use crate::ordonnancier::Kind;
         let StupLineView {
@@ -67946,7 +67970,6 @@ impl App {
             cancelled,
             target,
             cancelling,
-            offer_cancel,
             pieces,
             ..
         } = *v;
@@ -68039,20 +68062,11 @@ impl App {
                         )
                         .on_hover_text(tr("stup_line_pieces_tooltip"));
                     }
-                    if cancelled {
-                        ui.label(
-                            egui::RichText::new(tr("stup_is_cancelled"))
-                                .size(motif::pt(ui, 10.5))
-                                .color(motif::alert()),
-                        );
-                    } else if offer_cancel
-                        && kind.can_be_cancelled()
-                        && !cancelling
-                        && motif::button(ui, tr("stup_cancel"))
-                            .on_hover_text(tr("stup_cancel_tooltip"))
-                            .clicked()
-                    {
-                        action = StupLineAction::Ask(m.id);
+                    if with_cancel {
+                        let a = Self::stup_cancel_cell(ui, v);
+                        if a != StupLineAction::None {
+                            action = a;
+                        }
                     }
                 });
                 // Le motif s'ouvre **sous** la ligne qu'il annule, et il est
@@ -68145,6 +68159,16 @@ impl App {
                 if balance.is_some() {
                     Self::stup_balance(ui, balance, cancelled, qty_w);
                 }
+                // **« Annuler… » au bout de cette rangée**, à droite :
+                // posé au bout de la mention, il passait à la ligne sous
+                // une remarque longue et tombait n'importe où sous la
+                // ligne, une fois à gauche, une fois au milieu.
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let a = Self::stup_cancel_cell(ui, &v);
+                    if a != StupLineAction::None {
+                        action = a;
+                    }
+                });
             });
             ui.horizontal_wrapped(|ui| {
                 Self::stup_no(ui, m, cancelled, no_w);
@@ -68153,7 +68177,7 @@ impl App {
                 if a != StupLineAction::None {
                     action = a;
                 }
-                let a = Self::stup_mention(ui, &v, mention_w, reason);
+                let a = Self::stup_mention(ui, &v, mention_w, reason, false);
                 if a != StupLineAction::None {
                     action = a;
                 }
@@ -68175,7 +68199,7 @@ impl App {
         if a != StupLineAction::None {
             action = a;
         }
-        let a = Self::stup_mention(ui, &v, mention_w, reason);
+        let a = Self::stup_mention(ui, &v, mention_w, reason, true);
         if a != StupLineAction::None {
             action = a;
         }
