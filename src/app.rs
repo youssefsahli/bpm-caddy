@@ -7305,6 +7305,10 @@ struct Session {
     proto_node_confirm: Option<i64>,
     /// La posologie de la fiche dont la croix a été pressée une fois.
     poso_confirm: Option<i64>,
+    /// L'officine du réseau dont la croix a été pressée une fois : la
+    /// retirer oblige à l'appairer de nouveau.
+    #[cfg(feature = "sync")]
+    net_peer_confirm: Option<String>,
     /// Ctrl+F asked for the open list's own search field.
     focus_list_search: bool,
     /// The rentals on the open file, the forfait being handed out, and
@@ -8096,6 +8100,8 @@ impl Session {
             checklist_confirm_delete: None,
             proto_node_confirm: None,
             poso_confirm: None,
+            #[cfg(feature = "sync")]
+            net_peer_confirm: None,
             focus_list_search: false,
             locations: Vec::new(),
             loc_pick: 0,
@@ -89377,6 +89383,8 @@ impl App {
         let mut rename_self = false;
         let mut peer_stale = false;
         let mut remove_peer: Option<String> = None;
+        let peer_confirm = session.net_peer_confirm.clone();
+        let mut peer_arm: Option<Option<String>> = None;
         let mut open_folder_options = false;
         let mut pick_net: Option<String> = None;
         let mut save_shares: Option<db::NetShares> = None;
@@ -89731,11 +89739,24 @@ impl App {
                                         (p.name.clone(), p.address.clone()),
                                     ));
                                 }
-                                if motif::button(ui, "×")
-                                    .on_hover_text(tr("net_peer_remove_tooltip"))
-                                    .clicked()
+                                let arming = peer_confirm.as_deref() == Some(p.device.as_str());
+                                if motif::button(
+                                    ui,
+                                    if arming {
+                                        tr("itv_delete_confirm")
+                                    } else {
+                                        tr("itv_delete")
+                                    },
+                                )
+                                .on_hover_text(tr("net_peer_remove_tooltip"))
+                                .clicked()
                                 {
-                                    remove_peer = Some(p.device.clone());
+                                    if arming {
+                                        remove_peer = Some(p.device.clone());
+                                        peer_arm = Some(None);
+                                    } else {
+                                        peer_arm = Some(Some(p.device.clone()));
+                                    }
                                 }
                             });
                             for (bad, line) in net_peer_status(p) {
@@ -89953,6 +89974,9 @@ impl App {
             }
             w.edits.remove(&device);
             w.reread(&session.db);
+        }
+        if let Some(next) = peer_arm {
+            session.net_peer_confirm = next;
         }
         if let Some(device) = remove_peer {
             // Dans un réseau de plus, l'officine ne quitte que lui.
