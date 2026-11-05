@@ -3267,6 +3267,12 @@ mod tests {
     /// a change to [`icon`] that forgot the file fails here.
     #[test]
     fn the_windows_icon_file_is_the_icon() {
+        // **Le thème est un état global**, et l'icône se peint avec lui :
+        // un test voisin qui passait en « olive » au même instant
+        // repeignait le fichier attendu, une fois sur quelques-unes. Le
+        // fichier est l'icône du premier thème.
+        let _guard = super::theme_lock();
+        super::set_theme(super::THEMES[0].key);
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .join("assets")
