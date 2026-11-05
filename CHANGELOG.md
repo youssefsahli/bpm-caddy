@@ -37,6 +37,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Another post's write no longer rereads every drug card: they are
   reread only when a card changed — half the cost of a refresh.
 
+### Fixed
+
+- Status bar: on a narrow window or large text, a count that no longer
+  fits before the base's name gives way (the least urgent first)
+  instead of running under the connections mark.
+
 ## [0.454.0] - 2026-11-04
 
 ### Added

@@ -100000,6 +100000,15 @@ impl eframe::App for App {
             let synced = session
                 .sync_notice
                 .is_some_and(|at| at.elapsed() < Session::SYNC_NOTICE_FOR);
+            // **Et s'efface à l'heure** : une fenêtre au repos ne dessine
+            // plus toutes les deux secondes, la bande serait restée
+            // jusqu'au battement suivant.
+            if let Some(at) = session.sync_notice.filter(|_| synced) {
+                ctx.request_repaint_after(
+                    Session::SYNC_NOTICE_FOR.saturating_sub(at.elapsed())
+                        + Duration::from_millis(50),
+                );
+            }
             // Dix minutes : une nouvelle du réseau arrive en fond, pendant
             // qu'on sert quelqu'un — quelques secondes, et personne ne
             // l'aurait lue.
@@ -100051,6 +100060,24 @@ impl eframe::App for App {
                             .size(motif::pt(ui, 11.0))
                             .color(motif::text_dim()),
                     );
+                    // **La droite de la barre est gardée** : le nom de la
+                    // base et la marque des connexions, ce qu'elle porte au
+                    // moins. Un compte qui n'y tient plus devant elle cède
+                    // sa place — les plus urgents passent les premiers —, au
+                    // lieu de passer sous la marque : à 1024x700 en texte
+                    // 1,6, « 2 à facturer » se lisait avec le pictogramme
+                    // peint au milieu.
+                    let font = egui::FontId::proportional(motif::pt(ui, 11.0));
+                    let text_w = |ui: &egui::Ui, t: &str| {
+                        ui.painter()
+                            .layout_no_wrap(t.to_owned(), font.clone(), motif::text())
+                            .size()
+                            .x
+                    };
+                    let right_min = text_w(ui, &trf("lock_db_path", &db_file))
+                        + motif::pt(ui, 10.0)
+                        + 8.0
+                        + ui.spacing().item_spacing.x * 4.0;
                     // Each count is a way in: clicking goes where the
                     // work is, rather than reporting it and stopping.
                     let mut flag = |ui: &mut egui::Ui,
@@ -100058,6 +100085,9 @@ impl eframe::App for App {
                                     color: egui::Color32,
                                     hint: &str,
                                     to: WorkTab| {
+                        if ui.available_width() < 6.0 + text_w(ui, &text) + right_min {
+                            return;
+                        }
                         ui.add_space(6.0);
                         let resp = ui.add(
                             egui::Label::new(
