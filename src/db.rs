@@ -43216,6 +43216,32 @@ impl Db {
     /// **Ce que l'écran montre a-t-il changé ?** Le compteur que les
     /// déclencheurs `screen_*` font monter : le même entre deux regards,
     /// seules des tables que l'écran ne lit pas ont été écrites.
+    /// Ce que les déclencheurs de la table `drugs` exécutent : le
+    /// compteur général et celui des fiches.
+    const DRUGS_BUMP: &'static str =
+        "BEGIN UPDATE screen_rev SET n = n + 1 WHERE k IN (0, 1); END;\n";
+
+    /// **Les fiches ont-elles changé ?** Le compteur que seuls les
+    /// déclencheurs de `drugs` font monter — `None` quand on ne peut pas
+    /// le croire : un poste d'une autre version a reposé ses propres
+    /// déclencheurs, qui ne le font pas monter, et il faut alors relire.
+    pub fn drugs_rev(&self) -> Option<i64> {
+        let ours: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'screen_u_drugs'",
+                [],
+                |r| r.get(0),
+            )
+            .ok();
+        if !ours.is_some_and(|sql| sql.contains("WHERE k IN (0, 1)")) {
+            return None;
+        }
+        self.conn
+            .query_row("SELECT n FROM screen_rev WHERE k = 1", [], |r| r.get(0))
+            .ok()
+    }
+
     pub fn screen_rev(&self) -> i64 {
         self.conn
             .query_row("SELECT coalesce(max(n), 0) FROM screen_rev", [], |r| {
@@ -43271,9 +43297,21 @@ impl Db {
                 .map(|(n, _)| n)
                 .collect()
         };
-        let mut sql = String::from("INSERT OR IGNORE INTO screen_rev (k, n) VALUES (0, 0);\n");
-        let bump = "BEGIN UPDATE screen_rev SET n = n + 1 WHERE k = 0; END;\n";
+        let mut sql = String::from(
+            "INSERT OR IGNORE INTO screen_rev (k, n) VALUES (0, 0);\n\
+             INSERT OR IGNORE INTO screen_rev (k, n) VALUES (1, 0);\n",
+        );
+        let all = "BEGIN UPDATE screen_rev SET n = n + 1 WHERE k = 0; END;\n";
         for name in &names {
+            // Les fiches ont **leur propre compteur** en plus du général
+            // (voir `Db::drugs_rev`) : relire mille fiches entières parce
+            // qu'un collègue a ajouté une note au dossier d'un patient,
+            // c'était la moitié d'une relecture.
+            let bump = if name == "drugs" {
+                Self::DRUGS_BUMP
+            } else {
+                all
+            };
             for (k, event, row) in [
                 ("i", "INSERT", "NEW"),
                 ("u", "UPDATE", "NEW"),
@@ -71025,6 +71063,25 @@ mod tests {
             .add_note(NoteSubject::Transmission, 0, "CL", "Commande en retard.")
             .unwrap();
         assert!(db.screen_rev() > after, "une transmission");
+        // Les fiches ont leur compteur : une note ne le bouge pas, une
+        // fiche ajoutée ou corrigée ailleurs, si.
+        let cards = db.drugs_rev().expect("nos déclencheurs sont posés");
+        other
+            .add_note(NoteSubject::Transmission, 0, "CL", "Rappeler le grossiste.")
+            .unwrap();
+        assert_eq!(db.drugs_rev(), Some(cards), "une note n'est pas une fiche");
+        other.add_drug("Fiche ajoutée ailleurs").unwrap();
+        assert!(db.drugs_rev().unwrap() > cards, "une fiche ajoutée");
+        // Des déclencheurs reposés par une autre version ne font pas
+        // monter ce compteur : il n'est plus cru.
+        db.conn
+            .execute_batch(
+                "DROP TRIGGER screen_u_drugs;
+                 CREATE TRIGGER screen_u_drugs AFTER UPDATE ON drugs
+                 BEGIN UPDATE screen_rev SET n = n + 1 WHERE k = 0; END;",
+            )
+            .unwrap();
+        assert_eq!(db.drugs_rev(), None);
     }
 
     /// Not a test of behavior: seeds a demo database when the env asks for
@@ -72612,6 +72669,153 @@ mod tests {
                 .unwrap();
             }
         }
+        // `BPM_CADDY_SEED_BIG=<n>` : une officine de taille réelle par-dessus
+        // la démonstration, pour mesurer (`scripts/frames.sh`) ce que cinq
+        // dossiers ne coûtent pas.
+        if let Some(n) = std::env::var("BPM_CADDY_SEED_BIG")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+        {
+            seed_big(&db, n, year);
+        }
+    }
+
+    /// `n` patients, chacun avec quelques traitements, une note, un
+    /// entretien sur trois ; quelques années de registre et d'agenda.
+    fn seed_big(db: &Db, n: usize, year: i64) {
+        const LAST: [&str; 20] = [
+            "Durand",
+            "Petit",
+            "Leroy",
+            "Roux",
+            "Fournier",
+            "Girard",
+            "Bonnet",
+            "Lambert",
+            "Fontaine",
+            "Rousseau",
+            "Vincent",
+            "Muller",
+            "Faure",
+            "André",
+            "Mercier",
+            "Blanc",
+            "Guérin",
+            "Boyer",
+            "Garnier",
+            "Chevalier",
+        ];
+        const FIRST: [&str; 12] = [
+            "Marie", "Pierre", "Anne", "Louis", "Sophie", "Michel", "Julie", "Alain", "Nathalie",
+            "Jacques", "Isabelle", "Henri",
+        ];
+        let drugs: Vec<i64> = db.drugs().unwrap().iter().map(|d| d.id).collect();
+        db.conn.execute_batch("BEGIN").unwrap();
+        let mut pids = Vec::with_capacity(n);
+        for i in 0..n {
+            let last = format!(
+                "{}{}",
+                LAST[i % LAST.len()],
+                if i < 400 {
+                    String::new()
+                } else {
+                    format!("-{}", i / 400)
+                }
+            );
+            let dob = format!("{}-{:02}-{:02}", 1930 + i % 70, 1 + i % 12, 1 + i % 28);
+            let pid = db.add_patient(&last, FIRST[i % FIRST.len()], &dob).unwrap();
+            pids.push(pid);
+            for k in 0..(i % 7) {
+                if let Some(d) = drugs.get((i * 31 + k * 97) % drugs.len().max(1)) {
+                    let _ = db.add_patient_drug(pid, *d);
+                }
+            }
+            db.add_note(
+                NoteSubject::Patient,
+                pid,
+                "CL",
+                "Suivi au comptoir : **observance** correcte, revoir la tension au prochain passage.",
+            )
+            .unwrap();
+            if i % 3 == 0 {
+                db.add_interview_by(pid, InterviewKind::Bpm, "Observance", "YS")
+                    .unwrap();
+            }
+        }
+        for d in 0..(365 * 2) {
+            let day = format!(
+                "{}-{:02}-{:02}",
+                year - 1 + (d / 365) as i64,
+                1 + (d % 365) / 31 % 12,
+                1 + d % 28
+            );
+            let _ = db.add_event_span(
+                &day,
+                "09:00",
+                "10:00",
+                "Livraison OCP",
+                EventCategory::Livraison,
+                "",
+                "",
+            );
+            db.add_note(
+                NoteSubject::Transmission,
+                0,
+                "CL",
+                "Commande en retard, rappeler le grossiste.",
+            )
+            .unwrap();
+        }
+        db.conn.execute_batch("COMMIT").unwrap();
+        let Some(stup) = db.stupefiants().unwrap().first().map(|s| s.id) else {
+            return;
+        };
+        let mut moves = Vec::new();
+        for k in 0..3000_i64 {
+            let entree = k % 4 == 0;
+            moves.push(StupMove {
+                id: 0,
+                stup_id: stup,
+                kind: if entree { "ENTREE" } else { "SORTIE" }.to_owned(),
+                happened_on: format!(
+                    "{}-{:02}-{:02}",
+                    year - 3 + k / 1000,
+                    1 + (k % 1000) / 84,
+                    1 + k % 28
+                ),
+                quantity: if entree { 42.0 } else { 14.0 },
+                ordo_year: 0,
+                ordo_no: if entree { 0 } else { 900_000 + k },
+                patient_id: if entree {
+                    0
+                } else {
+                    pids[k as usize % pids.len().max(1)]
+                },
+                prescriber: if entree {
+                    String::new()
+                } else {
+                    "Dr Morel".to_owned()
+                },
+                supplier: if entree {
+                    "OCP".to_owned()
+                } else {
+                    String::new()
+                },
+                reference: if entree {
+                    format!("BL-{k}")
+                } else {
+                    String::new()
+                },
+                lot: String::new(),
+                expiry: String::new(),
+                expected: 0.0,
+                operator: "CL".to_owned(),
+                remark: String::new(),
+                cancels: 0,
+            });
+        }
+        moves.sort_by(|a, b| a.happened_on.cmp(&b.happened_on));
+        db.add_stup_moves(&moves).unwrap();
     }
 
     #[test]

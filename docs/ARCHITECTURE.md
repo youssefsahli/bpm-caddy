@@ -2308,7 +2308,18 @@ add clicking and typing; it is not the price of entry.
   hand-maintained revision counter because a counter has to be bumped in
   every write transaction, and the first one forgotten is a change no
   post ever sees; the pragma cannot be forgotten, including by a future
-  version. It replaced a blind 60-second re-read. **`resync` reloads
+  version. It replaced a blind 60-second re-read. **An idle window
+  draws nothing to ask it**: a thread (`watch_files`) stats the three
+  files every two seconds and wakes the window only when one moved, and
+  the channels of the posts' thread and of patient messaging wake it on
+  each message (`woken`); what is left is a 30-second heartbeat
+  (`App::HEARTBEAT`) for the deadlines — the network's interval, the
+  service lease, the day rollover — and the auto-lock, asked for at its
+  own minute (`App::next_deadline`). The drug cards carry their own
+  counter (`Db::drugs_rev`, bumped only by the triggers on `drugs`):
+  `resync` rereads a thousand cards only when one of them changed, and
+  rereads them anyway when another version's triggers replaced ours.
+  **`resync` reloads
   readings and never a typing buffer** — the lists and summaries, never
   the register form, the batch sheet, a cancellation reason or an open
   drug form; a resync that replaced what someone has their fingers on
@@ -2886,7 +2897,8 @@ only indexes it. A gesture starts a `cascade_wave`: the displayed levels
 travel down the layers (`CASCADE_STAGGER`) instead of switching at once.
 Pulses along the arrows run at a speed made of the source's activity, one
 dot per fixed length, so an arrow whose source is blocked visibly carries
-nothing. The view requests a repaint every 40 ms while it is on screen.
+nothing. The view requests a repaint every 40 ms while it is on screen
+and the window has the focus.
 
 **A card writes its routes** (`route_segments`, a `routes` entry in the
 card's `MonoLinks`, drawn under « Interactions » by the same linked

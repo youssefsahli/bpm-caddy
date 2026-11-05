@@ -18,6 +18,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   undo is refused whole when a workbook changed since, or is open in
   LibreOffice. Lines only in the workbooks are listed, never inscribed.
 
+### Changed
+
+- Faster on a large officine (measured on a base of 5 000 patients):
+  the « Suivi » board, the « Chiffres » dashboard, the campaign's call
+  list and the dashboard lists draw only the rows on screen — 5.6 ms a
+  frame down to 0.2 ms for the board, 37 ms down to 0.3 ms for
+  « Chiffres », 16 ms down to 0.3 ms for the call list.
+- « Chiffres » no longer freezes for about two seconds when it opens:
+  the biology and treatment review of every file runs on its own thread
+  and the previous list stays on screen until the new one arrives.
+- An idle window no longer redraws every two seconds: another post's
+  writing, the posts' synchronisation and a patient's message wake it
+  when they happen. The cascade animation stops when the window is in
+  the background, and auto-lock happens at its own minute.
+- Another post's write no longer rereads every drug card: they are
+  reread only when a card changed — half the cost of a refresh.
+
 ## [0.454.0] - 2026-11-04
 
 ### Added

@@ -5767,6 +5767,12 @@ struct Session {
     /// The last patient search, and the question it answered.
     patient_hits: Vec<Patient>,
     patient_hits_key: Option<(String, u64)>,
+    /// Le memo est prêté à une vue (`lend_patient_hits`) et pas encore
+    /// rendu : la question suivante le reconstruit. Le vide ne dit pas
+    /// qu'il est prêté — une question sans réponse est vide aussi, et
+    /// la refaire à chaque image, c'était cinq mille dossiers comparés
+    /// soixante fois par seconde au tableau de bord.
+    patient_hits_lent: bool,
     /// Not-yet-billed interview count per patient id ("n en cours").
     pending: std::collections::HashMap<i64, i64>,
     query: String,
@@ -5869,6 +5875,8 @@ struct Session {
     /// each patient's own treatments. Computed when the dashboard is
     /// refreshed, not per frame.
     bio_watch: Vec<BioWatch>,
+    /// La liste d'appel en cours de calcul sur son fil (`refresh_watchlist`).
+    bio_watch_job: Option<std::sync::mpsc::Receiver<Vec<BioWatch>>>,
     /// Rentals whose ordonnance has lapsed or is about to, and how many
     /// days' notice the officine asked for (`[locations] notice_days`).
     loc_watch: Vec<LocWatch>,
@@ -6393,6 +6401,15 @@ struct Session {
     /// « Planifier » ouvert sur une carte « À proposer » : l'acte et ce
     /// qui est tapé (« 051126 9h30 »).
     board_plan: Option<(i64, String)>,
+    /// La hauteur de chaque carte du suivi, par colonne (et la liste
+    /// étroite en dernier), avec la largeur où elle a été mesurée :
+    /// voir `LazyRows`.
+    board_heights: Vec<(std::collections::HashMap<i64, f32>, f32)>,
+    /// Les hauteurs des autres listes posées par `LazyRows`, par liste.
+    lazy_heights:
+        std::collections::HashMap<&'static str, (std::collections::HashMap<i64, f32>, f32)>,
+    /// Le compteur des fiches à la dernière relecture (`Db::drugs_rev`).
+    drugs_rev_seen: Option<i64>,
     /// « Nouveau rendez-vous » de l'agenda (Ctrl+R), ouvert.
     new_rdv: Option<NewRdv>,
     /// L'entretien mené à l'écran, quand il y en a un.
@@ -7542,6 +7559,7 @@ impl Session {
             favorites_of: None,
             patient_hits: Vec::new(),
             patient_hits_key: None,
+            patient_hits_lent: false,
             pending,
             query: String::new(),
             selected: 0,
@@ -7580,6 +7598,7 @@ impl Session {
             vacc_confirm: None,
             vacc_fill_confirm: false,
             bio_watch: Vec::new(),
+            bio_watch_job: None,
             loc_watch: Vec::new(),
             loc_notice_days: 7,
             prescribers: Vec::new(),
@@ -7757,6 +7776,9 @@ impl Session {
             dash_figures: false,
             board_kind: None,
             board_plan: None,
+            board_heights: Vec::new(),
+            lazy_heights: Default::default(),
+            drugs_rev_seen: None,
             new_rdv: None,
             conduct: None,
             rx_notice_days: 7,
@@ -10635,8 +10657,15 @@ impl Session {
         // que le rafraîchissement d'avant portait déjà, et la règle que
         // toute cette fonction suit.
         if self.drug_form.is_none() {
-            if let Ok(list) = self.db.drugs() {
-                self.set_drugs(list);
+            // **Seulement si les fiches ont bougé** (`Db::drugs_rev`) : mille
+            // fiches entières, la moitié de ce que coûtait une relecture —
+            // et sur un partage réseau, autant de pages à faire venir.
+            let cards = self.db.drugs_rev();
+            if cards.is_none() || cards != self.drugs_rev_seen {
+                if let Ok(list) = self.db.drugs() {
+                    self.drugs_rev_seen = cards;
+                    self.set_drugs(list);
+                }
             }
         }
         self.refresh_dashboard();
@@ -10807,7 +10836,7 @@ impl Session {
             return;
         };
         let folder = config.postes.dossier.trim();
-        self.posts_auto = Some(crate::postes::spawn_auto(
+        let (progress, poke) = crate::postes::spawn_auto(
             path,
             self.password.clone(),
             self.today.clone(),
@@ -10847,7 +10876,9 @@ impl Session {
                 web_door: reseau && config.reseau.porte_web,
             },
             crate::postes::Pace::default(),
-        ));
+        );
+        // Ce que le fil rapporte réveille la fenêtre au repos.
+        self.posts_auto = Some((woken(progress), poke));
     }
 
     #[cfg(feature = "sync")]
@@ -11617,11 +11648,12 @@ impl Session {
             self.posts_auto = None;
             self.posts_peers.clear();
             self.near_officines.clear();
-        } else {
-            // Often enough that another post's writing shows here within
-            // seconds; rarely enough to cost nothing.
-            ctx.request_repaint_after(Duration::from_secs(2));
         }
+        // **Plus d'image toutes les deux secondes.** Ce que le fil des
+        // postes rapporte réveille la fenêtre (`woken`), et ce qu'un
+        // autre poste écrit dans la base aussi (`watch_files`) : un poste
+        // au repos ne dessine plus pour aller voir.
+        let _ = ctx;
     }
 
     /// Ce qu'un script en cours a rendu, relevé à chaque image — un
@@ -16438,7 +16470,7 @@ impl Session {
                             relays: config.postes.relais && config.postes.relais_patients,
                             rendezvous: true,
                         });
-                let w = crate::patientpost::spawn(
+                let mut w = crate::patientpost::spawn(
                     path,
                     self.password.clone(),
                     &c.0.gateway,
@@ -16446,6 +16478,11 @@ impl Session {
                     c.1.clone(),
                     direct,
                 );
+                // Un patient qui écrit réveille la fenêtre au repos.
+                w.events = woken(std::mem::replace(
+                    &mut w.events,
+                    std::sync::mpsc::channel().1,
+                ));
                 self.pchat_wait = Some((w, c));
             }
         }
@@ -17057,21 +17094,34 @@ impl Session {
     /// query changes or when the list is replaced, and `set_patients` is
     /// the one door the list comes in by.
     ///
-    /// It also rebuilds when the list it holds is *empty*, and that is
-    /// not an optimisation but the thing that makes it safe: the views
-    /// borrow the memo by taking it out of the session — they need the
+    /// The views borrow the memo (`lend_patient_hits`) — they need the
     /// session mutably at the same time — and one of them can return
-    /// before handing it back. An empty memo therefore means « on loan
-    /// or genuinely empty », and both readings are answered by asking
-    /// again. Asking again for an empty answer costs a scoring pass that
-    /// allocates nothing and copies no one.
+    /// before handing it back: a memo still out on loan is rebuilt. An
+    /// *empty* answer is kept like any other; it used to be taken for
+    /// « on loan », and a name no file matches was scored against the
+    /// whole list every frame while it stayed typed.
     fn refresh_patient_hits(&mut self) {
         let key = (self.query.clone(), self.patients_rev);
-        if self.patient_hits_key.as_ref() == Some(&key) && !self.patient_hits.is_empty() {
+        if self.patient_hits_key.as_ref() == Some(&key) && !self.patient_hits_lent {
             return;
         }
         self.patient_hits = self.results().into_iter().cloned().collect();
         self.patient_hits_key = Some(key);
+        self.patient_hits_lent = false;
+    }
+
+    /// Le memo, **prêté** à une vue qui a besoin de la session en même
+    /// temps : rendu par [`Self::return_patient_hits`]. Une sortie qui
+    /// ne le rend pas le fait reconstruire à la question suivante.
+    fn lend_patient_hits(&mut self) -> Vec<Patient> {
+        self.refresh_patient_hits();
+        self.patient_hits_lent = true;
+        std::mem::take(&mut self.patient_hits)
+    }
+
+    fn return_patient_hits(&mut self, hits: Vec<Patient>) {
+        self.patient_hits = hits;
+        self.patient_hits_lent = false;
     }
 
     /// Fuzzy-rank patients against the query (best first, capped at 20).
@@ -17906,11 +17956,40 @@ impl Session {
     /// not before. Everything else on the dashboard is a query; this one
     /// is a pass over the base.
     fn refresh_watchlist(&mut self) {
+        // **Sur son fil, avec sa connexion.** Trois moteurs de règles sur
+        // chaque dossier traité : près de deux secondes pour cinq mille
+        // dossiers, et l'écran figé pendant ce temps — à chaque retour sur
+        // « Chiffres » après qu'un onglet ou un autre poste a tout relu.
+        // La liste d'avant reste affichée jusqu'à ce que la nouvelle
+        // arrive ; son arrivée réveille la fenêtre.
+        if let Some(rx) = &self.bio_watch_job {
+            match rx.try_recv() {
+                Ok(list) => {
+                    self.bio_watch = list;
+                    self.bio_watch_job = None;
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => return,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.bio_watch_job = None,
+            }
+        }
         if !self.watch_stale {
             return;
         }
-        self.bio_watch = bio_watch(&self.db, &self.today);
         self.watch_stale = false;
+        let Some(path) = self.db.path().filter(|_| !self.password.is_empty()) else {
+            // Sans de quoi rouvrir la base (une session de test) : ici.
+            self.bio_watch = bio_watch(&self.db, &self.today);
+            return;
+        };
+        let (password, today) = (self.password.clone(), self.today.clone());
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            if let Ok(db) = Db::open(&path, &password) {
+                let _ = tx.send(bio_watch(&db, &today));
+                wake_ui();
+            }
+        });
+        self.bio_watch_job = Some(rx);
     }
 
     /// Le registre qualité relu de la base, et ce que l'en-tête et la
@@ -23067,6 +23146,12 @@ pub struct App {
     /// reste ouvert la nuit (en service, dans la zone de notification)
     /// en fait une chaque jour, et non une seule à son lancement.
     backup_day: String,
+    /// Le fil qui regarde les fichiers de la base ouverte (`watch_files`),
+    /// et de quoi l'arrêter quand la base se ferme ou change.
+    watch: Option<(
+        std::path::PathBuf,
+        std::sync::Arc<std::sync::atomic::AtomicBool>,
+    )>,
     remember_password: bool,
     show_docs: bool,
     /// The left navigator dock: the list the active view is browsing
@@ -26070,6 +26155,7 @@ impl App {
             last_activity: Instant::now(),
             veil: None,
             backup_day: String::new(),
+            watch: None,
             remember_password,
             show_docs,
             show_nav,
@@ -27220,8 +27306,7 @@ impl App {
         }
         // Answered once per question by `refresh_patient_hits`, not
         // three times per frame.
-        session.refresh_patient_hits();
-        let results = std::mem::take(&mut session.patient_hits);
+        let results = session.lend_patient_hits();
         let open = session.viewing.as_ref().map(|p| p.id);
         let mut clicked: Option<Patient> = None;
         // The dock is the search now, so it answers to the keys the
@@ -27317,7 +27402,7 @@ impl App {
         // Lent to the list above, which needed the session mutably at
         // the same time, and handed straight back — `open_patient`
         // rebuilds it anyway, and only after this line.
-        session.patient_hits = results;
+        session.return_patient_hits(results);
         if let Some(p) = clicked {
             session.view = MainView::Search;
             session.show_amounts = false;
@@ -29015,8 +29100,7 @@ impl App {
             // session mutably too. It is handed back at the end, and an
             // exit that does not hand it back is caught by
             // `refresh_patient_hits`, which rebuilds an empty memo.
-            session.refresh_patient_hits();
-            let results = std::mem::take(&mut session.patient_hits);
+            let results = session.lend_patient_hits();
             let mut cancel_new = false;
 
             // An empty query matches everyone, and that list is already
@@ -29136,12 +29220,19 @@ impl App {
                             session.pending = counts;
                         }
                     }
-                    session.refresh_patient_hits();
-                    if !session.patient_hits.is_empty() {
-                        // The refreshed list matches after all: render it
-                        // on the next frame instead of the creation form.
-                        ctx.request_repaint();
-                        return;
+                    // Redemandé seulement quand la question ou la liste a
+                    // changé : sinon la réponse vide est celle qu'on tient
+                    // déjà, et la refaire comparait toute la patientèle à
+                    // chaque image tant que le formulaire restait ouvert.
+                    let asked = (session.query.clone(), session.patients_rev);
+                    if session.patient_hits_key.as_ref() != Some(&asked) {
+                        session.refresh_patient_hits();
+                        if !session.patient_hits.is_empty() {
+                            // The refreshed list matches after all: render it
+                            // on the next frame instead of the creation form.
+                            ctx.request_repaint();
+                            return;
+                        }
                     }
                 }
                 // No match: the search transitions into quick creation (spec 3.1).
@@ -29303,7 +29394,7 @@ impl App {
                 }
             }
 
-            session.patient_hits = results;
+            session.return_patient_hits(results);
             if cancel_new {
                 session.new_patient = None;
             }
@@ -29883,12 +29974,14 @@ impl App {
             .filter(|r| session.board_kind.is_none_or(|k| r.kind == k))
             .collect();
         let steps = InterviewState::ALL;
-        let mut cols: Vec<Vec<db::BoardRow>> = vec![Vec::new(); steps.len()];
+        let mut cols: Vec<Vec<&db::BoardRow>> = vec![Vec::new(); steps.len()];
         for r in rows {
             if let Some(i) = steps.iter().position(|s| *s == r.state) {
-                cols[i].push(r.clone());
+                cols[i].push(r);
             }
         }
+        let mut heights = std::mem::take(&mut session.board_heights);
+        heights.resize_with(steps.len() + 1, Default::default);
         let titles = [
             "board_identified",
             "board_scheduled",
@@ -30108,22 +30201,26 @@ impl App {
                     egui::ScrollArea::vertical()
                         .id_salt(("board_col", i))
                         .auto_shrink([false, false])
-                        .show(ui, |ui| {
+                        .show_viewport(ui, |ui, viewport| {
                             if cols[i].is_empty() {
                                 ui.label(
                                     egui::RichText::new(tr("board_empty")).color(motif::text_dim()),
                                 );
                             }
-                            for r in &cols[i] {
-                                card(
-                                    ui,
-                                    r,
-                                    &mut open,
-                                    &mut advance,
-                                    &mut conduct,
-                                    &mut plan,
-                                    &mut planned,
-                                );
+                            let (map, width) = &mut heights[i];
+                            let mut lazy = LazyRows::new(ui, viewport, map, width);
+                            for &r in &cols[i] {
+                                lazy.row(ui, r.id, |ui| {
+                                    card(
+                                        ui,
+                                        r,
+                                        &mut open,
+                                        &mut advance,
+                                        &mut conduct,
+                                        &mut plan,
+                                        &mut planned,
+                                    );
+                                });
                             }
                         });
                 });
@@ -30133,22 +30230,26 @@ impl App {
                 egui::ScrollArea::vertical()
                     .id_salt("board_list")
                     .auto_shrink([false, false])
-                    .show(ui, |ui| {
+                    .show_viewport(ui, |ui, viewport| {
+                        let (map, width) = &mut heights[steps.len()];
+                        let mut lazy = LazyRows::new(ui, viewport, map, width);
                         for (i, col) in cols.iter().enumerate() {
                             ui.label(
                                 egui::RichText::new(format!("{} ({})", tr(titles[i]), col.len()))
                                     .strong(),
                             );
-                            for r in col {
-                                card(
-                                    ui,
-                                    r,
-                                    &mut open,
-                                    &mut advance,
-                                    &mut conduct,
-                                    &mut plan,
-                                    &mut planned,
-                                );
+                            for &r in col {
+                                lazy.row(ui, r.id, |ui| {
+                                    card(
+                                        ui,
+                                        r,
+                                        &mut open,
+                                        &mut advance,
+                                        &mut conduct,
+                                        &mut plan,
+                                        &mut planned,
+                                    );
+                                });
                             }
                             ui.add_space(6.0);
                         }
@@ -30156,6 +30257,8 @@ impl App {
             });
         }
         ui.allocate_space(area.size());
+        drop(cols);
+        session.board_heights = heights;
         session.board_plan = plan;
         if let Some((id, typed)) = planned {
             if !typed.trim().is_empty() {
@@ -62665,9 +62768,13 @@ impl App {
         }
         // Le signal bouge : la figure se redessine tant qu'elle est à
         // l'écran. Peu de chose — des traits et des points, tout le
-        // calcul est mémoïsé.
-        ui.ctx()
-            .request_repaint_after(std::time::Duration::from_millis(40));
+        // calcul est mémoïsé. **La fenêtre au second plan, il s'arrête** :
+        // vingt-cinq images par seconde pour un écran que personne ne
+        // regarde, la journée entière derrière le logiciel de l'officine.
+        if ui.input(|i| i.focused) {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(40));
+        }
     }
 
     /// La marque de la nature d'un nœud, dans un carré.
@@ -70217,10 +70324,11 @@ impl App {
                     }
                     return;
                 }
+                let (heights, width) = session.lazy_heights.entry("camp_recalls").or_default();
                 egui::ScrollArea::vertical()
                     .id_salt("camp_recalls")
                     .auto_shrink([false, false])
-                    .show(ui, |ui| {
+                    .show_viewport(ui, |ui, viewport| {
                         if session.camp.recalls.is_empty() {
                             ui.add(
                                 egui::Label::new(
@@ -70237,6 +70345,7 @@ impl App {
                         }
                         let mut heading_drawn = false;
                         let cursor = session.camp.cursor;
+                        let mut lazy = LazyRows::new(ui, viewport, heights, width);
                         for (index, r) in session.camp.recalls.iter().enumerate() {
                             // Les dossiers dus d'abord ; ceux d'un traitement
                             // évocateur sous leur propre intitulé.
@@ -70244,119 +70353,127 @@ impl App {
                                 heading_drawn = true;
                                 motif::section(ui, tr("camp_evoked_heading"));
                             }
-                            let who = match r.age {
-                                Some(a) => trn("camp_recall_who", &[&r.name, &a]),
-                                None => r.name.clone(),
-                            };
-                            let phone = if r.phone.trim().is_empty() {
-                                tr("camp_no_phone").to_owned()
-                            } else {
-                                r.phone.clone()
-                            };
-                            let row = motif::list_row_pair(ui, &who, &phone, index == cursor, 0.0)
-                                .on_hover_text(tr("camp_open_tooltip"));
-                            if keyed && index == cursor {
-                                row.scroll_to_me(None);
-                            }
-                            if row.clicked() {
-                                open = Some(r.patient_id);
-                            }
-                            let mut note = r.detail.clone();
-                            if let Some((day, outcome)) = &r.last_call {
-                                let what = Outcome::from_key(outcome)
-                                    .map(|o| Self::campaign_outcome_label(o, vaccine))
-                                    .unwrap_or(outcome.as_str());
-                                note = trn(
-                                    "camp_last_call",
-                                    &[&note, &db::format_french_date(day), &what],
-                                );
-                            }
-                            // Les quatre issues, puis la raison sur la même
-                            // rangée : une personne tient en deux lignes, et
-                            // la liste en montre deux fois plus.
-                            ui.horizontal_wrapped(|ui| {
-                                for o in Outcome::ALL {
-                                    if motif::button(ui, Self::campaign_outcome_label(o, vaccine))
-                                        .on_hover_text(Self::campaign_outcome_tooltip(o, vaccine))
-                                        .clicked()
-                                    {
-                                        call = Some((r.patient_id, o));
-                                    }
+                            let force = (keyed && index == cursor)
+                                || session.camp.rdv_for == Some(r.patient_id);
+                            lazy.row_or_forced(ui, r.patient_id, force, |ui| {
+                                let who = match r.age {
+                                    Some(a) => trn("camp_recall_who", &[&r.name, &a]),
+                                    None => r.name.clone(),
+                                };
+                                let phone = if r.phone.trim().is_empty() {
+                                    tr("camp_no_phone").to_owned()
+                                } else {
+                                    r.phone.clone()
+                                };
+                                let row =
+                                    motif::list_row_pair(ui, &who, &phone, index == cursor, 0.0)
+                                        .on_hover_text(tr("camp_open_tooltip"));
+                                if keyed && index == cursor {
+                                    row.scroll_to_me(None);
                                 }
-                                let open_rdv = session.camp.rdv_for == Some(r.patient_id);
-                                if rdv_kind.is_some()
-                                    && motif::toggle(ui, tr("camp_rdv"), open_rdv)
-                                        .on_hover_text(tr("camp_rdv_tooltip"))
-                                        .clicked()
-                                {
-                                    rdv_toggle = Some(r.patient_id);
+                                if row.clicked() {
+                                    open = Some(r.patient_id);
                                 }
-                                // **Sur la rangée si elle y tient, sinon sur
-                                // la sienne** : enveloppée dans le bout de
-                                // rangée qui restait, la raison mettait
-                                // « Campagne en » à droite des boutons et la
-                                // suite dessous, sous « Prévenu » — une
-                                // phrase coupée en deux colonnes.
-                                let text = egui::RichText::new(note)
-                                    .size(motif::pt(ui, 10.5))
-                                    .color(motif::text_faint());
-                                let note_w = egui::WidgetText::from(text.clone())
-                                    .into_galley(
-                                        ui,
-                                        Some(egui::TextWrapMode::Extend),
-                                        f32::INFINITY,
-                                        egui::TextStyle::Body,
-                                    )
-                                    .size()
-                                    .x;
-                                // Ce qui reste **après les boutons** : dans
-                                // une rangée qui passe à la ligne,
-                                // `available_width` rend la largeur de la
-                                // rangée entière, et le test ne tombait
-                                // jamais.
-                                let left = ui.max_rect().right() - ui.cursor().min.x;
-                                if note_w > left {
-                                    ui.end_row();
-                                }
-                                ui.label(text);
-                            });
-                            // Le rendez-vous pris au téléphone : le jour,
-                            // l'heure, et l'agenda le porte.
-                            if session.camp.rdv_for == Some(r.patient_id) {
-                                let h = Self::button_height(ui);
-                                ui.horizontal_wrapped(|ui| {
-                                    for (hint, value) in [
-                                        (tr("camp_rdv_date_hint"), &mut session.camp.rdv_date),
-                                        (tr("camp_rdv_time_hint"), &mut session.camp.rdv_time),
-                                    ] {
-                                        let field = motif::field_sized(
-                                            ui,
-                                            egui::vec2(
-                                                Self::field_width(ui, [hint].into_iter()),
-                                                h,
-                                            ),
-                                            egui::TextEdit::singleline(value)
-                                                .hint_text(motif::hint(hint)),
-                                        );
-                                        if field.lost_focus()
-                                            && ui.input(|i| i.key_pressed(egui::Key::Enter))
-                                        {
-                                            book = Some(r.patient_id);
-                                        }
-                                    }
-                                    if motif::button(ui, tr("camp_rdv_book")).clicked() {
-                                        book = Some(r.patient_id);
-                                    }
-                                });
-                                if let Some(e) = &session.camp.rdv_error {
-                                    ui.label(
-                                        egui::RichText::new(e)
-                                            .size(motif::pt(ui, 10.5))
-                                            .color(motif::alert()),
+                                let mut note = r.detail.clone();
+                                if let Some((day, outcome)) = &r.last_call {
+                                    let what = Outcome::from_key(outcome)
+                                        .map(|o| Self::campaign_outcome_label(o, vaccine))
+                                        .unwrap_or(outcome.as_str());
+                                    note = trn(
+                                        "camp_last_call",
+                                        &[&note, &db::format_french_date(day), &what],
                                     );
                                 }
-                            }
-                            ui.add_space(4.0);
+                                // Les quatre issues, puis la raison sur la même
+                                // rangée : une personne tient en deux lignes, et
+                                // la liste en montre deux fois plus.
+                                ui.horizontal_wrapped(|ui| {
+                                    for o in Outcome::ALL {
+                                        if motif::button(
+                                            ui,
+                                            Self::campaign_outcome_label(o, vaccine),
+                                        )
+                                        .on_hover_text(Self::campaign_outcome_tooltip(o, vaccine))
+                                        .clicked()
+                                        {
+                                            call = Some((r.patient_id, o));
+                                        }
+                                    }
+                                    let open_rdv = session.camp.rdv_for == Some(r.patient_id);
+                                    if rdv_kind.is_some()
+                                        && motif::toggle(ui, tr("camp_rdv"), open_rdv)
+                                            .on_hover_text(tr("camp_rdv_tooltip"))
+                                            .clicked()
+                                    {
+                                        rdv_toggle = Some(r.patient_id);
+                                    }
+                                    // **Sur la rangée si elle y tient, sinon sur
+                                    // la sienne** : enveloppée dans le bout de
+                                    // rangée qui restait, la raison mettait
+                                    // « Campagne en » à droite des boutons et la
+                                    // suite dessous, sous « Prévenu » — une
+                                    // phrase coupée en deux colonnes.
+                                    let text = egui::RichText::new(note)
+                                        .size(motif::pt(ui, 10.5))
+                                        .color(motif::text_faint());
+                                    let note_w = egui::WidgetText::from(text.clone())
+                                        .into_galley(
+                                            ui,
+                                            Some(egui::TextWrapMode::Extend),
+                                            f32::INFINITY,
+                                            egui::TextStyle::Body,
+                                        )
+                                        .size()
+                                        .x;
+                                    // Ce qui reste **après les boutons** : dans
+                                    // une rangée qui passe à la ligne,
+                                    // `available_width` rend la largeur de la
+                                    // rangée entière, et le test ne tombait
+                                    // jamais.
+                                    let left = ui.max_rect().right() - ui.cursor().min.x;
+                                    if note_w > left {
+                                        ui.end_row();
+                                    }
+                                    ui.label(text);
+                                });
+                                // Le rendez-vous pris au téléphone : le jour,
+                                // l'heure, et l'agenda le porte.
+                                if session.camp.rdv_for == Some(r.patient_id) {
+                                    let h = Self::button_height(ui);
+                                    ui.horizontal_wrapped(|ui| {
+                                        for (hint, value) in [
+                                            (tr("camp_rdv_date_hint"), &mut session.camp.rdv_date),
+                                            (tr("camp_rdv_time_hint"), &mut session.camp.rdv_time),
+                                        ] {
+                                            let field = motif::field_sized(
+                                                ui,
+                                                egui::vec2(
+                                                    Self::field_width(ui, [hint].into_iter()),
+                                                    h,
+                                                ),
+                                                egui::TextEdit::singleline(value)
+                                                    .hint_text(motif::hint(hint)),
+                                            );
+                                            if field.lost_focus()
+                                                && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                                            {
+                                                book = Some(r.patient_id);
+                                            }
+                                        }
+                                        if motif::button(ui, tr("camp_rdv_book")).clicked() {
+                                            book = Some(r.patient_id);
+                                        }
+                                    });
+                                    if let Some(e) = &session.camp.rdv_error {
+                                        ui.label(
+                                            egui::RichText::new(e)
+                                                .size(motif::pt(ui, 10.5))
+                                                .color(motif::alert()),
+                                        );
+                                    }
+                                }
+                                ui.add_space(4.0);
+                            });
                         }
                     });
             });
@@ -91713,45 +91830,49 @@ impl App {
 
     /// Who to call back: the files whose latest biology says something
     /// about their own treatments, loudest first.
-    fn dash_bio(ui: &mut egui::Ui, session: &Session, rect: egui::Rect) -> Option<i64> {
+    fn dash_bio(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) -> Option<i64> {
         let mut open = None;
         let inner = motif::well(ui, rect);
+        let (heights, width) = session.lazy_heights.entry("dash_bio").or_default();
         motif::inside(ui, inner, |ui| {
             egui::ScrollArea::vertical()
                 .id_salt("dash_bio")
                 .auto_shrink([false, false])
-                .show(ui, |ui| {
+                .show_viewport(ui, |ui, viewport| {
                     ui.spacing_mut().item_spacing.y = 2.0;
+                    let mut lazy = LazyRows::new(ui, viewport, heights, width);
                     for w in &session.bio_watch {
-                        // What put the file on the list, in the order
-                        // the counter would read it: an alert first, a
-                        // warning next, and a check nobody has done in
-                        // too long when there is nothing louder.
-                        let tag = if w.alerts > 0 {
-                            (trf("dash_bio_alerts", w.alerts), motif::alert())
-                        } else if w.warns > 0 {
-                            (trf("dash_bio_warns", w.warns), motif::warn())
-                        } else {
-                            (trf("dash_bio_overdue", w.overdue), motif::accent())
-                        };
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                egui::RichText::new(format!("  {}  ", tag.0))
-                                    .size(motif::pt(ui, 10.0))
-                                    .strong()
-                                    .color(motif::on_fill(tag.1))
-                                    .background_color(tag.1),
-                            );
-                            if motif::list_row(
-                                ui,
-                                egui::RichText::new(&w.name).size(motif::pt(ui, 12.5)),
-                                false,
-                            )
-                            .on_hover_text(&w.first)
-                            .clicked()
-                            {
-                                open = Some(w.patient_id);
-                            }
+                        lazy.row(ui, w.patient_id, |ui| {
+                            // What put the file on the list, in the order
+                            // the counter would read it: an alert first, a
+                            // warning next, and a check nobody has done in
+                            // too long when there is nothing louder.
+                            let tag = if w.alerts > 0 {
+                                (trf("dash_bio_alerts", w.alerts), motif::alert())
+                            } else if w.warns > 0 {
+                                (trf("dash_bio_warns", w.warns), motif::warn())
+                            } else {
+                                (trf("dash_bio_overdue", w.overdue), motif::accent())
+                            };
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    egui::RichText::new(format!("  {}  ", tag.0))
+                                        .size(motif::pt(ui, 10.0))
+                                        .strong()
+                                        .color(motif::on_fill(tag.1))
+                                        .background_color(tag.1),
+                                );
+                                if motif::list_row(
+                                    ui,
+                                    egui::RichText::new(&w.name).size(motif::pt(ui, 12.5)),
+                                    false,
+                                )
+                                .on_hover_text(&w.first)
+                                .clicked()
+                                {
+                                    open = Some(w.patient_id);
+                                }
+                            });
                         });
                     }
                 });
@@ -94450,43 +94571,47 @@ impl App {
 
     /// The accompaniments waiting for their next rendez-vous: a year
     /// left half-done pays half, and the patient waits twice as long.
-    fn dash_schedule(ui: &mut egui::Ui, session: &Session, rect: egui::Rect) -> Option<i64> {
+    fn dash_schedule(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) -> Option<i64> {
         let mut open = None;
         let inner = motif::well(ui, rect);
+        let (heights, width) = session.lazy_heights.entry("dash_schedule").or_default();
         motif::inside(ui, inner, |ui| {
             egui::ScrollArea::vertical()
                 .id_salt("dash_schedule")
                 .auto_shrink([false, false])
-                .show(ui, |ui| {
+                .show_viewport(ui, |ui, viewport| {
                     ui.spacing_mut().item_spacing.y = 2.0;
-                    for s in &session.to_schedule {
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                egui::RichText::new(format!("  {}  ", s.kind.label()))
-                                    .size(motif::pt(ui, 10.0))
-                                    .strong()
-                                    .color(motif::on_fill(motif::accent()))
-                                    .background_color(motif::accent()),
-                            );
-                            ui.label(
-                                egui::RichText::new(format!("{} / {}", s.done, s.total))
-                                    .size(motif::pt(ui, 11.0))
-                                    .color(motif::text_dim()),
-                            );
-                            if motif::list_row(
-                                ui,
-                                egui::RichText::new(&s.name).size(motif::pt(ui, 12.5)),
-                                false,
-                            )
-                            .on_hover_text(if s.last.is_empty() {
-                                tr("dash_schedule_tooltip").to_owned()
-                            } else {
-                                trf("dash_schedule_last", db::format_french_date(&s.last))
-                            })
-                            .clicked()
-                            {
-                                open = Some(s.patient_id);
-                            }
+                    let mut lazy = LazyRows::new(ui, viewport, heights, width);
+                    for (i, s) in session.to_schedule.iter().enumerate() {
+                        lazy.row(ui, i as i64, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    egui::RichText::new(format!("  {}  ", s.kind.label()))
+                                        .size(motif::pt(ui, 10.0))
+                                        .strong()
+                                        .color(motif::on_fill(motif::accent()))
+                                        .background_color(motif::accent()),
+                                );
+                                ui.label(
+                                    egui::RichText::new(format!("{} / {}", s.done, s.total))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                );
+                                if motif::list_row(
+                                    ui,
+                                    egui::RichText::new(&s.name).size(motif::pt(ui, 12.5)),
+                                    false,
+                                )
+                                .on_hover_text(if s.last.is_empty() {
+                                    tr("dash_schedule_tooltip").to_owned()
+                                } else {
+                                    trf("dash_schedule_last", db::format_french_date(&s.last))
+                                })
+                                .clicked()
+                                {
+                                    open = Some(s.patient_id);
+                                }
+                            });
                         });
                     }
                 });
@@ -94690,48 +94815,55 @@ impl App {
         }
         let mut open = None;
         let today = session.today.clone();
-        let appointments = session.appointments.clone();
+        let appointments = &session.appointments;
+        let (heights, width) = session.lazy_heights.entry("dash_rdv").or_default();
         motif::inside(ui, rows[2], |ui| {
             egui::ScrollArea::vertical()
                 .id_salt("dash_rdv")
-                .show(ui, |ui| {
+                .show_viewport(ui, |ui, viewport| {
                     ui.spacing_mut().item_spacing.y = 1.0;
-                    for rdv in &appointments {
-                        let overdue = !today.is_empty() && rdv.date < today;
-                        let is_today = !today.is_empty() && rdv.date == today;
-                        let mut text = format!(
-                            "{}   {}   ({})",
-                            db::format_french_date(&rdv.date),
-                            rdv.patient_name,
-                            rdv.kind.label()
-                        );
-                        // Le numéro **d'un bloc** : la ligne enveloppe
-                        // sur une colonne étroite, et elle coupait entre
-                        // ses paires — « 06 » au bout d'une ligne,
-                        // « 01 02 03 04 » sur la suivante, un numéro
-                        // qu'on ne compose pas tel qu'on le lit.
-                        if !rdv.phone.is_empty() {
-                            text.push_str(&format!("   —  {}", rdv.phone.replace(' ', "\u{a0}")));
-                        }
-                        if overdue {
-                            text.push_str(tr("dash_overdue"));
-                        } else if is_today {
-                            text.push_str(tr("dash_today"));
-                        }
-                        let label = egui::RichText::new(text);
-                        let label = if overdue {
-                            label.color(motif::alert())
-                        } else if is_today {
-                            label.color(motif::accent()).strong()
-                        } else {
-                            label
-                        };
-                        if motif::list_row(ui, label, false)
-                            .on_hover_text(tr("dash_open_patient"))
-                            .clicked()
-                        {
-                            open = Some(rdv.patient_id);
-                        }
+                    let mut lazy = LazyRows::new(ui, viewport, heights, width);
+                    for (i, rdv) in appointments.iter().enumerate() {
+                        lazy.row(ui, i as i64, |ui| {
+                            let overdue = !today.is_empty() && rdv.date < today;
+                            let is_today = !today.is_empty() && rdv.date == today;
+                            let mut text = format!(
+                                "{}   {}   ({})",
+                                db::format_french_date(&rdv.date),
+                                rdv.patient_name,
+                                rdv.kind.label()
+                            );
+                            // Le numéro **d'un bloc** : la ligne enveloppe
+                            // sur une colonne étroite, et elle coupait entre
+                            // ses paires — « 06 » au bout d'une ligne,
+                            // « 01 02 03 04 » sur la suivante, un numéro
+                            // qu'on ne compose pas tel qu'on le lit.
+                            if !rdv.phone.is_empty() {
+                                text.push_str(&format!(
+                                    "   —  {}",
+                                    rdv.phone.replace(' ', "\u{a0}")
+                                ));
+                            }
+                            if overdue {
+                                text.push_str(tr("dash_overdue"));
+                            } else if is_today {
+                                text.push_str(tr("dash_today"));
+                            }
+                            let label = egui::RichText::new(text);
+                            let label = if overdue {
+                                label.color(motif::alert())
+                            } else if is_today {
+                                label.color(motif::accent()).strong()
+                            } else {
+                                label
+                            };
+                            if motif::list_row(ui, label, false)
+                                .on_hover_text(tr("dash_open_patient"))
+                                .clicked()
+                            {
+                                open = Some(rdv.patient_id);
+                            }
+                        });
                     }
                 });
         });
@@ -94779,7 +94911,7 @@ impl App {
     }
 
     /// What the team wrote today: day notes and transmissions.
-    fn dash_today_notes(ui: &mut egui::Ui, session: &Session, rect: egui::Rect) {
+    fn dash_today_notes(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) {
         if session.today_notes.is_empty() {
             ui.painter().text(
                 rect.center(),
@@ -94790,7 +94922,8 @@ impl App {
             );
             return;
         }
-        let notes = session.today_notes.clone();
+        let notes = &session.today_notes;
+        let (heights, width) = session.lazy_heights.entry("dash_notes").or_default();
         motif::inside(ui, rect, |ui| {
             // Ici le sujet lui-même : les notes du jour sont ce que
             // l'équipe s'est écrit, et une note cachée est une note non
@@ -94798,16 +94931,21 @@ impl App {
             ui.spacing_mut().scroll.floating = false;
             egui::ScrollArea::vertical()
                 .id_salt("dash_notes")
-                .show(ui, |ui| {
-                    for note in &notes {
-                        ui.label(
-                            egui::RichText::new(note.stamp())
-                                .size(motif::pt(ui, 10.0))
-                                .color(operator_color(&note.operator)),
-                        );
-                        let sz = motif::pt(ui, 12.0);
-                        ui.add(egui::Label::new(rich_text(&note.body, sz, motif::text())).wrap());
-                        ui.add_space(3.0);
+                .show_viewport(ui, |ui, viewport| {
+                    let mut lazy = LazyRows::new(ui, viewport, heights, width);
+                    for note in notes {
+                        lazy.row(ui, note.id, |ui| {
+                            ui.label(
+                                egui::RichText::new(note.stamp())
+                                    .size(motif::pt(ui, 10.0))
+                                    .color(operator_color(&note.operator)),
+                            );
+                            let sz = motif::pt(ui, 12.0);
+                            ui.add(
+                                egui::Label::new(rich_text(&note.body, sz, motif::text())).wrap(),
+                            );
+                            ui.add_space(3.0);
+                        });
                     }
                 });
         });
@@ -98940,6 +99078,136 @@ fn fuzz_input(raw: &mut egui::RawInput) -> bool {
     true
 }
 
+/// **La fenêtre ouverte, pour qui veut la réveiller.** Un poste au repos
+/// ne dessine rien : ce qui arrive d'un fil (un poste qui répond, un
+/// patient qui écrit, la base qu'un autre poste a modifiée) demande
+/// l'image suivante ici, au lieu d'une image toutes les deux secondes
+/// pour aller voir s'il y a du nouveau. Posée à la première image de
+/// chaque fenêtre ; sans fenêtre (le poste en service, fenêtre fermée),
+/// le réveil ne réveille personne, et `background_tick` relève tout.
+static UI_CTX: std::sync::Mutex<Option<egui::Context>> = std::sync::Mutex::new(None);
+
+/// Demander une image à la fenêtre ouverte, s'il y en a une.
+fn wake_ui() {
+    if let Some(ctx) = UI_CTX.lock().ok().and_then(|g| g.clone()) {
+        ctx.request_repaint();
+    }
+}
+
+/// Le même canal, qui **réveille la fenêtre** à chaque message : un fil
+/// relais attend sur l'original, fait suivre, et demande l'image. Il
+/// s'arrête quand l'un des deux bouts disparaît.
+#[cfg(feature = "sync")]
+fn woken<T: Send + 'static>(rx: std::sync::mpsc::Receiver<T>) -> std::sync::mpsc::Receiver<T> {
+    let (tx, out) = std::sync::mpsc::channel();
+    let _ = std::thread::Builder::new()
+        .name("bpm-reveil".into())
+        .spawn(move || {
+            while let Ok(m) = rx.recv() {
+                if tx.send(m).is_err() {
+                    return;
+                }
+                wake_ui();
+            }
+        });
+    out
+}
+
+/// **Ce que les autres postes écrivent, vu sans dessiner.** Un fil relève
+/// la taille et la date des trois fichiers toutes les deux secondes et
+/// réveille la fenêtre quand l'une bouge ; c'est alors l'image qui
+/// demande à SQLite ce qui a changé (`Session::sync_if_others_wrote`).
+/// Un `stat`, pas une requête : ni la clé ni la base ne sortent de
+/// l'écran. S'arrête quand `stop` passe à vrai.
+fn watch_files(
+    paths: Vec<std::path::PathBuf>,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+) {
+    let stamp = |p: &std::path::Path| {
+        std::fs::metadata(p)
+            .ok()
+            .map(|m| (m.len(), m.modified().ok()))
+    };
+    let _ = std::thread::Builder::new()
+        .name("bpm-temoin".into())
+        .spawn(move || {
+            let mut seen: Vec<_> = paths.iter().map(|p| stamp(p)).collect();
+            while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                std::thread::sleep(Duration::from_secs(2));
+                let now: Vec<_> = paths.iter().map(|p| stamp(p)).collect();
+                if now != seen {
+                    seen = now;
+                    wake_ui();
+                }
+            }
+        });
+}
+
+/// **Une liste de rangées de hauteurs inégales, posée là où l'on
+/// regarde.** `show_rows` veut une hauteur fixe ; les cartes du suivi
+/// n'en ont pas — une se plie en deux dans une colonne étroite, une
+/// autre ouvre son champ. Chaque rangée est mesurée la première fois
+/// qu'elle se dessine, puis, hors de la fenêtre de défilement, n'est plus
+/// qu'un blanc de sa hauteur : mille sept cents cartes étaient posées à
+/// chaque image, et l'écran en montre vingt. Une rangée qui change de
+/// hauteur hors de la vue se remesure en y revenant.
+struct LazyRows<'a> {
+    /// Le haut du contenu, en coordonnées de l'écran.
+    top: f32,
+    /// La tranche visible (`ScrollArea::show_viewport`), en coordonnées
+    /// du contenu, élargie d'une marge.
+    viewport: egui::Rect,
+    heights: &'a mut std::collections::HashMap<i64, f32>,
+}
+
+impl<'a> LazyRows<'a> {
+    fn new(
+        ui: &egui::Ui,
+        viewport: egui::Rect,
+        heights: &'a mut std::collections::HashMap<i64, f32>,
+        width: &mut f32,
+    ) -> Self {
+        // Une autre largeur plie autrement : tout se remesure.
+        let w = ui.available_width();
+        if (*width - w).abs() > 0.5 {
+            heights.clear();
+            *width = w;
+        }
+        let margin = viewport.height().max(1.0) * 0.5;
+        Self {
+            top: ui.min_rect().top(),
+            viewport: viewport.expand2(egui::vec2(0.0, margin)),
+            heights,
+        }
+    }
+
+    fn row(&mut self, ui: &mut egui::Ui, key: i64, draw: impl FnOnce(&mut egui::Ui)) {
+        self.row_or_forced(ui, key, false, draw);
+    }
+
+    /// [`Self::row`], **dessinée même hors de la vue** quand `force` le
+    /// dit : la rangée qu'une flèche vient de choisir (elle doit pouvoir
+    /// se faire défiler jusqu'à elle), celle qui porte un champ ouvert.
+    fn row_or_forced(
+        &mut self,
+        ui: &mut egui::Ui,
+        key: i64,
+        force: bool,
+        draw: impl FnOnce(&mut egui::Ui),
+    ) {
+        let y = ui.cursor().top() - self.top;
+        if let Some(&h) = self.heights.get(&key).filter(|_| !force) {
+            if y + h < self.viewport.top() || y > self.viewport.bottom() {
+                ui.add_space(h);
+                return;
+            }
+        }
+        let start = ui.cursor().top();
+        draw(ui);
+        self.heights.insert(key, ui.cursor().top() - start);
+    }
+}
+
 /// Le temps de chaque image, cumulé et écrit sur la sortie d'erreur
 /// toutes les 60 images quand `BPM_CADDY_FRAME_STATS` est posé : de quoi
 /// comparer le coût des vues (`scripts/frames.sh`) sans profileur. Sans
@@ -99043,6 +99311,11 @@ impl eframe::App for App {
             self.config.density(),
             self.config.ui.theme.clone(),
         );
+        if self.applied_look.is_none() {
+            if let Ok(mut slot) = UI_CTX.lock() {
+                *slot = Some(ctx.clone());
+            }
+        }
         if self.applied_look.as_ref() != Some(&look) {
             // The palette first: `motif::apply` writes it into the egui
             // style, so a theme set after it would only take on the
@@ -99057,7 +99330,9 @@ impl eframe::App for App {
         if self.veil.is_some() && matches!(self.state, State::Unlocked(_)) {
             self.background_tick(ctx);
             self.veil_screen(ctx);
-            ctx.request_repaint_after(Duration::from_secs(2));
+            // Ce qui arrive réveille la fenêtre (`woken`, `watch_files`) :
+            // ce battement ne tient plus que les échéances.
+            ctx.request_repaint_after(Self::HEARTBEAT);
             return;
         }
         // **Les favoris suivent la personne au poste** : l'opérateur
@@ -99252,11 +99527,12 @@ impl eframe::App for App {
             self.last_activity = Instant::now();
         }
         self.backup_if_new_day();
+        self.keep_watch();
         if matches!(self.state, State::Unlocked(_)) {
             if self.idle_too_long() {
                 self.lock();
             }
-            ctx.request_repaint_after(Duration::from_secs(30));
+            ctx.request_repaint_after(self.next_deadline());
         }
 
         // Multi-PC : les autres postes écrivent dans la même base.
@@ -100638,7 +100914,12 @@ impl App {
             _ => None,
         };
         let about_db = self.config.db_path();
-        let about_db_size = std::fs::metadata(&about_db).map(|m| m.len()).ok();
+        // Lue seulement sur la page qui la montre : la base peut être sur
+        // un partage réseau, et un `stat` par image y coûte un aller-retour.
+        let about_db_size = about_counts
+            .is_some()
+            .then(|| std::fs::metadata(&about_db).map(|m| m.len()).ok())
+            .flatten();
         let about_adopted = self.db_adopted.is_some();
         // Only worth a line when it disagrees with this binary: after an
         // update, it says the workspace on screen was laid out by the
@@ -103804,6 +104085,52 @@ impl App {
     }
 
     /// Le délai du verrouillage automatique est-il passé ?
+    /// Le battement d'une session au repos : ce qui arrive la réveille
+    /// (`woken`, `watch_files`), lui ne tient que les échéances — le
+    /// réseau tous les quart d'heure, l'annonce, le jour nouveau.
+    const HEARTBEAT: Duration = Duration::from_secs(30);
+
+    /// La prochaine image qu'une session au repos doit dessiner : le
+    /// battement, ou le verrouillage s'il tombe avant — à l'heure, et non
+    /// jusqu'à trente secondes après.
+    fn next_deadline(&self) -> Duration {
+        let timeout = self.config.database.auto_lock_timeout_minutes;
+        if timeout == 0 {
+            return Self::HEARTBEAT;
+        }
+        let lock_in = Duration::from_secs(timeout * 60)
+            .saturating_sub(self.last_activity.elapsed())
+            + Duration::from_millis(50);
+        lock_in.min(Self::HEARTBEAT)
+    }
+
+    /// Le témoin des fichiers suit la base ouverte : lancé à l'ouverture,
+    /// arrêté à la fermeture, relancé sur une autre base.
+    fn keep_watch(&mut self) {
+        let want = match &self.state {
+            State::Unlocked(s) => s.db.path(),
+            _ => None,
+        };
+        if self.watch.as_ref().map(|w| &w.0) == want.as_ref() {
+            return;
+        }
+        if let Some((_, stop)) = self.watch.take() {
+            stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        if let Some(path) = want {
+            let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            watch_files(
+                vec![
+                    path.clone(),
+                    crate::db::scans_path(&path),
+                    crate::db::stups_path(&path),
+                ],
+                std::sync::Arc::clone(&stop),
+            );
+            self.watch = Some((path, stop));
+        }
+    }
+
     fn idle_too_long(&self) -> bool {
         let timeout = self.config.database.auto_lock_timeout_minutes;
         timeout > 0 && self.last_activity.elapsed() > Duration::from_secs(timeout * 60)
@@ -104182,6 +104509,75 @@ mod tests {
     /// et un `TextEdit` d'egui coupe la sienne en plein mot sans le
     /// dire. Le test tourne un vrai contexte egui — c'est la seule
     /// façon de mesurer un texte dans la fonte qui le dessinera.
+    /// **Une liste posée seulement là où l'on regarde garde sa
+    /// hauteur entière** : la barre de défilement dit mille rangées, le
+    /// milieu de la liste se lit au milieu, et seules les rangées à
+    /// l'écran (et leur marge) se dessinent — de hauteurs inégales.
+    #[test]
+    fn lazy_rows_keep_the_whole_height_and_draw_only_what_is_seen() {
+        let ctx = egui::Context::default();
+        let mut heights = std::collections::HashMap::new();
+        let mut width = 0.0;
+        let height_of = |k: i64| 20.0 + (k % 3) as f32 * 10.0;
+        let total: f32 = (0..1000).map(height_of).sum();
+        let input = || egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(400.0, 300.0),
+            )),
+            ..Default::default()
+        };
+        let mut frame = |offset: Option<f32>| {
+            let mut drawn = Vec::new();
+            let mut content = 0.0;
+            let mut first_seen = None;
+            let _ = ctx.run(input(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    ui.spacing_mut().item_spacing.y = 0.0;
+                    let mut area = egui::ScrollArea::vertical().auto_shrink([false, false]);
+                    if let Some(o) = offset {
+                        area = area.vertical_scroll_offset(o);
+                    }
+                    let out = area.show_viewport(ui, |ui, viewport| {
+                        let mut lazy = super::LazyRows::new(ui, viewport, &mut heights, &mut width);
+                        for k in 0..1000_i64 {
+                            lazy.row(ui, k, |ui| {
+                                let (r, _) = ui.allocate_exact_size(
+                                    egui::vec2(ui.available_width(), height_of(k)),
+                                    egui::Sense::hover(),
+                                );
+                                if first_seen.is_none() && r.bottom() > ui.clip_rect().top() {
+                                    first_seen = Some((k, r.top() - ui.clip_rect().top()));
+                                }
+                                drawn.push(k);
+                            });
+                        }
+                    });
+                    content = out.content_size.y;
+                });
+            });
+            (drawn, content, first_seen)
+        };
+        // La première image mesure tout.
+        let (drawn, content, _) = frame(None);
+        assert_eq!(drawn.len(), 1000);
+        assert!((content - total).abs() < 1.0, "{content} contre {total}");
+        // Au milieu : la hauteur entière, quelques rangées dessinées,
+        // et la première visible est celle qu'une liste pleine y mettrait.
+        let offset = total / 2.0;
+        let (drawn, content, first) = frame(Some(offset));
+        assert!((content - total).abs() < 1.0, "{content} contre {total}");
+        assert!(drawn.len() < 40, "{} rangées dessinées", drawn.len());
+        let mut y = 0.0;
+        let expected = (0..1000)
+            .find(|&k| {
+                y += height_of(k);
+                y > offset
+            })
+            .unwrap();
+        assert_eq!(first.map(|f| f.0), Some(expected));
+    }
+
     #[test]
     fn an_invitation_too_long_for_its_field_is_shortened() {
         let ctx = egui::Context::default();
@@ -116971,10 +117367,23 @@ mod tests {
         // A view takes the memo and returns without giving it back —
         // the shape of the early return in the search screen. The next
         // ask must rebuild it rather than show an empty list for ever.
-        let borrowed = std::mem::take(&mut s.patient_hits);
+        let borrowed = s.lend_patient_hits();
         assert_eq!(borrowed.len(), 1);
         s.refresh_patient_hits();
         assert_eq!(s.patient_hits.len(), 1, "le memo prêté n'est pas revenu");
+        // Rendu, il sert encore ; et une question sans réponse se garde
+        // aussi — vide n'est pas « prêté ».
+        let borrowed = s.lend_patient_hits();
+        s.return_patient_hits(borrowed);
+        assert!(!s.patient_hits_lent);
+        s.query = "zzzz".to_owned();
+        s.refresh_patient_hits();
+        assert!(s.patient_hits.is_empty());
+        assert_eq!(
+            s.patient_hits_key.as_ref().map(|k| k.0.as_str()),
+            Some("zzzz")
+        );
+        s.query = "dup".to_owned();
 
         // A different question is a different answer.
         s.query = "mart".to_owned();
@@ -117160,6 +117569,21 @@ mod tests {
         // day this file's dates were written against.
         s.today = "2026-08-29".to_owned();
         s.refresh_watchlist();
+        assert_eq!(s.bio_watch.len(), 1);
+
+        // **Avec de quoi rouvrir la base, le calcul part sur son fil** :
+        // la liste d'avant reste jusqu'à ce que la nouvelle arrive.
+        s.password = "secret".to_owned();
+        s.watch_stale = true;
+        s.refresh_watchlist();
+        assert!(s.bio_watch_job.is_some(), "parti sur son fil");
+        assert_eq!(s.bio_watch.len(), 1, "l'ancienne liste reste affichée");
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        while s.bio_watch_job.is_some() && std::time::Instant::now() < until {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            s.refresh_watchlist();
+        }
+        assert!(s.bio_watch_job.is_none(), "le fil a rendu sa liste");
         assert_eq!(s.bio_watch.len(), 1);
     }
 
