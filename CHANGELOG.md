@@ -27,7 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   « Chiffres », 16 ms down to 0.3 ms for the call list.
 - « Chiffres » no longer freezes for about two seconds when it opens:
   the biology and treatment review of every file runs on its own thread
-  and the previous list stays on screen until the new one arrives.
+  and the previous list stays on screen until the new one arrives. It is
+  computed again only when something was written since, not at every
+  switch between workspace tabs.
 - An idle window no longer redraws every two seconds: another post's
   writing, the posts' synchronisation and a patient's message wake it
   when they happen. The cascade animation stops when the window is in

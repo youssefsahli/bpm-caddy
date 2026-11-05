@@ -5739,6 +5739,11 @@ struct Session {
     /// Whether the call list has to be read again. Set by every
     /// `refresh_dashboard`; acted on by the view that shows it.
     watch_stale: bool,
+    /// Ce que la base portait quand la liste d'appel a été calculée : le
+    /// compteur de l'écran et le jour. Marquée périmée sans que rien de
+    /// ce que l'écran lit n'ait été écrit, elle n'est pas recalculée —
+    /// près de deux secondes de calcul à chaque changement d'onglet.
+    watch_key: Option<(i64, String)>,
     /// Bumped whenever one of the catalogues the jump box searches — the
     /// codex, the dispositifs, the protocoles — is re-read.
     catalog_rev: u64,
@@ -7550,6 +7555,7 @@ impl Session {
             search_keys: Vec::new(),
             patients_rev: 0,
             watch_stale: true,
+            watch_key: None,
             catalog_rev: 0,
             stup_rev: 0,
             goto_hits: Vec::new(),
@@ -17969,13 +17975,23 @@ impl Session {
                     self.bio_watch_job = None;
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => return,
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.bio_watch_job = None,
+                // Le fil est tombé sans rien rendre : la prochaine
+                // demande recalcule.
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.bio_watch_job = None;
+                    self.watch_key = None;
+                }
             }
         }
         if !self.watch_stale {
             return;
         }
         self.watch_stale = false;
+        let key = (self.db.screen_rev(), self.today.clone());
+        if self.watch_key.as_ref() == Some(&key) {
+            return;
+        }
+        self.watch_key = Some(key);
         let Some(path) = self.db.path().filter(|_| !self.password.is_empty()) else {
             // Sans de quoi rouvrir la base (une session de test) : ici.
             self.bio_watch = bio_watch(&self.db, &self.today);
@@ -117562,11 +117578,22 @@ mod tests {
         s.refresh_watchlist();
         assert!(s.bio_watch.is_empty(), "relue sans raison");
 
-        // A refresh marks it stale again, and the next reading is fresh.
+        // A refresh marks it stale again — but with nothing written in
+        // between, the list in hand is the answer: not recomputed.
         s.refresh_dashboard();
         assert!(s.watch_stale);
         // `refresh_dashboard` reads today off the base, so put back the
         // day this file's dates were written against.
+        s.today = "2026-08-29".to_owned();
+        s.refresh_watchlist();
+        assert!(
+            s.bio_watch.is_empty(),
+            "recalculée sans que rien ait changé"
+        );
+        // Something written, and the next reading is fresh.
+        s.db.add_note(crate::db::NoteSubject::Patient, p.id, "CL", "Revu.")
+            .unwrap();
+        s.refresh_dashboard();
         s.today = "2026-08-29".to_owned();
         s.refresh_watchlist();
         assert_eq!(s.bio_watch.len(), 1);
@@ -117574,6 +117601,8 @@ mod tests {
         // **Avec de quoi rouvrir la base, le calcul part sur son fil** :
         // la liste d'avant reste jusqu'à ce que la nouvelle arrive.
         s.password = "secret".to_owned();
+        s.db.add_note(crate::db::NoteSubject::Patient, p.id, "CL", "Revu encore.")
+            .unwrap();
         s.watch_stale = true;
         s.refresh_watchlist();
         assert!(s.bio_watch_job.is_some(), "parti sur son fil");
