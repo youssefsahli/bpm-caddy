@@ -12655,6 +12655,8 @@ impl Session {
                 last_count: s.last_count.clone(),
                 to_destroy: s.to_destroy,
                 waiting_since: s.waiting_since.clone(),
+                expired: s.expired,
+                expired_since: s.expired_since.clone(),
             })
             .collect()
     }
@@ -65140,6 +65142,7 @@ impl App {
                 expired,
                 last_count: last,
                 waiting_since,
+                expired_since: _,
             }) = &open
             else {
                 ui.label(
@@ -67089,7 +67092,12 @@ impl App {
         // procès-verbal qui n'existe pas.
         // Et elle ne passe pas d'une nature à l'autre : le bon de
         // livraison d'une réception devenait le numéro du procès-verbal.
-        if session.stup_new_kind_was != k || !matches!(k, Kind::Entree | Kind::Destruction) {
+        if session.stup_new_kind_was != k
+            || !matches!(
+                k,
+                Kind::Entree | Kind::Destruction | Kind::DestructionPerimes
+            )
+        {
             session.stup_new_reference.clear();
         }
         session.stup_new_kind_was = k;
@@ -67846,7 +67854,9 @@ impl App {
                                         // et découvrir la règle par un
                                         // refus est la découvrir une
                                         // fois de trop.
-                                        Kind::Destruction => tr("stup_destroy_reason_hint"),
+                                        Kind::Destruction | Kind::DestructionPerimes => {
+                                            tr("stup_destroy_reason_hint")
+                                        }
                                         Kind::Retour => tr("stup_return_reason_hint"),
                                         _ if gap_needs_reason => tr("stup_gap_reason_hint"),
                                         _ => tr("stup_remark_hint"),
@@ -67896,6 +67906,12 @@ impl App {
         // disait pas. Le vide et l'illisible se distinguent, et chacun
         // le dit.
         let typed = session.stup_new_qty.trim();
+        // An empty box is not a zero: a count nobody made would take the
+        // product off the control list.
+        if typed.is_empty() && kind == Kind::Inventaire {
+            session.stup_note = Some((true, tr("stup_err_no_count").to_owned()));
+            return;
+        }
         let quantity = if typed.is_empty() {
             0.0
         } else {
@@ -68624,17 +68640,7 @@ impl App {
             ui.vertical(|ui| {
                 ui.horizontal_wrapped(|ui| {
                     if kind == Kind::Annulation {
-                        let what = match target {
-                            Some(t) => trn(
-                                "stup_cancels_line",
-                                &[
-                                    &db::format_french_date(&t.happened_on),
-                                    &tr(Kind::from_key(&t.kind).label_key()).to_lowercase(),
-                                    &crate::codex::format_quantity(t.quantity),
-                                ],
-                            ),
-                            None => tr("stup_cancels_other").to_owned(),
-                        };
+                        let what = crate::pdf::stup_cancels_mention(target);
                         ui.label(
                             egui::RichText::new(what)
                                 .size(motif::pt(ui, 11.0))
@@ -68879,6 +68885,7 @@ impl App {
             .collect();
         let findings = crate::vigilance::findings(&borrowed, &session.today, &rules);
         let unfiled = crate::vigilance::unfiled(&borrowed);
+        let unprescribed = crate::vigilance::unprescribed(&borrowed);
         let unwatched = crate::vigilance::unwatched(&borrowed);
         let mut open_patient: Option<i64> = None;
 
@@ -68893,14 +68900,11 @@ impl App {
         // comptée que les jours où elle est écrite.
         let usable = (body.width() - 24.0).max(80.0);
         let mut band = Self::prose_height(ui, tr("vigilance_note"), motif::pt(ui, 11.5), usable);
-        if unfiled > 0 || unwatched > 0 {
+        let blind = trn("vigilance_blind", &[&unfiled, &unprescribed, &unwatched]);
+        let is_blind = unfiled > 0 || unprescribed > 0 || unwatched > 0;
+        if is_blind {
             band += ui.spacing().item_spacing.y
-                + Self::prose_height(
-                    ui,
-                    &trn("vigilance_blind", &[&unfiled, &unwatched]),
-                    motif::pt(ui, 10.5),
-                    usable,
-                );
+                + Self::prose_height(ui, &blind, motif::pt(ui, 10.5), usable);
         }
         let rows = motif::split_rows(body, &[band + 14.0, 0.0], 6.0);
 
@@ -68923,10 +68927,10 @@ impl App {
             );
             // De combien la vigilance est aveugle, sur la porte. Un trou
             // silencieux se lirait « rien à signaler ».
-            if unfiled > 0 || unwatched > 0 {
+            if is_blind {
                 ui.add(
                     egui::Label::new(
-                        egui::RichText::new(trn("vigilance_blind", &[&unfiled, &unwatched]))
+                        egui::RichText::new(blind.as_str())
                             .size(motif::pt(ui, 10.5))
                             .color(motif::text_faint()),
                     )
@@ -69481,7 +69485,7 @@ impl App {
         // à écrire sa destruction. Cela **remonte** hors du dessin,
         // comme partout ici — changer le produit ouvert au milieu d'une
         // boucle d'affichage rend la liste fausse à l'image suivante.
-        let mut destroy: Option<(i64, f64)> = None;
+        let mut destroy: Option<(i64, f64, bool)> = None;
 
         motif::inside(ui, rows[0], |ui| {
             ui.horizontal_wrapped(|ui| {
@@ -69593,12 +69597,17 @@ impl App {
                                 // Le nom et la quantité sur la ligne,
                                 // l'ancienneté à côté : c'est elle qui
                                 // trie, donc elle se lit sans survoler.
+                                let name = if a.expired {
+                                    trf("stup_destroy_expired", &a.label)
+                                } else {
+                                    a.label.clone()
+                                };
                                 let row = motif::list_row_pair(
                                     ui,
                                     &trn(
                                         "stup_destroy_row",
                                         &[
-                                            &a.label,
+                                            &name,
                                             &crate::codex::format_quantity(a.quantity),
                                             &crate::ordonnancier::agreed_unit(a.quantity, &a.unit),
                                         ],
@@ -69616,7 +69625,7 @@ impl App {
                                     trf("stup_to_destroy_since", db::format_french_date(&a.since))
                                 });
                                 if row.clicked() {
-                                    destroy = Some((a.id, a.quantity));
+                                    destroy = Some((a.id, a.quantity, a.expired));
                                 }
                             }
                         });
@@ -69716,7 +69725,7 @@ impl App {
         session.stup_cancel_reason = cancel_reason;
         Self::apply_stup_line_action(session, line_action, operator, &mut open_patient);
 
-        if let Some((id, quantity)) = destroy {
+        if let Some((id, quantity, expired)) = destroy {
             // Le produit s'ouvre au registre, la nature est posée et la
             // quantité proposée est **tout le coffre** : une destruction
             // partielle existe, mais elle est l'exception, et laisser le
@@ -69725,7 +69734,11 @@ impl App {
             session.stup_open = Some(id);
             Self::stup_kind_picked(
                 session,
-                crate::ordonnancier::Kind::Destruction,
+                if expired {
+                    crate::ordonnancier::Kind::DestructionPerimes
+                } else {
+                    crate::ordonnancier::Kind::Destruction
+                },
                 0.0,
                 quantity.max(0.0),
             );

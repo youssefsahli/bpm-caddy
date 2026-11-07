@@ -231,7 +231,8 @@ pub fn format_scaled(value: f64) -> String {
 /// trailing zeros, and three decimals at most — below that the balance
 /// is the limit, not the arithmetic.
 pub fn format_quantity(value: f64) -> String {
-    let rounded = (value * 1000.0).round() / 1000.0;
+    // `+ 0.0` turns a residue's -0 into 0: « -0 » reads as a shortage.
+    let rounded = (value * 1000.0).round() / 1000.0 + 0.0;
     let mut text = format!("{rounded:.3}");
     while text.ends_with('0') {
         text.pop();

@@ -2749,7 +2749,7 @@ const DEFAULT_DESTRUCTION_TEMPLATE: &str = r##"
 #v(4mm)
 #text(9pt)[Le pharmacien : #box(width: 6cm, stroke: (bottom: 0.5pt))   Le témoin : #box(width: 6cm, stroke: (bottom: 0.5pt))]
 #v(3mm)
-#text(9pt, style: "italic")[Quantités du compte « à détruire » du registre : retours de patients, non réintégrés au stock délivrable. Chaque destruction est inscrite au registre, ligne par ligne, avec le numéro du présent procès-verbal. Un stupéfiant rapporté par un patient n'est jamais redélivré.]
+#text(9pt, style: "italic")[Quantités des comptes « à détruire » et « périmés » du registre, non réintégrées au stock délivrable. Chaque destruction est inscrite au registre, ligne par ligne, avec le numéro du présent procès-verbal. Un stupéfiant rapporté par un patient n'est jamais redélivré.]
 "##;
 
 fn destruction_list_values(
@@ -2766,7 +2766,11 @@ fn destruction_list_values(
         };
         body.push_str(&format!(
             "  [#box(width: 4mm, height: 4mm, stroke: 0.6pt)], [*#{}*], [#{}], [#{}], [], [],\n",
-            typst_str(&r.label),
+            typst_str(&if r.expired {
+                crate::strings::trf("stup_destroy_expired", &r.label)
+            } else {
+                r.label.clone()
+            }),
             typst_str(&crate::ordonnancier::quantity_and_unit(r.quantity, &r.unit)),
             typst_str(&since),
         ));
@@ -2882,6 +2886,22 @@ pub fn open_stup_register(
     )
 }
 
+/// What an Annulation names, on screen and on paper alike.
+pub fn stup_cancels_mention(target: Option<&crate::db::StupMove>) -> String {
+    use crate::strings::{tr, trn};
+    match target {
+        Some(t) => trn(
+            "stup_cancels_line",
+            &[
+                &crate::db::format_french_date(&t.happened_on),
+                &tr(crate::ordonnancier::Kind::from_key(&t.kind).label_key()).to_lowercase(),
+                &crate::codex::format_quantity(t.quantity),
+            ],
+        ),
+        None => tr("stup_cancels_other").to_owned(),
+    }
+}
+
 fn stup_register_values(
     label: &str,
     unit: &str,
@@ -2963,13 +2983,31 @@ fn stup_register_values(
         } else {
             format!("lot {}", m.lot.trim())
         };
+        // The paper says what the screen says: which line a correction
+        // corrects, and the gap a count found.
+        let names = if kind == Kind::Annulation {
+            stup_cancels_mention(rows.iter().find(|t| t.id == m.cancels))
+        } else {
+            String::new()
+        };
+        let gap = crate::ordonnancier::Discrepancy {
+            expected: m.expected,
+            counted: m.quantity,
+        };
+        let gap = if kind == Kind::Inventaire && gap.matters() {
+            crate::strings::trf("stup_gap", crate::codex::format_quantity(gap.gap()))
+        } else {
+            String::new()
+        };
         let side = [
+            names.as_str(),
             m.prescriber.as_str(),
             m.supplier.as_str(),
             m.reference.as_str(),
             lot.as_str(),
             m.remark.as_str(),
             m.operator.as_str(),
+            gap.as_str(),
         ]
         .into_iter()
         .filter(|t| !t.is_empty())
@@ -3044,7 +3082,7 @@ const DEFAULT_REGISTRE_TEMPLATE: &str = r##"
 {{ROWS}})
 
 #v(4mm)
-#text(8pt, style: "italic")[{{COUNT}} ligne(s) au registre ; quantités en {{UNIT}}. Aucune rature : une ligne annulée reste imprimée, barrée, et sa ligne d'annulation en annule l'effet sur le stock. Un inventaire *fixe* le solde au lieu de s'y ajouter : dès qu'un comptage a trouvé un écart, la somme des colonnes ne correspond plus au solde final. Deux soldes sont tenus : les retours de patients, inscrits ici et jamais redélivrés, restent au compte « à détruire » jusqu'au procès-verbal de destruction. Le nom du patient figure au dossier dont le numéro est indiqué.]
+#text(8pt, style: "italic")[{{COUNT}} ligne(s) au registre ; quantités en {{UNIT}}. Aucune rature : une ligne annulée reste imprimée, barrée, et sa ligne d'annulation en annule l'effet sur le stock. Un inventaire *fixe* le solde au lieu de s'y ajouter : dès qu'un comptage a trouvé un écart, la somme des colonnes ne correspond plus au solde final. Trois soldes sont tenus : le stock délivrable, les retours de patients, inscrits ici et jamais redélivrés, au compte « à détruire », et les périmés, ces deux derniers jusqu'au procès-verbal de destruction. Le nom du patient figure au dossier dont le numéro est indiqué.]
 "##;
 
 /// Ce que l'ordonnancier d'une année imprime.
@@ -7323,6 +7361,7 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
                     quantity: 14.0,
                     since: "2026-07-02".to_owned(),
                     days: Some(68),
+                    expired: false,
                 },
                 crate::ordonnancier::Awaiting {
                     id: 2,
@@ -7331,6 +7370,7 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
                     quantity: 21.0,
                     since: "2026-08-19".to_owned(),
                     days: Some(20),
+                    expired: true,
                 },
             ],
             &pharmacy,
@@ -12037,6 +12077,7 @@ mod tests {
                 // depuis combien de temps un stupéfiant rapporté attend
                 // sa destruction.
                 days: crate::date::days_between("2025-11-02", "2026-09-08"),
+                expired: false,
             },
             // Ce qui attend sans qu'on sache depuis quand : la colonne
             // reste vide plutôt que d'inventer un jour.
@@ -12047,6 +12088,7 @@ mod tests {
                 quantity: 12.0,
                 since: String::new(),
                 days: None,
+                expired: false,
             },
         ];
         let source = fill(

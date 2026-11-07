@@ -289,6 +289,15 @@ pub fn unfiled(moves: &[Dispensing]) -> usize {
         .count()
 }
 
+/// How many dispensings name no prescriber: the prescribers' questions
+/// skip them, and a blank must not read as nothing to report.
+pub fn unprescribed(moves: &[Dispensing]) -> usize {
+    moves
+        .iter()
+        .filter(|d| !d.cancelled && prescriber_key(d.prescriber).is_empty())
+        .count()
+}
+
 /// Combien de produits sont hors vigilance faute de plafond.
 ///
 /// Un produit inscrit à la main n'a pas de famille, donc pas de

@@ -3291,6 +3291,8 @@ pub struct Standing {
     /// Depuis quand quelque chose attend d'être détruit, ISO ; vide si
     /// rien n'attend.
     pub waiting_since: String,
+    /// Since when the expired pile has been waiting, ISO; empty if nothing is.
+    pub expired_since: String,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -48298,6 +48300,8 @@ impl Db {
                 last_count: s.last_count,
                 to_destroy: s.to_destroy,
                 waiting_since: s.waiting_since,
+                expired: s.expired,
+                expired_since: s.expired_since,
             })
             .collect();
         let uncounted_stups = crate::ordonnancier::to_check(&followed, today, count_days)
@@ -53921,6 +53925,19 @@ impl Db {
         if label.is_empty() {
             return Err(crate::strings::tr("stup_err_no_label").to_owned());
         }
+        // An archived product leaves every alert: what the safe still holds
+        // would stop being asked about, with the register unbalanced.
+        if new.archived && !expected.archived {
+            let open = self.stup_summary()?.into_iter().any(|s| {
+                s.product.id == new.id
+                    && [s.stock, s.to_destroy, s.expired]
+                        .iter()
+                        .any(|v| v.abs() > 1e-6)
+            });
+            if open {
+                return Err(crate::strings::tr("stup_err_archive_balance").to_owned());
+            }
+        }
         let tx = write_tx(&self.stups).map_err(|e| e.to_string())?;
         let was = expected.label.trim();
         let renamed = !label.eq_ignore_ascii_case(was);
@@ -54525,9 +54542,10 @@ impl Db {
     /// disparaître la correction en même temps que la faute.
     pub fn stup_destruction_moves(&self) -> Result<Vec<StupMove>, String> {
         self.stup_rows(
-            "WHERE kind IN ('RETOUR', 'DESTRUCTION')
+            "WHERE kind IN ('RETOUR', 'DESTRUCTION', 'PEREMPTION', 'DESTRUCTION_PERIMES')
                 OR (kind = 'ANNULATION' AND cancels IN
-                    (SELECT id FROM stup_moves WHERE kind IN ('RETOUR', 'DESTRUCTION')))
+                    (SELECT id FROM stup_moves WHERE kind IN
+                        ('RETOUR', 'DESTRUCTION', 'PEREMPTION', 'DESTRUCTION_PERIMES')))
              ORDER BY happened_on DESC, created_at DESC, id DESC",
             rusqlite::params![],
         )
@@ -54770,7 +54788,8 @@ impl Db {
         // raison que le motif de l'annulation et celui de l'écart
         // d'inventaire : à l'écriture, et pas dans le formulaire qui l'a
         // proposée.
-        if kind.needs_record() && m.remark.trim().is_empty() {
+        // A record number typed in its own field is the record.
+        if kind.needs_record() && m.remark.trim().is_empty() && m.reference.trim().is_empty() {
             return Err(crate::strings::tr("stup_err_no_pv").to_owned());
         }
         if kind == crate::ordonnancier::Kind::Annulation {
@@ -54886,7 +54905,9 @@ impl Db {
                 // renvoie.
                 if matches!(
                     kind,
-                    crate::ordonnancier::Kind::Entree | crate::ordonnancier::Kind::Destruction
+                    crate::ordonnancier::Kind::Entree
+                        | crate::ordonnancier::Kind::Destruction
+                        | crate::ordonnancier::Kind::DestructionPerimes
                 ) {
                     m.reference.trim()
                 } else {
@@ -55104,6 +55125,7 @@ impl Db {
                     expired: last_balance.expired,
                     last_count: last,
                     waiting_since: crate::ordonnancier::waiting_since(&moves).unwrap_or_default(),
+                    expired_since: crate::ordonnancier::expired_since(&moves).unwrap_or_default(),
                     product: p,
                 }
             })
@@ -57545,15 +57567,12 @@ pub fn age_on(birth_iso: &str, today_iso: &str) -> Option<u32> {
     let (by, bmd) = (birth_iso.get(..4)?, birth_iso.get(5..10)?);
     let (ty, tmd) = (today_iso.get(..4)?, today_iso.get(5..10)?);
     let (by, ty): (u32, u32) = (by.parse().ok()?, ty.parse().ok()?);
-    if ty < by {
+    // A birth still to come has no age: 0 would read as a newborn.
+    if (ty, tmd) < (by, bmd) {
         return None;
     }
     let years = ty - by;
-    Some(if tmd < bmd {
-        years.saturating_sub(1)
-    } else {
-        years
-    })
+    Some(if tmd < bmd { years - 1 } else { years })
 }
 
 /// Format an ISO date back to `JJ/MM/AAAA` for display.
@@ -66684,6 +66703,62 @@ mod tests {
     /// référence qui appartient à deux natures, et le refus d'une
     /// destruction qui ne cite rien.
     #[test]
+    fn an_expired_destruction_keeps_its_record_and_a_held_product_stays_followed() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-perimes-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("perimes.db"), "secret").unwrap();
+        let sid = db
+            .add_stupefiant(0, "Actiskenan 10 mg", "gélule", 0.0)
+            .unwrap();
+        let line = |kind: crate::ordonnancier::Kind, qty: f64, day: &str, pv: &str, note: &str| {
+            db.add_stup_move(&StupMove {
+                id: 0,
+                stup_id: sid,
+                kind: kind.as_key().to_owned(),
+                happened_on: day.to_owned(),
+                quantity: qty,
+                ordo_year: 0,
+                ordo_no: 0,
+                patient_id: 0,
+                prescriber: String::new(),
+                supplier: String::new(),
+                reference: pv.to_owned(),
+                expected: 0.0,
+                operator: "YS".to_owned(),
+                remark: note.to_owned(),
+                cancels: 0,
+                lot: String::new(),
+                expiry: String::new(),
+            })
+        };
+        use crate::ordonnancier::Kind;
+        line(Kind::Entree, 10.0, "2026-01-05", "BL-1", "").unwrap();
+        line(Kind::Peremption, 10.0, "2026-02-01", "", "").unwrap();
+        let standing = || db.stup_summary().unwrap().remove(0);
+        assert_eq!(standing().expired_since, "2026-02-01");
+
+        // The pile is held: the product cannot leave the alerts.
+        let held = standing().product;
+        let mut archived = held.clone();
+        archived.archived = true;
+        assert!(db.update_stupefiant(&archived, &held, "YS").is_err());
+
+        // Neither record nor remark refuses; the number alone is the record.
+        assert!(line(Kind::DestructionPerimes, 10.0, "2026-03-01", "", "").is_err());
+        let gone = line(Kind::DestructionPerimes, 10.0, "2026-03-01", "PV-7", "").unwrap();
+        let moves = db.stup_moves(sid).unwrap();
+        assert_eq!(
+            moves.iter().find(|m| m.id == gone).unwrap().reference,
+            "PV-7"
+        );
+        assert_eq!(db.stup_destruction_moves().unwrap().len(), 2);
+        assert_eq!(standing().expired_since, "");
+        assert_eq!(db.update_stupefiant(&archived, &held, "YS"), Ok(true));
+    }
+
+    #[test]
     fn a_patients_return_waits_at_the_safe_until_a_written_destruction() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-retour-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -70443,6 +70518,13 @@ mod tests {
     /// **Une proposition ne prend pas un rang** : restée « Identifié » un an
     /// plus tôt, elle faisait du vrai premier acte un acte de suivi, au code
     /// et à l'honoraire de l'année 2.
+    #[test]
+    fn a_birth_still_to_come_has_no_age() {
+        assert_eq!(age_on("2026-12-01", "2026-11-07"), None);
+        assert_eq!(age_on("2026-11-07", "2026-11-07"), Some(0));
+        assert_eq!(age_on("2025-12-01", "2026-11-07"), Some(0));
+    }
+
     #[test]
     fn a_proposal_left_behind_takes_no_fee_rank() {
         let dir = std::env::temp_dir().join(format!("bpm-rank-{}", std::process::id()));

@@ -23,6 +23,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with no warning, since only values under 35 were flagged. A unit choice
   now reads the number, and a value that looks like the other unit is
   flagged both ways.
+- **Narcotics register.**
+  - The record number typed on an expired-stock destruction was dropped
+    from the line; it is now kept, and counts as the required record.
+  - The expired pile now appears in the « à détruire » tab, its journal
+    and the printed record, with its waiting date.
+  - A product still holding a balance can no longer be archived, which
+    took it off every alert.
+  - The printed register now says which line an annulation cancels and
+    the gap of a count, as the screen does, and names its three balances.
+  - A quantity followed by anything but a dosage unit (« 3 plaquettes »,
+    « 250 ml ») is refused instead of read as units.
+  - An empty inventory field is no longer written as a count of zero.
+  - Dispensings with no prescriber are counted in the vigilance notice.
+  - The return hint no longer invites a name into the register.
+  - Methadone capsules: delivery is split by 7 days, not 14.
 - Two DFG results on the same day: the renal table now reads the last one
   entered, as biology does; it read the first, so a corrected 25 stayed 55.
 - Thrombocytopenia and anaemia readings now cover the LMWHs. Under

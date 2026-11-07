@@ -161,7 +161,7 @@ pub const CATALOGUE: &[Family] = &[
         name: "Opioïdes injectables",
         status: "STUPEFIANT",
         max_days: 7,
-        note: "Voie parentérale : prescription limitée à 7 jours, portée à 28 jours lorsque l'administration se fait par un système actif de perfusion. C'est la seule famille où la durée n'est pas de 28 jours, et l'oublier fait délivrer une ordonnance périmée.",
+        note: "Voie parentérale : prescription limitée à 7 jours, portée à 28 jours lorsque l'administration se fait par un système actif de perfusion. L'oublier fait délivrer une ordonnance périmée.",
         items: &[
             ("Chlorhydrate de morphine 1 mg/mL", "ampoule"),
             ("Chlorhydrate de morphine 10 mg/mL", "ampoule"),
@@ -273,7 +273,7 @@ pub const CATALOGUE: &[Family] = &[
         name: "Méthadone gélule",
         status: "STUPEFIANT",
         max_days: 28,
-        note: "Relais du sirop seulement, chez un patient stabilisé depuis au moins un an et suivi. Délivrance fractionnée par 14 jours sauf mention expresse du prescripteur. La gélule n'est jamais une initiation.",
+        note: "Relais du sirop seulement, chez un patient stabilisé depuis au moins un an et suivi. Délivrance fractionnée par 7 jours sauf mention expresse du prescripteur. La gélule n'est jamais une initiation.",
         items: &[
             ("Méthadone AP-HP gélule 1 mg", "gélule"),
             ("Méthadone AP-HP gélule 5 mg", "gélule"),
@@ -976,6 +976,15 @@ pub fn running(moves: &[Move]) -> Vec<Balance> {
 /// est un problème, et il n'a pas d'autre façon de se signaler — aucune
 /// échéance ne tombe, personne ne le réclame.
 pub fn waiting_since(moves: &[Move]) -> Option<String> {
+    pile_since(moves, |b| b.to_destroy)
+}
+
+/// The same question for the expired pile.
+pub fn expired_since(moves: &[Move]) -> Option<String> {
+    pile_since(moves, |b| b.expired)
+}
+
+fn pile_since(moves: &[Move], pile: fn(&Balance) -> f64) -> Option<String> {
     let mut ordered: Vec<&Move> = moves.iter().collect();
     // Par jour, et dans un jour l'ordre donné (celui de la saisie) : le
     // tri est stable.
@@ -984,11 +993,11 @@ pub fn waiting_since(moves: &[Move]) -> Option<String> {
     let mut since: Option<String> = None;
     let places = places(&ordered);
     for (i, m) in ordered.iter().enumerate() {
-        let was = b.to_destroy;
+        let was = pile(&b);
         apply(&mut b, i, &ordered, &places);
-        if was.abs() <= 1e-6 && b.to_destroy.abs() > 1e-6 {
+        if was.abs() <= 1e-6 && pile(&b).abs() > 1e-6 {
             since = Some(m.day.to_owned());
-        } else if b.to_destroy.abs() <= 1e-6 {
+        } else if pile(&b).abs() <= 1e-6 {
             since = None;
         }
     }
@@ -1159,6 +1168,10 @@ pub struct Followed {
     /// Depuis quel jour, ISO ; vide si rien n'attend. Voir
     /// [`waiting_since`].
     pub waiting_since: String,
+    /// The expired pile, its own account and its own record.
+    pub expired: f64,
+    /// Since which day, ISO; empty if nothing is waiting.
+    pub expired_since: String,
 }
 
 /// Une ligne de ce qui attend la destruction.
@@ -1172,6 +1185,9 @@ pub struct Awaiting {
     pub since: String,
     /// Depuis combien de jours ; `None` si le jour n'est pas lisible.
     pub days: Option<i64>,
+    /// From the expired pile rather than patient returns: a product can
+    /// hold both, and they are destroyed under different line kinds.
+    pub expired: bool,
 }
 
 /// Ce qui dort au coffre en attendant le procès-verbal.
@@ -1188,14 +1204,22 @@ pub struct Awaiting {
 pub fn awaiting(followed: &[Followed], today: &str) -> Vec<Awaiting> {
     let mut out: Vec<Awaiting> = followed
         .iter()
-        .filter(|f| f.to_destroy.abs() > 1e-6)
-        .map(|f| Awaiting {
-            id: f.id,
-            label: f.label.clone(),
-            unit: f.unit.clone(),
-            quantity: f.to_destroy,
-            since: f.waiting_since.clone(),
-            days: days_between(&f.waiting_since, today),
+        .flat_map(|f| {
+            [
+                (f.to_destroy, &f.waiting_since, false),
+                (f.expired, &f.expired_since, true),
+            ]
+            .into_iter()
+            .filter(|(quantity, _, _)| quantity.abs() > 1e-6)
+            .map(|(quantity, since, expired)| Awaiting {
+                id: f.id,
+                label: f.label.clone(),
+                unit: f.unit.clone(),
+                quantity,
+                since: since.clone(),
+                days: days_between(since, today),
+                expired,
+            })
         })
         .collect();
     // Le plus ancien d'abord ; ce dont on ne connaît pas le jour passe
@@ -1698,16 +1722,20 @@ pub fn read_count(typed: &str) -> Option<f64> {
     // lisait un, « 3 boîtes » de quatorze se lisaient trois — et
     // s'écrivaient au registre comme une quantité juste. Les boîtes se
     // comptent sur leur ligne à elles.
+    //
+    // **Only a dosage unit may follow.** A list of what to refuse let
+    // « 3 plaquettes », « 2 cartons » and « 250 ml » through as units:
+    // the tail must be a word of the catalogue's own units.
     let tail = crate::fuzzy::sort_key(rest.trim_start());
-    if tail.starts_with(['/', '-', '*', '×', 'x'])
-        || tail.contains("boite")
-        || tail.starts_with("bte")
-        || tail.starts_with("bt ")
-        || tail == "bt"
-    {
-        return None;
-    }
-    Some(value)
+    let word = tail.split_whitespace().next().unwrap_or("");
+    let word = word.strip_suffix('s').unwrap_or(word);
+    UNIT_PLURALS
+        .iter()
+        .any(|(one, _)| {
+            let first = crate::fuzzy::sort_key(one);
+            first.split_whitespace().next() == Some(word)
+        })
+        .then_some(value)
 }
 
 /// **Un écart se motive case par case**, et pas une fois pour la
@@ -2679,7 +2707,20 @@ mod tests {
             last_count: String::new(),
             to_destroy: qty,
             waiting_since: since.to_owned(),
+            expired: 0.0,
+            expired_since: String::new(),
         };
+        // The expired pile is listed too, on its own row.
+        let mut both = f(5, "Oxycontin LP 10 mg", 3.0, "2026-09-01");
+        both.expired = 6.0;
+        both.expired_since = "2026-01-05".to_owned();
+        let rows = awaiting(&[both], "2026-09-08");
+        assert_eq!(
+            rows.iter()
+                .map(|a| (a.quantity, a.expired, a.since.as_str()))
+                .collect::<Vec<_>>(),
+            vec![(6.0, true, "2026-01-05"), (3.0, false, "2026-09-01")]
+        );
         let list = awaiting(
             &[
                 f(1, "Actiskenan 10 mg", 4.0, "2026-08-30"),
@@ -2714,6 +2755,8 @@ mod tests {
             last_count: last.to_owned(),
             to_destroy: 0.0,
             waiting_since: String::new(),
+            expired: 0.0,
+            expired_since: String::new(),
         };
         let base = [
             // Impossible : une ligne manque au registre.
@@ -3352,6 +3395,16 @@ mod tests {
         assert_eq!(read_count("3 btes"), None);
         assert_eq!(read_count("2 x 14"), None);
         assert_eq!(read_count("14 comprimés"), Some(14.0));
+        // Nothing but a dosage unit follows a count.
+        assert_eq!(read_count("3 plaquettes"), None);
+        assert_eq!(read_count("3 bts"), None);
+        assert_eq!(read_count("2 cartons"), None);
+        assert_eq!(read_count("250 ml"), None);
+        assert_eq!(read_count("30 mg"), None);
+        assert_eq!(read_count("1 O"), None);
+        assert_eq!(read_count("2 flacons"), Some(2.0));
+        assert_eq!(read_count("7 comprimés sublinguaux"), Some(7.0));
+        assert_eq!(read_count("1 dispositif"), Some(1.0));
     }
 
     /// Le numéro tapé : celui du logiciel de l'officine, chiffres seuls.
