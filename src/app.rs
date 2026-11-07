@@ -340,6 +340,24 @@ pub fn env_password() -> Option<String> {
 /// sinon, pour qu'un 29,6 ne s'écrive jamais « 30 » à côté de « sous 30 ».
 /// Une clairance au dixième, **par défaut** : arrondie au plus proche, 29,96
 /// passerait à 30 et du côté permis d'un seuil « < 30 ».
+/// Micromoles per litre of a creatinine typed in either unit.
+fn creat_umol(value: f64, mg_l: bool) -> f64 {
+    if mg_l {
+        value * 8.84
+    } else {
+        value
+    }
+}
+
+/// The notice for a creatinine that reads like the other unit, if any.
+fn creat_unit_doubt(value: f64, mg_l: bool) -> Option<&'static str> {
+    match mg_l {
+        false if value > 0.0 && value < 35.0 => Some("calc_creat_mg_l"),
+        true if value >= 50.0 => Some("calc_creat_umol"),
+        _ => None,
+    }
+}
+
 fn clearance_tenth(v: f64) -> f64 {
     (v * 10.0 + 1e-9).floor() / 10.0
 }
@@ -7451,6 +7469,8 @@ struct Session {
     calc_weight: f64,
     calc_age: f64,
     calc_creat: f64,
+    /// The lab's report gives both units; the number typed is read in this one.
+    calc_creat_mg_l: bool,
     calc_female: bool,
     calc_per_kg: f64,
     calc_takes: u32,
@@ -8215,6 +8235,7 @@ impl Session {
             calc_weight: 70.0,
             calc_age: 75.0,
             calc_creat: 90.0,
+            calc_creat_mg_l: false,
             calc_female: false,
             calc_per_kg: 15.0,
             calc_takes: 3,
@@ -54355,9 +54376,30 @@ impl App {
                         motif::number(
                             ui,
                             egui::DragValue::new(&mut session.calc_creat)
-                                .range(10.0..=1500.0)
-                                .suffix(" µmol/L"),
+                                .range(1.0..=1500.0)
+                                .suffix(if session.calc_creat_mg_l {
+                                    " mg/L"
+                                } else {
+                                    " µmol/L"
+                                }),
                         );
+                        ui.end_row();
+                        // **The number stays, its unit changes**: 40 typed from
+                        // a report in mg/L is corrected by one click, and no
+                        // threshold can tell 60 mg/L from 60 µmol/L.
+                        ui.label(tr("calc_creat_unit"));
+                        ui.horizontal(|ui| {
+                            if motif::radio(ui, !session.calc_creat_mg_l, tr("calc_unit_umol"))
+                                .clicked()
+                            {
+                                session.calc_creat_mg_l = false;
+                            }
+                            if motif::radio(ui, session.calc_creat_mg_l, tr("calc_unit_mg"))
+                                .clicked()
+                            {
+                                session.calc_creat_mg_l = true;
+                            }
+                        });
                         ui.end_row();
                         ui.label(tr("calc_sex"));
                         ui.horizontal(|ui| {
@@ -54393,7 +54435,8 @@ impl App {
                 // table rénale passaient du côté permis du seuil.
                 let clearance = if session.calc_creat > 0.0 {
                     clearance_tenth(
-                        (140.0 - session.calc_age) * session.calc_weight * k / session.calc_creat,
+                        (140.0 - session.calc_age) * session.calc_weight * k
+                            / creat_umol(session.calc_creat, session.calc_creat_mg_l),
                     )
                 } else {
                     0.0
@@ -54417,12 +54460,13 @@ impl App {
                         .size(motif::pt(ui, 11.0))
                         .color(motif::text_dim()),
                 );
-                // **Une créatinine en mg/L se trahit** : sous 35 µmol/L,
-                // c'est presque toujours une valeur en mg/L tapée telle
-                // quelle (12 mg/L font 106 µmol/L), et la clairance sort
-                // huit fois trop haute.
-                if session.calc_creat > 0.0 && session.calc_creat < 35.0 {
-                    ui.colored_label(motif::alert(), tr("calc_creat_mg_l"));
+                // **Une créatinine dans la mauvaise unité se trahit** aux
+                // extrêmes : sous 35 µmol/L, c'est presque toujours des mg/L
+                // (12 mg/L font 106 µmol/L) et la clairance sort neuf fois
+                // trop haute ; dès 50 mg/L, des µmol/L, et elle sort neuf
+                // fois trop basse.
+                if let Some(doubt) = creat_unit_doubt(session.calc_creat, session.calc_creat_mg_l) {
+                    ui.colored_label(motif::alert(), tr(doubt));
                 }
             };
             let per_kilo = |ui: &mut egui::Ui, session: &mut Session| {
@@ -54698,7 +54742,7 @@ impl App {
                             // Le chiffre affiché au-dessus, ni plus ni moins.
                             session.calc_renal_dfg = clearance_tenth(
                                 (140.0 - session.calc_age) * session.calc_weight * k
-                                    / session.calc_creat,
+                                    / creat_umol(session.calc_creat, session.calc_creat_mg_l),
                             )
                             .clamp(3.0, 140.0);
                             session.calc_renal_set = true;
@@ -117242,6 +117286,21 @@ mod tests {
 
     /// **Un seuil ne se franchit pas à l'arrondi** : 29,59 mL/min s'affichait
     /// 30 et sortait du palier « < 30 ».
+    #[test]
+    fn a_creatinine_in_mg_l_gives_the_same_clearance_and_each_unit_doubts_the_other() {
+        assert_eq!(super::creat_umol(106.0, false), 106.0);
+        assert!((super::creat_umol(12.0, true) - 106.08).abs() < 1e-9);
+        // 40 mg/L read as µmol/L was the nine-fold clearance nothing caught.
+        assert_eq!(super::creat_unit_doubt(40.0, true), None);
+        assert_eq!(
+            super::creat_unit_doubt(12.0, false),
+            Some("calc_creat_mg_l")
+        );
+        assert_eq!(super::creat_unit_doubt(90.0, true), Some("calc_creat_umol"));
+        assert_eq!(super::creat_unit_doubt(90.0, false), None);
+        assert_eq!(super::creat_unit_doubt(0.0, false), None);
+    }
+
     #[test]
     fn a_clearance_stays_on_its_side_of_a_threshold() {
         assert_eq!(super::clearance_tenth(29.59), 29.5);

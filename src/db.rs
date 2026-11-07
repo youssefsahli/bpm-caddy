@@ -57119,10 +57119,10 @@ fn fee_ranks(keys: &[FeeKey], months: u32) -> Vec<(usize, (usize, usize))> {
     out
 }
 
-/// **Une proposition ne prend pas le rang d'un acte.** Restée à « Identifié »
-/// un an avant le vrai premier acte, elle le faisait passer en année 2, à
-/// son code et à son honoraire. Les actes se rangent entre eux ; une
-/// proposition garde le rang qu'elle aurait, pour la prévision.
+/// **A proposal does not take an act's rank.** Left at « Identifié » a year
+/// before the real first act, it pushed that act into year 2, its code and
+/// its fee. Acts rank among themselves; a proposal keeps the rank it would
+/// have, for the forecast.
 fn act_ranks(keys: &[FeeKey], proposed: &[bool], months: u32) -> Vec<(usize, (usize, usize))> {
     let mut out = fee_ranks(keys, months);
     let acts: Vec<usize> = (0..keys.len()).filter(|i| !proposed[*i]).collect();

@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   29,59 showed as 30 and left the « < 30 » step. The calculator now keeps
   the tenth, rounded down, for the display, the stage and the table; « À
   dire » and the patient header show the same figure the table read.
+- **The clearance calculator takes creatinine in mg/L too.** A true
+  40 mg/L typed in the µmol/L field gave a clearance nine times too high
+  with no warning, since only values under 35 were flagged. A unit choice
+  now reads the number, and a value that looks like the other unit is
+  flagged both ways.
 - Two DFG results on the same day: the renal table now reads the last one
   entered, as biology does; it read the first, so a corrected 25 stayed 55.
 - Thrombocytopenia and anaemia readings now cover the LMWHs. Under

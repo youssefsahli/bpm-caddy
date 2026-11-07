@@ -531,7 +531,7 @@ dossier, appliquée à une fiche plutôt qu'à une ordonnance — utile
 lorsque le dossier du patient n'est pas ouvert. Le palier retenu est le
 plus bas des paliers franchis ; les seuils viennent des RCP ; la
 décision revient au prescripteur. Aucun verdict avant qu'un DFG soit
-saisi ou calculé ; une créatinine sous 35 µmol/L fait penser à des mg/L.
+saisi ou calculé ; la créatinine se saisit en µmol/L ou en mg/L, et une valeur qui ressemble à l'autre unité est signalée.
 Le panneau du dossier donne le DFG avec sa date, et un DFG daté après
 aujourd'hui ne compte pas. Quand le plan de surveillance le dit à
 refaire (le rythme le plus serré des traitements qui le demandent : un
