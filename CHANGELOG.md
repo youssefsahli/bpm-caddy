@@ -76,9 +76,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     what they provide.
 - **Monitoring.** Bonviva, Actonel, Aclasta, Zometa and Invokana get their
   lines, and an empty list now says « à vérifier » instead of nothing due.
+- **Posology reading.** Tested on 592 phrases as they are really written.
+  A figure now prints only when every word is accounted for, and a blank
+  box stays blank: zero counts (« 1 cp matin, 0 midi, 1 cp soir »), a dose
+  no longer carries past another quantity, sums, ranges and products written
+  with a sign stay unread (« 1 / 2 comprimé », « 1 cp x 3 »). Rhythms written
+  short leave the grid (« 1 fois/sem », « 1j/2 », « 21j/28 », « lun mer ven »,
+  « tous les 2j »), as do conditions (« si insomnie ») and denials (« éviter
+  le soir »). « en 3 prises », « 3/j » give their count; a range or a ceiling
+  (« deux à trois fois par jour ») gives none.
 - **Conciliation.** A strength written with no unit (« Eliquis 2.5 »), a
   doubled take and a different named product (Actiskénan for Skenan) no
-  longer read as kept.
+  longer read as kept. Neither do a stopped or changed take written in
+  words (« arrêté », « un jour sur deux »), a strength inside the posology
+  or the card's name, percentages, pairs (« 5/10 ») or a held bare figure.
 - **Nutrition.** The adult criteria no longer give a verdict under 18.
 - **Vitale card.** A child under the holder's number no longer takes the
   holder's birth date, both names come from one side of the number, and a

@@ -217,6 +217,24 @@ const ON_DEMAND: &[&str] = &[
     "si douleur",
     "si fievre",
     "si crise",
+    "si insomnie",
+    "si angoisse",
+    "si anxiete",
+    "si nausee",
+    "si vomissement",
+    "si constipation",
+    "si diarrhee",
+    "si gene",
+    "si reveil",
+    "si difficulte",
+    "si mal ",
+    "si migraine",
+    "si glycemie",
+    "si ta ",
+    "si inr",
+    "si poids",
+    "en cas d'insomnie",
+    "en cas de reveil",
     "ponctuel",
     // Le début d'une crise est une demande : « 50 mg dès le début de
     // la céphalée » est un triptan, et la fiche lui demandait une heure
@@ -272,7 +290,17 @@ const CONDITION: &[&str] = &[
 /// à la demande, qui se dessinait trois fois par jour ; « 10 mg par jour,
 /// puis 20 mg par jour ; 40 mg par jour si nécessaire » est une titration.
 fn governs_a_dose(before: &str, marker: &str) -> bool {
-    if TITRATION.iter().any(|w| before.contains(w)) {
+    // « jusqu'à 3 fois par jour » caps a rhythm, it titrates nothing.
+    let capped = |w: &str| {
+        w == "jusqu'a"
+            && before.match_indices(w).all(|(at, _)| {
+                before[at + w.len()..]
+                    .split_whitespace()
+                    .nth(1)
+                    .is_some_and(|n| n.starts_with("fois"))
+            })
+    };
+    if TITRATION.iter().any(|w| before.contains(w) && !capped(w)) {
         return true;
     }
     let said: Vec<(usize, &str)> = NOT_ON_DEMAND_BEFORE
@@ -282,7 +310,9 @@ fn governs_a_dose(before: &str, marker: &str) -> bool {
     match said.as_slice() {
         [] => false,
         [(at, w)] if CONDITION.contains(&marker) => {
-            before[at + w.len()..].contains(|c: char| c.is_ascii_digit() || c == ',' || c == ';')
+            let rest = &before[at + w.len()..];
+            rest.contains(|c: char| c.is_ascii_digit())
+                || (rest.contains([',', ';']) && rest.contains(char::is_alphabetic))
         }
         _ => true,
     }
@@ -294,6 +324,9 @@ fn governs_a_dose(before: &str, marker: &str) -> bool {
 /// chiffres, suivi aussitôt de son unité : « tous les 10 à 15 jours » est le
 /// pas d'une titration, comme tout ce qui suit un verbe de titration.
 fn spaced(folded: &str) -> bool {
+    if abbreviated_rhythm(folded) {
+        return true;
+    }
     const SLOWER: [&str; 6] = [
         "palier",
         "augment",
@@ -349,6 +382,71 @@ fn spaced(folded: &str) -> bool {
     })
 }
 
+/// the written-short rhythms. « 1j/2 », « 5 j sur 7 », « 21j/28 »,
+/// « 3 sem sur 4 », « 2 soirs sur 3 », « tous les 2j », « toutes les 72 h »,
+/// « tous les 3 soirs ».
+fn abbreviated_rhythm(folded: &str) -> bool {
+    // Digits and letters apart: « 5j/7 » is 5, j, /, 7.
+    let mut t: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    for c in folded.chars() {
+        let same = cur
+            .chars()
+            .last()
+            .is_none_or(|l| l.is_ascii_digit() == c.is_ascii_digit());
+        if c.is_alphanumeric() && same {
+            cur.push(c);
+            continue;
+        }
+        if !cur.is_empty() {
+            t.push(std::mem::take(&mut cur));
+        }
+        if c.is_alphanumeric() {
+            cur.push(c);
+        } else if c == '/' {
+            t.push("/".to_owned());
+        }
+    }
+    if !cur.is_empty() {
+        t.push(cur);
+    }
+    let num = |s: Option<&String>| s.and_then(|s| s.parse::<u32>().ok());
+    let span = |u: &str| {
+        matches!(
+            u,
+            "j" | "jour"
+                | "jours"
+                | "sem"
+                | "soir"
+                | "soirs"
+                | "nuit"
+                | "nuits"
+                | "matin"
+                | "matins"
+        )
+    };
+    (0..t.len()).any(|i| {
+        let unit = t.get(i + 1).map_or("", |s| s.as_str());
+        let n = num(t.get(i));
+        // N unit / M, N unit sur M.
+        let ratio = n.is_some()
+            && span(unit)
+            && matches!(t.get(i + 2).map(|s| s.as_str()), Some("/" | "sur"))
+            && num(t.get(i + 3)).is_some();
+        // tous les N unit.
+        let every = i >= 2
+            && matches!(t[i - 2].as_str(), "tous" | "toutes")
+            && t[i - 1] == "les"
+            && n.is_some_and(|n| match unit {
+                "j" => n > 1,
+                "h" => n > 24,
+                "soirs" | "matins" | "nuits" | "sem" => true,
+                _ => false,
+            });
+        ratio || every
+    })
+}
+
 /// « matin ou soir », « le matin ou le soir » : un choix, pas deux prises.
 /// Une grille ne dit pas un choix.
 fn moment_choice(folded: &str) -> bool {
@@ -361,9 +459,12 @@ fn moment_choice(folded: &str) -> bool {
             && (is_moment(i + 1)
                 || (tokens
                     .get(i + 1)
-                    .is_some_and(|a| matches!(*a, "le" | "la" | "au"))
-                    && is_moment(i + 2)))
-    })
+                    .is_some_and(|a| matches!(*a, "le" | "la" | "au" | "a"))
+                    && is_moment(i + 2))
+                // « matin ou 1 cp soir », « le matin ou 1 cp le soir ».
+                || (1..=4).any(|k| is_moment(i + k)
+                    && tokens.get(i + 1).is_some_and(|a| a.starts_with(|c: char| c.is_ascii_digit()))))
+    }) || (tokens.iter().filter(|t| **t == "soit").count() >= 2)
 }
 
 /// Ce qui fait d'un rythme un rythme non quotidien.
@@ -408,6 +509,26 @@ const CYCLIC: &[&str] = &[
     "tous les 3 jours",
     "tous les 7 jours",
     "toutes les 4 semaines",
+];
+
+/// written short, or no rhythm word at all, and still not a daily take.
+const NOT_DAILY: &[&str] = &[
+    "/sem",
+    "par sem",
+    "hebdo",
+    "/mois",
+    "week-end",
+    "week end",
+    "weekend",
+    "jour oui",
+    "jour sur l'autre",
+    "en alternance",
+    "lendemain matin",
+    "lendemain soir",
+    "veille au soir",
+    "jours, arret",
+    "jours d'arret",
+    " a j1",
 ];
 
 /// Le rapport au repas, tel qu'il s'imprime.
@@ -520,6 +641,28 @@ pub fn read(posology: &str) -> Reading {
         .iter()
         .copied()
         .find(|m| folded.contains(*m))
+        .or_else(|| NOT_DAILY.iter().copied().find(|m| folded.contains(*m)))
+        // « 2 fois par an », and not « par année d'âge ».
+        .or_else(|| {
+            folded
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .windows(2)
+                .any(|w| w[0] == "par" && w[1].trim_end_matches([',', '.']) == "an")
+                .then_some("par an")
+        })
+        .or_else(|| {
+            let at = folded.find("chaque semaine")?;
+            let slower = ["augment", "palier", "diminu", "doubl", "progressi"];
+            (!slower.iter().any(|w| folded[..at].contains(w))).then_some("chaque semaine")
+        })
+        .or_else(|| {
+            // A one-off, unless the phrase counts days.
+            folded
+                .contains("dose unique")
+                .then_some("unique")
+                .filter(|_| !folded.contains("par jour") && !folded.contains("/j"))
+        })
         .or_else(|| weekly_by_name(&folded))
         .or(spaced(&folded).then_some("tous les"))
         .or(phased.then_some("puis"))
@@ -535,6 +678,11 @@ pub fn read(posology: &str) -> Reading {
     // La notation chiffrée, quand elle est là : « 1-0-1 » se lit sans
     // ambiguïté et court-circuite tout le reste.
     if let Some(doses) = notation(&folded) {
+        if doses.iter().all(Option::is_none) {
+            let mut r = Reading::empty(Kind::Unread);
+            r.meal = meal;
+            return r;
+        }
         return Reading {
             kind: Kind::Placed,
             doses,
@@ -558,11 +706,28 @@ pub fn read(posology: &str) -> Reading {
     }
 
     let (doses, lost) = placed(&folded);
+    // the takes the columns cannot hold.
+    let lost = lost
+        || folded.contains("trois repas")
+        || folded.contains("3 repas")
+        || short_interval(&folded);
     // **Une quantité sans moment connu ne disparaît pas.** « 1 cp à 8h, 1
     // cp à 16h, 1 le soir » se lisait une prise le soir : la phrase n'est
     // pas lue, et le dire vaut mieux qu'une dose sur trois.
     if lost && doses.iter().any(Option::is_some) {
         let mut r = Reading::empty(Kind::Unread);
+        r.meal = meal;
+        return r;
+    }
+    // « 1 cp le soir en cas de douleur »: with a dose placed, this is
+    // no warning. Alone it stays one: « arrêt immédiat en cas de douleur ».
+    if doses.iter().any(Option::is_some)
+        && ["en cas de douleur", "en cas de fievre"]
+            .iter()
+            .any(|w| folded.contains(w))
+    {
+        let mut r = Reading::empty(Kind::OnDemand);
+        r.note = condition(raw, "en cas de");
         r.meal = meal;
         return r;
     }
@@ -612,11 +777,30 @@ fn normalize(folded: &str) -> String {
         ("soir au coucher", "coucher"),
         ("soir avant le coucher", "coucher"),
         ("soir, au coucher", "coucher"),
+        ("soir avant de dormir", "coucher"),
+        ("soir avant de se coucher", "coucher"),
+        ("soir au moment du coucher", "coucher"),
+        ("soir a l'heure du coucher", "coucher"),
+        ("soir au lit", "coucher"),
+        ("soir pour bien dormir", "soir"),
+        ("soir pour dormir", "soir"),
+        ("soir pour la nuit", "soir"),
+        ("avant le coucher et apres le repas du soir", "soir"),
+        ("du matin au soir", "dans la journee"),
+        ("du lever au coucher", "dans la journee"),
+        ("pt dejeuner", "matin"),
+        ("p'tit dejeuner", "matin"),
+        ("petit-dej", "matin"),
     ] {
         while let Some(i) = s.find(from) {
             s.replace_range(i..i + from.len(), to);
         }
     }
+    // an empty cell, « Midi : ; Soir : 1 ».
+    let s = s
+        .replace(": ;", " - ")
+        .replace(": ,", " - ")
+        .replace(": /", " - ");
     let s = s.replace(['(', ')', ';', ':'], " ");
     // « matin/soir », « matin-midi-soir » : des moments joints par un
     // trait ou une barre sont autant de moments. Le jeton entier se
@@ -625,7 +809,7 @@ fn normalize(folded: &str) -> String {
     // est un moment : « 1/2 », « 1-0-1 » restent la notation.
     s.split(' ')
         .map(|tok| {
-            let parts: Vec<&str> = tok.split(['-', '/']).collect();
+            let parts: Vec<&str> = tok.split(['-', '/', '+', ',', '&']).collect();
             if parts.len() > 1
                 && parts
                     .iter()
@@ -775,20 +959,32 @@ fn weekly_by_name(folded: &str) -> Option<&'static str> {
     ];
     for day in DAYS {
         for (at, _) in folded.match_indices(day) {
+            // « les lundis ».
+            let rest = &folded[at + day.len()..];
+            let rest = rest.strip_prefix('s').unwrap_or(rest);
             let whole = !folded[..at].ends_with(char::is_alphanumeric)
-                && !folded[at + day.len()..].starts_with(char::is_alphanumeric);
+                && !rest.starts_with(char::is_alphanumeric);
             // Les trois mots d'avant : « a partir du », « des le »,
             // « jusqu'a », « a compter du ».
-            let near: Vec<&str> = folded[..at].split_whitespace().rev().take(3).collect();
-            let bound = near.iter().any(|w| {
-                matches!(*w, "partir" | "des" | "compter" | "apres") || w.starts_with("jusqu")
-            });
+            // articles only between the bound word and the day.
+            let bound = folded[..at]
+                .split_whitespace()
+                .rev()
+                .take(3)
+                .find(|w| !matches!(*w, "le" | "du" | "de" | "au"))
+                .is_some_and(|w| {
+                    matches!(w, "partir" | "des" | "compter" | "apres") || w.starts_with("jusqu")
+                });
             if whole && !bound {
                 return Some(day);
             }
         }
     }
-    None
+    // « lun mer ven ».
+    const SHORT: [&str; 7] = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"];
+    folded
+        .split(|c: char| !c.is_alphanumeric())
+        .find_map(|w| SHORT.iter().find(|s| **s == w).copied())
 }
 
 fn rhythm(raw: &str, _marker: &str) -> String {
@@ -836,6 +1032,34 @@ fn notation(folded: &str) -> Option<[Option<Take>; 4]> {
     if parts.len() != 3 && parts.len() != 4 {
         return None;
     }
+    // the grid alone is the posology. A quantity ahead of it
+    // (« 2 cp 1-0-1 »), a dose after it (« 1-0-1 + 2 au coucher »), a second
+    // grid (a phase) or a padded date (« 05-11-26 ») are not this grid.
+    let clean = |w: &&str| {
+        w.trim_matches(|c: char| !c.is_alphanumeric() && c != '½' && c != '¼' && c != '¾')
+            .to_owned()
+    };
+    let counted = |ws: &[&str]| {
+        ws.windows(2).any(|w| {
+            quarters(&clean(&w[0])).is_some_and(|q| q != 4 || w[0] != "1")
+                && UNITS.contains(&clean(&w[1]).as_str())
+        })
+    };
+    let after = &words[at + 1..];
+    let after_dose = after.iter().any(|w| moment_of(w).is_some())
+        && after
+            .iter()
+            .any(|w| quarters(&clean(w)).is_some_and(|q| q > 0));
+    let grid_again = after.iter().any(|w| w.split(sep).count() == parts.len());
+    let padded = parts
+        .iter()
+        .any(|p| p.len() > 1 && p.starts_with('0') && !p.contains([',', '.']));
+    if after_dose || grid_again {
+        return Some([None; 4]);
+    }
+    if counted(&words[..at]) || counted(after) || padded {
+        return None;
+    }
     // **Une date n'est pas une grille** : « dès le 1/3/26 » se lisait
     // 1 le matin, 3 à midi, 26 le soir. Une date a un jour, **un mois
     // de 1 à 12** et une année de deux ou quatre chiffres ; « 20/0/20
@@ -872,7 +1096,7 @@ fn notation(folded: &str) -> Option<[Option<Take>; 4]> {
     // elle, est ce qu'on injecte : « 10-0-10 UI » reste une grille.
     if words
         .get(at + 1)
-        .is_some_and(|u| matches!(*u, "mg" | "g" | "µg" | "mcg" | "ug"))
+        .is_some_and(|u| matches!(*u, "mg" | "g" | "µg" | "mcg" | "ug" | "ml"))
     {
         return None;
     }
@@ -902,6 +1126,21 @@ fn quarters(text: &str) -> Option<u32> {
     }
     let q = (v * 4.0).round();
     ((q - v * 4.0).abs() < 0.01).then_some(q as u32)
+}
+
+/// « toutes les 8 heures, y compris la nuit »: a rhythm under twelve
+/// hours is no list of moments.
+fn short_interval(folded: &str) -> bool {
+    let t: Vec<&str> = folded.split_whitespace().collect();
+    t.windows(4).any(|w| {
+        w[0] == "toutes"
+            && w[1] == "les"
+            && w[2]
+                .trim_end_matches(|c: char| !c.is_ascii_digit())
+                .parse::<u32>()
+                .is_ok_and(|n| n < 12)
+            && (w[2].contains('h') || w.get(3).is_some_and(|u| u.starts_with('h')))
+    })
 }
 
 /// Placer les prises nommées.
@@ -944,9 +1183,51 @@ fn placed(folded: &str) -> ([Option<Take>; 4], bool) {
             .and_then(|t| quarters(t.trim_matches(|c: char| c == ',' || c == '.')))
     };
     let moment_at = |i: usize| tokens.get(i).and_then(|t| moment_of(t)).is_some();
+    let hour = |t: &str| {
+        let r = t.trim_start_matches(|c: char| c.is_ascii_digit());
+        r.len() < t.len()
+            && (r == "h" || (r.starts_with('h') && r[1..].chars().all(|c| c.is_ascii_digit())))
+    };
     let mut i = 0;
     while i < tokens.len() {
         let t = tokens[i].trim_matches(|c: char| c == ',' || c == '.');
+        // an hour or a goûter between takes has no column.
+        let before = i >= 1 && moment_at(i - 1);
+        let after = moment_at(i + 1);
+        let attached = (after && !before)
+            || (is(i + 1, &["le", "la", "au"]) && moment_at(i + 2))
+            || (i >= 2 && is(i - 1, &["a", "vers"]) && moment_at(i - 2));
+        if (hour(t) && !attached)
+            || matches!(
+                t,
+                "gouter" | "apres-midi" | "d'apres-midi" | "l'apres-midi" | "apresmidi"
+            )
+        {
+            lost = true;
+        }
+        // a dose carries only across links.
+        if seen_moment
+            && moment_of(t).is_none()
+            && !matches!(
+                word(i).as_deref().unwrap_or(""),
+                "" | "et"
+                    | "le"
+                    | "la"
+                    | "l"
+                    | "les"
+                    | "au"
+                    | "aux"
+                    | "a"
+                    | "puis"
+                    | "en"
+                    | "tous"
+                    | "toutes"
+                    | "chaque"
+            )
+            && !hour(t)
+        {
+            last = None;
+        }
         // **Un nombre n'est une quantité que si quelque chose le dit** :
         // une unité de comptage juste après, ou le moment qu'il
         // précède (« 2 le matin »). Tout autre nombre est autre chose —
@@ -960,6 +1241,14 @@ fn placed(folded: &str) -> ([Option<Take>; 4], bool) {
             // trois fois plus que la vraie.
             let mut j = i;
             let mut q = q;
+            // « 1, 5 cp »: a decimal cut by a typing space.
+            if tokens[i].ends_with(',') && q % 4 == 0 && number(i + 1).is_some() && is(i + 2, UNITS)
+            {
+                pending = Some(None);
+                last = Some(None);
+                i += 3;
+                continue;
+            }
             if q % 4 == 0 {
                 if let Some(frac) = tokens
                     .get(i + 1)
@@ -997,6 +1286,20 @@ fn placed(folded: &str) -> ([Option<Take>; 4], bool) {
                 i = j + 2;
                 continue;
             }
+            // « 2 fois 1 cp le matin », « 1 cp 2 fois le matin ».
+            if q > 0
+                && is(j + 1, &["fois"])
+                && !is(j + 2, &["par"])
+                && !word(j + 2).is_some_and(|w| w.starts_with('j'))
+            {
+                pending = Some(None);
+                last = Some(None);
+                i = j + 2;
+                while i < tokens.len() && (number(i).is_some() || is(i, UNITS)) {
+                    i += 1;
+                }
+                continue;
+            }
             if q > 0 && is(j + 1, UNITS) {
                 // « 1 comprimé et demi », « 1 cp 1/2 », « 1 cp x 2 »,
                 // « 1 cp + 1 cp »: the unit does not end the quantity.
@@ -1006,10 +1309,15 @@ fn placed(folded: &str) -> ([Option<Take>; 4], bool) {
                     && !is(j + 3, &["h", "heure", "heures", "min", "minutes"]);
                 let half = is(j + 2, &["et"]) && is(j + 3, &["demi"]);
                 let more = sign(j + 2) && number(j + 3).is_some();
-                if fraction || half || more {
+                // « 1 cp x2 ».
+                let times = word(j + 2).is_some_and(|w| {
+                    w.strip_prefix('x')
+                        .is_some_and(|n| n.parse::<u32>().is_ok())
+                });
+                if fraction || half || more || times {
                     pending = Some(None);
                     last = Some(None);
-                    i = j + if fraction { 3 } else { 4 };
+                    i = j + if fraction || times { 3 } else { 4 };
                     continue;
                 }
                 lost |= matches!(pending, Some(Some(_)));
@@ -1020,19 +1328,88 @@ fn placed(folded: &str) -> ([Option<Take>; 4], bool) {
                 continue;
             }
             let article = is(j + 1, &["le", "la", "l", "au", "aux", "a"]);
-            if q > 0 && (moment_at(j + 1) || (article && moment_at(j + 2))) {
-                pending = Some(Some(q));
-                last = Some(Some(q));
+            let at = if moment_at(j + 1) {
+                Some(j + 1)
+            } else if article && moment_at(j + 2) {
+                Some(j + 2)
+            } else {
+                None
+            };
+            if let Some(at) = at {
+                // « 0 midi » is nothing at that moment.
+                if q == 0 {
+                    last = None;
+                    i = at + 1;
+                    continue;
+                }
+                // « 3 soirs » counts evenings; « 1 cp et 1/2 le soir »,
+                // « 1 cp de 40 le matin »: a bare number after a dose still
+                // waiting is no replacement; after a name it is no dose.
+                let plural = matches!(
+                    word(at).as_deref(),
+                    Some("soirs" | "matins" | "nuits" | "midis")
+                );
+                let opened = i == 0
+                    || tokens[i - 1].ends_with(',')
+                    || word(i - 1).is_some_and(|w| {
+                        moment_of(&w).is_some()
+                            || matches!(w.as_str(), "" | "et" | "puis" | "prendre" | "plus")
+                    });
+                if plural {
+                    i = at;
+                    continue;
+                }
+                lost |= matches!(pending, Some(Some(_)));
+                pending = Some(opened.then_some(q));
+                last = pending;
             }
             i = j + 1;
             continue;
         }
+        // « 2cp x 2 »: glued, the first count is no number and the
+        // second would stand alone.
+        if t.starts_with(|c: char| c.is_ascii_digit())
+            && matches!(tokens.get(i + 1), Some(&"x" | &"×"))
+        {
+            pending = Some(None);
+            last = Some(None);
+            i += 3;
+            continue;
+        }
         if let Some(m) = moment_of(t) {
-            // « 1 cp le matin, pas le soir ».
-            let denied = (1..=3).any(|back| {
-                i >= back && tokens[i - back].trim_matches(|c: char| c == ',') == "pas"
-            });
+            // « 1 cp le matin, pas le soir » — back to the clause's
+            // start or the last number, whatever the verb.
+            let denied = tokens[..i]
+                .iter()
+                .rev()
+                .take(4)
+                .take_while(|w| !w.ends_with(',') && !w.starts_with(|c: char| c.is_ascii_digit()))
+                .any(|w| {
+                    let w = w.trim_matches(|c: char| !c.is_alphanumeric());
+                    matches!(
+                        w,
+                        "pas"
+                            | "zero"
+                            | "jamais"
+                            | "aucun"
+                            | "aucune"
+                            | "sans"
+                            | "rien"
+                            | "ni"
+                            | "eviter"
+                            | "supprimer"
+                            | "retirer"
+                            | "enlever"
+                            | "oter"
+                            | "rincer"
+                            | "sauf"
+                    ) || (w == "laisser" && m == Moment::Coucher)
+                        || (w == "toute" && m == Moment::Coucher)
+                });
             if !denied {
+                // a new quantity for a column already filled is a
+                // phase, an alternation, or a sum.
+                lost |= matches!(pending, Some(Some(_))) && doses[m.index()].is_some();
                 let q = pending.take().or(last).flatten();
                 doses[m.index()] = Some(Take { quarters: q });
                 seen_moment = true;
@@ -1120,9 +1497,18 @@ fn moments_first(folded: &str) -> Option<[Option<Take>; 4]> {
                 return Some(marks);
             }
             stray = false;
+            // the same moment bound twice.
+            if doses[m.index()].is_some_and(|d| d.quarters.is_some()) {
+                return Some(marks);
+            }
             doses[m.index()] = Some(Take { quarters: None });
             waiting.push(m.index());
             continue;
+        }
+        // a dash in a moment's place is an empty cell, or a joiner:
+        // either way no figure crosses it.
+        if matches!(t.trim_end_matches(','), "-" | "–") && !waiting.is_empty() {
+            return Some(marks);
         }
         let word = clean(t);
         let Some(q) = quarters(&word) else {
@@ -1223,6 +1609,125 @@ fn moment_of(token: &str) -> Option<Moment> {
     None
 }
 
+/// a count the table of needles does not hold. `Some(None)` is a count
+/// said as a choice (« 1 à 2 fois par jour »): no figure.
+fn told_count(head: &str) -> Option<Option<u32>> {
+    let (mut seen, mut rest) = (None, head.to_owned());
+    while let Some((n, end)) = told_once(&rest) {
+        match (seen, n) {
+            (None, n) => seen = Some(n),
+            (Some(a), b) if a == b => {}
+            _ => return Some(None),
+        }
+        rest = rest
+            .split_whitespace()
+            .skip(end + 1)
+            .collect::<Vec<_>>()
+            .join(" ");
+    }
+    seen
+}
+
+fn told_once(head: &str) -> Option<(Option<u32>, usize)> {
+    const WORDS: [&str; 12] = [
+        "zero", "une", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf", "dix",
+        "onze",
+    ];
+    let t: Vec<String> = head
+        .split_whitespace()
+        .map(|w| {
+            w.trim_matches(|c: char| matches!(c, ',' | '.' | ';'))
+                .to_owned()
+        })
+        .collect();
+    let num = |w: &str| -> Option<u32> {
+        w.parse()
+            .ok()
+            .or_else(|| WORDS.iter().position(|x| *x == w).map(|i| i as u32))
+    };
+    let daily = |i: usize| {
+        let at = |k: usize| t.get(k).map_or("", |s| s.as_str());
+        (at(i) == "par" && at(i + 1) == "jour") || at(i).starts_with("/j")
+    };
+    for (i, w) in t.iter().enumerate() {
+        let at = |k: usize| t.get(k).map_or("", |s| s.as_str());
+        // « en 3 prises », « 3 prises par jour ».
+        let kinds = |s: &str| {
+            s.starts_with("prise")
+                || s.starts_with("injection")
+                || s.starts_with("application")
+                || s.starts_with("instillation")
+        };
+        if let Some(n) = num(w) {
+            let choice = i >= 2 && matches!(at(i - 1), "a" | "ou") && num(at(i - 2)).is_some();
+            let fois = at(i + 1) == "fois" && (daily(i + 2) || at(i + 2).starts_with("/j"));
+            if fois || at(i + 1).starts_with("fois/j") {
+                return Some(((!choice).then_some(n), i));
+            }
+            if kinds(at(i + 1)) && (daily(i + 2) || (i > 0 && at(i - 1) == "en")) {
+                return Some(((!choice).then_some(n), i));
+            }
+            // « 3 x par jour », « 3x par jour », « 3 x 1 cp/j », « 3 fois 2 cp par jour ».
+            if matches!(at(i + 1), "x" | "×" | "fois")
+                && (daily(i + 2)
+                    || daily(i + 3)
+                    || daily(i + 4)
+                    || at(i + 3).ends_with("/j")
+                    || at(i + 4).contains("/j"))
+            {
+                return Some((Some(n), i));
+            }
+        }
+        if let Some(n) = w
+            .strip_suffix("x/j")
+            .or_else(|| w.strip_suffix("x/jour"))
+            .and_then(num)
+        {
+            let choice = i >= 2 && matches!(at(i - 1), "a" | "ou") && num(at(i - 2)).is_some();
+            return Some(((!choice).then_some(n), i));
+        }
+        if let Some(n) = w.strip_suffix('x').and_then(num) {
+            if daily(i + 1) {
+                return Some((Some(n), i));
+            }
+        }
+        // « 3x1 cp/j ».
+        if let Some((n, _)) = w.split_once('x') {
+            if let Some(n) = num(n) {
+                if !w.ends_with('x')
+                    && (at(i + 1).ends_with("/j")
+                        || at(i + 2).ends_with("/j")
+                        || daily(i + 2)
+                        || daily(i + 1))
+                {
+                    return Some((Some(n), i));
+                }
+            }
+        }
+        // « x 3 par jour », « x3 par jour ».
+        if *w == "x" && num(at(i + 1)).is_some() && daily(i + 2) {
+            return Some((num(at(i + 1)), i));
+        }
+        if let Some(n) = w.strip_prefix('x').and_then(num) {
+            if daily(i + 1) {
+                return Some((Some(n), i));
+            }
+        }
+        // « 3/j », « 3/jour », and « 2-3 fois par jour ».
+        if let Some(n) = w
+            .strip_suffix("/j")
+            .or_else(|| w.strip_suffix("/jour"))
+            .and_then(num)
+        {
+            return Some((Some(n), i));
+        }
+        if at(i + 1) == "fois" && daily(i + 2) && w.contains('-') {
+            return Some((None, i));
+        }
+    }
+    None
+}
+
 /// Combien de prises par jour, quand la phrase le dit sans dire quand.
 fn per_day(folded: &str) -> Option<u32> {
     // **Un plafond ne dit pas un rythme.** « sans dépasser 300 mg par
@@ -1235,6 +1740,17 @@ fn per_day(folded: &str) -> Option<u32> {
         "dans la limite",
         "ne pas depasser",
         "au plus",
+        " max ",
+        "max ",
+        "maxi",
+        "pas plus de",
+        "ne pas exceder",
+        "jusqu'a 2 ",
+        "jusqu'a 3 ",
+        "jusqu'a 4 ",
+        "jusqu'a 5 ",
+        "jusqu'a 6 ",
+        "jusqu'a 8 ",
     ]
     .iter()
     .filter_map(|w| folded.find(w))
@@ -1273,10 +1789,39 @@ fn per_day(folded: &str) -> Option<u32> {
         .into_iter()
         .flatten()
         .min();
+    // « toutes les 6h », hours glued; two hours named, a count not said.
+    let glued_interval = head
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .windows(3)
+        .any(|w| {
+            let n = w[2].trim_end_matches(',');
+            w[0] == "toutes" && w[1] == "les" && n.ends_with('h') && n.len() > 1
+        });
+    let hours = head
+        .split_whitespace()
+        .filter(|w| {
+            let r = w.trim_start_matches(|c: char| c.is_ascii_digit());
+            r.len() < w.len() && r.trim_end_matches(',') == "h"
+        })
+        .count();
+    if glued_interval || hours > 1 {
+        return None;
+    }
     let counted = head.find("fois par jour");
     if let Some(at) = interval {
         if counted.is_none_or(|c| at < c) {
             return None;
+        }
+    }
+    // A ceiling is no rhythm (« 10 prises par jour au maximum »), and a
+    // titration is not at its count yet.
+    if folded.contains("par jour au maximum") || folded.contains("par jour maximum") {
+        return None;
+    }
+    if (head.contains("par jour") || head.contains("/j")) && !head.contains("augment") {
+        if let Some(n) = told_count(&head) {
+            return n;
         }
     }
     // « en 2 ou 3 prises », « en 2 a 3 prises » : le prescripteur a
@@ -1410,6 +1955,71 @@ mod tests {
             grid("le matin 1 cp 1/2 heure avant le repas"),
             [Some(4), None, None, None]
         );
+        // A dose carries across links only.
+        for (phrase, expected) in [
+            (
+                "1 cp matin, 0 midi, 1 cp soir",
+                [Some(4), None, Some(4), None],
+            ),
+            ("1 matin 0 soir", [Some(4), None, None, None]),
+            ("2 matin, 1 midi, 0 soir", [Some(8), Some(4), None, None]),
+            ("1 cp le matin, rien le soir", [Some(4), None, None, None]),
+            (
+                "1 cp le matin, pas de prise le soir",
+                [Some(4), None, None, None],
+            ),
+            ("1 cp le matin, éviter le soir", [Some(4), None, None, None]),
+            (
+                "1 patch le matin, à retirer le soir",
+                [Some(4), None, None, None],
+            ),
+            ("1 cp matin midi et soir", [Some(4), Some(4), Some(4), None]),
+            (
+                "1 comprimé matin, midi et soir",
+                [Some(4), Some(4), Some(4), None],
+            ),
+        ] {
+            assert_eq!(grid(phrase), expected, "{phrase}");
+        }
+        // What is no daily take does not reach the grid: the methotrexate rule.
+        for phrase in [
+            "3 cp les lundis matin",
+            "3 cp le matin 1 fois/sem",
+            "1 cp par sem le matin",
+            "1 cp hebdo le matin",
+            "1 cp le matin lun mer ven",
+            "1 cp le soir 1j/2",
+            "1 cp le soir 1 j sur 2",
+            "1 cp le matin 5j/7",
+            "1 cp le soir 21j/28",
+            "1 cp le soir un jour oui un jour non",
+            "1 cp le matin tous les 2j",
+            "1 patch le matin toutes les 72h",
+            "1 cp 5 soirs sur 7",
+            "1 cp le matin 1 fois/mois",
+            "1 cp le soir le week-end",
+            "1 cp le matin pendant 21 jours, arrêt 7 jours",
+            "1 cp le matin 2 fois par an",
+            "1 cp le matin à J1 et J8",
+            "1 cp le soir si insomnie",
+            "1 cp matin et soir si nausées",
+            "1 sachet le matin si constipation",
+            "1 cp le soir en cas de douleur",
+            "8 unités le soir si glycémie > 2 g/l",
+        ] {
+            assert_ne!(read(phrase).kind, Kind::Placed, "{phrase}");
+        }
+        // Two counts are no count, a ceiling no rhythm.
+        for phrase in [
+            "1 à 2 fois par jour",
+            "2 à 3 fois par jour",
+            "10 prises par jour au maximum",
+            "1 cp, pas plus de 3 par jour",
+        ] {
+            assert_ne!(read(phrase).kind, Kind::Daily, "{phrase}");
+        }
+        assert_eq!(read("1,5 g par jour en 3 prises").times, 3);
+        assert_eq!(read("1 cp 3/j").times, 3);
         // A phase is not one day's grid.
         assert_ne!(
             read("2 cp le matin pendant 7 jours, ensuite 1 cp le matin").kind,

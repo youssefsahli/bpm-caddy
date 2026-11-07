@@ -461,12 +461,39 @@ pub fn compare(held: &[Held], list: &str, base: &[Known]) -> Vec<Divergence> {
                 // et retient 5 mg à part ; la feuille écrit « 10 mg : 1 cp
                 // le soir ». La posologie seule se lisait reconduite, et
                 // la dose doublée passait sans un mot.
-                let mine = first_amount(h.posology).or_else(|| first_amount(h.strength));
                 let theirs = first_amount(&e.detail);
-                let other_strength = matches!(
-                    (mine, theirs),
-                    (Some((a, ua)), Some((b, ub))) if ua == ub && (a - b).abs() > 1e-9
-                );
+                // each held figure asked on its own, against every
+                // figure of its kind on the line: a posology's « 20 UI » no
+                // longer hides a strength's « 100 UI/ml », and a strength
+                // that lives in the card's name counts.
+                let line = amounts(&e.detail);
+                let contested = |text: &str| {
+                    amounts(text).first().is_some_and(|(a, ua)| {
+                        let kin: Vec<&(f64, String)> =
+                            line.iter().filter(|(_, ub)| ub == ua).collect();
+                        !kin.is_empty() && kin.iter().all(|(b, _)| (a - b).abs() > 1e-9)
+                    })
+                };
+                let held_strength = if h.strength.trim().is_empty() {
+                    h.name
+                } else {
+                    h.strength
+                };
+                // « 5 » held bare: its unit left out, the line's figure read in each.
+                let bare_held = first_amount(held_strength).is_none()
+                    && amounts(held_strength).is_empty()
+                    && theirs.is_some_and(|(v, _)| {
+                        !strength_says(held_strength, v)
+                            && !strength_says(held_strength, v / 1e3)
+                            && !strength_says(held_strength, v / 1e6)
+                    });
+                let other_strength = contested(h.posology) || contested(held_strength) || bare_held;
+                // a pair of strengths changed on its second figure.
+                let other_pair = pair(held_strength).is_some()
+                    && pair(&e.detail).is_some()
+                    && pair(held_strength) != pair(&e.detail);
+                // what the line says of the take, in the name or the detail.
+                let other_word = alters(&e.raw, h.name);
                 // **Same molecule, another named product is not the same
                 // treatment**: Skenan (extended release) for Actiskénan
                 // (immediate release) read as kept. A line written as the
@@ -481,8 +508,10 @@ pub fn compare(held: &[Held], list: &str, base: &[Known]) -> Vec<Divergence> {
                 // skipped as a harmless prefix against a held 5 mg.
                 let other_bare = theirs.is_none()
                     && bare_strength(&e.detail, h.posology)
-                        .is_some_and(|b| !strength_says(h.strength, b));
+                        .is_some_and(|b| !strength_says(held_strength, b));
                 let kind = if !other_strength
+                    && !other_pair
+                    && !other_word
                     && !other_brand
                     && !other_bare
                     && same_dose(h.posology, &e.detail)
@@ -663,7 +692,10 @@ fn same_units(words: Vec<String>) -> Vec<String> {
             "mg" | "milligramme" | "milligrammes" => (1e3, "µg"),
             "µg" | "ug" | "mcg" | "microgramme" | "microgrammes" => (1.0, "µg"),
             "ui" | "unite" | "unites" => (1.0, "ui"),
+            "mui" => (1.0, "mui"),
             "ml" => (1.0, "ml"),
+            "mmol" => (1.0, "mmol"),
+            "%" => (1.0, "%"),
             _ => return None,
         };
         Some((k, format!("{base}{per}")))
@@ -765,9 +797,107 @@ fn bare_strength(detail: &str, posology: &str) -> Option<f64> {
     let first = *line.first()?;
     if opening(&held).is_empty() {
         let a_take = first <= 2.0 && first.fract() == 0.0;
-        return (line.len() == 2 || (line.len() == 4 && !a_take)).then_some(first);
+        // « Amlor 10 », « Amlor 10 le soir ». A number with a counted
+        // form after it stays a quantity.
+        let counted = words.get(1).is_some_and(|w| {
+            [
+                "cp", "cpr", "comprime", "gel", "sachet", "dose", "ampoule", "bouffee", "goutte",
+            ]
+            .iter()
+            .any(|u| w.starts_with(u))
+        });
+        let alone = line.len() == 1 && !a_take && !counted;
+        return (alone || line.len() == 2 || (line.len() == 4 && !a_take)).then_some(first);
     }
     (line.len() == opening(&held).len() + 1).then_some(first)
+}
+
+/// every quantity of a text, with its unit whole (« µg/ml », « µg/j »).
+/// Per day or per 24 h is the plain unit: a daily dose reads as a dose.
+fn amounts(text: &str) -> Vec<(f64, String)> {
+    same_units(dose_words(text))
+        .iter()
+        .filter_map(|t| {
+            let lead: String = t
+                .chars()
+                .take_while(|c| c.is_ascii_digit() || *c == '.')
+                .collect();
+            let value: f64 = lead.parse().ok()?;
+            let unit = t[lead.len()..]
+                .trim_end_matches("/jour")
+                .trim_end_matches("/24h")
+                .trim_end_matches("/j");
+            let base = unit.split('/').next().unwrap_or("");
+            matches!(base, "µg" | "ui" | "mui" | "ml" | "mmol" | "%")
+                .then(|| (value, unit.to_owned()))
+        })
+        .collect()
+}
+
+/// a pair written « 5/10 », « 5 mg/10 mg »: its two figures.
+fn pair(text: &str) -> Option<(String, String)> {
+    let joined = crate::fuzzy::sort_key(text)
+        .replace(' ', "")
+        .replace("mg", "");
+    let (a, b) = joined.split_once('/')?;
+    let lead = |s: &str| {
+        let n: String = s
+            .chars()
+            .take_while(|c| c.is_ascii_digit() || matches!(c, '.' | ','))
+            .collect();
+        (!n.is_empty()).then_some(n)
+    };
+    let a: String = a
+        .chars()
+        .rev()
+        .take_while(|c| c.is_ascii_digit() || matches!(c, '.' | ','))
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    (!a.is_empty()).then_some(())?;
+    Some((a, lead(b)?))
+}
+
+/// words on the line that change the take whatever the figures say.
+fn alters(raw: &str, card: &str) -> bool {
+    const WORDS: [&str; 24] = [
+        "arrete",
+        "arreter",
+        "arret",
+        "stop",
+        "stoppe",
+        "suspendu",
+        "suspendre",
+        "double",
+        "doublee",
+        "doubler",
+        "demi-dose",
+        "diminue",
+        "diminuee",
+        "diminuer",
+        "augmente",
+        "augmentee",
+        "augmenter",
+        "reduit",
+        "reduite",
+        "lundi",
+        "mardi",
+        "mercredi",
+        "jeudi",
+        "vendredi",
+    ];
+    let line = crate::fuzzy::sort_key(raw);
+    let card = crate::fuzzy::sort_key(card);
+    let words: Vec<&str> = line
+        .split(|c: char| !c.is_alphanumeric() && c != '-')
+        .filter(|w| !w.is_empty())
+        .collect();
+    words
+        .iter()
+        .any(|w| WORDS.contains(w) || matches!(*w, "samedi" | "dimanche"))
+        || line.contains("jour sur")
+        || (words.iter().any(|w| matches!(*w, "lp" | "sr" | "xl")) && !card.contains(" lp"))
 }
 
 /// Can this bare number be the held strength, in whichever unit it left
@@ -807,7 +937,10 @@ fn first_amount(text: &str) -> Option<(f64, &'static str)> {
         let dim = match &t[lead.len()..] {
             "µg" => "masse",
             "ui" => "unite",
+            "mui" => "munite",
             "ml" => "volume",
+            "mmol" => "mole",
+            "%" => "pourcent",
             _ => return None,
         };
         Some((value, dim))
@@ -1152,6 +1285,16 @@ Vogalène lyoc si nausées
         assert_eq!(kind(&grid, "Eliquis 2.5 : 1 0 1"), Change::DoseChanged);
         assert_eq!(kind(&grid, "Eliquis 5 : 1 0 1"), Change::Kept);
         assert_eq!(kind(&grid, "Eliquis 2 : 1 0 1"), Change::DoseChanged);
+        // What the line says of the take, with no figure changed.
+        for line in [
+            "Eliquis arrêté",
+            "Eliquis STOP",
+            "Eliquis suspendu",
+            "Eliquis un jour sur deux : 1 0 1",
+            "Eliquis lundi mercredi vendredi : 1 0 1",
+        ] {
+            assert_eq!(kind(&grid, line), Change::DoseChanged, "{line}");
+        }
         // The posology held is often empty, or has no number.
         for posology in ["", "matin et soir"] {
             let bare = [Held {
