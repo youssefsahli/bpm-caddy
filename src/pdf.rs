@@ -4701,8 +4701,24 @@ pub fn sweep_private() {
             .and_then(|t| t.elapsed().ok())
             .is_some_and(|age| age > day);
         if old {
-            let _ = std::fs::remove_file(entry.path());
+            // Un scan interrompu laisse un dossier, pas un fichier.
+            let path = entry.path();
+            if path.is_dir() {
+                let _ = std::fs::remove_dir_all(path);
+            } else {
+                let _ = std::fs::remove_file(path);
+            }
         }
+    }
+}
+
+/// Le signe d'un écart de caisse sur le papier : rien pour zéro, l'écran
+/// ne dit pas non plus « −0,00 € ».
+fn gap_sign(cents: i64) -> &'static str {
+    match cents {
+        1.. => "+",
+        0 => "",
+        _ => "\u{2212}",
     }
 }
 
@@ -7989,7 +8005,7 @@ fn caisse_history_values(
             // C'est le papier qui prend le signe typographique et
             // l'écran qui garde le tiret : les fontes d'egui n'ont pas
             // toutes U+2212, et `caisse::euros` sert aux deux.
-            let sign = if g > 0 { "+" } else { "\u{2212}" };
+            let sign = gap_sign(g);
             format!(
                 "Écart cumulé : {sign}{} € — sur {n} {}, {} en moins, {} en plus, {} sans écart.",
                 euros(g.abs()),
@@ -8006,7 +8022,7 @@ fn caisse_history_values(
     let worst = match summary.worst.as_ref().filter(|_| want_expected) {
         Some((day, gap)) => {
             // Le même signe moins que le tableau, comme au-dessus.
-            let sign = if *gap > 0 { "+" } else { "\u{2212}" };
+            let sign = gap_sign(*gap);
             format!(
                 "Écart maximal : {} ({sign}{} €).",
                 crate::db::format_french_date(day),

@@ -738,7 +738,14 @@ async function start() {
   const boxes = boxesKept();
   const b = link ? link.b : (boxes.length === 1 ? boxes[0] : '');
   const kept = b ? load(b) : null;
-  if (link && link.k) {
+  // A link naming a kept box under another key: a code the pharmacy
+  // reissued, or someone else's link. The box id is public, so the
+  // conversation is not replaced without the patient saying so.
+  const replaces = link && link.k && kept && kept.k !== link.k
+    && kept.messages && kept.messages.length > 0;
+  if (replaces && !confirm('Ce code ouvre une nouvelle conversation et efface celle gardée sur ce téléphone. Continuer seulement si votre pharmacie vient de vous le remettre.')) {
+    state = kept;
+  } else if (link && link.k) {
     state = kept && kept.k === link.k
       ? kept
       : { b: link.b, k: link.k, messages: [], officine: '' };

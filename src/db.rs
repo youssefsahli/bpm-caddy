@@ -2352,7 +2352,10 @@ fn backup_days(dir: &Path, prefix: &str) -> (Vec<String>, u64) {
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
-        let Some(day) = name.strip_prefix(prefix).and_then(|r| r.strip_suffix(".db")) else {
+        let Some(day) = name
+            .strip_prefix(prefix)
+            .and_then(|r| r.strip_suffix(".db"))
+        else {
             continue;
         };
         // Only the ones this application named: a stray file in the
@@ -56916,7 +56919,9 @@ pub fn parse_french_date(input: &str, current_year: u32, hint: YearHint) -> Resu
 /// a cell is prefixed with an apostrophe — unless it is a plain number,
 /// so that « -15,00 » stays an amount.
 pub fn csv_cell(s: &str) -> String {
-    let number = s.replace(',', ".").trim().parse::<f64>().is_ok();
+    // Un montant ne commence pas par « + » : « +33612345678 » est un
+    // téléphone, et le tableur en perdait le signe.
+    let number = !s.starts_with('+') && s.replace(',', ".").trim().parse::<f64>().is_ok();
     let formula = !number && s.starts_with(['=', '+', '-', '@', '\t', '\r']);
     let s = if formula {
         format!("'{s}")
@@ -56986,6 +56991,27 @@ pub fn parse_event_date(input: &str, today: &str) -> Result<String, String> {
         return Ok(iso);
     }
     parse_french_date(input, year.saturating_sub(1), YearHint::Future)
+}
+
+/// **Un jour à venir** : sans année tapée et déjà passé cette année, c'est
+/// l'année suivante. Le 20 décembre, « 0501 » est le 5 janvier qui vient,
+/// pas celui d'il y a onze mois. Une année tapée reste telle quelle.
+///
+/// Relire avec l'année d'après dit si l'année a été tapée : tapée, elle ne
+/// bouge pas. Compter les chiffres ne le disait pas (« 5/1/26 » en a
+/// quatre). Un 29 février sans lendemain l'année suivante est refusé.
+pub fn parse_coming_date(input: &str, today: &str) -> Result<String, String> {
+    let year: u32 = today.get(..4).and_then(|y| y.parse().ok()).unwrap_or(2000);
+    let iso = parse_french_date(input, year, YearHint::Future)?;
+    if iso.as_str() >= today {
+        return Ok(iso);
+    }
+    // L'année écrite ne suit pas la référence : la relecture rend la même.
+    match parse_french_date(input, year + 1, YearHint::Future) {
+        Ok(next) => Ok(next),
+        Err(e) if iso.get(..4) == Some(year.to_string().as_str()) => Err(e),
+        Err(_) => Ok(iso),
+    }
 }
 
 /// The same ISO date one year later ("2026-02-29" clamps to the 28th).
@@ -70374,6 +70400,20 @@ mod tests {
         assert!(!db.now_stamp().unwrap().is_empty());
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_yearless_day_already_past_falls_next_year() {
+        let d = |t: &str, today: &str| parse_coming_date(t, today);
+        assert_eq!(d("05/01", "2026-12-20").unwrap(), "2027-01-05");
+        assert_eq!(d("0501", "2026-12-20").unwrap(), "2027-01-05");
+        assert_eq!(d("22/12", "2026-12-20").unwrap(), "2026-12-22");
+        assert_eq!(d("20/12", "2026-12-20").unwrap(), "2026-12-20");
+        // Une année tapée reste, à deux ou quatre chiffres.
+        assert_eq!(d("05/01/2026", "2026-12-20").unwrap(), "2026-01-05");
+        assert_eq!(d("5/1/26", "2026-11-07").unwrap(), "2026-01-05");
+        // Pas de 29 février l'an prochain : refusé, jamais inventé.
+        assert!(d("2902", "2028-03-01").is_err());
     }
 
     /// **Une série en retard se dit** : la base est copiée, le registre et

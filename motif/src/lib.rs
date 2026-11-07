@@ -2814,12 +2814,39 @@ pub fn field_floor(ui: &egui::Ui) -> f32 {
 /// son trait, puis le creux est peint **par-dessus** ce qu'il a alloué,
 /// avec le liseré d'accent quand on y tape.
 pub fn number(ui: &mut egui::Ui, value: egui::DragValue<'_>) -> egui::Response {
-    number_with(ui, |ui| ui.add(value))
+    number_with(ui, |ui| ui.add(french_decimals(value)))
+}
+
+/// Lire ce qui est tapé dans un champ numérique : la virgule française, le
+/// point, et les espaces d'un millier. `None` laisse la valeur en place.
+pub fn parse_number(text: &str) -> Option<f64> {
+    let text: String = text
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .map(|c| match c {
+            ',' => '.',
+            '\u{2212}' => '-',
+            c => c,
+        })
+        .collect();
+    text.parse::<f64>().ok().filter(|v| v.is_finite())
+}
+
+/// **La virgule décimale.** egui ne lit que le point : « 1,8 » tapé donnait
+/// 1 à la première touche, puis « 1, » et « 1,8 » ne se lisaient plus, et la
+/// valeur restait 1 pendant que le champ montrait 1,8. Une glycémie, une
+/// dose par kilo ou une demi-vie se calculaient ainsi sur un autre nombre.
+fn french_decimals(value: egui::DragValue<'_>) -> egui::DragValue<'_> {
+    value
+        .custom_parser(parse_number)
+        .custom_formatter(|n, decimals| {
+            egui::emath::format_with_decimals_in_range(n, decimals).replace('.', ",")
+        })
 }
 
 /// [`number`], à une taille imposée.
 pub fn number_sized(ui: &mut egui::Ui, size: Vec2, value: egui::DragValue<'_>) -> egui::Response {
-    number_with(ui, |ui| ui.add_sized(size, value))
+    number_with(ui, |ui| ui.add_sized(size, french_decimals(value)))
 }
 
 fn number_with(
@@ -3262,6 +3289,61 @@ pub fn progress_marquee(ui: &mut egui::Ui, width: f32, t: f64) {
 
 #[cfg(test)]
 mod tests {
+    /// Le champ lui-même, touche par touche : c'est là que « 1,8 » restait 1.
+    #[test]
+    fn typing_a_comma_in_a_number_field_reaches_the_value() {
+        use egui::{Event, RawInput, Rect, Vec2};
+        let ctx = egui::Context::default();
+        let mut value = 5.0_f64;
+        let mut id = None;
+        let frame = |ctx: &egui::Context, events: Vec<Event>, v: &mut f64, id: &mut _| {
+            let input = RawInput {
+                screen_rect: Some(Rect::from_min_size(Default::default(), Vec2::splat(400.0))),
+                events,
+                ..RawInput::default()
+            };
+            let _ = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    *id = Some(super::number(ui, egui::DragValue::new(v)).id);
+                });
+            });
+        };
+        frame(&ctx, Vec::new(), &mut value, &mut id);
+        ctx.memory_mut(|m| m.request_focus(id.unwrap()));
+        frame(&ctx, Vec::new(), &mut value, &mut id);
+        frame(
+            &ctx,
+            vec![Event::Key {
+                key: egui::Key::A,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::COMMAND,
+            }],
+            &mut value,
+            &mut id,
+        );
+        for key in ["1", ",", "8"] {
+            frame(&ctx, vec![Event::Text(key.to_owned())], &mut value, &mut id);
+        }
+        assert_eq!(value, 1.8);
+    }
+
+    /// **La virgule est un séparateur décimal** : « 1,8 » se lisait 1.
+    #[test]
+    fn a_french_decimal_is_read_whole() {
+        assert_eq!(super::parse_number("1,8"), Some(1.8));
+        assert_eq!(super::parse_number("0,35"), Some(0.35));
+        assert_eq!(super::parse_number("1,"), Some(1.0));
+        assert_eq!(super::parse_number("1.8"), Some(1.8));
+        assert_eq!(super::parse_number("1 200,5"), Some(1200.5));
+        assert_eq!(super::parse_number("\u{2212}2"), Some(-2.0));
+        assert_eq!(super::parse_number(""), None);
+        assert_eq!(super::parse_number("abc"), None);
+        assert_eq!(super::parse_number("inf"), None);
+        assert_eq!(super::parse_number("NaN"), None);
+    }
+
     /// **The `.ico` the Windows build embeds is this icon.** Written once
     /// by `BPM_CADDY_WRITE_ICO=1 cargo test -p motif icon_ico`, then held:
     /// a change to [`icon`] that forgot the file fails here.

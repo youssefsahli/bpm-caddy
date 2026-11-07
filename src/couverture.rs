@@ -154,6 +154,14 @@ pub fn per_day(posology: &str) -> Option<f64> {
     if words.iter().any(|w| NEVER.contains(w)) {
         return None;
     }
+    // « 1 pulvérisation dans chaque narine matin et soir » : quatre par
+    // jour, et le flacon durait le double à l'écran.
+    if words
+        .windows(2)
+        .any(|w| w[0] == "chaque" && matches!(w[1], "narine" | "oeil"))
+    {
+        return None;
+    }
     if words.iter().any(|w| UNCOUNTED.contains(w)) && !words.iter().any(|w| COUNTED.contains(w)) {
         return None;
     }
@@ -1020,5 +1028,13 @@ mod tests {
         );
         assert_eq!(c.mondays.first(), Some(&4)); // lundi 12 octobre
         assert_eq!(c.saturdays.first(), Some(&2)); // samedi 10 octobre
+    }
+
+    #[test]
+    fn a_dose_per_nostril_counts_nothing() {
+        assert_eq!(
+            per_day("1 pulvérisation dans chaque narine matin et soir"),
+            None
+        );
     }
 }

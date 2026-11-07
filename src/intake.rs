@@ -246,18 +246,125 @@ const ON_DEMAND: &[&str] = &[
 /// « maximum 1 200 mg par jour » est un plafond et ne dit rien du
 /// rythme — c'est pourquoi la position compte et non la simple
 /// présence.
-const NOT_ON_DEMAND_BEFORE: &[&str] = &[
-    "par jour",
-    "chaque jour",
-    "tous les jours",
-    "quotidien",
-    // Les verbes de titration : « portés à », « augmentation par
-    // paliers », « jusqu'à … si nécessaire ».
-    "porte",
-    "augment",
-    "jusqu'a",
-    "palier",
+const NOT_ON_DEMAND_BEFORE: &[&str] = &["par jour", "chaque jour", "tous les jours", "quotidien"];
+
+/// Les verbes de titration : « portés à », « augmentation par paliers »,
+/// « jusqu'à … si nécessaire ». Eux seuls valent où qu'ils soient avant.
+const TITRATION: &[&str] = &["porte", "augment", "jusqu'a", "palier"];
+
+/// Les seuls mots qui, collés à un rythme quotidien, le rendent
+/// conditionnel. Pas « au moment des repas », ni « dès les premières
+/// heures », ni « plutôt qu'à la demande » : ceux-là suivent un rythme sans
+/// le suspendre.
+const CONDITION: &[&str] = &[
+    "si besoin",
+    "au besoin",
+    "si necessaire",
+    "en cas de besoin",
+    "si douleur",
+    "si fievre",
+    "si crise",
 ];
+
+/// **La demande gouverne-t-elle une dose ?** Un rythme quotidien le dit,
+/// sauf si la condition le suit de près sans autre dose entre eux, et qu'il
+/// est le seul de la phrase : « 1 cp 3 fois par jour si besoin » est une prise
+/// à la demande, qui se dessinait trois fois par jour ; « 10 mg par jour,
+/// puis 20 mg par jour ; 40 mg par jour si nécessaire » est une titration.
+fn governs_a_dose(before: &str, marker: &str) -> bool {
+    if TITRATION.iter().any(|w| before.contains(w)) {
+        return true;
+    }
+    let said: Vec<(usize, &str)> = NOT_ON_DEMAND_BEFORE
+        .iter()
+        .flat_map(|w| before.match_indices(*w))
+        .collect();
+    match said.as_slice() {
+        [] => false,
+        [(at, w)] if CONDITION.contains(&marker) => {
+            before[at + w.len()..].contains(|c: char| c.is_ascii_digit() || c == ',' || c == ';')
+        }
+        _ => true,
+    }
+}
+
+/// **Un intervalle plus long qu'un jour.** La liste [`CYCLIC`] énumérait :
+/// « toutes les deux semaines » y était, « toutes les 2 semaines » non, et la
+/// ligne se dessinait chaque jour. Le nombre se lit ici, écrit ou en
+/// chiffres, suivi aussitôt de son unité : « tous les 10 à 15 jours » est le
+/// pas d'une titration, comme tout ce qui suit un verbe de titration.
+fn spaced(folded: &str) -> bool {
+    const SLOWER: [&str; 6] = [
+        "palier",
+        "augment",
+        "doubl",
+        "diminu",
+        "titrat",
+        "progressi",
+    ];
+    const WATCHED: [&str; 4] = ["reevalu", "control", "surveill", "bilan"];
+    let tokens: Vec<&str> = folded
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
+    let count = |t: &str| -> Option<u32> {
+        const WORDS: [&str; 11] = [
+            "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf", "dix", "onze",
+            "douze",
+        ];
+        t.parse()
+            .ok()
+            .or_else(|| WORDS.iter().position(|w| *w == t).map(|i| i as u32 + 2))
+    };
+    let days = |n: u32, unit: &str| -> bool {
+        (unit.starts_with("jour") && n > 1)
+            || unit.starts_with("semaine")
+            || unit == "mois"
+            || (unit.starts_with("heure") && n > 24)
+    };
+    tokens.iter().enumerate().any(|(i, t)| {
+        let after = tokens.get(i + 1).copied();
+        let every = matches!(*t, "tous" | "toutes") && after == Some("les");
+        let (first, second) = (tokens.get(i + 2).copied(), tokens.get(i + 3).copied());
+        let every = every
+            && match (first.and_then(count), first, second) {
+                (Some(n), _, Some(unit)) => days(n, unit),
+                (None, Some("mois"), _) => true,
+                _ => false,
+            };
+        // « un soir sur deux », « 1 jour sur 3 ».
+        let moment = matches!(*t, "jour" | "soir" | "matin" | "nuit");
+        let one = i > 0 && matches!(tokens[i - 1], "un" | "une" | "1");
+        let ratio = moment && one && after == Some("sur") && first.and_then(count).is_some();
+        let said = tokens[..i].iter();
+        (every || ratio)
+            && !said
+                .clone()
+                .any(|w| SLOWER.iter().any(|s| w.starts_with(s)))
+            && !tokens[..i]
+                .iter()
+                .rev()
+                .take(2)
+                .any(|w| WATCHED.iter().any(|s| w.starts_with(s)))
+    })
+}
+
+/// « matin ou soir », « le matin ou le soir » : un choix, pas deux prises.
+/// Une grille ne dit pas un choix.
+fn moment_choice(folded: &str) -> bool {
+    let tokens: Vec<&str> = folded.split_whitespace().collect();
+    let is_moment = |i: usize| tokens.get(i).is_some_and(|t| moment_of(t).is_some());
+    tokens.iter().enumerate().any(|(i, t)| {
+        t.trim_matches(|c: char| !c.is_alphanumeric()) == "ou"
+            && i > 0
+            && is_moment(i - 1)
+            && (is_moment(i + 1)
+                || (tokens
+                    .get(i + 1)
+                    .is_some_and(|a| matches!(*a, "le" | "la" | "au"))
+                    && is_moment(i + 2)))
+    })
+}
 
 /// Ce qui fait d'un rythme un rythme non quotidien.
 ///
@@ -391,8 +498,7 @@ pub fn read(posology: &str) -> Reading {
         .filter_map(|m| folded.find(*m).map(|at| (at, m)))
         .min_by_key(|(at, _)| *at)
     {
-        let before = &folded[..at];
-        if !NOT_ON_DEMAND_BEFORE.iter().any(|w| before.contains(w)) {
+        if !governs_a_dose(&folded[..at], m) {
             let mut r = Reading::empty(Kind::OnDemand);
             r.note = condition(raw, m);
             r.meal = meal_of(&plain);
@@ -415,6 +521,7 @@ pub fn read(posology: &str) -> Reading {
         .copied()
         .find(|m| folded.contains(*m))
         .or_else(|| weekly_by_name(&folded))
+        .or(spaced(&folded).then_some("tous les"))
         .or(phased.then_some("puis"))
     {
         let mut r = Reading::empty(Kind::Cyclic);
@@ -437,7 +544,28 @@ pub fn read(posology: &str) -> Reading {
         };
     }
 
-    let doses = placed(&folded);
+    // Un choix de moment : autant de prises que la phrase en dit, une
+    // sinon. « 1 cp matin ou soir » comptait deux prises, et la boîte la
+    // moitié de sa durée.
+    if moment_choice(&folded) {
+        return Reading {
+            kind: Kind::Daily,
+            doses: [None; 4],
+            times: per_day(&folded).unwrap_or(1),
+            note: String::new(),
+            meal,
+        };
+    }
+
+    let (doses, lost) = placed(&folded);
+    // **Une quantité sans moment connu ne disparaît pas.** « 1 cp à 8h, 1
+    // cp à 16h, 1 le soir » se lisait une prise le soir : la phrase n'est
+    // pas lue, et le dire vaut mieux qu'une dose sur trois.
+    if lost && doses.iter().any(Option::is_some) {
+        let mut r = Reading::empty(Kind::Unread);
+        r.meal = meal;
+        return r;
+    }
     if doses.iter().any(Option::is_some) {
         return Reading {
             kind: Kind::Placed,
@@ -779,8 +907,13 @@ fn quarters(text: &str) -> Option<u32> {
 /// le suit, et un moment sans nombre à lui reprend le dernier nombre
 /// énoncé — c'est ainsi que « 1 comprimé matin, midi et soir » se lit,
 /// et c'est la seule lecture que la langue autorise.
-fn placed(folded: &str) -> [Option<Take>; 4] {
+fn placed(folded: &str) -> ([Option<Take>; 4], bool) {
     let mut doses: [Option<Take>; 4] = [None; 4];
+    // Une quantité comptée qui n'a pas trouvé de moment, quand les
+    // quantités viennent avant les moments (« matin : 1 cp, soir : 1 cp »
+    // finit sur une quantité sans rien perdre).
+    let mut lost = false;
+    let mut seen_moment = false;
     let tokens: Vec<&str> = folded.split_whitespace().collect();
     // Le dernier nombre énoncé, et celui qui n'a pas encore trouvé son
     // moment. Deux variables et non une : « 2 le matin et le soir » doit
@@ -848,6 +981,7 @@ fn placed(folded: &str) -> [Option<Take>; 4] {
                 continue;
             }
             if q > 0 && is(j + 1, UNITS) {
+                lost |= matches!(pending, Some(Some(_)));
                 pending = Some(Some(q));
                 last = Some(Some(q));
                 // L'unité confirme, et n'est pas un moment : on la saute.
@@ -863,11 +997,26 @@ fn placed(folded: &str) -> [Option<Take>; 4] {
             continue;
         }
         if let Some(m) = moment_of(t) {
-            let q = pending.take().or(last).flatten();
-            doses[m.index()] = Some(Take { quarters: q });
+            // « 1 cp le matin, pas le soir ».
+            let denied = (1..=2).any(|back| {
+                i >= back && tokens[i - back].trim_matches(|c: char| c == ',') == "pas"
+            });
+            if !denied {
+                let q = pending.take().or(last).flatten();
+                doses[m.index()] = Some(Take { quarters: q });
+                seen_moment = true;
+            }
         }
         i += 1;
     }
+    let first_quantity_before_moment = {
+        let first_moment = tokens.iter().position(|t| moment_of(t).is_some());
+        let first_number = tokens
+            .iter()
+            .position(|t| quarters(t.trim_matches(|c: char| c == ',' || c == '.')).is_some());
+        matches!((first_number, first_moment), (Some(n), Some(m)) if n < m)
+    };
+    lost |= seen_moment && first_quantity_before_moment && matches!(pending, Some(Some(_)));
     // Les locutions en deux mots — « au lit » — que le passage par
     // jeton ne voit pas.
     if doses[3].is_none() && (folded.contains("au lit") || folded.contains("avant de dormir")) {
@@ -875,7 +1024,7 @@ fn placed(folded: &str) -> [Option<Take>; 4] {
             quarters: last.flatten(),
         });
     }
-    doses
+    (doses, lost)
 }
 
 /// Le moment que ce mot désigne, s'il en désigne un.
@@ -1033,6 +1182,98 @@ mod tests {
     /// Une posologie illisible n'a pas de grille du tout : quatre cases
     /// blanches se lisent « rien à prendre », ce qui est exactement le
     /// contraire de « je n'ai pas su lire ».
+    /// **La règle qui tue, écrite en chiffres** : « toutes les 2 semaines »
+    /// n'était pas dans la liste, et une injection bimensuelle se cochait
+    /// chaque jour. Un pas de titration, lui, reste quotidien.
+    #[test]
+    fn an_interval_longer_than_a_day_is_never_a_daily_grid() {
+        for p in [
+            "1 cp le matin toutes les 2 semaines",
+            "1 cp le matin toutes les 3 semaines",
+            "1 cp le matin tous les 10 jours",
+            "1 cp le matin tous les 14 jours",
+            "1 cp le matin tous les mois",
+            "1 cp le matin tous les 3 mois",
+            "1 cp le matin, 1 jour sur 3",
+            "1 cp le soir, un soir sur deux",
+            "1 patch le matin toutes les 72 heures",
+        ] {
+            assert_eq!(read(p).kind, Kind::Cyclic, "{p}");
+        }
+        for p in [
+            "1 cp le matin, augmentation par paliers toutes les 2 semaines",
+            "1 cp le matin, réévalué tous les 6 mois",
+            "1 cp le matin pendant 3 semaines",
+        ] {
+            assert_eq!(read(p).kind, Kind::Placed, "{p}");
+        }
+    }
+
+    /// « Si besoin » collé au rythme suspend le rythme ; une dose en plus
+    /// entre les deux, ou un second rythme, disent une titration.
+    #[test]
+    fn a_condition_right_after_a_rhythm_is_on_demand() {
+        for p in [
+            "1 cp 3 fois par jour si besoin",
+            "1 sachet 2 fois par jour si douleur",
+            "1 cp par jour le soir si douleur",
+        ] {
+            assert_eq!(read(p).kind, Kind::OnDemand, "{p}");
+        }
+        for (p, kind) in [
+            (
+                "5 mg une fois par jour, portés si besoin à 10 mg",
+                Kind::Daily,
+            ),
+            ("5 mg par jour, 10 mg si nécessaire", Kind::Daily),
+            (
+                "10 mg par jour, puis 20 mg par jour ; 40 mg par jour si nécessaire",
+                Kind::Cyclic,
+            ),
+            (
+                "1 comprimé trois fois par jour au moment des repas",
+                Kind::Daily,
+            ),
+            (
+                "1 g trois fois par jour à heure fixe plutôt qu'à la demande",
+                Kind::Daily,
+            ),
+        ] {
+            assert_eq!(read(p).kind, kind, "{p}");
+        }
+    }
+
+    /// Un choix de moment est une prise ; un moment nié n'en est pas une.
+    #[test]
+    fn a_choice_of_moment_is_one_taking() {
+        for p in [
+            "50 mg par jour en une prise, matin ou soir",
+            "Une prise par jour, le matin ou le soir",
+            "1 comprimé matin ou soir",
+        ] {
+            let r = read(p);
+            assert_eq!((r.kind, r.takes_a_day()), (Kind::Daily, 1), "{p}");
+        }
+        let r = read("1 cp le matin, pas le soir");
+        assert_eq!(r.takes_a_day(), 1);
+        assert!(q(&r, Moment::Soir).is_none());
+    }
+
+    /// Une quantité qui ne trouve pas son moment rend la phrase illisible,
+    /// plutôt qu'une dose sur trois.
+    #[test]
+    fn a_counted_dose_without_a_known_moment_is_not_dropped() {
+        for p in [
+            "1 cp à 8h, 1 cp à 16h, 1 le soir",
+            "1 cp le matin et 1 cp en début d'après-midi",
+        ] {
+            assert_eq!(read(p).kind, Kind::Unread, "{p}");
+        }
+        // Le moment d'abord : rien ne se perd.
+        let r = read("matin : 1 cp, soir : 1 cp");
+        assert_eq!(r.kind, Kind::Placed);
+    }
+
     #[test]
     fn a_posology_that_cannot_be_read_draws_no_grid() {
         for text in [

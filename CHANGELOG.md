@@ -10,6 +10,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Number fields lost a French decimal.** Typing « 1,8 » left the value
+  at 1 while the field showed 1,8: glycaemia in the insulin panel, mg/kg
+  in the per-kilo calculator, half-life and every other calculator field
+  computed on another number. They now read a comma and display one.
+- **The renal tools no longer round across a threshold.** A clearance of
+  29,59 showed as 30 and left the « < 30 » step. The calculator now keeps
+  the tenth, rounded down, for the display, the stage and the table; « À
+  dire » and the patient header show the same figure the table read.
+- Two DFG results on the same day: the renal table now reads the last one
+  entered, as biology does; it read the first, so a corrected 25 stayed 55.
+- Thrombocytopenia and anaemia readings now cover the LMWHs. Under
+  Fragmine or Fraxiparine a platelet count of 80 raised no HIT alert, and
+  an Hb of 9 under Lovenox raised no bleeding alert.
+- The intake plan and the coverage scale:
+  - An interval longer than a day is no longer a daily grid: « toutes les
+    2 semaines », « tous les 28 jours », « tous les 6 mois », « 1 jour
+    sur 3 », « toutes les 72 heures ». Shipped cards such as Prolia,
+    Décapeptyl, Risperdal LP and Somatuline were affected.
+  - « 3 fois par jour si besoin » is on demand, not three daily takings.
+  - « matin ou soir » is one taking, not two (Lantus, Aerius).
+  - « pas le soir » no longer ticks the evening.
+  - A counted dose with no known moment makes the line unread, instead of
+    silently dropping it.
+  - « dans chaque narine » no longer reports a bottle lasting twice as
+    long as it does.
+- Dates: a yearless appointment already past this year falls next year in
+  every field (the campaign alone did: « 0501 » on 20 December went eleven
+  months back). The day an act was held and a non-conformity's date are
+  past events and refuse the future.
+- The cash sheet no longer prints an unreadable line as zero, and a zero
+  gap no longer reads « −0,00 € ».
+- Security: a paired phone can no longer create a row that passes for a
+  desktop post; a patient link that would replace a stored conversation
+  asks first; tracker offers to the direct way are limited per minute;
+  DHT answers no longer steer dials into the local network.
+- CSV: a compact phone number keeps its « + ». A scan left by a crash is
+  now swept from the temporary folder.
 - **Changing the master password could report success after failing,
   and leave a file no password opens.** SQLCipher's `PRAGMA rekey`
   never reports a failure (a busy file, a full disk, a dropped share)

@@ -163,6 +163,9 @@ pub fn to_dial(
         }
         if Some(*a) == mine
             || dialed.contains_key(a)
+            // Une réponse de la DHT ne dirige pas ce poste vers le réseau
+            // de l'officine : les voisins s'annoncent autrement.
+            || !crate::reach::is_public_v4(a.ip())
             || crate::network::usable_announced(&a.to_string()).is_none()
         {
             continue;
@@ -437,9 +440,11 @@ mod tests {
     /// locale, au plus six, et pas deux fois avant le délai.
     #[test]
     fn a_round_dials_a_few_new_public_addresses_once() {
-        let public = |i: u8| SocketAddrV4::new([203, 0, 113, i].into(), 7745);
+        let public = |i: u8| SocketAddrV4::new([82, 64, 1, i].into(), 7745);
         let mut found: Vec<SocketAddrV4> = (1..=9).map(public).collect();
         found.push(SocketAddrV4::new([127, 0, 0, 1].into(), 7745));
+        found.push(SocketAddrV4::new([192, 168, 1, 20].into(), 7745));
+        found.push(SocketAddrV4::new([10, 0, 0, 2].into(), 7745));
         let mut dialed = HashMap::new();
         let now = Instant::now();
         let first = to_dial(&found, Some(public(1)), &mut dialed, now);

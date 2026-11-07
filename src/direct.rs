@@ -57,6 +57,7 @@ const MOST_PEERS: usize = 64;
 const PEERS_PER_CALLER: usize = 8;
 /// Les pages dont le canal n'est pas encore ouvert, en tout et par
 /// abonné : des paquets STUN fabriqués ne prennent pas toutes les places.
+const OFFERS_PER_MINUTE: usize = 12;
 const MOST_OPENING: usize = 16;
 const OPENING_PER_CALLER: usize = 4;
 /// Ce qu'une page peut avoir envoyé que le poste n'a pas encore lu : au
@@ -552,6 +553,7 @@ fn drive(
     let (commands, orders) = mpsc::channel::<Command>();
     let mut peers: HashMap<u64, Peer> = HashMap::new();
     let mut next: u64 = 0;
+    let mut offers: Vec<Instant> = Vec::new();
     let mut buf = vec![0u8; 2048];
     while !stop.load(Ordering::SeqCst) {
         let now = Instant::now();
@@ -737,9 +739,17 @@ fn drive(
         // the page.
         while let Ok(o) = offered.try_recv() {
             let opening = peers.values().filter(|p| p.channel.is_none()).count();
-            if peers.len() >= MOST_PEERS || opening >= MOST_OPENING {
+            // Ces offres viennent d'un tracker public : qui a vu le code du
+            // tableau peut en envoyer, sans la limite par adresse d'en haut.
+            offers
+                .retain(|t: &Instant| now.saturating_duration_since(*t) < Duration::from_secs(60));
+            if peers.len() >= MOST_PEERS
+                || opening >= MOST_OPENING
+                || offers.len() >= OFFERS_PER_MINUTE
+            {
                 continue;
             }
+            offers.push(now);
             let Ok(offer) = str0m::change::SdpOffer::from_sdp_string(&without_mdns(&o.sdp)) else {
                 continue;
             };

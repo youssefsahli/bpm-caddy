@@ -511,7 +511,11 @@ pub fn admissible(
         |row: &Map<String, Value>| row.get("device").and_then(Value::as_str) == Some(author);
     match op.kind {
         Kind::Insert => {
+            // Sous ce flux n'arrive qu'un compagnon : sans ce contrôle, un
+            // téléphone volé se créait, sous une identité neuve, une ligne
+            // de poste de bureau que le retirer ne touchait pas.
             device_is_author(&op.new)
+                && op.new.get("kind").and_then(Value::as_str) == Some("compagnon")
                 && op
                     .new
                     .get("left_on")
@@ -1079,7 +1083,8 @@ mod tests {
     #[test]
     fn under_the_team_stream_a_post_speaks_only_for_itself() {
         let t = table(File::Main, "sync_posts").unwrap();
-        let mine = serde_json::json!({"device": "aa", "name": "Tel", "left_on": ""});
+        let mine =
+            serde_json::json!({"device": "aa", "name": "Tel", "left_on": "", "kind": "compagnon"});
         let local_mine = mine.as_object().cloned().unwrap();
         let local_other = serde_json::json!({"device": "bb"})
             .as_object()
@@ -1101,10 +1106,17 @@ mod tests {
             &op(
                 "sync_posts",
                 Kind::Insert,
-                serde_json::json!({"device": "aa", "left_on": "2026-01-01"})
+                serde_json::json!({"device": "aa", "left_on": "2026-01-01", "kind": "compagnon"})
             ),
             None
         ));
+        // Ni poste de bureau, de quelque façon qu'il le dise.
+        for desk in [
+            serde_json::json!({"device": "aa", "left_on": "", "kind": ""}),
+            serde_json::json!({"device": "aa", "left_on": ""}),
+        ] {
+            assert!(!yes(&op("sync_posts", Kind::Insert, desk), None));
+        }
         assert!(yes(
             &op(
                 "sync_posts",

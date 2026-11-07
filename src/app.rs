@@ -338,6 +338,12 @@ pub fn env_password() -> Option<String> {
 
 /// Un DFG tel que l'écran l'écrit : entier quand il l'est, au dixième
 /// sinon, pour qu'un 29,6 ne s'écrive jamais « 30 » à côté de « sous 30 ».
+/// Une clairance au dixième, **par défaut** : arrondie au plus proche, 29,96
+/// passerait à 30 et du côté permis d'un seuil « < 30 ».
+fn clearance_tenth(v: f64) -> f64 {
+    (v * 10.0 + 1e-9).floor() / 10.0
+}
+
 fn renal_dfg_text(v: f64) -> String {
     if (v - v.round()).abs() < 0.05 {
         format!("{v:.0}")
@@ -8974,8 +8980,7 @@ impl Session {
             .filter(|e| e.draft.id != 0 && e.dirty())
             .map(|e| (e.draft.clone(), e.shown.clone(), e.date.clone()));
         if let Some((mut draft, shown, date)) = qual {
-            let year = self.db.current_year();
-            match db::parse_french_date(&date, year, db::YearHint::Past) {
+            match db::parse_event_date(&date, &self.today) {
                 Ok(iso) => {
                     draft.declared_on = iso;
                     draft.title = draft.title.trim().to_owned();
@@ -9084,7 +9089,7 @@ impl Session {
         let mut words = typed.split_whitespace();
         let day = words.next().unwrap_or("");
         let hour = words.collect::<Vec<_>>().join(" ");
-        let iso = db::parse_french_date(day, self.db.current_year(), db::YearHint::Future)?;
+        let iso = db::parse_coming_date(day, &self.today)?;
         let time = if hour.is_empty() {
             String::new()
         } else {
@@ -9139,8 +9144,7 @@ impl Session {
 
     /// Move a rendez-vous to the day typed.
     fn commit_rdv_move(&mut self, id: i64, typed: &str, expected: &str) {
-        let year = self.db.current_year();
-        match db::parse_french_date(typed, year, db::YearHint::Future) {
+        match db::parse_coming_date(typed, &self.today) {
             Ok(iso) => match self.db.set_scheduled_date(id, Some(&iso), Some(expected)) {
                 Ok(true) => {
                     self.refresh_dashboard();
@@ -14444,9 +14448,8 @@ impl Session {
             self.comptes.notice = Some((true, tr("compte_need_title").to_owned()));
             return;
         }
-        let year = self.year_now();
         let (jour, debut, fin) = if f.rdv {
-            let Ok(jour) = db::parse_french_date(&f.jour, year, db::YearHint::Future) else {
+            let Ok(jour) = db::parse_coming_date(&f.jour, &self.today) else {
                 self.comptes.notice = Some((true, tr("compte_need_day").to_owned()));
                 return;
             };
@@ -17167,7 +17170,6 @@ impl Session {
         {
             return;
         }
-        let year = self.db.current_year();
         // **Un refus se dit.** Chaque écriture compare à ce que la liste
         // montrait ; un `false` — un autre poste a écrit entre-temps —
         // était jeté, et ce qui avait été tapé disparaissait sans un mot.
@@ -17190,7 +17192,7 @@ impl Session {
                     if itv.scheduled_date.is_some() {
                         note(self.db.set_scheduled_date(itv.id, None, expected));
                     }
-                } else if let Ok(iso) = db::parse_french_date(text, year, db::YearHint::Future) {
+                } else if let Ok(iso) = db::parse_coming_date(text, &self.today) {
                     if itv.scheduled_date.as_deref() != Some(iso.as_str()) {
                         note(self.db.set_scheduled_date(itv.id, Some(&iso), expected));
                     }
@@ -17201,7 +17203,7 @@ impl Session {
             if let Some(text) = self.made_edits.get(&itv.id) {
                 let made = &itv.created_at[..10.min(itv.created_at.len())];
                 let expected = was(ACT_MADE).map_or(made, String::as_str);
-                if let Ok(iso) = db::parse_french_date(text, year, db::YearHint::Future) {
+                if let Ok(iso) = db::parse_event_date(text, &self.today) {
                     if iso != made {
                         note(self.db.set_created_date(itv.id, &iso, expected));
                     }
@@ -17659,6 +17661,11 @@ impl Session {
                     && !r.date.trim().is_empty()
                     && (self.today.is_empty() || r.date <= self.today.as_str())
             })
+            // Deux valeurs du même jour (un résultat corrigé, CKD-EPI et
+            // MDRD côte à côte) : la dernière saisie, celle que la biologie
+            // lit. Les lignes arrivent de la plus récente à la plus ancienne
+            // et `max_by` garde le dernier des égaux, d'où `rev`.
+            .rev()
             .max_by(|a, b| a.date.cmp(b.date));
         // Comparé **brut** — arrondi, 29,6 devenait 30 et taisait le
         // « contre-indiqué sous 30 » ; l'écran l'écrit au dixième sous
@@ -17784,7 +17791,7 @@ impl Session {
                 };
                 out.push(SayLine {
                     rank,
-                    title: trn("say_renal", &[&r.treatment, &format!("{}", dfg.round())]),
+                    title: trn("say_renal", &[&r.treatment, &self.renal_dfg_text(dfg)]),
                     detail: r.conduct.clone(),
                     go: Some(PatientTab::Bio),
                     act: None,
@@ -43375,7 +43382,7 @@ impl App {
             out.push_str(&trn(
                 "patient_dfg",
                 &[
-                    &format!("{}", dfg.round()),
+                    &session.renal_dfg_text(dfg),
                     &db::format_french_date(&session.renal_dfg_on),
                 ],
             ));
@@ -43907,8 +43914,7 @@ impl App {
             )
             .on_hover_text(tr("itv_created_tooltip"));
             if field.lost_focus() {
-                let year = session.db.current_year();
-                match db::parse_french_date(text, year, db::YearHint::Future) {
+                match db::parse_event_date(text, &session.today) {
                     Ok(iso) if iso != made => {
                         out.set_made = Some((row.itv.id, iso, made.to_owned()));
                     }
@@ -44273,14 +44279,13 @@ impl App {
             })
             .inner;
         if field.lost_focus() {
-            let year = session.db.current_year();
             if text.trim().is_empty() {
                 if row.itv.scheduled_date.is_some() {
                     out.set_date = Some((row.itv.id, None, row.itv.scheduled_date.clone()));
                 }
             } else if let Ok(iso) =
                 // RDV dates are always 20xx ("26" → 2026).
-                db::parse_french_date(text, year, db::YearHint::Future)
+                db::parse_coming_date(text, &session.today)
             {
                 if row.itv.scheduled_date.as_deref() != Some(iso.as_str()) {
                     out.set_date = Some((row.itv.id, Some(iso), row.itv.scheduled_date.clone()));
@@ -54383,18 +54388,19 @@ impl App {
                     return;
                 }
                 let k = if session.calc_female { 1.04 } else { 1.23 };
-                // **Arrondie une fois**, et c'est ce chiffre-là qui choisit
-                // le stade : 29,6 s'affichait « 30 mL/min » à côté du
-                // stade G4, celui d'au-dessous de 30.
+                // **Au dixième, par défaut, et c'est ce chiffre-là qui choisit
+                // le stade.** À l'entier, 29,6 devenait 30 : le stade et la
+                // table rénale passaient du côté permis du seuil.
                 let clearance = if session.calc_creat > 0.0 {
-                    ((140.0 - session.calc_age) * session.calc_weight * k / session.calc_creat)
-                        .round()
+                    clearance_tenth(
+                        (140.0 - session.calc_age) * session.calc_weight * k / session.calc_creat,
+                    )
                 } else {
                     0.0
                 };
                 ui.add_space(4.0);
                 ui.label(
-                    egui::RichText::new(trf("calc_dfg_result", format!("{clearance:.0}")))
+                    egui::RichText::new(trf("calc_dfg_result", renal_dfg_text(clearance)))
                         .strong()
                         .color(motif::accent()),
                 );
@@ -54669,17 +54675,17 @@ impl App {
                         ui,
                         egui::DragValue::new(&mut session.calc_renal_dfg)
                             .range(3.0..=140.0)
-                            // Des entiers, comme les paliers les
-                            // écrivent : 50,4 tombait sous « ≤ 50 ».
-                            .max_decimals(0)
+                            // Au dixième : l'écran montre ce que la table
+                            // lit, et 29,6 reste sous 30.
+                            .max_decimals(1)
                             .suffix(" mL/min"),
                     )
                     .changed()
                     {
                         // Tapé, il n'est pas arrondi par le champ (seul le
-                        // glisser l'est) : 29,6 s'affichait « 30 » et se
-                        // lisait « sous 30 ».
-                        session.calc_renal_dfg = session.calc_renal_dfg.round();
+                        // glisser l'est) : le dixième, par défaut, comme la
+                        // clairance calculée.
+                        session.calc_renal_dfg = clearance_tenth(session.calc_renal_dfg);
                         session.calc_renal_set = true;
                     }
                     // Les deux outils sont côte à côte : calculer une
@@ -54689,14 +54695,12 @@ impl App {
                     if motif::button(ui, tr("calc_renal_take")).clicked() {
                         let k = if session.calc_female { 1.04 } else { 1.23 };
                         if session.calc_creat > 0.0 && session.calc_age >= 18.0 {
-                            // Arrondie comme l'écran l'affiche : 29,8 copié
-                            // tel quel lisait le palier « < 30 » sous un
-                            // « 30 mL/min » affiché.
-                            session.calc_renal_dfg =
-                                ((140.0 - session.calc_age) * session.calc_weight * k
-                                    / session.calc_creat)
-                                    .round()
-                                    .clamp(3.0, 140.0);
+                            // Le chiffre affiché au-dessus, ni plus ni moins.
+                            session.calc_renal_dfg = clearance_tenth(
+                                (140.0 - session.calc_age) * session.calc_weight * k
+                                    / session.calc_creat,
+                            )
+                            .clamp(3.0, 140.0);
                             session.calc_renal_set = true;
                         }
                     }
@@ -58550,7 +58554,7 @@ impl App {
         }
         if save {
             if let Some(e) = q.edit.as_mut() {
-                match db::parse_french_date(&e.date, year_now.max(0) as u32, db::YearHint::Past) {
+                match db::parse_event_date(&e.date, &today) {
                     Err(err) => e.error = Some(err),
                     Ok(iso) => {
                         e.draft.declared_on = iso;
@@ -71034,14 +71038,12 @@ impl App {
         // Le rendez-vous : un acte de vaccination planifié, puis l'appel
         // noté « Prévenu » — la personne quitte la liste de la saison.
         if let Some(pid) = book {
-            let year = session.year_now();
-            let date = db::parse_french_date(&session.camp.rdv_date, year, db::YearHint::Future);
+            let date = db::parse_coming_date(&session.camp.rdv_date, &session.today);
             let time = if session.camp.rdv_time.trim().is_empty() {
                 Some(String::new())
             } else {
                 db::parse_hour(&session.camp.rdv_time)
             };
-            let date = date.map(|d| campagne::rdv_day(&d, &session.camp.rdv_date, &session.today));
             match (date, time) {
                 (Ok(day), _) if day < session.today => {
                     session.camp.rdv_error = Some(tr("camp_rdv_past").to_owned());
@@ -84904,7 +84906,12 @@ impl App {
                 });
         });
 
-        if print {
+        // Illisible, une ligne s'imprimait à zéro sur une feuille à signer :
+        // la même règle que pour enregistrer.
+        let unreadable = Self::caisse_unreadable(session);
+        if let Some(what) = unreadable.filter(|_| print) {
+            session.caisse_note = Some((true, trf("caisse_unreadable_print", what)));
+        } else if print {
             let date = db::format_french_date(&session.caisse_day);
             match crate::pdf::open_caisse(
                 &config.pharmacy,
@@ -98551,6 +98558,7 @@ fn companion_look(
                 && !r.date.trim().is_empty()
                 && (today.is_empty() || r.date <= today)
         })
+        .rev()
         .max_by(|a, b| a.date.cmp(b.date))
         .map_or("", |r| r.bound);
     let signals = companion_signals(
@@ -117229,6 +117237,16 @@ mod tests {
         db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
         db.add_patient("Martin", "Claire", "1949-02-11").unwrap();
         (super::Session::new(db, 12, 30, true).unwrap(), swept)
+    }
+
+    /// **Un seuil ne se franchit pas à l'arrondi** : 29,59 mL/min s'affichait
+    /// 30 et sortait du palier « < 30 ».
+    #[test]
+    fn a_clearance_stays_on_its_side_of_a_threshold() {
+        assert_eq!(super::clearance_tenth(29.59), 29.5);
+        assert_eq!(super::clearance_tenth(29.96), 29.9);
+        assert_eq!(super::clearance_tenth(30.0), 30.0);
+        assert_eq!(super::renal_dfg_text(super::clearance_tenth(29.59)), "29,5");
     }
 
     /// **La pièce va au dossier du clic, pas à celui de l'écran.** Le scan
