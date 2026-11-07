@@ -1326,7 +1326,9 @@ prescrite, la durée de traitement en jours. La ligne peut aussi se saisir
 en une fois : `mirtazapine 15 (28) 1-0-1`, ou `metformine 500 (2x90) 1-0-1`
 pour deux boîtes. Avec un dossier ouvert, « Reprendre les traitements
 du dossier » remplit le nom, le dosage, la posologie, la dernière
-délivrance, la durée et les unités par boîte s'il est noté. Saisi sur une
+délivrance, ce qui reste de l'ordonnance, renouvellements compris, et les
+unités par boîte s'il est noté ; sans délivrance au dossier, le jour reste
+à saisir. Saisi sur une
 ligne reprise du dossier, le nombre d'unités par boîte y est enregistré
 à la sortie du champ et sert aux reprises suivantes.
 
