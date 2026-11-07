@@ -294,10 +294,9 @@ fn governs_a_dose(before: &str, marker: &str) -> bool {
     let capped = |w: &str| {
         w == "jusqu'a"
             && before.match_indices(w).all(|(at, _)| {
-                before[at + w.len()..]
-                    .split_whitespace()
-                    .nth(1)
-                    .is_some_and(|n| n.starts_with("fois"))
+                let mut after = before[at + w.len()..].split_whitespace();
+                after.next().is_some_and(|n| n.ends_with("/j"))
+                    || after.next().is_some_and(|n| n.starts_with("fois"))
             })
     };
     if TITRATION.iter().any(|w| before.contains(w) && !capped(w)) {
@@ -529,6 +528,10 @@ const NOT_DAILY: &[&str] = &[
     "jours, arret",
     "jours d'arret",
     " a j1",
+    "cycle",
+    "chaque cure",
+    "chimio",
+    "avant l'examen",
 ];
 
 /// Le rapport au repas, tel qu'il s'imprime.
@@ -664,6 +667,15 @@ pub fn read(posology: &str) -> Reading {
                 .filter(|_| !folded.contains("par jour") && !folded.contains("/j"))
         })
         .or_else(|| weekly_by_name(&folded))
+        .or_else(|| {
+            folded
+                .split(|c: char| !c.is_alphanumeric())
+                .any(|w| {
+                    w.strip_prefix('j')
+                        .is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+                })
+                .then_some("j")
+        })
         .or(spaced(&folded).then_some("tous les"))
         .or(phased.then_some("puis"))
     {
@@ -710,6 +722,9 @@ pub fn read(posology: &str) -> Reading {
     let lost = lost
         || folded.contains("trois repas")
         || folded.contains("3 repas")
+        || folded.contains("chaque repas")
+        || folded.contains("repas et ")
+        || unnamed_condition(&folded)
         || short_interval(&folded);
     // **Une quantité sans moment connu ne disparaît pas.** « 1 cp à 8h, 1
     // cp à 16h, 1 le soir » se lisait une prise le soir : la phrase n'est
@@ -755,6 +770,20 @@ pub fn read(posology: &str) -> Reading {
     let mut r = Reading::empty(Kind::Unread);
     r.meal = meal;
     r
+}
+
+/// A condition [`ON_DEMAND`] does not name: « si pas de selles », « en cas
+/// de diarrhée ». The grid cannot say it, so the phrase is not read as one.
+fn unnamed_condition(folded: &str) -> bool {
+    let w: Vec<&str> = folded.split_whitespace().collect();
+    folded.contains("en cas d")
+        || w.windows(2).any(|p| {
+            p[0].trim_start_matches(|c: char| !c.is_alphanumeric()) == "si"
+                && !p[1].starts_with("possible")
+                && !p[1].starts_with("oubli")
+                && !p[1].starts_with("besoin")
+                && !p[1].starts_with("necessaire")
+        })
 }
 
 /// Aplanir ce qui piège la recherche de mots.
@@ -1866,6 +1895,30 @@ fn per_day(folded: &str) -> Option<u32> {
             return found;
         }
     }
+    let digits = |w: &str| !w.is_empty() && w.chars().all(|c| c.is_ascii_digit());
+    let counted_a_day = |i: usize| {
+        let w = words.get(i).copied().unwrap_or("");
+        let glued = w
+            .split_once('/')
+            .is_some_and(|(u, r)| UNITS.contains(&u) && r.starts_with('j'));
+        glued
+            || (UNITS.contains(&w)
+                && words.get(i + 1) == Some(&"par")
+                && words.get(i + 2) == Some(&"jour"))
+    };
+    let range = (0..words.len()).any(|i| {
+        (digits(words[i])
+            && matches!(words.get(i + 1).copied(), Some("a" | "ou"))
+            && words.get(i + 2).is_some_and(|w| digits(w))
+            && counted_a_day(i + 3))
+            || (words[i]
+                .split_once('-')
+                .is_some_and(|(a, b)| digits(a) && digits(b))
+                && counted_a_day(i + 1))
+    });
+    if range {
+        return None;
+    }
     let folded = head.as_str();
     for (needle, times) in [
         ("6 fois par jour", 6),
@@ -2020,6 +2073,32 @@ mod tests {
         }
         assert_eq!(read("1,5 g par jour en 3 prises").times, 3);
         assert_eq!(read("1 cp 3/j").times, 3);
+        // Cycle days, a course tied to a treatment, an unnamed condition,
+        // meals beside a moment: no grid says these.
+        for phrase in [
+            "Xeloda 1500 mg matin et soir J1-J14 reprise J22",
+            "Solupred 20 mg 3 cp le matin J1 à J3 de chaque cure",
+            "Utrogestan 100 mg 1 caps au coucher du J1 au J25",
+            "Zophren 8 mg 1 cp matin et soir pendant 3 jours après la chimio",
+            "1 cp matin et soir si pas de selles depuis 3 jours",
+            "1 cp matin et soir en cas de diarrhée",
+            "Furosémide 40 mg : 1 cp le matin, +1 cp à midi si prise de poids > 2 kg",
+            "Gaviscon 1 sachet après chaque repas et au coucher",
+        ] {
+            assert_ne!(read(phrase).kind, Kind::Placed, "{phrase}");
+        }
+        assert_eq!(
+            read("Doliprane 1 g jusqu'à 3/j si douleurs").kind,
+            Kind::OnDemand
+        );
+        for phrase in [
+            "Macrogol 1 à 2 sachets/j",
+            "1 à 3 cp/j",
+            "2-3 cp/j",
+            "1-2 cp/j",
+        ] {
+            assert_ne!(read(phrase).kind, Kind::Daily, "{phrase}");
+        }
         // A phase is not one day's grid.
         assert_ne!(
             read("2 cp le matin pendant 7 jours, ensuite 1 cp le matin").kind,

@@ -83,8 +83,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with a sign stay unread (« 1 / 2 comprimé », « 1 cp x 3 »). Rhythms written
   short leave the grid (« 1 fois/sem », « 1j/2 », « 21j/28 », « lun mer ven »,
   « tous les 2j »), as do conditions (« si insomnie ») and denials (« éviter
-  le soir »). « en 3 prises », « 3/j » give their count; a range or a ceiling
-  (« deux à trois fois par jour ») gives none.
+  le soir »). Cycle days (« J1 à J14 », « du 16e au 25e jour du cycle »),
+  unnamed conditions and meals beside a moment no longer draw a grid.
+  « en 3 prises », « 3/j » give their count; a range or a ceiling (« deux à
+  trois fois par jour ») gives none.
 - **Conciliation.** A strength written with no unit (« Eliquis 2.5 »), a
   doubled take and a different named product (Actiskénan for Skenan) no
   longer read as kept. Neither do a stopped or changed take written in
