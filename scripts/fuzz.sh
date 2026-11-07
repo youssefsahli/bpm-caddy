@@ -82,11 +82,12 @@ for view in "${views[@]}"; do
     rm -f "$tmp"/demo*.db
     cp "$tmp"/pristine/demo*.db "$tmp/"
     rm -f "$BPM_CADDY_DB"-journal
+    rm -f "$tmp/rc"
     out=$(
         # Des écrans virtuels à partir de 200 : `smoke.sh` part de 99, et
         # deux `xvfb-run -a` lancés ensemble se disputent le même numéro
         # — l'un perd son écran, et la vue « tombe » dans winit.
-        view="$view" seed="$seed" work="$tmp/work" xvfb-run -a -n 200 -s "-screen 0 ${size%x*}x${size#*x}x24" bash -c '
+        view="$view" seed="$seed" work="$tmp/work" rc="$tmp/rc" xvfb-run -a -n 200 -s "-screen 0 ${size%x*}x${size#*x}x24" bash -c '
             unset WAYLAND_DISPLAY
             cd "$work" || exit 1
             case "$view" in
@@ -96,10 +97,19 @@ for view in "${views[@]}"; do
                 *)         export BPM_CADDY_START_VIEW="$view" ;;
             esac
             BPM_CADDY_FUZZ="$seed" timeout "$secs" "$bin" 2>&1
+            echo $? > "$rc"
         ' | grep -iE -A2 "panicked|out of bounds|unwrap\(\) on" | head -6
     )
+    # **Une vue qui n'a pas tourné n'est pas une vue qui tient.** Sans ce
+    # code de sortie, un écran virtuel qui ne démarre pas donnait « ok »
+    # partout : 124 est `timeout` au bout du temps, 0 l'application que le
+    # hasard a fermée.
+    rc=$(cat "$tmp/rc" 2>/dev/null || echo absent)
     if [ -n "$out" ]; then
         printf '  FAIL  %-16s graine %s\n%s\n' "$view" "$seed" "$(printf '%s' "$out" | sed 's/^/        /')"
+        failed=1
+    elif [ "$rc" != 124 ] && [ "$rc" != 0 ]; then
+        printf '  FAIL  %-16s graine %s : sortie %s\n' "$view" "$seed" "$rc"
         failed=1
     else
         printf '  ok    %-16s graine %s\n' "$view" "$seed"

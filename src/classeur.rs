@@ -3054,12 +3054,32 @@ fn add_entry_unlogged(path: &Path, w: &Write, audit: &Audit) -> Result<(), Fail>
             &format!("file={name} | copie de sécurité impossible avant écriture"),
         );
     }
-    if std::fs::rename(&tmp, path).is_err() && std::fs::copy(&tmp, path).is_err() {
+    if !swap_in(&tmp, path) {
         let _ = std::fs::remove_file(&tmp);
         return Err(fail("ecriture", trf("cls_err_save", &name)));
     }
-    let _ = std::fs::remove_file(&tmp);
     Ok(())
+}
+
+/// **Le classeur est remplacé d'un coup, ou pas du tout.** Le repli sur
+/// `fs::copy` écrivait par-dessus le registre en place : un partage qui
+/// tombe ou un disque plein en cours de copie le laissait tronqué, et le
+/// fichier neuf était effacé ensuite. `tmp` est dans le même dossier ;
+/// un renommage refusé vient d'un fichier tenu un instant (antivirus,
+/// indexation, aperçu de l'Explorateur), d'où les quelques reprises.
+fn swap_in(tmp: &Path, path: &Path) -> bool {
+    if std::fs::File::open(tmp).and_then(|f| f.sync_all()).is_err() {
+        return false;
+    }
+    for attempt in 0..5 {
+        if attempt > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+        if std::fs::rename(tmp, path).is_ok() {
+            return true;
+        }
+    }
+    false
 }
 
 fn find_table<'a>(el: &'a mut El, ns: &Ns, name: &str) -> Option<&'a mut El> {
@@ -3169,6 +3189,7 @@ impl Native {
             data_dir: ready.settings.data_dir,
             products: Vec::new(),
             unreadable: Vec::new(),
+            headerless: Vec::new(),
         })
     }
 }
@@ -3210,6 +3231,10 @@ impl Bridge for Native {
     /// Un classeur remis d'après sa copie, comme une écriture le serait :
     /// refusé s'il est ouvert dans LibreOffice, une copie de sécurité
     /// avant, la copie relue, puis l'échange atomique.
+    fn writable(&self, file: &Path) -> Result<(), String> {
+        check_lock(file).map_err(|f| f.msg)
+    }
+
     fn restore(&self, file: &Path, copy: &Path) -> Result<(), String> {
         let name = file_name(file);
         check_lock(file).map_err(|f| f.msg)?;
@@ -3230,11 +3255,10 @@ impl Bridge for Native {
                 &format!("file={name} | copie de sécurité impossible avant annulation"),
             );
         }
-        if std::fs::rename(&tmp, file).is_err() && std::fs::copy(&tmp, file).is_err() {
+        if !swap_in(&tmp, file) {
             let _ = std::fs::remove_file(&tmp);
             return Err(trf("cls_err_save", &name));
         }
-        let _ = std::fs::remove_file(&tmp);
         audit.log(
             "ANNULATION_BPM",
             &format!("file={name} | report de BPM-Caddy défait"),
@@ -3255,6 +3279,7 @@ impl Native {
         let mut session = Session::default();
         let mut seen = HashSet::new();
         let mut unreadable = Vec::new();
+        let mut headerless = Vec::new();
         let mut products = Vec::new();
         let years = years(dir);
         for d in active_drugs(&ready.settings) {
@@ -3307,6 +3332,8 @@ impl Native {
                     if survey {
                         read.headers = fd.products().to_vec();
                         surveyed.push(read);
+                    } else {
+                        headerless.push(shown);
                     }
                     continue;
                 };
@@ -3365,6 +3392,7 @@ impl Native {
             data_dir: dir.clone(),
             products,
             unreadable,
+            headerless,
         })
     }
 
@@ -3985,6 +4013,8 @@ mod tests {
             r.data_dir.clear();
             j.unreadable.sort();
             r.unreadable.sort();
+            // Le programme Java n'en dit rien.
+            r.headerless.clear();
             assert_eq!(j.products.len(), r.products.len());
             for (a, b) in j.products.iter().zip(&r.products) {
                 assert_eq!(a, b, "{}", a.key);
@@ -4214,5 +4244,24 @@ mod tests {
                 std::fs::copy(entry.path(), target).unwrap();
             }
         }
+    }
+
+    /// **Jamais de copie par-dessus le registre** : un renommage refusé
+    /// laisse le classeur tel quel, et rien n'y est écrit en place.
+    #[test]
+    fn a_refused_swap_leaves_the_register_alone() {
+        let dir = std::env::temp_dir().join(format!("bpm-swap-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("cible/plein")).unwrap();
+        let tmp = dir.join("neuf.ods");
+        std::fs::write(&tmp, b"neuf").unwrap();
+        // Un dossier non vide ne se remplace pas : le renommage échoue.
+        assert!(!swap_in(&tmp, &dir.join("cible")));
+        assert!(dir.join("cible/plein").is_dir());
+        let good = dir.join("bon.ods");
+        std::fs::write(&good, b"vieux").unwrap();
+        assert!(swap_in(&tmp, &good));
+        assert_eq!(std::fs::read(&good).unwrap(), b"neuf");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

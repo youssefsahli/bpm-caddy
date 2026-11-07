@@ -15,11 +15,9 @@ des travaux et ce qu'il faut demander avant d'écrire une ligne.
 - « Numériser » : la ligne de commande `[scans] command`, `{out}` étant le
   fichier à relire (`scanimage` sous Linux, l'utilitaire du constructeur
   ailleurs). Vide par défaut.
-- **À reprendre** : `run_scanner` attend sur le fil de l'interface
-  (`SCANNER_PATIENCE` = 10 min) — la fenêtre est figée pendant que le
-  chargeur avale les feuilles. Le premier travail est de le passer sur un
-  fil, livré par un `Receiver` réveillé par `woken`/`wake_ui`, comme
-  `bio_watch`.
+- `run_scanner` tourne sur son fil (`Session::start_scan`,
+  `SCANNER_PATIENCE` = 10 min) : la fenêtre reste libre, « Arrêter » tue le
+  scanner, et la pièce va au sujet du clic.
 
 **Impression** (`src/pdf.rs`) : chaque document de `pdf::DOCS` se
 compile en PDF (Typst) puis s'ouvre dans la visionneuse du système
@@ -153,7 +151,7 @@ chaque imprimante.
 
 ## 7. Ordre des travaux
 
-1. `run_scanner` hors du fil de l'interface (petit, utile tout de suite).
+1. ~~`run_scanner` hors du fil de l'interface~~ : fait (`Session::start_scan`).
 2. Impression directe vers une imprimante nommée + `[impression]` par
    document (CUPS, puis Windows GDI par `typst-render`).
 3. Encodeurs ESC/POS et Brother QL, envoi brut (9100, RAW, USB) ;

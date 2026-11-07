@@ -233,13 +233,13 @@ fn spawn_daily_backup(
         // écrit (les migrations, en sourdine) et peut trouver la base tenue
         // par l'écran ou une synchronisation — la sauvegarde du jour
         // sautait alors sans un mot.
-        let mut opened = Db::open(&db_path, &password);
+        let mut opened = Db::open_existing(&db_path, &password);
         for _ in 0..3 {
             if opened.is_ok() {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_secs(10));
-            opened = Db::open(&db_path, &password);
+            opened = Db::open_existing(&db_path, &password);
         }
         // **Le registre d'abord, la base en dernier** : chaque ligne du
         // registre cite un dossier, et une base copiée après lui les porte
@@ -5711,6 +5711,42 @@ impl Drop for ScriptJob {
     }
 }
 
+/// **Ce que le scanner a écrit ne reste pas** : le fichier brut, posé par
+/// le programme du scanner avec les droits par défaut, restait lisible
+/// dans le dossier temporaire partagé. Et le dossier à soi qui l'abritait.
+fn remove_scanner_output(path: &std::path::Path) {
+    let _ = std::fs::remove_file(path);
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::remove_dir(dir);
+    }
+}
+
+/// Ce qu'une pièce emporte de la bande de saisie : figé au clic, car on
+/// peut changer de dossier pendant que la feuille passe.
+#[derive(Clone)]
+struct PieceForm {
+    subject: crate::scans::Subject,
+    subject_id: i64,
+    kind: crate::scans::DocKind,
+    label: String,
+    day: String,
+    operator: String,
+}
+
+/// Un scan en cours, sur son fil. Lâché (verrouillage, fermeture), il
+/// arrête le scanner et efface ce qui avait été écrit.
+struct ScanJob {
+    rx: std::sync::mpsc::Receiver<Result<std::path::PathBuf, String>>,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    form: PieceForm,
+}
+
+impl Drop for ScanJob {
+    fn drop(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 type PrescriberHits = (String, u64, Vec<(String, String)>);
 
 /// Une ligne de la liste des rappels, avec ce que la vue affiche du
@@ -7008,6 +7044,10 @@ struct Session {
     /// ne bougent jamais.
     scan_edit: Option<(db::Scan, db::Scan)>,
     scan_note: Option<(bool, String)>,
+    /// Le scan en cours.
+    scan_job: Option<ScanJob>,
+    /// Ce qu'un scan a donné, en attente de l'écran de son sujet.
+    scan_result: Option<(crate::scans::Subject, i64, bool, String)>,
     /// L'écran des pièces, quand il est ouvert : à quoi elles sont
     /// attachées, et le titre à écrire en haut. Le dossier patient a le
     /// sien en onglet — c'est là qu'on cherche une ordonnance ; la fiche
@@ -8021,6 +8061,8 @@ impl Session {
             scan_confirm: None,
             scan_edit: None,
             scan_note: None,
+            scan_job: None,
+            scan_result: None,
             show_scans: None,
             registre_tab: RegistreTab::default(),
             explorer_axis: 0,
@@ -10157,6 +10199,139 @@ impl Session {
         self.scans_key = None;
     }
 
+    /// Lancer le scanner sur son fil. La pièce ira à `form.subject`, quel
+    /// que soit l'écran à son retour.
+    fn start_scan(&mut self, form: PieceForm, command: &str) {
+        if self.scan_job.is_some() {
+            return;
+        }
+        self.scan_note = None;
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (tx, rx) = std::sync::mpsc::channel();
+        let (template, flag) = (command.to_owned(), stop.clone());
+        std::thread::spawn(move || {
+            let result = App::run_scanner(&template, &flag);
+            // Plus personne pour le ranger : le fichier ne reste pas.
+            if let Err(lost) = tx.send(result) {
+                if let Ok(path) = lost.0 {
+                    remove_scanner_output(&path);
+                }
+            }
+            wake_ui();
+        });
+        self.scan_job = Some(ScanJob { rx, stop, form });
+    }
+
+    /// Ranger ce que le scanner a rendu. À chaque image : la pièce va à
+    /// son dossier même si l'écran des pièces est fermé.
+    fn poll_scan(&mut self, max_mb: u32) {
+        let Some(job) = &self.scan_job else {
+            return;
+        };
+        let result = match job.rx.try_recv() {
+            Ok(result) => result,
+            Err(std::sync::mpsc::TryRecvError::Empty) => return,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => Err(String::new()),
+        };
+        let form = job.form.clone();
+        self.scan_job = None;
+        let filed = match result {
+            // Une erreur vide : arrêté par l'opérateur.
+            Err(e) if e.is_empty() => return,
+            Err(e) => Err(e),
+            Ok(path) => {
+                let filed = self.file_piece(&form, &path, max_mb);
+                remove_scanner_output(&path);
+                filed
+            }
+        };
+        // La bande n'est vidée que si elle décrit encore cette pièce.
+        if filed.is_ok()
+            && self.scan_new_kind == form.kind
+            && self.scan_new_label.trim() == form.label
+            && self.scan_new_day.trim() == form.day
+        {
+            self.clear_piece_form();
+        }
+        let (failed, said) = match filed {
+            Ok(said) => (false, said),
+            Err(said) => (true, said),
+        };
+        self.scan_result = Some((form.subject, form.subject_id, failed, said));
+    }
+
+    fn clear_piece_form(&mut self) {
+        self.scan_new_label.clear();
+        self.scan_new_day.clear();
+    }
+
+    /// Lire un fichier et l'archiver au sujet de `form`. Rend la phrase à
+    /// afficher.
+    fn file_piece(
+        &mut self,
+        form: &PieceForm,
+        path: &std::path::Path,
+        max_mb: u32,
+    ) -> Result<String, String> {
+        // **La taille avant la lecture** : un fichier de plusieurs
+        // gigaoctets choisi par erreur se lisait en entier, sur le fil de
+        // l'écran, avant d'être refusé comme trop gros. Un octet de plus
+        // que la limite suffit à `accept` pour le dire.
+        let limit = u64::from(max_mb) * 1024 * 1024;
+        let bytes = std::fs::File::open(path)
+            .and_then(|f| {
+                use std::io::Read;
+                let mut bytes = Vec::new();
+                f.take(limit + 1).read_to_end(&mut bytes)?;
+                Ok(bytes)
+            })
+            .map_err(|e| e.to_string())?;
+        let media = crate::scans::accept(&bytes, max_mb)
+            .map_err(|refusal| tr(refusal.label_key()).to_owned())?;
+        // Sans libellé, celui du fichier : mieux qu'un refus quand on
+        // vient de scanner et qu'on veut ranger tout de suite.
+        let label = if form.label.is_empty() {
+            path.file_stem()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| tr(form.kind.label_key()).to_owned())
+        } else {
+            form.label.clone()
+        };
+        let taken_on = if form.day.is_empty() {
+            String::new()
+        } else {
+            db::parse_event_date(&form.day, &self.today)?
+        };
+        let scan = db::Scan {
+            id: 0,
+            subject_kind: form.subject.as_key().to_owned(),
+            subject_id: if form.subject == crate::scans::Subject::Officine {
+                0
+            } else {
+                form.subject_id
+            },
+            doc_kind: form.kind.as_key().to_owned(),
+            label,
+            media: media.as_key().to_owned(),
+            size: 0,
+            taken_on,
+            operator: form.operator.clone(),
+            remark: String::new(),
+            created_at: String::new(),
+            // Le lien vers une ligne du registre se pose après coup, sur
+            // la ligne : au moment où l'on range une pièce, on ne sait
+            // pas encore laquelle elle justifie.
+            stup_move: 0,
+        };
+        self.db.add_scan(&scan, &bytes)?;
+        self.scans_key = None;
+        self.refresh_fil();
+        Ok(trf(
+            "scan_added",
+            crate::scans::human_size(bytes.len() as u64),
+        ))
+    }
+
     /// Relire les pièces d'un sujet, si ce n'est pas déjà celles-là.
     ///
     /// La clé est le sujet ; `scans_key = None` force la relecture après
@@ -11402,8 +11577,10 @@ impl Session {
                             self.stc.note = Some((false, trf("stc_ping_ok", &a.data_dir)));
                         }
                         Ok(StcDone::Report(r)) => {
-                            let troubled =
-                                !(r.refused.is_empty() && r.failed.is_empty() && r.lost.is_empty());
+                            let troubled = !(r.refused.is_empty()
+                                && r.failed.is_empty()
+                                && r.lost.is_empty()
+                                && r.doubts.is_empty());
                             let said = if r.push {
                                 trn(
                                     if r.preview {
@@ -63360,6 +63537,13 @@ impl App {
         config: &Config,
     ) {
         use crate::scans::{DocKind, Subject};
+        if session
+            .scan_result
+            .as_ref()
+            .is_some_and(|r| r.0 == subject && r.1 == subject_id)
+        {
+            session.scan_note = session.scan_result.take().map(|r| (r.2, r.3));
+        }
         session.refresh_scans(subject, subject_id);
         // La bande de saisie est mesurée : deux rangées de pastilles de
         // genre sur un volet étroit, plus la rangée des champs et celle
@@ -63574,7 +63758,24 @@ impl App {
                         // Le bouton du scanner n'apparaît que si l'officine a
                         // écrit sa commande : proposer un bouton qui ne peut
                         // qu'échouer est pire que ne rien proposer.
-                        if !config.scans.command.trim().is_empty()
+                        if let Some(job) = &session.scan_job {
+                            if job.form.subject == subject && job.form.subject_id == subject_id {
+                                ui.label(
+                                    egui::RichText::new(tr("scan_running"))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::accent()),
+                                );
+                                if motif::button(ui, tr("scan_stop")).clicked() {
+                                    session.scan_job = None;
+                                }
+                            } else {
+                                ui.label(
+                                    egui::RichText::new(tr("scan_running_elsewhere"))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                );
+                            }
+                        } else if !config.scans.command.trim().is_empty()
                             && motif::button(ui, tr("scan_scan"))
                                 .on_hover_text(tr("scan_scan_tooltip"))
                                 .clicked()
@@ -64090,119 +64291,36 @@ impl App {
         if !(import || scan_now) {
             return;
         }
-        // D'où viennent les octets : un fichier choisi, ou le scanner de
-        // l'officine lancé par sa propre ligne de commande.
-        let picked: Result<std::path::PathBuf, String> = if import {
-            rfd::FileDialog::new()
-                .add_filter(
-                    tr("scan_filter"),
-                    &["pdf", "png", "jpg", "jpeg", "tif", "tiff"],
-                )
-                .pick_file()
-                .ok_or_else(String::new)
-        } else {
-            Self::run_scanner(&config.scans.command)
-        };
-        let path = match picked {
-            Ok(p) => p,
-            // Une chaîne vide veut dire « le dialogue a été fermé » :
-            // ce n'est pas une erreur et cela ne s'affiche pas.
-            Err(e) if e.is_empty() => return,
-            Err(e) => {
-                session.scan_note = Some((true, e));
-                return;
-            }
-        };
-        // **La taille avant la lecture** : un fichier de plusieurs
-        // gigaoctets choisi par erreur se lisait en entier, sur le fil de
-        // l'écran, avant d'être refusé comme trop gros. Un octet de plus
-        // que la limite suffit à `accept` pour le dire.
-        let from_scanner = !import;
-        let limit = u64::from(config.scans.max_mb) * 1024 * 1024;
-        let read = std::fs::File::open(&path).and_then(|f| {
-            use std::io::Read;
-            let mut bytes = Vec::new();
-            f.take(limit + 1).read_to_end(&mut bytes)?;
-            Ok(bytes)
-        });
-        // **Ce que le scanner a écrit ne reste pas** : le fichier brut,
-        // posé par le programme du scanner avec les droits par défaut,
-        // restait lisible dans le dossier temporaire partagé.
-        if from_scanner {
-            let _ = std::fs::remove_file(&path);
-            // Et le dossier à soi qui l'abritait.
-            if let Some(dir) = path.parent() {
-                let _ = std::fs::remove_dir(dir);
-            }
-        }
-        let bytes = match read {
-            Ok(b) => b,
-            Err(e) => {
-                session.scan_note = Some((true, e.to_string()));
-                return;
-            }
-        };
-        let media = match crate::scans::accept(&bytes, config.scans.max_mb) {
-            Ok(m) => m,
-            Err(refusal) => {
-                session.scan_note = Some((true, tr(refusal.label_key()).to_owned()));
-                return;
-            }
-        };
-        // Sans libellé, celui du fichier : mieux qu'un refus quand on
-        // vient de scanner et qu'on veut ranger tout de suite.
-        let label = if session.scan_new_label.trim().is_empty() {
-            path.file_stem()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_else(|| tr(session.scan_new_kind.label_key()).to_owned())
-        } else {
-            session.scan_new_label.trim().to_owned()
-        };
-        let taken_on = if session.scan_new_day.trim().is_empty() {
-            String::new()
-        } else {
-            match db::parse_event_date(&session.scan_new_day, &session.today) {
-                Ok(iso) => iso,
-                Err(e) => {
-                    session.scan_note = Some((true, e));
-                    return;
-                }
-            }
-        };
-        let scan = db::Scan {
-            id: 0,
-            subject_kind: subject.as_key().to_owned(),
-            subject_id: if subject == Subject::Officine {
-                0
-            } else {
-                subject_id
-            },
-            doc_kind: session.scan_new_kind.as_key().to_owned(),
-            label,
-            media: media.as_key().to_owned(),
-            size: 0,
-            taken_on,
+        let form = PieceForm {
+            subject,
+            subject_id,
+            kind: session.scan_new_kind,
+            label: session.scan_new_label.trim().to_owned(),
+            day: session.scan_new_day.trim().to_owned(),
             operator: operator.to_owned(),
-            remark: String::new(),
-            created_at: String::new(),
-            // Le lien vers une ligne du registre se pose après coup, sur
-            // la ligne : au moment où l'on range une pièce, on ne sait
-            // pas encore laquelle elle justifie.
-            stup_move: 0,
         };
-        match session.db.add_scan(&scan, &bytes) {
-            Ok(_) => {
-                session.scan_new_label.clear();
-                session.scan_new_day.clear();
-                session.scans_key = None;
-                session.scan_note = Some((
-                    false,
-                    trf("scan_added", crate::scans::human_size(bytes.len() as u64)),
-                ));
-                session.refresh_fil();
-            }
-            Err(e) => session.scan_note = Some((true, e)),
+        if scan_now {
+            session.start_scan(form, &config.scans.command);
+            return;
         }
+        // Le dialogue fermé n'est pas une erreur : rien ne s'affiche.
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter(
+                tr("scan_filter"),
+                &["pdf", "png", "jpg", "jpeg", "tif", "tiff"],
+            )
+            .pick_file()
+        else {
+            return;
+        };
+        let filed = session.file_piece(&form, &path, config.scans.max_mb);
+        if filed.is_ok() {
+            session.clear_piece_form();
+        }
+        session.scan_note = Some(match filed {
+            Ok(said) => (false, said),
+            Err(said) => (true, said),
+        });
     }
 
     /// Lancer le scanner de l'officine et rendre le fichier qu'il a
@@ -64214,11 +64332,15 @@ impl App {
     /// l'application ira lire — une commande qui ne le nomme pas est
     /// refusée avant d'être lancée.
     ///
-    /// Bloquant, et assumé : c'est un geste, pas une tâche de fond, et
-    /// personne ne fait autre chose pendant qu'une feuille passe dans un
-    /// scanner. La fenêtre reste figée le temps du scan, ce que
-    /// l'opérateur attend.
-    fn run_scanner(template: &str) -> Result<std::path::PathBuf, String> {
+    /// Bloquant : il tourne sur le fil de `Session::start_scan`. Sur
+    /// celui de l'écran, un scanner qui ne répondait pas figeait la
+    /// fenêtre dix minutes, et le comptoir avec. `stop` levé, le scanner
+    /// est arrêté et rien n'est rendu (une erreur vide, qui ne s'affiche
+    /// pas).
+    fn run_scanner(
+        template: &str,
+        stop: &std::sync::atomic::AtomicBool,
+    ) -> Result<std::path::PathBuf, String> {
         // **Un dossier à soi** pour la sortie, et non un nom prévisible
         // dans le `/tmp` commun : un autre compte du poste pouvait y
         // poser le fichier d'avance, et un scanner qui sort sans écrire
@@ -64251,16 +64373,21 @@ impl App {
         // la tue, avec ce qui était en train de s'écrire.
         let deadline = std::time::Instant::now() + SCANNER_PATIENCE;
         let status = loop {
+            let stopped = stop.load(std::sync::atomic::Ordering::Relaxed);
             match child.try_wait() {
                 Ok(Some(status)) => break status,
-                Ok(None) if std::time::Instant::now() < deadline => {
+                Ok(None) if !stopped && std::time::Instant::now() < deadline => {
                     std::thread::sleep(std::time::Duration::from_millis(100));
                 }
                 Ok(None) => {
                     let _ = child.kill();
                     let _ = child.wait();
                     let _ = std::fs::remove_dir_all(&dir);
-                    return Err(tr("scan_err_timeout").to_owned());
+                    return Err(if stopped {
+                        String::new()
+                    } else {
+                        tr("scan_err_timeout").to_owned()
+                    });
                 }
                 Err(e) => return Err(trf("scan_err_spawn", e)),
             }
@@ -89912,6 +90039,7 @@ impl App {
                                 ("stc_refused_title", &r.refused),
                                 ("stc_failed_title", &r.failed),
                                 ("stc_lost_title", &r.lost),
+                                ("stc_doubts_title", &r.doubts),
                                 ("stc_warnings_title", &r.warnings),
                                 ("stc_unlinked_title", &r.unlinked),
                                 ("stc_unwritten_title", &r.unwritten),
@@ -99500,6 +99628,7 @@ impl eframe::App for App {
         self.poll_maintenance(ctx);
         if let State::Unlocked(session) = &mut self.state {
             session.poll_script(ctx);
+            session.poll_scan(self.config.scans.max_mb);
             // Le script de démarrage, une fois par session ouverte.
             if !session.init_started {
                 session.init_started = true;
@@ -100425,7 +100554,7 @@ impl eframe::App for App {
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
                         if motif::button(ui, tr("pw_change")).clicked() {
-                            if busy {
+                            if busy || session.stc.job.is_some() {
                                 form.error = Some(tr("pw_busy").to_owned());
                             } else if !same_secret(&form.current, &session.password) {
                                 form.current.clear();
@@ -100454,6 +100583,9 @@ impl eframe::App for App {
                                             session.stop_posts_auto();
                                             session.posts_auto_tried = false;
                                             session.net_auto = None;
+                                            // Son fil tient une connexion
+                                            // ouverte avec l'ancienne clé.
+                                            session.pchat_wait = None;
                                         }
                                         // Keep the OS credential manager in sync
                                         // when it holds a remembered copy.
@@ -104196,8 +104328,11 @@ impl App {
         let first = self.backup_day.is_empty();
         self.backup_day.clone_from(&session.today);
         if !first {
+            // La base ouverte, pas celle du réglage : un chemin changé dans
+            // les options ne prend effet qu'à la réouverture, et la base
+            // en service restait sans copie du jour.
             spawn_daily_backup(
-                self.config.db_path(),
+                session.db.path().unwrap_or_else(|| self.config.db_path()),
                 session.password.clone(),
                 self.config.database.backups_keep,
                 self.config.scans.backups_keep,
@@ -104313,7 +104448,7 @@ impl App {
                 {
                     if same_secret(&veil.password, &expected) {
                         open = true;
-                    } else if Db::open(&db_path, &veil.password).is_ok() {
+                    } else if Db::open_existing(&db_path, &veil.password).is_ok() {
                         // Changé sur un autre poste : la base s'ouvre
                         // avec le nouveau, plus la session d'avant.
                         reopen = Some(std::mem::take(&mut veil.password));
@@ -117076,6 +117211,52 @@ mod tests {
         db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
         db.add_patient("Martin", "Claire", "1949-02-11").unwrap();
         (super::Session::new(db, 12, 30, true).unwrap(), swept)
+    }
+
+    /// **La pièce va au dossier du clic, pas à celui de l'écran.** Le scan
+    /// tourne sur son fil : l'opérateur a pu changer de dossier entre-temps.
+    #[cfg(unix)]
+    #[test]
+    fn a_scan_is_filed_to_the_file_it_was_started_from() {
+        let (mut s, swept) = scratch_session("scanfil");
+        let source = swept.0.join("feuille.pdf");
+        std::fs::write(&source, b"%PDF-1.4\n%%EOF\n").unwrap();
+        let (dupont, martin) = (s.patients[0].id, s.patients[1].id);
+        let form = super::PieceForm {
+            subject: crate::scans::Subject::Patient,
+            subject_id: dupont,
+            kind: crate::scans::DocKind::Ordonnance,
+            label: "Ordonnance du jour".to_owned(),
+            day: String::new(),
+            operator: "YS".to_owned(),
+        };
+        s.start_scan(form, &format!("cp {} {{out}}", source.display()));
+        s.open_scans(crate::scans::Subject::Patient, martin, "Martin".to_owned());
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while s.scan_job.is_some() && std::time::Instant::now() < until {
+            s.poll_scan(10);
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(s.scan_job.is_none(), "le scan a rendu");
+        assert_eq!(s.db.scans("PATIENT", dupont).unwrap().len(), 1);
+        assert!(s.db.scans("PATIENT", martin).unwrap().is_empty());
+        let (subject, id, failed, _) = s.scan_result.clone().unwrap();
+        assert_eq!(
+            (subject, id, failed),
+            (crate::scans::Subject::Patient, dupont, false)
+        );
+    }
+
+    /// **Lâché, le scan arrête le scanner** : sinon le programme tourne
+    /// encore dix minutes après un verrouillage, et son fichier reste.
+    #[cfg(unix)]
+    #[test]
+    fn dropping_a_scan_stops_the_scanner() {
+        let flag = std::sync::atomic::AtomicBool::new(true);
+        let begun = std::time::Instant::now();
+        let got = super::App::run_scanner("sh -c 'sleep 30; touch {out}'", &flag);
+        assert_eq!(got, Err(String::new()));
+        assert!(begun.elapsed() < std::time::Duration::from_secs(5));
     }
 
     /// **Une relecture qui tombe encore demande une image de plus.** Le

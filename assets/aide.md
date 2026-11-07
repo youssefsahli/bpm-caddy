@@ -4,12 +4,12 @@ Suivi des entretiens pharmaceutiques au comptoir : dossiers, actes,
 agenda de l'équipe, registre des stupéfiants, caisse, et documents
 imprimés au nom de l'officine.
 
-Données locales. La base est chiffrée et reste sur le poste. L'application
-n'émet que **deux** requêtes réseau, toutes deux à la demande : la
-recherche d'une mise à jour, et la mise à jour de l'annuaire des
-prescripteurs — uniquement si l'officine a renseigné une adresse ; sinon
-le bouton n'apparaît pas. Les deux téléchargent, aucune n'envoie de
-données.
+Données locales. La base est chiffrée et reste à l'officine. Sur le
+réseau, l'application échange avec les autres postes du groupe, avec les
+officines du réseau — **jamais un patient** —, et avec la page d'un
+patient quand la messagerie est ouverte. S'y ajoutent la recherche d'une
+mise à jour, et l'annuaire des prescripteurs si l'officine a renseigné
+une adresse. Ce détail est sous « Réseau d'officines » et « Postes ».
 
 # Plan de travail
 
@@ -1608,12 +1608,16 @@ Pour garder les classeurs à jour pendant une transition, cocher
   StupControl le ferait. Une ligne déjà au classeur est appariée, pas
   réécrite. Le registre ne reçoit rien des classeurs : une ligne qui n'y
   est que dans le classeur est listée sous « Au classeur, absent du
-  registre ».
+  registre ». Une délivrance du même jour et de la même quantité sous un
+  autre nom n'est ni appariée ni écrite : elle paraît sous « Lignes à
+  trancher ». Porter le n° d'ordonnancier sur la ligne du classeur.
+  Un classeur illisible, ou sans l'en-tête du produit, arrête tout.
 - **Défaire le dernier report…**, puis **Confirmer** : chaque classeur
   revient à sa copie (refusé s'il est ouvert dans LibreOffice), et les
   lignes redeviennent à reporter. Refusé en entier si un classeur a
   changé depuis le report — une ligne tapée à la main y serait perdue.
-  Les reports se défont du plus récent au plus ancien.
+  Les reports se défont du plus récent au plus ancien. Une annulation
+  interrompue se relance : elle reprend où elle s'est arrêtée.
 
 « Rapprocher automatiquement » relance le rapprochement toutes les cinq
 minutes sur le poste qui sert l'officine. À activer après un premier

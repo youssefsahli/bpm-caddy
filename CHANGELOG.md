@@ -8,6 +8,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Changing the master password could report success after failing,
+  and leave a file no password opens.** SQLCipher's `PRAGMA rekey`
+  never reports a failure (a busy file, a full disk, a dropped share)
+  and leaves the connection writing under the refused key. All three
+  files are now checked free first, each rekey is verified through a
+  fresh connection, a failure restores the old key on every file and on
+  the connection, and the recovery witness stays until that is proven.
+- A lost `_scans.db` is no longer recreated empty: the daily rotation
+  then deleted the real copies within two days. Opening stops and names
+  the copy to restore, as it already did for the register. The same goes
+  for a base missing beside its register or pieces; a mistyped password
+  could become that empty base's key.
+- Background passes (daily copy, maintenance, unlock veil) no longer
+  create a base at a missing path, and the daily copy follows the base
+  actually open, not the path typed in the options.
+- Patient messaging reconnects after a password change instead of
+  failing until restart.
+- Stupéfiants workbooks:
+  - Writing no longer falls back to copying over the live workbook when
+    the rename fails: an interrupted copy truncated the register. The
+    workbook is replaced whole or left alone, with short retries.
+  - A delivery is no longer paired with another patient's line of the
+    same day and quantity. The matching name goes first; two different
+    names are listed under « Lignes à trancher », neither paired nor
+    written.
+  - An undo checks every workbook is free before restoring any, and an
+    interrupted undo can be run again.
+  - Running « Reprendre » again no longer moves the start of the push
+    window, which abandoned the lines not yet sent.
+  - An unreadable workbook, or one without the product's header, stops
+    the pass instead of reading as empty.
+  - Two posts can no longer push or undo at the same moment.
+  - A database error after writing no longer loses the undo record.
+- Scanning no longer freezes the window: the scanner runs on its own
+  thread, « Arrêter » stops it, and the piece goes to the file it was
+  started from even if another file is open by then. A window locked or
+  closed mid-scan stops the scanner and leaves no file behind.
+- The help no longer claims the application makes only two network
+  requests: it now lists what actually travels.
+
 ## [0.455.0] - 2026-11-05
 
 ### Added

@@ -24,7 +24,9 @@
 //! écrit. Une ligne de chaque côté qui dit le même mouvement se **paire**
 //! — une délivrance par son numéro d'ordonnancier, le reste par jour,
 //! sens, quantité et nom, puis par jour, sens et quantité seuls quand il
-//! n'y a qu'une façon d'apparier. Ce qui reste :
+//! n'y a qu'une façon d'apparier. Deux noms de patient qui diffèrent ne
+//! se pairent jamais d'office : la ligne est **montrée** ([`Plan::doubts`]),
+//! ni rapprochée ni écrite. Ce qui reste :
 //!
 //! * une ligne de BPM-Caddy absente du classeur y est **ajoutée** — le nom
 //!   du patient vient du dossier, sur ce poste, et ne part nulle part
@@ -273,6 +275,10 @@ pub struct Answer {
     pub products: Vec<Product>,
     #[serde(default)]
     pub unreadable: Vec<String>,
+    /// Les classeurs lus qui ne portent pas l'en-tête du produit : ses
+    /// lignes de l'année manquent à la lecture.
+    #[serde(default)]
+    pub headerless: Vec<String>,
 }
 
 /// Une ligne à ajouter à un classeur.
@@ -318,6 +324,11 @@ pub trait Bridge {
     /// copie de sécurité avant, l'échange atomique.
     fn restore(&self, _file: &std::path::Path, _copy: &std::path::Path) -> Result<(), String> {
         Err(crate::strings::tr("stc_err_restore").to_owned())
+    }
+    /// Ce classeur peut-il être remis ? Demandé pour tous avant d'en
+    /// remettre un seul.
+    fn writable(&self, _file: &std::path::Path) -> Result<(), String> {
+        Ok(())
     }
 }
 
@@ -519,6 +530,23 @@ pub struct Plan {
     pub import: Vec<usize>,
     /// Les lignes déjà rapprochées que le classeur ne porte plus.
     pub lost: Vec<i64>,
+    /// (ligne de BPM-Caddy, indice de la ligne du classeur) : même jour,
+    /// même sens, même quantité, mais rien ne dit que c'est le même
+    /// patient. Ni rapprochées, ni écrites, ni inscrites : à trancher.
+    pub doubts: Vec<(i64, usize)>,
+}
+
+/// Deux noms désignent-ils la même personne ? Les mots du plus court se
+/// retrouvent tous dans le plus long (« Dupont », « DUPONT Albert »).
+/// `None` quand l'un manque : rien ne le dit.
+fn names_fit(a: &str, b: &str) -> Option<bool> {
+    let (a, b) = (fold(a), fold(b));
+    if a.is_empty() || b.is_empty() {
+        return None;
+    }
+    let (short, long) = if a.len() <= b.len() { (a, b) } else { (b, a) };
+    let long: HashSet<&str> = long.split(' ').collect();
+    Some(short.split(' ').all(|w| long.contains(w)))
 }
 
 fn same_units(a: f64, b: f64) -> bool {
@@ -568,24 +596,76 @@ pub fn plan(ours: &[Ours], theirs: &[Line]) -> Plan {
     }
     // Deuxième passe : jour, sens et quantité. Une délivrance numérotée
     // des deux côtés sous deux numéros différents n'est pas la même.
+    let candidates = |o: &Ours, taken: &[bool]| -> Vec<usize> {
+        theirs
+            .iter()
+            .enumerate()
+            .filter(|(i, l)| {
+                !taken[*i]
+                    && their_side[*i] == Some(o.row.side)
+                    && l.date.as_deref() == Some(o.row.day.as_str())
+                    && same_units(l.units, o.row.units)
+                    && match (ordo_number(&l.ordo), ordo_number(&o.row.ordo)) {
+                        (Some(a), Some(b)) => a == b,
+                        _ => true,
+                    }
+            })
+            .map(|(i, _)| i)
+            .collect()
+    };
+    // Le nom qui concorde d'abord, pour tout le monde : sinon la première
+    // ligne prenait celle d'un autre patient, et la sienne restait.
     for o in ours {
         if paired.contains(&o.id) {
             continue;
         }
-        let found = theirs.iter().enumerate().find(|(i, l)| {
-            !taken[*i]
-                && their_side[*i] == Some(o.row.side)
-                && l.date.as_deref() == Some(o.row.day.as_str())
-                && same_units(l.units, o.row.units)
-                && match (ordo_number(&l.ordo), ordo_number(&o.row.ordo)) {
-                    (Some(a), Some(b)) => a == b,
-                    _ => true,
-                }
-        });
-        if let Some((i, _)) = found {
+        let fits = candidates(o, &taken)
+            .into_iter()
+            .find(|i| names_fit(&theirs[*i].nom, &o.row.who) == Some(true));
+        if let Some(i) = fits {
             taken[i] = true;
             paired.insert(o.id);
             out.pairs.push((o.id, i));
+        }
+    }
+    // Puis ce qui ne désigne pas un patient (un fournisseur écrit
+    // autrement), et ce qui était déjà rapproché : l'opérateur a retouché
+    // le nom au classeur, c'est toujours la même ligne.
+    for o in ours {
+        if paired.contains(&o.id) || !(o.linked || o.row.side != Side::S) {
+            continue;
+        }
+        if let Some(i) = candidates(o, &taken).first().copied() {
+            taken[i] = true;
+            paired.insert(o.id);
+            out.pairs.push((o.id, i));
+        }
+    }
+    // Une délivrance reste. Un nom qui manque n'apparie que s'il n'y a
+    // qu'une façon de le faire ; deux noms qui diffèrent, jamais : deux
+    // délivrances réelles du même jour et de la même dose se perdraient
+    // l'une dans l'autre sans qu'aucun solde ne bouge.
+    let open: Vec<&Ours> = ours.iter().filter(|o| !paired.contains(&o.id)).collect();
+    for o in &open {
+        let found = candidates(o, &taken);
+        let Some(i) = found.first().copied() else {
+            continue;
+        };
+        let rivals = open
+            .iter()
+            .filter(|r| {
+                !r.linked
+                    && r.row.side == o.row.side
+                    && r.row.day == o.row.day
+                    && same_units(r.row.units, o.row.units)
+            })
+            .count();
+        taken[i] = true;
+        paired.insert(o.id);
+        if found.len() == 1 && rivals == 1 && names_fit(&theirs[i].nom, &o.row.who).is_none() {
+            out.pairs.push((o.id, i));
+        } else {
+            out.doubts.push((o.id, i));
         }
     }
     for o in ours.iter().filter(|o| !paired.contains(&o.id)) {
@@ -765,6 +845,9 @@ pub struct Report {
     pub failed: Vec<Refused>,
     /// Les lignes déjà rapprochées que le classeur ne porte plus.
     pub lost: Vec<Refused>,
+    /// Les lignes laissées de côté : même jour, même quantité qu'une ligne
+    /// du classeur, sans dire le même patient ([`Plan::doubts`]).
+    pub doubts: Vec<Refused>,
     /// (produit, solde de BPM-Caddy, Bilan du classeur) quand ils diffèrent.
     pub gaps: Vec<(String, f64, f64)>,
     /// Les produits de StupControl qu'aucun produit suivi ne désigne.
@@ -870,7 +953,12 @@ pub fn take_over(
 ) -> Result<Report, String> {
     let report = run(db, bridge, today, preview, true)?;
     if !preview {
-        db.set_stup_setting(TAKEN_KEY, today)?;
+        // **La première reprise reste le départ du report** : relancée,
+        // elle avançait la date, et ce qui s'était écrit entre-temps sans
+        // partir sortait pour toujours de ce qu'un report regarde.
+        if db.stup_setting(TAKEN_KEY).is_none() {
+            db.set_stup_setting(TAKEN_KEY, today)?;
+        }
         db.set_stup_setting(AUTO_KEY, "")?;
     }
     Ok(report)
@@ -897,7 +985,54 @@ pub fn push(
     if db.stup_setting(TAKEN_KEY).is_none() {
         return Err(crate::strings::tr("stc_err_not_taken").to_owned());
     }
+    let _lock = if preview {
+        None
+    } else {
+        Some(WriteLock::take(undo_root)?)
+    };
     run_with(db, bridge, today, preview, Mode::Push(undo_root))
+}
+
+/// **Un poste à la fois écrit aux classeurs.** Les verrous de `classeur`
+/// ne valent que dans un programme, et chaque ligne relit son fichier :
+/// deux postes lancés ensemble ajoutaient chacun toutes les lignes. Le
+/// dossier des reports est à côté de la base, donc commun aux postes qui
+/// la partagent. Un verrou laissé par un poste tombé s'efface à son âge.
+struct WriteLock(std::path::PathBuf);
+
+impl WriteLock {
+    const STALE: std::time::Duration = std::time::Duration::from_secs(30 * 60);
+
+    fn take(root: &std::path::Path) -> Result<WriteLock, String> {
+        let failed = || crate::strings::trf("stc_err_undo_copy", root.display());
+        std::fs::create_dir_all(root).map_err(|_| failed())?;
+        let path = root.join("report.lock");
+        let old = std::fs::metadata(&path)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age > Self::STALE);
+        if old {
+            let _ = std::fs::remove_file(&path);
+        }
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(_) => Ok(WriteLock(path)),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                Err(crate::strings::tr("stc_err_busy").to_owned())
+            }
+            Err(_) => Err(failed()),
+        }
+    }
+}
+
+impl Drop for WriteLock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
 }
 
 /// Un report écrit : quand, les lignes parties, et pour chaque classeur
@@ -987,9 +1122,13 @@ impl Journal {
             let _ = std::fs::remove_dir_all(&self.dir);
             return Ok(());
         }
+        // Seulement ceux qu'il a écrits : un classeur copié puis refusé (tenu
+        // par LibreOffice) n'a rien à défaire, et ce qu'on y tape ensuite
+        // ne doit pas bloquer l'annulation des autres.
         self.pushed.files = self
             .files
             .iter()
+            .filter(|(f, c)| fingerprint(f) != fingerprint(c))
             .map(|(f, c)| PushedFile {
                 file: f.to_string_lossy().into_owned(),
                 copy: c.to_string_lossy().into_owned(),
@@ -1032,19 +1171,34 @@ pub fn undo_push(
     today: &str,
     undo_root: &std::path::Path,
 ) -> Result<usize, String> {
+    let _lock = WriteLock::take(undo_root)?;
     let Some((dir, mut pushed)) = last_push(undo_root) else {
         return Err(crate::strings::tr("stc_err_nothing_to_undo").to_owned());
     };
+    // **Une annulation interrompue se reprend** : un classeur déjà égal à
+    // sa copie est remis. Sans cela le second essai le voyait « changé
+    // depuis », et le report restait à moitié défait pour toujours.
+    let mut left = Vec::new();
     for f in &pushed.files {
-        if fingerprint(std::path::Path::new(&f.file)) != f.after {
-            return Err(crate::strings::trf("stc_err_changed_since", &f.file));
-        }
-        if !std::path::Path::new(&f.copy).is_file() {
+        let (file, copy) = (std::path::Path::new(&f.file), std::path::Path::new(&f.copy));
+        if !copy.is_file() {
             return Err(crate::strings::trf("stc_err_undo_copy", &f.copy));
         }
+        let now = fingerprint(file);
+        if now == fingerprint(copy) {
+            continue;
+        }
+        if now != f.after {
+            return Err(crate::strings::trf("stc_err_changed_since", &f.file));
+        }
+        left.push((file, copy));
     }
-    for f in &pushed.files {
-        bridge.restore(std::path::Path::new(&f.file), std::path::Path::new(&f.copy))?;
+    // Tous libres avant d'en remettre un seul.
+    for (file, _) in &left {
+        bridge.writable(file)?;
+    }
+    for (file, copy) in &left {
+        bridge.restore(file, copy)?;
     }
     for id in &pushed.moves {
         db.drop_stup_link(*id, "export")?;
@@ -1144,6 +1298,14 @@ fn run_with(
     } else {
         bridge.read(&since)?
     };
+    // **Un classeur illisible n'est pas un classeur vide.** Ses lignes
+    // paraissaient perdues, et celles d'ici repartaient s'y écrire. Une
+    // reprise, elle, relit l'en-tête mal orthographié et dit le reste.
+    if !takeover {
+        if let Some(file) = answer.unreadable.iter().chain(&answer.headerless).next() {
+            return Err(crate::strings::trf("stc_err_cannot_read", file));
+        }
+    }
     let mut report = Report {
         preview,
         takeover,
@@ -1259,6 +1421,15 @@ fn run_with(
                 if !links.contains(id) {
                     db.add_stup_link(*id, "pair", today)?;
                 }
+            }
+        }
+        for (id, i) in &decided.doubts {
+            if let Some(m) = by_id.get(id) {
+                report.doubts.push(Refused {
+                    product: product.label.clone(),
+                    line: move_said(m),
+                    reason: crate::strings::trf("stc_doubt", theirs.movements[*i].nom.trim()),
+                });
             }
         }
         for id in &decided.lost {
@@ -1466,13 +1637,18 @@ fn run_with(
                 return Err(e);
             }
         };
+        // Le classeur est écrit : quoi qu'il arrive au lien, le journal se
+        // ferme, sinon ces lignes ne se déferaient plus.
+        let mut link_failed = None;
         for ((id, entry, effect), outcome) in entries.iter().zip(outcomes.iter()) {
             let stup_id = by_key.get(entry.key.as_str()).copied().unwrap_or(0);
             if outcome.ok {
                 if let Some(j) = &mut journal {
                     j.pushed.moves.push(*id);
                 }
-                db.add_stup_link(*id, "export", today)?;
+                if let Err(e) = db.add_stup_link(*id, "export", today) {
+                    link_failed.get_or_insert(e);
+                }
                 report.exported += 1;
                 *exported_effect.entry(stup_id).or_insert(0.0) += effect;
             } else {
@@ -1496,8 +1672,15 @@ fn run_with(
                 });
             }
         }
-        if let Some(j) = journal {
-            j.close()?;
+        if let Some(Err(said)) = journal.map(Journal::close) {
+            report.warnings.push(Refused {
+                product: String::new(),
+                line: said,
+                reason: String::new(),
+            });
+        }
+        if let Some(e) = link_failed {
+            return Err(e);
         }
     }
     // Les soldes, après ce qui vient d'être fait. Un aperçu compare ce qui
@@ -1690,6 +1873,56 @@ mod tests {
         assert_eq!(p.import, vec![2]);
     }
 
+    /// **Le nom qui concorde passe d'abord** : Dupont, premier venu, prenait
+    /// la ligne de Martin, et le classeur montrait Martin deux fois.
+    #[test]
+    fn a_same_dose_the_same_day_pairs_with_its_own_patient() {
+        let mine = [
+            ours(1, Side::S, "2026-03-03", 7.0, "Dupont", "5", false),
+            ours(2, Side::S, "2026-03-03", 7.0, "Martin", "6", false),
+        ];
+        let theirs = [line("S", "2026-03-03", 7.0, "MARTIN Paul", "", "")];
+        let p = plan(&mine, &theirs);
+        assert_eq!(p.pairs, vec![(2, 0)]);
+        assert_eq!(p.export, vec![1]);
+        assert!(p.doubts.is_empty() && p.import.is_empty());
+    }
+
+    /// **Deux noms différents ne se rapprochent pas d'office** : ce sont
+    /// peut-être deux délivrances, et aucun solde ne le dirait. Ni écrit,
+    /// ni inscrit : montré.
+    #[test]
+    fn two_different_patients_the_same_day_are_shown_not_merged() {
+        let mine = [ours(1, Side::S, "2026-03-03", 7.0, "Dupont", "5", false)];
+        let theirs = [line("S", "2026-03-03", 7.0, "DURAND", "", "")];
+        let p = plan(&mine, &theirs);
+        assert_eq!(p.doubts, vec![(1, 0)]);
+        assert!(p.pairs.is_empty() && p.export.is_empty() && p.import.is_empty());
+        // « Martine » n'est pas « Martin ».
+        assert_eq!(names_fit("Martin", "MARTINE"), Some(false));
+        assert_eq!(names_fit("Dupont", "DUPONT Albert"), Some(true));
+        assert_eq!(names_fit("", "DUPONT"), None);
+        // Une ligne déjà rapprochée reste elle-même, nom retouché ou non.
+        let kept = [ours(1, Side::S, "2026-03-03", 7.0, "Dupont", "5", true)];
+        assert_eq!(plan(&kept, &theirs).pairs, vec![(1, 0)]);
+    }
+
+    /// Un nom manquant n'apparie que s'il n'y a qu'une façon de le faire.
+    #[test]
+    fn a_line_without_a_name_pairs_only_when_it_is_the_only_way() {
+        let mine = [ours(1, Side::S, "2026-03-03", 7.0, "", "5", false)];
+        let one = [line("S", "2026-03-03", 7.0, "DURAND", "", "")];
+        assert_eq!(plan(&mine, &one).pairs, vec![(1, 0)]);
+        let two = [
+            line("S", "2026-03-03", 7.0, "DURAND", "", ""),
+            line("S", "2026-03-03", 7.0, "LEROY", "", ""),
+        ];
+        let p = plan(&mine, &two);
+        assert!(p.pairs.is_empty());
+        assert_eq!(p.doubts, vec![(1, 0)]);
+        assert_eq!(p.import, vec![1]);
+    }
+
     #[test]
     fn two_identical_lines_pair_one_each() {
         let mine = [ours(1, Side::E, "2026-03-02", 28.0, "CERP", "", false)];
@@ -1860,6 +2093,7 @@ mod tests {
                 data_dir: "/registres".into(),
                 products,
                 unreadable: Vec::new(),
+                headerless: Vec::new(),
             })
         }
 
@@ -2655,5 +2889,128 @@ mod tests {
         // Un pont sans fichiers ne sait rien remettre.
         assert!(bridge.inner.restore(&file, &file).is_err());
         assert!(bridge.inner.files_of(&[]).is_empty());
+    }
+
+    /// Un pont qui ne dit qu'une chose : ce qu'on lui fait répondre.
+    #[derive(Default)]
+    struct Stubborn {
+        unreadable: Vec<String>,
+        headerless: Vec<String>,
+        held: Option<std::path::PathBuf>,
+    }
+
+    impl Bridge for Stubborn {
+        fn read(&self, _since: &str) -> Result<Answer, String> {
+            Ok(Answer {
+                unreadable: self.unreadable.clone(),
+                headerless: self.headerless.clone(),
+                ..Answer::default()
+            })
+        }
+        fn add(&self, _entries: &[Entry]) -> Result<Vec<Outcome>, String> {
+            panic!("rien ne s'écrit ici");
+        }
+        fn writable(&self, file: &std::path::Path) -> Result<(), String> {
+            match &self.held {
+                Some(h) if h == file => Err("ouvert dans LibreOffice".to_owned()),
+                _ => Ok(()),
+            }
+        }
+        fn restore(&self, file: &std::path::Path, copy: &std::path::Path) -> Result<(), String> {
+            std::fs::copy(copy, file)
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+        }
+    }
+
+    /// **Un classeur illisible n'est pas un classeur vide** : ses lignes
+    /// se disaient perdues, et celles d'ici repartaient s'y écrire.
+    #[test]
+    fn a_workbook_that_cannot_be_read_stops_the_push() {
+        let (swept, db) = officine("illisible");
+        let root = swept.0.join("reports");
+        db.set_stup_setting(TAKEN_KEY, "2026-03-10").unwrap();
+        for bridge in [
+            Stubborn {
+                unreadable: vec!["2026/methadone.ods".to_owned()],
+                ..Stubborn::default()
+            },
+            Stubborn {
+                headerless: vec!["2026/methadone.ods".to_owned()],
+                ..Stubborn::default()
+            },
+        ] {
+            let said = push(&db, &bridge, "2026-03-12", false, &root).unwrap_err();
+            assert!(said.contains("2026/methadone.ods"), "{said}");
+        }
+    }
+
+    /// **Une reprise relancée ne déplace pas le départ du report** : ce qui
+    /// s'est écrit entre-temps sans partir en sortait pour toujours.
+    #[test]
+    fn a_second_takeover_keeps_the_start_of_the_push_window() {
+        let (_swept, db) = officine("reprise2");
+        let bridge = Stubborn::default();
+        take_over(&db, &bridge, "2026-11-01", false).unwrap();
+        take_over(&db, &bridge, "2026-11-10", false).unwrap();
+        assert_eq!(db.stup_setting(TAKEN_KEY).as_deref(), Some("2026-11-01"));
+    }
+
+    fn journal_of(root: &std::path::Path, files: &[(&std::path::Path, &[u8], &[u8])]) {
+        let dir = root.join("0001");
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut pushed = Pushed {
+            at: "2026-03-12".to_owned(),
+            ..Pushed::default()
+        };
+        for (n, (file, before, after)) in files.iter().enumerate() {
+            let copy = dir.join(format!("{n}.ods"));
+            std::fs::write(&copy, before).unwrap();
+            std::fs::write(file, after).unwrap();
+            pushed.files.push(PushedFile {
+                file: file.to_string_lossy().into_owned(),
+                copy: copy.to_string_lossy().into_owned(),
+                after: fingerprint(file),
+            });
+        }
+        std::fs::write(dir.join(MANIFEST), serde_json::to_string(&pushed).unwrap()).unwrap();
+    }
+
+    /// **Tous libres, ou rien de remis** ; et une annulation interrompue se
+    /// reprend : le classeur déjà remis se voyait « changé depuis », et le
+    /// report restait à moitié défait pour toujours.
+    #[test]
+    fn an_undo_touches_nothing_while_one_workbook_is_held_and_can_resume() {
+        let (swept, db) = officine("undo2");
+        let root = swept.0.join("reports");
+        let (a, b) = (swept.0.join("a.ods"), swept.0.join("b.ods"));
+        journal_of(&root, &[(&a, b"a0", b"a1"), (&b, b"b0", b"b1")]);
+        let held = Stubborn {
+            held: Some(b.clone()),
+            ..Stubborn::default()
+        };
+        assert!(undo_push(&db, &held, "2026-03-13", &root).is_err());
+        assert_eq!(std::fs::read(&a).unwrap(), b"a1", "rien n'est remis");
+        assert!(last_push(&root).is_some());
+
+        // Le poste est tombé entre les deux : `a` est déjà remis.
+        std::fs::write(&a, b"a0").unwrap();
+        assert_eq!(
+            undo_push(&db, &Stubborn::default(), "2026-03-13", &root),
+            Ok(0)
+        );
+        assert_eq!(std::fs::read(&b).unwrap(), b"b0");
+        assert!(last_push(&root).is_none());
+    }
+
+    /// Un seul poste à la fois, et le verrou d'un poste tombé ne dure pas.
+    #[test]
+    fn two_posts_do_not_write_to_the_workbooks_together() {
+        let (swept, _db) = officine("verrou");
+        let root = swept.0.join("reports");
+        let lock = WriteLock::take(&root).unwrap();
+        assert!(WriteLock::take(&root).is_err());
+        drop(lock);
+        assert!(WriteLock::take(&root).is_ok());
     }
 }

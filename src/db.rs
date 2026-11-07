@@ -2250,11 +2250,22 @@ pub fn backup_prefix(db_path: &Path, kind: Option<&str>) -> String {
 /// quand le registre est là, ou qu'aucune copie n'existe (une installation
 /// neuve, ou une officine qui n'a encore rien inscrit).
 pub fn lost_register(db_path: &Path) -> Option<PathBuf> {
-    let present = std::fs::metadata(stups_path(db_path)).is_ok_and(|m| m.len() > 0);
-    if present {
+    lost_file(&stups_path(db_path), db_path, Some("stups"))
+}
+
+/// La même chose pour le fichier des pièces : recréé vide à côté d'une
+/// base qui les liste encore, il était recopié chaque jour, et la rotation
+/// (deux copies par défaut) effaçait les vraies en deux jours.
+pub fn lost_scans(db_path: &Path) -> Option<PathBuf> {
+    lost_file(&scans_path(db_path), db_path, Some("scans"))
+}
+
+/// La dernière copie de `file` s'il manque (absent ou vide).
+fn lost_file(file: &Path, db_path: &Path, series: Option<&str>) -> Option<PathBuf> {
+    if std::fs::metadata(file).is_ok_and(|m| m.len() > 0) {
         return None;
     }
-    let prefix = backup_prefix(db_path, Some("stups"));
+    let prefix = backup_prefix(db_path, series);
     let mut copies: Vec<PathBuf> = std::fs::read_dir(backup_dir(db_path))
         .ok()?
         .flatten()
@@ -2268,6 +2279,20 @@ pub fn lost_register(db_path: &Path) -> Option<PathBuf> {
         .collect();
     copies.sort();
     copies.pop()
+}
+
+/// **La base manque alors que l'officine est là** : le registre ou les
+/// pièces à côté, ou des copies d'elle. Rend ce qui le prouve. Créée neuve,
+/// une base vide écrasait les quatorze copies de la vraie en quatorze jours,
+/// et un mot de passe mal tapé devenait sa clé.
+pub fn lost_base(db_path: &Path) -> Option<PathBuf> {
+    if std::fs::metadata(db_path).is_ok_and(|m| m.len() > 0) {
+        return None;
+    }
+    let beside = [stups_path(db_path), scans_path(db_path)]
+        .into_iter()
+        .find(|f| std::fs::metadata(f).is_ok_and(|m| m.len() > 0));
+    beside.or_else(|| lost_file(db_path, db_path, None))
 }
 
 /// What the backup folder actually holds.
@@ -42749,6 +42774,23 @@ fn probe_key(path: &Path, key: &str) -> Option<Connection> {
     Some(conn)
 }
 
+/// **Rechiffrer, et le vérifier.** `PRAGMA rekey` ne rend jamais d'erreur
+/// pour ce qui arrive en route : SQLCipher (`sqlite3_rekey_v2`) journalise
+/// un fichier occupé, un disque plein ou un partage tombé, annule, et rend
+/// OK. Seule une connexion neuve dit sous quelle clé est le fichier. Après
+/// un échec, la connexion lit sous l'ancienne clé et **écrit sous celle qui
+/// a été refusée** : l'appelant lui redonne sa clé avant toute écriture.
+fn rekey_verified(conn: &Connection, file: Option<&Path>, key: &str) -> Result<(), String> {
+    conn.pragma_update(None, "rekey", key)
+        .map_err(|e| e.to_string())?;
+    match file {
+        Some(f) if probe_key(f, key).is_none() => {
+            Err("le fichier n'a pas pris la nouvelle clé (occupé, disque plein ?)".to_owned())
+        }
+        _ => Ok(()),
+    }
+}
+
 /// Écrire le témoin avant de rechiffrer : chiffré par le nouveau mot de
 /// passe, il porte l'ancien.
 fn write_rekey_witness(db_path: &Path, old: &str, new: &str) -> Result<(), String> {
@@ -42831,7 +42873,7 @@ fn finish_rekey(db_path: &Path, typed: &str) -> Result<(), String> {
                 file.display()
             )
         })?;
-        conn.pragma_update(None, "rekey", typed).map_err(|e| {
+        rekey_verified(&conn, Some(file), typed).map_err(|e| {
             format!(
                 "Changement de mot de passe interrompu : {} n'a pas pu passer sous le nouveau \
                  mot de passe ({e}).",
@@ -43094,6 +43136,16 @@ fn fact_delete(conn: &Connection, drug_id: i64, was: &crate::pk::Fact) -> Result
 impl Db {
     /// Open (or create) the encrypted database. Fails with a French message
     /// if the password does not match an existing file.
+    /// [`Db::open`] sans jamais créer : pour tout ce qui rouvre une base
+    /// déjà en service (copie du jour, maintenance, voile). Un partage
+    /// démonté y aurait fait naître une base vide.
+    pub fn open_existing(path: &Path, password: &str) -> Result<Self, String> {
+        if !path.is_file() {
+            return Err(format!("base introuvable : {}", path.display()));
+        }
+        Self::open(path, password)
+    }
+
     pub fn open(path: &Path, password: &str) -> Result<Self, String> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
@@ -43114,6 +43166,23 @@ impl Db {
                  ({}) sous ce nom avant d'ouvrir l'application.",
                 stups_path(path).display(),
                 copy.display()
+            ));
+        }
+        if let Some(copy) = lost_scans(path) {
+            return Err(format!(
+                "Le fichier des pièces est introuvable ou vide à côté de la base ({}), alors \
+                 que des copies en existent. Remettre en place la dernière ({}) sous ce nom \
+                 avant d'ouvrir l'application.",
+                scans_path(path).display(),
+                copy.display()
+            ));
+        }
+        if let Some(proof) = lost_base(path) {
+            return Err(format!(
+                "La base est introuvable ou vide ({}), alors que l'officine est là ({}). \
+                 Remettre en place la dernière copie sous ce nom avant d'ouvrir l'application.",
+                path.display(),
+                proof.display()
             ));
         }
         // Un changement de mot de passe coupé en route se finit ici, avant
@@ -43658,36 +43727,61 @@ impl Db {
             })?),
             None => None,
         };
-        let files: [(&rusqlite::Connection, &str); 3] = [
+        let files: [(&rusqlite::Connection, &str, Option<PathBuf>); 3] = [
             (
                 &self.scans,
                 "changement du mot de passe des pièces impossible",
+                path.as_deref().map(scans_path),
             ),
             (
                 &self.stups,
                 "changement du mot de passe du registre impossible",
+                path.as_deref().map(stups_path),
             ),
-            (&self.conn, "changement du mot de passe impossible"),
+            (
+                &self.conn,
+                "changement du mot de passe impossible",
+                path.clone(),
+            ),
         ];
-        for (done, (conn, what)) in files.iter().enumerate() {
-            if let Err(e) = conn.pragma_update(None, "rekey", new_password) {
-                let mut back = true;
-                for (undo, _) in files.iter().take(done) {
-                    back &= undo.pragma_update(None, "rekey", old_password).is_ok();
+        // **Libres avant d'en toucher un** : ici l'erreur est vraie, et une
+        // base tenue par un autre poste s'arrête sans clé déplacée.
+        for (conn, what, _) in &files {
+            if let Err(e) = conn.execute_batch("BEGIN EXCLUSIVE; COMMIT;") {
+                if let Some(p) = &path {
+                    remove_rekey_witness(p);
                 }
-                // Le témoin reste tant que les fichiers sont sous deux
-                // clés : c'est lui qui permet de finir.
-                if back {
-                    if let Some(p) = &path {
-                        remove_rekey_witness(p);
-                    }
-                }
-                return Err(if back {
-                    format!("{what} : {e}. Rien n'a changé : les trois fichiers gardent l'ancien mot de passe.")
-                } else {
-                    format!("{what} : {e}. Le retour à l'ancien mot de passe a lui aussi échoué : fermez l'application et rouvrez-la avec le nouveau mot de passe — l'ouverture finit le changement.")
-                });
+                return Err(format!(
+                    "{what} : {e}. Rien n'a changé : les trois fichiers gardent l'ancien mot de passe."
+                ));
             }
+        }
+        for (done, (conn, what, file)) in files.iter().enumerate() {
+            let Err(e) = rekey_verified(conn, file.as_deref(), new_password) else {
+                continue;
+            };
+            // Le fichier qui a échoué aussi : sa connexion écrit encore sous
+            // la clé refusée, et le prochain enregistrement l'abîmerait.
+            let mut back = true;
+            for (undo, _, file) in files.iter().take(done + 1) {
+                if rekey_verified(undo, file.as_deref(), old_password).is_err() {
+                    back = false;
+                    // Resté sous le nouveau : qu'il y écrive aussi.
+                    let _ = undo.pragma_update(None, "rekey", new_password);
+                }
+            }
+            // Le témoin reste tant que les fichiers sont sous deux
+            // clés : c'est lui qui permet de finir.
+            if back {
+                if let Some(p) = &path {
+                    remove_rekey_witness(p);
+                }
+            }
+            return Err(if back {
+                format!("{what} : {e}. Rien n'a changé : les trois fichiers gardent l'ancien mot de passe.")
+            } else {
+                format!("{what} : {e}. Le retour à l'ancien mot de passe a lui aussi échoué : fermez l'application et rouvrez-la avec le nouveau mot de passe — l'ouverture finit le changement.")
+            });
         }
         if let Some(p) = &path {
             remove_rekey_witness(p);
@@ -70262,6 +70356,107 @@ mod tests {
         assert!(!db.now_stamp().unwrap().is_empty());
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// **Un fichier perdu ne renaît pas vide quand l'officine est là** :
+    /// les pièces sans leur fichier, la base à côté du registre. Rien
+    /// n'est créé, et une clé mal tapée n'en devient pas une.
+    #[test]
+    fn a_lost_file_is_never_recreated_empty_beside_the_rest() {
+        let dir = std::env::temp_dir().join(format!("bpm-lost-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("base.db");
+        drop(Db::open(&path, "secret").unwrap());
+
+        // Les pièces, avec une copie : refus, et la copie nommée.
+        let scans = scans_path(&path);
+        std::fs::create_dir_all(backup_dir(&path)).unwrap();
+        let copy = backup_dir(&path).join(format!(
+            "{}2026-11-06.db",
+            backup_prefix(&path, Some("scans"))
+        ));
+        std::fs::copy(&scans, &copy).unwrap();
+        std::fs::remove_file(&scans).unwrap();
+        let said = Db::open(&path, "secret").err().unwrap();
+        assert!(said.contains("2026-11-06"), "{said}");
+        assert!(!scans.exists());
+        std::fs::copy(&copy, &scans).unwrap();
+        assert!(Db::open(&path, "secret").is_ok());
+
+        // La base : refus quel que soit le mot de passe, rien de créé.
+        std::fs::remove_file(&path).unwrap();
+        assert!(Db::open(&path, "faute de frappe").is_err());
+        assert!(!path.exists());
+
+        // Une installation neuve, elle, se crée.
+        let fresh = dir.join("neuve/base.db");
+        std::fs::create_dir_all(fresh.parent().unwrap()).unwrap();
+        assert!(Db::open_existing(&fresh, "secret").is_err());
+        assert!(!fresh.exists());
+        assert!(Db::open(&fresh, "secret").is_ok());
+    }
+
+    /// **Le rechiffrement raté se voit, et la connexion se répare** : même
+    /// tenue par un autre, redonner sa clé à la connexion suffit pour que
+    /// ses écritures suivantes restent lisibles.
+    #[test]
+    fn a_failed_rekey_is_caught_and_the_connection_keeps_writing_readably() {
+        let dir = std::env::temp_dir().join(format!("bpm-rekey-fix-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("base.db");
+        let db = Db::open(&path, "ancien").unwrap();
+        db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        db.conn
+            .busy_timeout(std::time::Duration::from_millis(50))
+            .unwrap();
+        let other = probe_key(&path, "ancien").unwrap();
+        other.execute_batch("BEGIN IMMEDIATE").unwrap();
+
+        assert!(rekey_verified(&db.conn, Some(&path), "nouveau").is_err());
+        let _ = db.conn.pragma_update(None, "rekey", "ancien");
+
+        other.execute_batch("ROLLBACK").unwrap();
+        drop(other);
+        db.add_patient("Martin", "Claire", "1949-02-11").unwrap();
+        drop(db);
+        let db = Db::open(&path, "ancien").unwrap();
+        assert_eq!(db.patients().unwrap().len(), 2);
+    }
+
+    /// **`PRAGMA rekey` ne dit jamais qu'il a échoué** : SQLCipher journalise
+    /// et rend OK. Un autre poste tenait la base, le changement se disait
+    /// fait, et la connexion écrivait la suite sous une clé que le fichier
+    /// n'avait pas : ni l'ancien ni le nouveau mot de passe n'ouvrait plus.
+    #[test]
+    fn a_password_change_another_post_blocks_says_so_and_changes_nothing() {
+        let dir = std::env::temp_dir().join(format!("bpm-rekey-busy-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("base.db");
+        let db = Db::open(&path, "ancien").unwrap();
+        db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let other = probe_key(&path, "ancien").unwrap();
+        other.execute_batch("BEGIN IMMEDIATE").unwrap();
+
+        let said = db.change_password("ancien", "nouveau");
+        assert!(said.is_err(), "{said:?}");
+        other.execute_batch("ROLLBACK").unwrap();
+        drop(other);
+
+        // La session continue d'écrire, et rien ne s'abîme.
+        db.add_patient("Martin", "Claire", "1949-02-11").unwrap();
+        drop(db);
+        for file in [path.clone(), scans_path(&path), stups_path(&path)] {
+            assert!(probe_key(&file, "ancien").is_some(), "{}", file.display());
+        }
+        assert!(!rekey_witness(&path).exists());
+        let db = Db::open(&path, "ancien").unwrap();
+        assert_eq!(db.patients().unwrap().len(), 2);
     }
 
     #[test]

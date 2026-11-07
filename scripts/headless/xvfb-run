@@ -7,7 +7,13 @@ geom=1280x800
 while [ $# -gt 0 ]; do
   case "$1" in
     -a) shift;;
+    # Le numéro d'écran est tiré ci-dessous. Ce cas manquait : `fuzz.sh`
+    # le passe, la boucle s'arrêtait là, et « -n 200 … » partait comme
+    # commande. L'application ne démarrait jamais, et chaque vue sortait
+    # « ok » en une seconde.
+    -n) shift 2;;
     -s) geom=$(echo "$2" | sed -E 's/.*-screen [0-9]+ ([0-9]+x[0-9]+).*/\1/'); shift 2;;
+    -*) echo "xvfb-run (scripts/headless) : option inconnue $1" >&2; exit 2;;
     *) break;;
   esac
 done

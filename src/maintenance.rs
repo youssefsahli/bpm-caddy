@@ -258,7 +258,7 @@ pub fn run_all(db: &Db, job: Job) -> Outcome {
 pub fn spawn(path: PathBuf, password: String, job: Job) -> Receiver<Progress> {
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        let db = match Db::open(&path, &password) {
+        let db = match Db::open_existing(&path, &password) {
             Ok(db) => db,
             Err(e) => {
                 let _ = tx.send(Progress::Done(Outcome {
