@@ -137,8 +137,14 @@ fn run_audit(args: &[String]) -> i32 {
         to: db::format_french_date(&today),
         days: days as usize,
     };
-    let activity = db.audit_activity(&from, &today).unwrap_or_default();
     // Une lecture qui échoue n'est pas un journal vide : elle se dit.
+    let activity = match db.audit_activity(&from, &today) {
+        Ok(activity) => activity,
+        Err(e) => {
+            eprintln!("{}", audit::unreadable(&e));
+            return 2;
+        }
+    };
     let access = match db.accesses_since(&from, &today) {
         Ok(lines) => audit::summarize(&lines),
         Err(e) => {
@@ -146,13 +152,17 @@ fn run_audit(args: &[String]) -> i32 {
             return 2;
         }
     };
-    let conformity = db
-        .audit_conformity(
-            &today,
-            i64::from(cfg.stock.count_days),
-            cfg.locations.notice_days,
-        )
-        .unwrap_or_default();
+    let conformity = match db.audit_conformity(
+        &today,
+        i64::from(cfg.stock.count_days),
+        cfg.locations.notice_days,
+    ) {
+        Ok(conformity) => conformity,
+        Err(e) => {
+            eprintln!("{}", audit::unreadable(&e));
+            return 2;
+        }
+    };
     print!("{}", audit::render(&head, &activity, &access, &conformity));
     0
 }

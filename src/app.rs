@@ -26628,6 +26628,14 @@ impl App {
             session.reload_dispositifs();
             session.reload_protocols();
             if outcome.job == Job::Reset {
+                // Every other file deleted leaves its line: so does this,
+                // once it has really run.
+                if outcome.error.is_none() {
+                    let _ =
+                        session
+                            .db
+                            .log_access(&session.operator, crate::audit::Act::Supprime, 0);
+                }
                 session.viewing = None;
                 session.viewing_interviews.clear();
                 session.patient_treats.clear();
@@ -55400,7 +55408,7 @@ impl App {
                     posology: session.dose_of(d.id).to_owned(),
                     date,
                     qsp: script
-                        .qsp_from(&script.dispensed_on)
+                        .qsp_left()
                         .map(|days| days.to_string())
                         .unwrap_or_default(),
                 }
@@ -58751,9 +58759,11 @@ impl App {
                                 // it back.
                                 let q = &mut session.qual;
                                 let fresh = q.ncs.iter().find(|n| n.id == a.nc_id).cloned();
+                                // Only this column: what another post
+                                // changed must still fail the next save.
                                 if let (Some(e), Some(fresh)) = (q.edit.as_mut(), fresh) {
                                     e.draft.effective = fresh.effective;
-                                    e.shown = fresh;
+                                    e.shown.effective = fresh.effective;
                                 }
                             }
                             Err(err) => session.error = Some(err),
@@ -99682,6 +99692,11 @@ impl eframe::App for App {
         // choisi dans le volet. Relus seulement quand il change.
         if let State::Unlocked(s) = &mut self.state {
             let op = self.operator.trim();
+            // The session writes the access journal and its own notes: it
+            // names who is at the post, not the post's default initials.
+            if s.operator != op {
+                op.clone_into(&mut s.operator);
+            }
             if s.favorites_of.as_deref() != Some(op) {
                 let op = op.to_owned();
                 s.load_favorites(&op);

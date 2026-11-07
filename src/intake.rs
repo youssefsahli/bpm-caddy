@@ -1086,14 +1086,22 @@ fn moments_first(folded: &str) -> Option<[Option<Take>; 4]> {
         // A range, a mixed number: the phrase says more than one figure.
         let range = matches!(next, Some("a" | "ou")) && after.and_then(quarters).is_some();
         // « 1 1/2 », « 1 et demi », and past the unit « 1 comprimé et demi ».
-        let part = |w: &str| w == "demi" || w.contains(['/', '½', '¼', '¾']);
+        // A fraction has its digits (« / » alone separates two moments),
+        // and « 1/2 heure avant » is a delay.
+        let part = |w: &str| {
+            w == "demi"
+                || w.contains(['½', '¼', '¾'])
+                || (w.contains('/') && w.chars().any(|c| c.is_ascii_digit()))
+        };
         let third = tokens.get(i + 3).map(|n| clean(n));
         let (rest, beyond) = if next.is_some_and(|n| UNITS.contains(&n)) {
             (after, third.as_deref())
         } else {
             (next, after)
         };
-        let mixed = rest.is_some_and(part) || (rest == Some("et") && beyond.is_some_and(part));
+        let delay = matches!(beyond, Some("h" | "heure" | "heures" | "min" | "minutes"));
+        let mixed =
+            (rest.is_some_and(part) && !delay) || (rest == Some("et") && beyond.is_some_and(part));
         if range || mixed {
             return Some(marks);
         }
@@ -1115,6 +1123,19 @@ fn moments_first(folded: &str) -> Option<[Option<Take>; 4]> {
             }
         };
         if !closes {
+            // A strength, an hour or a delay ahead of the dose: « le soir
+            // 20 mg 1 comprimé ». The dose must be written before the next
+            // moment, with its unit, or the phrase is not read.
+            let dose_follows = tokens[i + 1..]
+                .iter()
+                .map(|t| clean(t))
+                .take_while(|t| moment_of(t).is_none())
+                .collect::<Vec<_>>()
+                .windows(2)
+                .any(|w| quarters(&w[0]).is_some_and(|q| q > 0) && UNITS.contains(&w[1].as_str()));
+            if dose_follows {
+                continue;
+            }
             return bound.then_some(marks);
         }
         for m in waiting.drain(..) {
@@ -1307,6 +1328,26 @@ mod tests {
         assert_eq!(
             grid("matin et soir 2 pulvérisations pendant 10 jours"),
             [Some(8), None, Some(8), None]
+        );
+        assert_eq!(
+            grid("le soir 20 mg 1 comprimé"),
+            [None, None, Some(4), None]
+        );
+        assert_eq!(
+            grid("le matin à 8 h 1 comprimé"),
+            [Some(4), None, None, None]
+        );
+        assert_eq!(
+            grid("matin et soir pendant 10 jours 2 pulvérisations"),
+            [Some(8), None, Some(8), None]
+        );
+        assert_eq!(
+            grid("matin 1 cp / soir 1 cp"),
+            [Some(4), None, Some(4), None]
+        );
+        assert_eq!(
+            grid("le matin 1 cp 1/2 heure avant le repas"),
+            [Some(4), None, None, None]
         );
         // Not a dose, or not one figure: the box stays a mark.
         for blank in [

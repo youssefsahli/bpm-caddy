@@ -472,15 +472,11 @@ pub fn compare(held: &[Held], list: &str, base: &[Known]) -> Vec<Divergence> {
                 // (immediate release) read as kept. A line written as the
                 // molecule stays kept.
                 //
-                // Only when their class here says they differ: Dafalgan for
-                // Doliprane is a substitution, and a column that flags every
-                // one is a column nobody reads. The names cannot tell:
-                // « actiskenan » holds « skenan ».
-                let other_brand = !e.brand.is_empty()
-                    && e.brand != crate::fuzzy::sort_key(h.name)
-                    && !e.class.is_empty()
-                    && !h.class.trim().is_empty()
-                    && crate::fuzzy::sort_key(&e.class) != crate::fuzzy::sort_key(h.class);
+                // Every other name, a plain substitution included: the
+                // class cannot tell, Sevredol and Skenan are both « opioïde »
+                // on the card, and a line to look at costs less than a
+                // switch of release form passing as kept.
+                let other_brand = !e.brand.is_empty() && e.brand != crate::fuzzy::sort_key(h.name);
                 // « Eliquis 2.5 : 1 cp » carries no unit, and the 2.5 was
                 // skipped as a harmless prefix against a held 5 mg.
                 let other_bare = theirs.is_none()
@@ -751,19 +747,20 @@ fn same_units(words: Vec<String>) -> Vec<String> {
 /// La première quantité d'un texte, ramenée à son unité de base : les
 /// masses en microgrammes, les unités et les millilitres à part.
 /// « 1 g » et « 1000 mg » sont la même ; « 5mg », « 2,5 mg » se lisent.
-/// A strength written bare ahead of its posology: the number in
-/// « 2.5 : 1 cp le soir », not the one in « 2 cp le soir », nor the spaced
-/// grid « 1 0 1 »: a word follows the second number.
+/// A strength written bare ahead of its posology, read from the numbers
+/// the line opens with: two are a strength and a dose (« 15 : 1 cp/j »),
+/// three a grid (« 1 0 1 »), four a strength ahead of a grid
+/// (« 2.5 : 1 0 1 ») unless the first could be a take (« 1 1 1 1 »).
 fn bare_strength(detail: &str) -> Option<f64> {
     let words = dose_words(detail);
-    let number = |w: &String| w.parse::<f64>().ok();
-    let first = number(words.first()?)?;
-    number(words.get(1)?)?;
-    words
-        .get(2)?
-        .chars()
-        .all(char::is_alphabetic)
-        .then_some(first)
+    let numbers: Vec<f64> = words.iter().map_while(|w| w.parse().ok()).collect();
+    let first = *numbers.first()?;
+    let a_take = first <= 2.0 && first.fract() == 0.0;
+    match numbers.len() {
+        2 => Some(first),
+        4 if !a_take => Some(first),
+        _ => None,
+    }
 }
 
 /// Can this bare number be the held strength, in whichever unit it left
@@ -1138,10 +1135,23 @@ Vogalène lyoc si nausées
             kind(&doliprane, "Doliprane 1000 : 1 cp matin et soir"),
             Change::Kept
         );
+        // Another name is looked at, even within a class: the class cannot
+        // tell a release form.
         assert_eq!(
             kind(&doliprane, "Dafalgan 1 g : 1 cp matin et soir"),
-            Change::Kept
+            Change::DoseChanged
         );
+        // A halved anticoagulant, however the rest of the line is written.
+        assert_eq!(kind(&grid, "Eliquis 2.5 : 1 0 1"), Change::DoseChanged);
+        assert_eq!(kind(&grid, "Eliquis 5 : 1 0 1"), Change::Kept);
+        let daily = [Held {
+            name: "Eliquis",
+            dci: "apixaban",
+            class: "AOD",
+            posology: "1 cp/j",
+            strength: "5 mg",
+        }];
+        assert_eq!(kind(&daily, "Eliquis 2.5 : 1 cp/j"), Change::DoseChanged);
     }
 
     #[test]

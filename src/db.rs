@@ -1196,6 +1196,9 @@ const INDEXES: &[&str] = &[
     "CREATE INDEX IF NOT EXISTS idx_interviews_patient ON interviews(patient_id)",
     "CREATE INDEX IF NOT EXISTS idx_notes_subject ON notes(subject_kind, subject_id)",
     "CREATE INDEX IF NOT EXISTS idx_biology_patient ON biology(patient_id)",
+    "CREATE INDEX IF NOT EXISTS idx_patient_messages_key
+     ON patient_messages(key_id, from_patient, uid)",
+    "CREATE INDEX IF NOT EXISTS idx_patient_messages_patient ON patient_messages(patient_id)",
     "CREATE INDEX IF NOT EXISTS idx_vaccinations_patient ON vaccinations(patient_id)",
     "CREATE INDEX IF NOT EXISTS idx_vacc_prescriptions_patient ON vacc_prescriptions(patient_id)",
     "CREATE INDEX IF NOT EXISTS idx_locations_patient ON locations(patient_id)",
@@ -43087,6 +43090,9 @@ pub fn process_token() -> &'static str {
     })
 }
 
+/// What one patient's key may leave unread. Far past any real exchange.
+pub const PATIENT_UNREAD_MOST: i64 = 200;
+
 fn write_tx(conn: &Connection) -> rusqlite::Result<rusqlite::Transaction<'_>> {
     rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
 }
@@ -59396,6 +59402,18 @@ impl Db {
         else {
             return Ok(Vec::new());
         };
+        // **A key does not write without limit.** A lost phone or a
+        // photographed sheet floods no further than this: what is past it
+        // is not stored and not acknowledged, so the page keeps it waiting
+        // until the officine has read the rest.
+        let mut unread: i64 = tx
+            .query_row(
+                "SELECT COUNT(*) FROM patient_messages
+                 WHERE key_id = ?1 AND from_patient = 1 AND read_on = ''",
+                [key_id],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
         let mut got = Vec::with_capacity(messages.len());
         for (uid, written_at, body) in messages {
             let there: i64 = tx
@@ -59407,6 +59425,10 @@ impl Db {
                 )
                 .map_err(|e| e.to_string())?;
             if there == 0 {
+                if unread >= PATIENT_UNREAD_MOST {
+                    continue;
+                }
+                unread += 1;
                 tx.execute(
                     &format!(
                         "INSERT INTO patient_messages

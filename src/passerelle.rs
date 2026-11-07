@@ -409,6 +409,8 @@ fn admit(calls: &Mutex<HashMap<IpAddr, Vec<Instant>>>, ip: IpAddr, most: usize) 
     let Ok(mut calls) = calls.lock() else {
         return false;
     };
+    // One subscriber counts once, whichever address of its /64 it calls from.
+    let ip = crate::repertoire::caller(ip);
     let now = Instant::now();
     calls.retain(|_, v| {
         v.retain(|t| now.duration_since(*t) < Duration::from_secs(60));
@@ -420,6 +422,20 @@ fn admit(calls: &Mutex<HashMap<IpAddr, Vec<Instant>>>, ip: IpAddr, most: usize) 
     let seen = calls.entry(ip).or_default();
     seen.push(now);
     seen.len() <= most
+}
+
+/// Has this address already spent its calls? Reads, charges nothing.
+fn spent(calls: &Mutex<HashMap<IpAddr, Vec<Instant>>>, ip: IpAddr, most: usize) -> bool {
+    let ip = crate::repertoire::caller(ip);
+    let now = Instant::now();
+    calls.lock().map_or(true, |calls| {
+        calls.get(&ip).is_some_and(|v| {
+            v.iter()
+                .filter(|t| now.duration_since(**t) < Duration::from_secs(60))
+                .count()
+                >= most
+        })
+    })
 }
 
 /// La préface d'un poste : le secret de sa boîte (64 chiffres
@@ -446,12 +462,16 @@ fn take_post(
     calls: &Calls,
     journal: &Option<Arc<Journal>>,
 ) -> std::io::Result<()> {
-    if !admit(calls, ip, POST_CALLS_PER_MINUTE) {
+    // **Only a call that is no post is charged.** A post redials after each
+    // page it serves: charged, thirty polls a minute, or a stranger's junk
+    // frames, took it off the gateway. Good prefaces are bounded below.
+    if spent(calls, ip, POST_CALLS_PER_MINUTE) {
         note(journal, || format!("poste {ip} - trop d'appels"));
         return Ok(());
     }
     let line = read_line(&stream)?;
     let Some(secret) = read_preface(&line) else {
+        admit(calls, ip, POST_CALLS_PER_MINUTE);
         note(journal, || format!("poste {ip} - illisible"));
         return Ok(());
     };
@@ -468,7 +488,13 @@ fn take_post(
         say("trop de boîtes");
         return Ok(());
     }
-    if b.values().flatten().filter(|w| w.ip == ip).count() >= WAITS_PER_IP {
+    let subscriber = crate::repertoire::caller(ip);
+    let held = b
+        .values()
+        .flatten()
+        .filter(|w| crate::repertoire::caller(w.ip) == subscriber)
+        .count();
+    if held >= WAITS_PER_IP {
         say("trop d'attentes pour l'adresse");
         return Ok(());
     }

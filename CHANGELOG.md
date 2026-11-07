@@ -77,7 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Monitoring.** Bonviva, Actonel, Aclasta, Zometa and Invokana get their
   lines, and an empty list now says « à vérifier » instead of nothing due.
 - **Conciliation.** A strength written with no unit (« Eliquis 2.5 »), a
-  doubled take and a named product of another class on the card (Actiskénan for Skenan) no
+  doubled take and a different named product (Actiskénan for Skenan) no
   longer read as kept.
 - **Nutrition.** The adult criteria no longer give a verdict under 18.
 - **Vitale card.** A child under the holder's number no longer takes the
@@ -94,6 +94,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Prescribers.** Picking a namesake writes the first name, so two
   Dr Morel stay two for the register's watch. A stray opening quote in a
   directory file no longer swallows the lines after it.
+- **Access journal.** It names the person chosen in the side pane, not the
+  post's default initials, and a base reset leaves its line. A read that
+  fails in the audit window or `bpm-caddy audit` says so instead of an
+  empty journal and « conforme ».
+- **Console.** `sleep` no longer escapes « Arrêter », and `patients()` works
+  on a large base.
+- **Patient messaging.** A key stops being stored past 200 unread messages
+  (the page keeps them waiting), the messages table is indexed, a
+  conversation through a gateway has one overall deadline, serving pages no
+  longer spends a post's calls on the gateway, gateway limits count an IPv6
+  subscriber once, and junk offers no longer spend the rendezvous budget.
 - **Compression.** With no size entered the renewal says to give it,
   instead of two pairs covered.
 - **Liaison sheet.** The patient's identity is unticked when another file

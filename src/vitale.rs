@@ -181,8 +181,10 @@ pub fn beneficiaries(raw: &[u8], this_year: u32) -> Vec<Beneficiary> {
     // or neither, keeps the nearest two.
     let side = match (found_at.first(), found_at.last()) {
         (Some(&first), Some(&last)) if found_at.len() > 1 => {
-            let before = has_name(&chars[first.saturating_sub(96)..first]);
-            let after = has_name(&chars[last + 15..(last + 15 + 96).min(chars.len())]);
+            // Two names make a side: one run past the last NIR is the
+            // caisse, not a person.
+            let before = two_names(&chars[first.saturating_sub(96)..first]);
+            let after = two_names(&chars[last + 15..(last + 15 + 96).min(chars.len())]);
             match (before, after) {
                 (true, false) => Side::Before,
                 (false, true) => Side::After,
@@ -199,22 +201,25 @@ pub fn beneficiaries(raw: &[u8], this_year: u32) -> Vec<Beneficiary> {
     let date_side = match (found_at.first(), found_at.last()) {
         (Some(&first), Some(&last)) if found_at.len() > 1 => {
             let nir = |at: usize| chars[at..at + 15].iter().collect::<String>();
+            let dated = |at: usize, within: std::ops::Range<usize>, side: Side| {
+                !birth_around(&chars, at, within, &nir(at), this_year, side).is_empty()
+            };
             let whole = 0..chars.len();
-            let before = !birth_around(
-                &chars,
-                first,
-                whole.clone(),
-                &nir(first),
-                this_year,
-                Side::Before,
-            )
-            .is_empty();
-            let after =
-                !birth_around(&chars, last, whole, &nir(last), this_year, Side::After).is_empty();
-            match (before, after) {
+            let next = found_at[1];
+            let previous = found_at[found_at.len() - 2] + 15;
+            // The two ends say it, no neighbour in reach. A child last,
+            // whose date disagrees with the NIR, leaves it to the first
+            // person's own record.
+            match (
+                dated(first, whole.clone(), Side::Before),
+                dated(last, whole.clone(), Side::After),
+            ) {
                 (true, false) => Some(Side::Before),
                 (false, true) => Some(Side::After),
-                _ => None,
+                (true, true) => None,
+                (false, false) if dated(first, first..next, Side::After) => Some(Side::After),
+                (false, false) if dated(last, previous..last, Side::Before) => Some(Side::Before),
+                (false, false) => None,
             }
         }
         _ => Some(Side::Either),
@@ -272,6 +277,15 @@ fn has_name(chars: &[char]) -> bool {
         }
     }
     false
+}
+
+/// At least two separate names in this stretch.
+fn two_names(chars: &[char]) -> bool {
+    chars
+        .split(|c| !name_char(*c))
+        .filter(|run| has_name(run))
+        .nth(1)
+        .is_some()
 }
 
 /// A byte that is not text at all, kept as one character so offsets are
@@ -714,9 +728,23 @@ mod tests {
         assert_eq!(found[1].birth_date, "", "{:?}", found[1]);
     }
 
+    /// Dates after the NIR, a child last: the spouse keeps hers.
+    #[test]
+    fn a_child_listed_last_does_not_blank_the_spouse() {
+        let raw = b"\x00DUPONT\x00JEAN\x00155087511600125\x0003081955\x00DUPONT\x00MARIE\x00255087511600172\x0017081955\x00DUPONT\x00LUCIE\x00155087511600125\x0012032015\x00";
+        let found = beneficiaries(raw, 2026);
+        assert_eq!(found[0].birth_date, "1955-08-03");
+        assert_eq!(found[1].birth_date, "1955-08-17");
+        assert_eq!(found[2].birth_date, "");
+    }
+
     /// Both names on one side of the NIR, whatever else the file holds.
     #[test]
     fn the_two_names_come_from_one_side_of_the_number() {
+        let raw = b"\x00DUBOIS\x00CLAIRE\x00155087511600125\x00ROY\x00ANNE\x00255087511600172\x00CPAM MONTPELLIER\x00";
+        let found = beneficiaries(raw, 2026);
+        assert_eq!(found[0].given, "CLAIRE");
+        assert_eq!(found[1].given, "ANNE");
         let raw = b"\x00LEFEBVRE\x00JEAN-PIERRE\x00155087511600125\x00CPAM MONTPELLIER\x00";
         let found = beneficiaries(raw, 2026);
         assert_eq!(found[0].surname, "LEFEBVRE");

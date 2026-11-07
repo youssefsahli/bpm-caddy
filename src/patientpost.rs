@@ -123,6 +123,49 @@ pub fn officine_addresses(rows: &[(String, String)], today: &str) -> Vec<String>
 trait Talk: std::io::Read + std::io::Write + Send {}
 impl<T: std::io::Read + std::io::Write + Send> Talk for T {}
 
+/// **One deadline for a whole conversation through the gateway**, as
+/// [`direct::CONVERSATION_BOUND`] gives the direct way. A read timeout is per
+/// read: one byte every nine seconds held the base thread for days, and every
+/// page and the post's addresses waited behind it. It starts at the first
+/// word, on the base thread, not while the conversation queues for it.
+struct Bounded {
+    stream: std::net::TcpStream,
+    until: Option<std::time::Instant>,
+}
+
+impl Bounded {
+    fn left(&mut self) -> std::io::Result<Duration> {
+        let now = std::time::Instant::now();
+        let until = *self
+            .until
+            .get_or_insert_with(|| now + direct::CONVERSATION_BOUND);
+        let left = until.saturating_duration_since(now);
+        if left.is_zero() {
+            return Err(std::io::ErrorKind::TimedOut.into());
+        }
+        Ok(left.min(WORD_WAIT))
+    }
+}
+
+impl std::io::Read for Bounded {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let left = self.left()?;
+        self.stream.set_read_timeout(Some(left))?;
+        self.stream.read(buf)
+    }
+}
+
+impl std::io::Write for Bounded {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let left = self.left()?;
+        self.stream.set_write_timeout(Some(left))?;
+        self.stream.write(buf)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.stream.flush()
+    }
+}
+
 /// Ce que le fil de la base reçoit.
 enum Job {
     /// Une conversation, et son bonjour quand il est déjà lu.
@@ -404,9 +447,11 @@ pub fn spawn(
                         // Each word of the page within a few seconds: a
                         // page that has the code and goes quiet does not
                         // hold this post a minute.
-                        let _ = stream.set_read_timeout(Some(WORD_WAIT));
-                        let _ = stream.set_write_timeout(Some(WORD_WAIT));
-                        if talk_tx.send(Job::Talk(Box::new(stream), None)).is_err() {
+                        let talk = Bounded {
+                            stream,
+                            until: None,
+                        };
+                        if talk_tx.send(Job::Talk(Box::new(talk), None)).is_err() {
                             return;
                         }
                     }
@@ -753,6 +798,72 @@ fn wait_once(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A drip keeps every single read alive: only the whole counts.
+    #[test]
+    fn a_dripping_stream_does_not_outlast_its_deadline() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let at = listener.local_addr().unwrap();
+        let drip = std::thread::spawn(move || {
+            let mut out = std::net::TcpStream::connect(at).unwrap();
+            while out.write_all(b"x").is_ok() {
+                std::thread::sleep(Duration::from_millis(40));
+            }
+        });
+        let (stream, _) = listener.accept().unwrap();
+        let started = std::time::Instant::now();
+        let mut talk = Bounded {
+            stream,
+            until: Some(started + Duration::from_millis(300)),
+        };
+        let mut all = [0u8; 100_000];
+        let e = talk.read_exact(&mut all).unwrap_err();
+        assert!(
+            matches!(
+                e.kind(),
+                std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+            ),
+            "{e:?}"
+        );
+        assert!(started.elapsed() < Duration::from_secs(5));
+        drop(talk);
+        drip.join().unwrap();
+    }
+
+    /// What is past the bound is neither stored nor acknowledged: the page
+    /// keeps it, and it comes in once the officine has read.
+    #[test]
+    fn a_key_does_not_write_without_limit() {
+        let dir = std::env::temp_dir().join(format!("bpm-unread-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("b.db"), "secret").unwrap();
+        let pid = db.add_patient("Martin", "Anne", "1950-01-02").unwrap();
+        let key = patientchat::new_key(|k| k.fill(7));
+        let id = db
+            .open_patient_chat(pid, &patientchat::key_text(&key), None, "2026-10-14", "AB")
+            .unwrap()
+            .unwrap();
+        let flood = |from: i64, to: i64| -> Vec<(String, String, String)> {
+            (from..to)
+                .map(|i| (format!("u{i}"), String::new(), "x".to_owned()))
+                .collect()
+        };
+        let most = crate::db::PATIENT_UNREAD_MOST;
+        let got = db
+            .receive_patient_messages(id, &flood(0, most + 5))
+            .unwrap();
+        assert_eq!(got.len() as i64, most);
+        // What is already there still acknowledges: a resend is not new.
+        let again = db.receive_patient_messages(id, &flood(0, 1)).unwrap();
+        assert_eq!(again.len(), 1);
+        assert!(db
+            .receive_patient_messages(id, &flood(most, most + 1))
+            .unwrap()
+            .is_empty());
+    }
 
     struct Swept(std::path::PathBuf);
     impl Drop for Swept {

@@ -749,10 +749,12 @@ fn drive(
             {
                 continue;
             }
-            offers.push(now);
+            // Junk costs nothing here: charged before the parse, twelve
+            // bad announces a minute on a public swarm shut every page out.
             let Ok(offer) = str0m::change::SdpOffer::from_sdp_string(&without_mdns(&o.sdp)) else {
                 continue;
             };
+            offers.push(now);
             let mut rtc = RtcConfig::new().set_dtls_cert(cert.clone()).build(now);
             let mut first = None;
             for (i, p) in ports.iter().enumerate().filter(|(_, p)| !p.relayed) {

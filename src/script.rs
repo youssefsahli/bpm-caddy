@@ -232,6 +232,13 @@ fn engine_run(source: &str, data: &Snapshot, stop: Arc<std::sync::atomic::Atomic
     // le monde, et la règle de ce module est qu'il n'y en a aucune.
     engine.set_module_resolver(rhai::module_resolvers::DummyModuleResolver::new());
     engine.disable_symbol("import");
+    // **`sleep` does nothing.** Rhai ships it, and it is one operation:
+    // nothing counts it, « Arrêter » cannot reach it, and `sleep(1000000000)`
+    // held the console until the application closed. Not offered, so kept
+    // out of `API`.
+    const NAP: &str = "sleep";
+    engine.register_fn(NAP, |_: rhai::INT| {});
+    engine.register_fn(NAP, |_: rhai::FLOAT| {});
     // **Et ce qu'on imprime est borné en tout**, pas seulement ligne à
     // ligne : `max_string_size` borne une valeur, et une boucle qui
     // imprime un mégaoctet à chaque tour remplissait la mémoire bien
@@ -262,12 +269,16 @@ fn engine_run(source: &str, data: &Snapshot, stop: Arc<std::sync::atomic::Atomic
     engine.set_max_operations(MAX_OPERATIONS);
     engine.set_max_expr_depths(64, 64);
     engine.set_max_call_levels(16);
-    engine.set_max_string_size(1_000_000);
-    // Cent mille : plus que la base n'a de fiches ou de dossiers, et des
-    // copies successives d'un tableau d'un million faisaient tomber le
-    // poste faute de mémoire.
-    engine.set_max_array_size(100_000);
-    engine.set_max_map_size(100_000);
+    // Rhai sums these over a table a function returns, not per value: at
+    // one megabyte, `patients()` failed from some 6 500 files. Eight hold
+    // about fifty thousand.
+    engine.set_max_string_size(8_000_000);
+    // Cinq cent mille, summed too: a file and its treatments count, some
+    // eighty thousand files. Des copies successives d'un tableau d'un
+    // million faisaient tomber le poste faute de mémoire.
+    engine.set_max_array_size(500_000);
+    // Summed the same way: five values a file, from twenty thousand files.
+    engine.set_max_map_size(500_000);
     // Ce qu'un script écrit va dans le volet et nulle part ailleurs.
     {
         let sink = Arc::clone(&printed);
@@ -871,7 +882,7 @@ mod tests {
         assert!(out.printed.len() <= MAX_LINES, "{}", out.printed.len());
         let out = run("let a = []; a.pad(90000, 0); a", &Snapshot::default());
         assert!(out.value.chars().count() <= MAX_VALUE_CHARS + 1);
-        let out = run("let a = []; a.pad(200000, 0); a", &Snapshot::default());
+        let out = run("let a = []; a.pad(600000, 0); a", &Snapshot::default());
         assert!(out.error.is_some(), "au-delà de cent mille éléments");
     }
 
@@ -1112,6 +1123,32 @@ mod tests {
     /// décrire donnerait une console qui sait faire une chose que
     /// l'explorateur ignore, et retirer une fonction décrite donnerait
     /// un exemple qui ne s'exécute plus — les deux en silence.
+    #[test]
+    fn a_script_cannot_sleep_past_the_stop_button() {
+        let started = std::time::Instant::now();
+        let out = run("sleep(1000000000); sleep(1e9); 1", &sample());
+        assert_eq!(out.error, None, "{out:?}");
+        assert_eq!(out.value, "1");
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    }
+
+    #[test]
+    fn a_large_base_can_be_read() {
+        let mut big = sample();
+        big.patients = (0..30_000)
+            .map(|id| Patient {
+                id,
+                nom: "DELACROIX-MARTIN".to_owned(),
+                prenom: "Jean-Philippe".to_owned(),
+                naissance: "1950-01-01".to_owned(),
+                traitements: vec!["Metformine".to_owned(); 5],
+            })
+            .collect();
+        let out = run("patients().len", &big);
+        assert_eq!(out.error, None, "{out:?}");
+        assert_eq!(out.value, "30000");
+    }
+
     #[test]
     fn every_call_the_console_offers_is_described() {
         let source = include_str!("script.rs");

@@ -41,6 +41,9 @@ pub struct Reading {
     /// Le rapport en texte — ce que « Copier » et « Enregistrer »
     /// rendent, et ce que `bpm-caddy audit` imprime : une seule écriture.
     pub report: String,
+    /// A read that failed. An empty reading is not a clean one: the report
+    /// says the base could not be read, and never « conforme ».
+    pub fault: Option<String>,
 }
 
 /// Lire la période qui finit aujourd'hui.
@@ -59,14 +62,26 @@ pub fn read(db: &Db, cfg: &Config, path: &std::path::Path, days: i64) -> Reading
         to: db::format_french_date(&today),
         days: days as usize,
     };
-    let activity = db.audit_activity(&from, &today).unwrap_or_default();
-    let access = audit::summarize(&db.accesses_since(&from, &today).unwrap_or_default());
+    let mut fault = None;
+    let mut kept = |e: String| {
+        fault.get_or_insert(e);
+    };
+    let activity = db
+        .audit_activity(&from, &today)
+        .map_err(&mut kept)
+        .unwrap_or_default();
+    let lines = db
+        .accesses_since(&from, &today)
+        .map_err(&mut kept)
+        .unwrap_or_default();
+    let access = audit::summarize(&lines);
     let conformity = db
         .audit_conformity(
             &today,
             i64::from(cfg.stock.count_days),
             cfg.locations.notice_days,
         )
+        .map_err(&mut kept)
         .unwrap_or_default();
     let mut counts = [0u64; crate::telemetry::Signal::ALL.len()];
     for (key, n) in db.telemetry_totals().unwrap_or_default() {
@@ -83,7 +98,10 @@ pub fn read(db: &Db, cfg: &Config, path: &std::path::Path, days: i64) -> Reading
         .zip(counts)
         .map(|(signal, n)| (signal.label(), n))
         .collect();
-    let report = audit::render(&head, &activity, &access, &conformity);
+    let report = match &fault {
+        Some(e) => audit::unreadable(e),
+        None => audit::render(&head, &activity, &access, &conformity),
+    };
     Reading {
         head,
         activity,
@@ -92,6 +110,7 @@ pub fn read(db: &Db, cfg: &Config, path: &std::path::Path, days: i64) -> Reading
         counters,
         span: db.telemetry_span(),
         report,
+        fault,
     }
 }
 
@@ -229,6 +248,9 @@ impl eframe::App for AuditApp {
                 State::Open { reading, .. } => {
                     let mut pick: Option<i64> = None;
                     let mut refresh = false;
+                    if let Some(e) = &reading.fault {
+                        ui.colored_label(motif::alert(), audit::unreadable(e));
+                    }
                     let mut copy = false;
                     let mut save = false;
                     draw(
