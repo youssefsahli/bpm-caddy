@@ -102744,6 +102744,24 @@ impl App {
                                             )
                                             .wrap(),
                                         );
+                                        for (series, day) in &state.behind {
+                                            let key = if *series == "stups" {
+                                                "opts_backup_behind_stups"
+                                            } else {
+                                                "opts_backup_behind_scans"
+                                            };
+                                            ui.add(
+                                                egui::Label::new(
+                                                    egui::RichText::new(trf(
+                                                        key,
+                                                        db::format_french_date(day),
+                                                    ))
+                                                    .size(motif::pt(ui, 11.0))
+                                                    .color(motif::alert()),
+                                                )
+                                                .wrap(),
+                                            );
+                                        }
                                     });
                                     ui.end_row();
                                 });

@@ -2303,6 +2303,9 @@ pub struct BackupState {
     pub oldest: Option<String>,
     pub newest: Option<String>,
     pub bytes: u64,
+    /// Le registre (`stups`) ou les pièces (`scans`) quand leur dernière
+    /// copie est plus vieille que celle de la base, avec son jour.
+    pub behind: Vec<(&'static str, String)>,
 }
 
 /// Read the backup folder beside `db_path`.
@@ -2315,21 +2318,41 @@ pub struct BackupState {
 /// believing it has copies. This is the number that answers that.
 pub fn backup_state(db_path: &Path) -> BackupState {
     let dir = backup_dir(db_path);
-    let prefix = backup_prefix(db_path, None);
+    let (days, bytes) = backup_days(&dir, &backup_prefix(db_path, None));
+    let newest = days.last().cloned();
+    // **Les trois séries, pas la plus légère.** La base se copie en dernier
+    // et pèse peu : sur un disque qui se remplit, les pièces échouaient
+    // chaque jour pendant que ce compte restait frais.
+    let behind = ["stups", "scans"]
+        .into_iter()
+        .filter_map(|series| {
+            let (others, _) = backup_days(&dir, &backup_prefix(db_path, Some(series)));
+            let last = others.last()?;
+            (Some(last) < newest.as_ref()).then(|| (series, last.clone()))
+        })
+        .collect();
+    BackupState {
+        count: days.len(),
+        oldest: days.first().cloned(),
+        newest,
+        bytes,
+        behind,
+    }
+}
+
+/// Les jours des copies d'une série, triés, et ce qu'elles pèsent.
+fn backup_days(dir: &Path, prefix: &str) -> (Vec<String>, u64) {
     let mut days: Vec<String> = Vec::new();
     let mut bytes = 0u64;
-    let Ok(entries) = std::fs::read_dir(&dir) else {
-        return BackupState::default();
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return (days, bytes);
     };
     for entry in entries.flatten() {
         let path = entry.path();
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
-        let Some(day) = name
-            .strip_prefix(prefix.as_str())
-            .and_then(|r| r.strip_suffix(".db"))
-        else {
+        let Some(day) = name.strip_prefix(prefix).and_then(|r| r.strip_suffix(".db")) else {
             continue;
         };
         // Only the ones this application named: a stray file in the
@@ -2342,12 +2365,7 @@ pub fn backup_state(db_path: &Path) -> BackupState {
         days.push(day.to_owned());
     }
     days.sort();
-    BackupState {
-        count: days.len(),
-        oldest: days.first().cloned(),
-        newest: days.last().cloned(),
-        bytes,
-    }
+    (days, bytes)
 }
 
 /// Interview lifecycle (spec section 5): a strict pipeline so no billable
@@ -70356,6 +70374,27 @@ mod tests {
         assert!(!db.now_stamp().unwrap().is_empty());
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// **Une série en retard se dit** : la base est copiée, le registre et
+    /// les pièces ne le sont plus depuis trois jours.
+    #[test]
+    fn a_backup_series_left_behind_is_said() {
+        let dir = std::env::temp_dir().join(format!("bpm-behind-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let live = dir.join("base.db");
+        std::fs::create_dir_all(backup_dir(&live)).unwrap();
+        let _swept = Swept(dir.clone());
+        let copy = |series, day: &str| {
+            let name = format!("{}{day}.db", backup_prefix(&live, series));
+            std::fs::write(backup_dir(&live).join(name), b"x").unwrap();
+        };
+        copy(None, "2026-11-07");
+        copy(Some("stups"), "2026-11-07");
+        copy(Some("scans"), "2026-11-04");
+        let state = backup_state(&live);
+        assert_eq!(state.count, 1);
+        assert_eq!(state.behind, vec![("scans", "2026-11-04".to_owned())]);
     }
 
     /// **Un fichier perdu ne renaît pas vide quand l'officine est là** :

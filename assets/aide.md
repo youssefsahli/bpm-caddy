@@ -2572,7 +2572,7 @@ boîte de dialogue est ouverte.
 base, les pièces et le registre dans un paquet chiffré du même mot de
 passe, pour transport ou archivage. « Importer un paquet… » les restaure
 dans un dossier **vide** : rien n'est écrasé. Son chemin est proposé
-dans Options, et c'est « Enregistrer » qui y bascule ce poste. Un paquet
+dans Options : « Enregistrer », puis redémarrer, y bascule ce poste. Un paquet
 venu d'un poste d'un groupe en sort, et se rejoint comme un poste neuf.
 
 # Annuaire des prescripteurs

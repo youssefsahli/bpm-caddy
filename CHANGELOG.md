@@ -43,6 +43,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     the pass instead of reading as empty.
   - Two posts can no longer push or undo at the same moment.
   - A database error after writing no longer loses the undo record.
+- Options › Base no longer warns « Pas de copie du jour » when today's
+  copy exists, and now says when the register or the scans fall behind
+  the base's copies, which were the only ones it looked at.
+- The help and the bundle import said saving switches this post to the
+  imported base; it takes a restart.
 - Scanning no longer freezes the window: the scanner runs on its own
   thread, « Arrêter » stops it, and the piece goes to the file it was
   started from even if another file is open by then. A window locked or
