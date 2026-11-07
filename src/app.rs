@@ -45094,7 +45094,7 @@ impl App {
             .sum();
         let pending: f64 = interviews
             .iter()
-            .filter(|i| i.state != InterviewState::Billed)
+            .filter(|i| i.state.awaits_billing())
             .map(fee)
             .sum();
         if billed > 0.0 || pending > 0.0 {
@@ -91221,7 +91221,9 @@ impl App {
                 .sum()
         };
         let billed = total(&|s| s.state == InterviewState::Billed);
-        let pending = total(&|s| s.state != InterviewState::Billed);
+        // Fait et non facturé, comme le récapitulatif : un acte seulement
+        // proposé ou planifié n'a rien à facturer.
+        let pending = total(&|s| s.state.awaits_billing());
         let billed_count = session
             .summaries
             .iter()
@@ -91281,7 +91283,7 @@ impl App {
             .iter()
             .map(|m| {
                 let b = total(&|s| s.state == InterviewState::Billed && &s.updated_month == m);
-                let p = total(&|s| s.state != InterviewState::Billed && &s.created_month == m);
+                let p = total(&|s| s.state.awaits_billing() && &s.created_month == m);
                 (m.clone(), b, p)
             })
             .collect();
@@ -91313,9 +91315,8 @@ impl App {
                 let b = total(&|s| {
                     s.state == InterviewState::Billed && s.updated_month.starts_with(y.as_str())
                 });
-                let p = total(&|s| {
-                    s.state != InterviewState::Billed && s.created_month.starts_with(y.as_str())
-                });
+                let p =
+                    total(&|s| s.state.awaits_billing() && s.created_month.starts_with(y.as_str()));
                 (y.clone(), b, p)
             })
             .collect();

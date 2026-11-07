@@ -8896,11 +8896,12 @@ macro_rules! vial_label_fn {
 #let officine = {{PHARMACY_NAME}}
 #let etiquette(produit, lot, ouvert, limite, qui) = block(width: 100%, height: 100%, inset: marge, clip: true)[
   #set par(leading: 0.45em)
-  #text(10.5pt, weight: "bold")[#produit]
-  #h(1fr) #text(8pt)[Lot #lot] \
-  #v(0.6mm)
+  // Bornée à deux lignes : un nom long ne pousse pas la limite d'utilisation
+  // hors de l'étiquette, où elle disparaissait sans un mot.
+  #block(height: 22.5pt, clip: true, spacing: 2pt)[#text(10.5pt, weight: "bold")[#produit]]
+  #text(8pt)[Lot #lot] \
   #text(8.5pt)[Ouvert le #ouvert #if qui != "" [(#qui)]] \
-  #text(11pt, weight: "bold")[À utiliser avant #limite] \
+  #text(10pt, weight: "bold")[À utiliser avant #limite] \
   #v(0.6mm)
   #text(7pt)[#officine]
 ]

@@ -45,6 +45,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   desktop post; a patient link that would replace a stored conversation
   asks first; tracker offers to the direct way are limited per minute;
   DHT answers no longer steer dials into the local network.
+- Vial label: a long product name no longer pushes « À utiliser avant »
+  off the label; the name is held to two lines.
+- « CA en attente » now counts what is done and not billed, as the
+  printed recap does; proposed and planned acts have nothing to bill.
+- A proposal left at « Identifié » no longer takes a fee rank, which gave
+  the real first act the year-2 code and fee.
 - CSV: a compact phone number keeps its « + ». A scan left by a crash is
   now swept from the temporary folder.
 - **Changing the master password could report success after failing,

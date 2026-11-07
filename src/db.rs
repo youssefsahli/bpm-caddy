@@ -47118,6 +47118,7 @@ impl Db {
             .map_err(|e| e.to_string())?;
         let mut out = Vec::new();
         let mut keys = Vec::new();
+        let mut proposed: Vec<bool> = Vec::new();
         for row in rows {
             let (
                 patient_name,
@@ -47144,6 +47145,7 @@ impl Db {
                 .filter(|d| !d.is_empty())
                 .unwrap_or(&created_date)
                 .to_owned();
+            proposed.push(state == InterviewState::Identified.as_str());
             keys.push((
                 patient_id,
                 kind,
@@ -47170,7 +47172,7 @@ impl Db {
                 operator,
             });
         }
-        for (i, (year, rank)) in fee_ranks(&keys, cycle_months.max(1)) {
+        for (i, (year, rank)) in act_ranks(&keys, &proposed, cycle_months.max(1)) {
             out[i].fee_rank = rank;
             out[i].fee_year = year;
         }
@@ -56359,6 +56361,7 @@ impl Db {
             .map_err(|e| e.to_string())?;
         let mut out = Vec::new();
         let mut keys = Vec::new();
+        let mut proposed: Vec<bool> = Vec::new();
         for row in rows {
             let (
                 kind,
@@ -56380,6 +56383,7 @@ impl Db {
                 date,
                 treatment_change && kind.allows_treatment_change(),
             ));
+            proposed.push(state == InterviewState::Identified.as_str());
             out.push(InterviewSummary {
                 duration_minutes,
                 kind,
@@ -56393,7 +56397,7 @@ impl Db {
                 operator,
             });
         }
-        for (i, (year, rank)) in fee_ranks(&keys, cycle_months.max(1)) {
+        for (i, (year, rank)) in act_ranks(&keys, &proposed, cycle_months.max(1)) {
             out[i].fee_rank = rank;
             out[i].fee_year = year;
         }
@@ -57110,6 +57114,26 @@ fn fee_ranks(keys: &[FeeKey], months: u32) -> Vec<(usize, (usize, usize))> {
         let positions = cycle_positions_for(kind, &dates, &restarts, months);
         for ((i, _, _), position) in rows.iter().zip(positions) {
             out.push((*i, position));
+        }
+    }
+    out
+}
+
+/// **Une proposition ne prend pas le rang d'un acte.** Restée à « Identifié »
+/// un an avant le vrai premier acte, elle le faisait passer en année 2, à
+/// son code et à son honoraire. Les actes se rangent entre eux ; une
+/// proposition garde le rang qu'elle aurait, pour la prévision.
+fn act_ranks(keys: &[FeeKey], proposed: &[bool], months: u32) -> Vec<(usize, (usize, usize))> {
+    let mut out = fee_ranks(keys, months);
+    let acts: Vec<usize> = (0..keys.len()).filter(|i| !proposed[*i]).collect();
+    let only: Vec<FeeKey> = acts.iter().map(|i| keys[*i].clone()).collect();
+    let real: std::collections::HashMap<usize, (usize, usize)> = fee_ranks(&only, months)
+        .into_iter()
+        .map(|(k, position)| (acts[k], position))
+        .collect();
+    for (i, position) in &mut out {
+        if let Some(act) = real.get(i) {
+            *position = *act;
         }
     }
     out
@@ -70414,6 +70438,42 @@ mod tests {
         assert_eq!(d("5/1/26", "2026-11-07").unwrap(), "2026-01-05");
         // Pas de 29 février l'an prochain : refusé, jamais inventé.
         assert!(d("2902", "2028-03-01").is_err());
+    }
+
+    /// **Une proposition ne prend pas un rang** : restée « Identifié » un an
+    /// plus tôt, elle faisait du vrai premier acte un acte de suivi, au code
+    /// et à l'honoraire de l'année 2.
+    #[test]
+    fn a_proposal_left_behind_takes_no_fee_rank() {
+        let dir = std::env::temp_dir().join(format!("bpm-rank-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("base.db"), "secret").unwrap();
+        let pid = db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let (real, stale) = (
+            db.add_interview(pid, InterviewKind::Aod).unwrap(),
+            db.add_interview(pid, InterviewKind::Aod).unwrap(),
+        );
+        db.conn
+            .execute(
+                "UPDATE interviews SET state = 'PERFORMED', scheduled_date = '2026-09-01'
+                 WHERE id = ?1",
+                [real],
+            )
+            .unwrap();
+        db.conn
+            .execute(
+                "UPDATE interviews SET created_at = '2025-03-01 10:00:00' WHERE id = ?1",
+                [stale],
+            )
+            .unwrap();
+        let sums = db.interview_summaries(12).unwrap();
+        let act = sums
+            .iter()
+            .find(|s| s.state == InterviewState::Performed)
+            .unwrap();
+        assert_eq!((act.fee_year, act.fee_rank), (0, 0));
     }
 
     /// **Une série en retard se dit** : la base est copiée, le registre et
