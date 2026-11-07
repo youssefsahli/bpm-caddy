@@ -354,11 +354,10 @@ impl Posts {
         let snapshot = db.found_posts(&self.device_hex(), name, day)?;
         db.set_sync_local("trousseau", &hex(&secret))?;
         self.trousseau = Some(Trousseau::from_secret(secret));
-        let sent = self.seal(db, &snapshot, day)?;
-        // What the founding itself captured is inside the snapshot.
-        let (_, upto) = db.pending_ops()?;
-        db.clear_pending(upto)?;
-        Ok(sent)
+        // What is captured from here on stays pending: a write made while
+        // the snapshot is sealed is in no snapshot. Sent again, a row the
+        // snapshot does hold changes nothing.
+        self.seal(db, &snapshot, day)
     }
 
     fn seal(&mut self, db: &Db, ops: &[crate::replica::Op], day: &str) -> Result<usize, String> {
@@ -1744,6 +1743,17 @@ const MOST_POSTS_HEARD: usize = 64;
 const MOST_NEARBY: usize = 32;
 
 #[allow(clippy::too_many_arguments)]
+/// A round's failure, said once until it changes.
+fn say_fault(tx: &std::sync::mpsc::Sender<Progress>, fault: &mut Option<String>, e: String) {
+    if fault.as_deref() != Some(e.as_str()) {
+        let _ = tx.send(Progress::Status(crate::strings::trf(
+            "posts_round_failed",
+            &e,
+        )));
+        *fault = Some(e);
+    }
+}
+
 fn auto(
     path: &Path,
     password: &str,
@@ -1943,6 +1953,8 @@ fn auto(
         .checked_sub(Duration::from_secs(3600))
         .unwrap_or_else(Instant::now);
     let (mut last_beacon, mut last_talk, mut last_folder) = (long_ago, long_ago, long_ago);
+    // The last round failure said, so a lasting one is said once.
+    let mut fault: Option<String> = None;
     // The other posts of the group, by their identity on the network:
     // read again each minute.
     let mut own_posts = crate::network::own_posts(&db);
@@ -2521,7 +2533,16 @@ fn auto(
             // tous les postes éteints.
             let mut failed: Vec<String> = Vec::new();
             if pending || now_asked || talked || last_talk.elapsed() >= pace.talk {
-                let sent = posts.publish(&db, today)?;
+                // **A failed round is not the end of the service**: on a
+                // shared drive « database is locked » comes and goes, and
+                // leaving here silenced the post until the next launch.
+                let sent = match posts.publish(&db, today) {
+                    Ok(sent) => sent,
+                    Err(e) => {
+                        say_fault(tx, &mut fault, e);
+                        0
+                    }
+                };
                 if sent > 0 || now_asked || last_talk.elapsed() >= pace.talk {
                     for x in seen.iter_mut().filter(|x| known.contains(&x.heard.device)) {
                         let ok = posts
@@ -2555,16 +2576,22 @@ fn auto(
                 }
             }
             if talked || now_asked {
-                let report = posts.absorb(&db, today)?;
-                if report.received.written > 0 || report.received.conflicts > 0 || now_asked {
-                    let mut said = said_synced(&report);
-                    if now_asked && !failed.is_empty() {
-                        said.push_str(&crate::strings::trf(
-                            "posts_done_unreached",
-                            failed.join(", "),
-                        ));
+                match posts.absorb(&db, today) {
+                    Ok(report) => {
+                        fault = None;
+                        if report.received.written > 0 || report.received.conflicts > 0 || now_asked
+                        {
+                            let mut said = said_synced(&report);
+                            if now_asked && !failed.is_empty() {
+                                said.push_str(&crate::strings::trf(
+                                    "posts_done_unreached",
+                                    failed.join(", "),
+                                ));
+                            }
+                            let _ = tx.send(Progress::Status(said));
+                        }
                     }
-                    let _ = tx.send(Progress::Status(said));
+                    Err(e) => say_fault(tx, &mut fault, e),
                 }
             }
         }

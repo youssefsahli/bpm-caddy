@@ -60129,7 +60129,11 @@ impl Db {
         self.snapshot_named("avant-adhesion")?;
         self.remove_capture()?;
         for file in [File::Main, File::Stups] {
-            let mut sql = String::from("INSERT INTO sync_mute (mute) VALUES (1);\n");
+            // Checked at commit: `patients` comes before its children here,
+            // and a post holding any child row could not join.
+            let mut sql = String::from(
+                "PRAGMA defer_foreign_keys = ON;\nINSERT INTO sync_mute (mute) VALUES (1);\n",
+            );
             for t in TABLES.iter().filter(|t| t.file == file) {
                 sql.push_str(&format!("DELETE FROM \"{}\";\n", t.name));
             }
@@ -60354,7 +60358,37 @@ impl Db {
     /// which flux it was sealed on, who wrote it, and whether this post
     /// holds the whole key — and an op the flux does not admit is not
     /// ranged (`replica::admissible`).
+    ///
+    /// **Foreign keys are off while a record is ranged.** They were checked
+    /// where the row was written; here rows arrive in journal order, not in
+    /// parent order. Enforced, a joining post lost every `patient_drugs`
+    /// (it comes before `drugs`) as a « duplicate », and a deletion crossing
+    /// a child's insert failed on every pass and stopped the post for good.
+    /// No foreign key here has an `ON DELETE` action, so nothing is skipped;
+    /// a child that outlives a deleted parent is the same orphan on every
+    /// post, and the deletion wins, as it does for a file.
     pub fn apply_gated(
+        &self,
+        record: &str,
+        author: &str,
+        day: &str,
+        ops: &[crate::replica::Op],
+        gate: Option<&Gate>,
+    ) -> Result<Applied, String> {
+        let keys = |state: &str| -> Result<(), String> {
+            for conn in [&self.conn, &self.stups] {
+                conn.execute_batch(&format!("PRAGMA foreign_keys = {state}"))
+                    .map_err(|e| e.to_string())?;
+            }
+            Ok(())
+        };
+        keys("OFF")?;
+        let applied = self.range_record(record, author, day, ops, gate);
+        keys("ON")?;
+        applied
+    }
+
+    fn range_record(
         &self,
         record: &str,
         author: &str,
@@ -60454,15 +60488,7 @@ impl Db {
             match outcome.action {
                 Action::Refused => {
                     done.refused += 1;
-                    questions.push((
-                        "REFUS".to_owned(),
-                        op,
-                        crate::replica::Conflict {
-                            column: String::new(),
-                            mine: None,
-                            theirs: Some(serde_json::Value::Object(op.new.clone())),
-                        },
-                    ));
+                    questions.push(refused_row(op));
                 }
                 Action::Nothing => {}
                 Action::Insert => {
@@ -60505,10 +60531,16 @@ impl Db {
                         Ok(_) => done.written += 1,
                         // Another unique column already holds it: the same
                         // fact reached this post by another road.
+                        Err(rusqlite::Error::SqliteFailure(e, _)) if same_fact(&e) => {
+                            done.duplicates += 1
+                        }
+                        // Any other constraint is a row that did not land,
+                        // and is said: it was counted as a duplicate.
                         Err(rusqlite::Error::SqliteFailure(e, _))
                             if e.code == rusqlite::ErrorCode::ConstraintViolation =>
                         {
-                            done.duplicates += 1
+                            done.refused += 1;
+                            questions.push(refused_row(op));
                         }
                         Err(e) => return Err(e.to_string()),
                     }
@@ -60537,10 +60569,14 @@ impl Db {
                         rusqlite::params_from_iter(values.iter()),
                     ) {
                         Ok(_) => done.written += 1,
+                        Err(rusqlite::Error::SqliteFailure(e, _)) if same_fact(&e) => {
+                            done.duplicates += 1
+                        }
                         Err(rusqlite::Error::SqliteFailure(e, _))
                             if e.code == rusqlite::ErrorCode::ConstraintViolation =>
                         {
-                            done.duplicates += 1
+                            done.refused += 1;
+                            questions.push(refused_row(op));
                         }
                         Err(e) => return Err(e.to_string()),
                     }
@@ -60698,18 +60734,33 @@ impl Db {
             let mut values: Vec<rusqlite::types::Value> = c.key.values().map(sql_value).collect();
             if take_theirs {
                 let theirs = c.theirs.clone().unwrap_or(serde_json::Value::Null);
+                let mine = c.mine.clone().unwrap_or(serde_json::Value::Null);
                 values.push(sql_value(&theirs));
-                conn.execute(
-                    &format!(
-                        "UPDATE \"{}\" SET \"{}\" = ?{} WHERE {}",
-                        c.table,
-                        c.column,
-                        values.len(),
-                        filter.join(" AND ")
-                    ),
-                    rusqlite::params_from_iter(values.iter()),
-                )
-                .map_err(|e| e.to_string())?;
+                values.push(sql_value(&mine));
+                let at = values.len();
+                // Compare-and-set against what the question showed: the
+                // field may have been rewritten since, and this write
+                // travels to every post.
+                let written = conn
+                    .execute(
+                        &format!(
+                            "UPDATE \"{}\" SET \"{}\" = ?{} WHERE {} AND \"{}\" IS ?{}",
+                            c.table,
+                            c.column,
+                            at - 1,
+                            filter.join(" AND "),
+                            c.column,
+                            at
+                        ),
+                        rusqlite::params_from_iter(values.iter()),
+                    )
+                    .map_err(|e| e.to_string())?;
+                if written == 0 {
+                    self.conn
+                        .execute("DELETE FROM sync_conflicts WHERE id = ?1", [id])
+                        .map_err(|e| e.to_string())?;
+                    return Err(crate::strings::tr("posts_settle_stale").to_owned());
+                }
             } else if let Some(mine) = &c.mine {
                 let mut old = c.key.clone();
                 let mut new = c.key.clone();
@@ -60731,6 +60782,27 @@ impl Db {
             .map(|_| ())
             .map_err(|e| e.to_string())
     }
+}
+
+/// A unique column or key already holds this value.
+fn same_fact(e: &rusqlite::ffi::Error) -> bool {
+    matches!(
+        e.extended_code,
+        rusqlite::ffi::SQLITE_CONSTRAINT_UNIQUE | rusqlite::ffi::SQLITE_CONSTRAINT_PRIMARYKEY
+    )
+}
+
+/// The question a row that could not be written leaves behind.
+fn refused_row(op: &crate::replica::Op) -> (String, &crate::replica::Op, crate::replica::Conflict) {
+    (
+        "REFUS".to_owned(),
+        op,
+        crate::replica::Conflict {
+            column: String::new(),
+            mine: None,
+            theirs: Some(serde_json::Value::Object(op.new.clone())),
+        },
+    )
 }
 
 /// Every test here works on a real SQLCipher file, and every one of them
@@ -63115,6 +63187,89 @@ mod tests {
             .collect();
         to.apply_record(record, "poste", "2026-09-23", &back)
             .unwrap()
+    }
+
+    /// **A record does not wait for its parents, and a deletion does not
+    /// wait for the children it crossed.** Both failed on the foreign key:
+    /// the first lost the row as a « duplicate », the second stopped the
+    /// post on that record for good.
+    #[test]
+    fn a_record_ranges_whatever_order_its_rows_arrive_in() {
+        let (_swept, a, b) = two_posts("parents");
+        a.found_posts("aa", "Comptoir 1", "2026-09-23").unwrap();
+        let (_, upto) = a.pending_ops().unwrap();
+        a.clear_pending(upto).unwrap();
+        let treated = |db: &Db| -> i64 {
+            db.conn
+                .query_row("SELECT COUNT(*) FROM patient_drugs", [], |r| r.get(0))
+                .unwrap()
+        };
+        let pid = a.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let did = a.add_drug("Lasilix").unwrap();
+        a.add_patient_drug(pid, did).unwrap();
+        // The join's order: the treatment before the card it names.
+        let (mut ops, upto) = a.pending_ops().unwrap();
+        a.clear_pending(upto).unwrap();
+        ops.sort_by_key(|o| o.table != "patient_drugs");
+        let got = b.apply_record("r1", "poste", "2026-09-23", &ops).unwrap();
+        assert_eq!(got.duplicates, 0);
+        assert_eq!(treated(&b), 1, "the treatment reached the joining post");
+
+        // Foreign keys are back on for what this post writes itself.
+        assert!(b.add_patient_drug(pid + 1000, did).is_err());
+
+        // A deletes the file while B files an act on it.
+        let act = b.add_interview(pid, InterviewKind::Bpm).unwrap();
+        let delete = crate::replica::Op {
+            file: crate::replica::File::Main,
+            table: "patients".to_owned(),
+            kind: crate::replica::Kind::Delete,
+            key: serde_json::json!({ "id": pid })
+                .as_object()
+                .unwrap()
+                .clone(),
+            old: serde_json::Map::new(),
+            new: serde_json::Map::new(),
+        };
+        b.apply_record("r2", "poste", "2026-09-23", &[delete])
+            .expect("a crossed deletion does not stop the post");
+        assert!(b.sync_applied("r2"));
+        assert!(act > 0);
+    }
+
+    /// A post holding a file with its acts can be emptied to join: the
+    /// deletion ran parents first and failed on the foreign key.
+    #[test]
+    fn a_post_holding_acts_can_join() {
+        let (_swept, a, _b) = two_posts("adhesion");
+        let pid = a.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        a.add_interview(pid, InterviewKind::Bpm).unwrap();
+        a.prepare_join().unwrap();
+        let left: i64 = a
+            .conn
+            .query_row("SELECT COUNT(*) FROM interviews", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(left, 0);
+    }
+
+    /// **Only a unique column is the same fact by another road.** Any other
+    /// constraint is a row that did not land, and leaves a question.
+    #[test]
+    fn a_row_that_cannot_land_is_asked_about_not_counted_as_a_duplicate() {
+        let (_swept, _a, b) = two_posts("refus");
+        let map = |v: serde_json::Value| v.as_object().unwrap().clone();
+        let op = crate::replica::Op {
+            file: crate::replica::File::Main,
+            table: "drugs".to_owned(),
+            kind: crate::replica::Kind::Insert,
+            key: map(serde_json::json!({ "id": 900_001 })),
+            old: serde_json::Map::new(),
+            // `name` is NOT NULL, and its value travels in a later piece.
+            new: map(serde_json::json!({ "id": 900_001, "name": null })),
+        };
+        let got = b.apply_record("r1", "poste", "2026-09-23", &[op]).unwrap();
+        assert_eq!((got.duplicates, got.refused), (0, 1));
+        assert_eq!(b.sync_conflicts().unwrap().len(), 1);
     }
 
     fn two_posts(tag: &str) -> (Swept, Db, Db) {

@@ -51,6 +51,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A shift with no end no longer reads as a gap for the rest of the day.
 - Campaign: a free-text dose labelled with a subject's code is counted
   on screen as it is in the bilan and the export.
+- **Posts replication.**
+  - A joining post no longer loses treatment lists: rows now land
+    whatever order they arrive in.
+  - A deletion crossing a child's insert no longer stops the receiving
+    post for good.
+  - A row that cannot be written now raises a question instead of being
+    counted as a duplicate.
+  - A failed round (a locked base on a shared drive) no longer ends the
+    service until the next launch.
+  - Writes made while a group is being founded are no longer erased.
+  - « Prendre la leur » no longer overwrites a value edited since.
+  - A post holding patient rows can join a group again.
 - Two DFG results on the same day: the renal table now reads the last one
   entered, as biology does; it read the first, so a corrected 25 stayed 55.
 - Thrombocytopenia and anaemia readings now cover the LMWHs. Under

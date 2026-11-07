@@ -3445,6 +3445,8 @@ err_plain_port = "Port déjà utilisé : fermer l'autre invitation, ou changer d
 err_plain_denied = "Accès refusé par le système : autoriser BPM-Caddy dans le pare-feu."
 err_plain_address = "Adresse illisible : coller le code d'invitation complet, ou saisir 192.168.1.20:7743."
 err_plain_cut = "Connexion coupée en cours d'échange : réessayer."
+posts_settle_stale = "Valeur modifiée depuis la question : rien n'a été écrit."
+posts_round_failed = "Synchronisation interrompue, reprise au prochain tour : {}"
 posts_err_already = "Ce poste fait déjà partie d'un groupe."
 # Le compagnon Android (mobile/, android/) : ses libellés sont ici comme
 # ceux du bureau, lus par la bibliothèque Rust.
