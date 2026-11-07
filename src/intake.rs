@@ -1124,8 +1124,23 @@ fn moments_first(folded: &str) -> Option<[Option<Take>; 4]> {
         };
         if !closes {
             // A strength, an hour or a delay ahead of the dose: « le soir
-            // 20 mg 1 comprimé ». The dose must be written before the next
-            // moment, with its unit, or the phrase is not read.
+            // 20 mg 1 comprimé ». Only when something says this number is
+            // none: « 1 / 2 comprimé », « 1 - 2 cp », « 2 x 1 cp » are one
+            // quantity, and skipping the first printed the last. The dose
+            // must then be written before the next moment, with its unit.
+            let measure = next.is_some_and(|n| {
+                STRENGTHS.contains(&n)
+                    || matches!(
+                        n,
+                        "h" | "heure" | "heures" | "min" | "minutes" | "jour" | "jours"
+                    )
+            });
+            let aside = tokens[..i]
+                .iter()
+                .rev()
+                .map(|p| clean(p))
+                .find(|p| !p.is_empty())
+                .is_some_and(|p| matches!(p.as_str(), "a" | "vers" | "pendant"));
             let dose_follows = tokens[i + 1..]
                 .iter()
                 .map(|t| clean(t))
@@ -1133,7 +1148,7 @@ fn moments_first(folded: &str) -> Option<[Option<Take>; 4]> {
                 .collect::<Vec<_>>()
                 .windows(2)
                 .any(|w| quarters(&w[0]).is_some_and(|q| q > 0) && UNITS.contains(&w[1].as_str()));
-            if dose_follows {
+            if (measure || aside) && dose_follows {
                 continue;
             }
             return bound.then_some(marks);
@@ -1364,6 +1379,10 @@ mod tests {
             "le soir 1 et demi",
             "le soir 1 cp 1/2",
             "le soir 1 comprimé et 1/2",
+            "le soir 1 / 2 comprimé",
+            "le soir 1 - 2 comprimés",
+            "le soir 1 voire 2 cp",
+            "le matin 2 x 1 cp",
             "matin 5 mg, soir 10",
         ] {
             assert!(

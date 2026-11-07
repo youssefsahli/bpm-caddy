@@ -469,8 +469,9 @@ fn take_post(
         note(journal, || format!("poste {ip} - trop d'appels"));
         return Ok(());
     }
-    let line = read_line(&stream)?;
-    let Some(secret) = read_preface(&line) else {
+    // Silence or a cut line is charged too: each holds a place for seconds.
+    let preface = read_line(&stream).ok();
+    let Some(secret) = preface.as_deref().and_then(read_preface) else {
         admit(calls, ip, POST_CALLS_PER_MINUTE);
         note(journal, || format!("poste {ip} - illisible"));
         return Ok(());

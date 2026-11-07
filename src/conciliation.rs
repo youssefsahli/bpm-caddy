@@ -480,7 +480,8 @@ pub fn compare(held: &[Held], list: &str, base: &[Known]) -> Vec<Divergence> {
                 // « Eliquis 2.5 : 1 cp » carries no unit, and the 2.5 was
                 // skipped as a harmless prefix against a held 5 mg.
                 let other_bare = theirs.is_none()
-                    && bare_strength(&e.detail).is_some_and(|b| !strength_says(h.strength, b));
+                    && bare_strength(&e.detail, h.posology)
+                        .is_some_and(|b| !strength_says(h.strength, b));
                 let kind = if !other_strength
                     && !other_brand
                     && !other_bare
@@ -747,20 +748,22 @@ fn same_units(words: Vec<String>) -> Vec<String> {
 /// La première quantité d'un texte, ramenée à son unité de base : les
 /// masses en microgrammes, les unités et les millilitres à part.
 /// « 1 g » et « 1000 mg » sont la même ; « 5mg », « 2,5 mg » se lisent.
-/// A strength written bare ahead of its posology, read from the numbers
-/// the line opens with: two are a strength and a dose (« 15 : 1 cp/j »),
-/// three a grid (« 1 0 1 »), four a strength ahead of a grid
-/// (« 2.5 : 1 0 1 ») unless the first could be a take (« 1 1 1 1 »).
-fn bare_strength(detail: &str) -> Option<f64> {
-    let words = dose_words(detail);
-    let numbers: Vec<f64> = words.iter().map_while(|w| w.parse().ok()).collect();
-    let first = *numbers.first()?;
-    let a_take = first <= 2.0 && first.fract() == 0.0;
-    match numbers.len() {
-        2 => Some(first),
-        4 if !a_take => Some(first),
-        _ => None,
-    }
+/// A strength written bare ahead of its posology: the line opens with one
+/// number more than the posology held, whatever its shape — « 15 : 1 cp/j »
+/// for « 1 cp/j », « 2.5 : 1 0 1 » for « 1 0 1 ». Read against the line
+/// alone, « 8 6 8 0 » of insulin was a strength ahead of a grid, and
+/// « 2 : 1 0 1 » a grid of four.
+fn bare_strength(detail: &str, posology: &str) -> Option<f64> {
+    let opening = |text: &str| -> Vec<f64> {
+        dose_words(text)
+            .iter()
+            .map_while(|w| w.parse().ok())
+            .collect()
+    };
+    let line = opening(detail);
+    (line.len() == opening(posology).len() + 1)
+        .then(|| line.first().copied())
+        .flatten()
 }
 
 /// Can this bare number be the held strength, in whichever unit it left
@@ -1144,6 +1147,15 @@ Vogalène lyoc si nausées
         // A halved anticoagulant, however the rest of the line is written.
         assert_eq!(kind(&grid, "Eliquis 2.5 : 1 0 1"), Change::DoseChanged);
         assert_eq!(kind(&grid, "Eliquis 5 : 1 0 1"), Change::Kept);
+        assert_eq!(kind(&grid, "Eliquis 2 : 1 0 1"), Change::DoseChanged);
+        let four = [Held {
+            name: "Eliquis",
+            dci: "apixaban",
+            class: "AOD",
+            posology: "8 6 8 0",
+            strength: "5 mg",
+        }];
+        assert_eq!(kind(&four, "Eliquis : 8 6 8 0"), Change::Kept);
         let daily = [Held {
             name: "Eliquis",
             dci: "apixaban",

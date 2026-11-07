@@ -156,14 +156,17 @@ pub fn per_day(posology: &str) -> Option<f64> {
     }
     // « 1 pulvérisation dans chaque narine matin et soir » : quatre par
     // jour, et le flacon durait le double à l'écran.
-    // Whatever the wording: « par narine », « dans les deux narines ». « dans
-    // une narine » counts as written.
-    if words.windows(2).any(|w| {
-        matches!(
-            w[0],
-            "chaque" | "par" | "deux" | "2" | "les" | "des" | "aux"
-        ) && matches!(w[1], "narine" | "narines" | "oeil" | "œil" | "yeux")
-    }) {
+    // Whatever the wording: « par narine », « dans les deux narines », « 1
+    // pulvérisation narines ». Only one, named as one, counts as written:
+    // « dans une narine ».
+    let both = words.iter().any(|w| matches!(*w, "narines" | "yeux"))
+        || words.windows(2).any(|w| {
+            matches!(
+                w[0],
+                "chaque" | "par" | "deux" | "2" | "les" | "des" | "aux"
+            ) && matches!(w[1], "narine" | "oeil" | "œil")
+        });
+    if both {
         return None;
     }
     if words.iter().any(|w| UNCOUNTED.contains(w)) && !words.iter().any(|w| COUNTED.contains(w)) {
@@ -1043,6 +1046,7 @@ mod tests {
         );
         assert_eq!(per_day("1 goutte dans chaque œil matin et soir"), None);
         assert!(per_day("1 pulvérisation dans une narine matin et soir").is_some());
+        assert_eq!(per_day("1 pulvérisation narines matin et soir"), None);
         assert_eq!(
             per_day("1 pulvérisation dans chaque narine matin et soir"),
             None

@@ -89,15 +89,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Coverage from a file.** The prescribed length runs to the end of the
   prescription, renewals included: a missed box on a running prescription
   reads as overdue, not finished. A treatment with no delivery date says so
-  instead of counting from today. Sprays and drops « par narine », « dans
-  les deux narines », « œil » no longer count half the doses.
+  instead of counting from today. Sprays « par narine », « dans les deux
+  narines », « chaque œil » no longer count half the doses; « dans une
+  narine » counts as written.
 - **Prescribers.** Picking a namesake writes the first name, so two
   Dr Morel stay two for the register's watch. A stray opening quote in a
   directory file no longer swallows the lines after it.
 - **Access journal.** It names the person chosen in the side pane, not the
-  post's default initials, and a base reset leaves its line. A read that
-  fails in the audit window or `bpm-caddy audit` says so instead of an
-  empty journal and « conforme ».
+  post's default initials, and a base reset leaves its line. A failed read
+  stops `bpm-caddy audit` with the reason; in the audit window it shows in
+  red and replaces the copied or saved report, instead of an empty journal
+  and « conforme ».
 - **Console.** `sleep` no longer escapes « Arrêter », and `patients()` works
   on a large base.
 - **Patient messaging.** A key stops being stored past 200 unread messages

@@ -182,10 +182,15 @@ pub fn beneficiaries(raw: &[u8], this_year: u32) -> Vec<Beneficiary> {
     let side = match (found_at.first(), found_at.last()) {
         (Some(&first), Some(&last)) if found_at.len() > 1 => {
             // Two names make a side: one run past the last NIR is the
-            // caisse, not a person.
-            let before = two_names(&chars[first.saturating_sub(96)..first]);
-            let after = two_names(&chars[last + 15..(last + 15 + 96).min(chars.len())]);
-            match (before, after) {
+            // caisse, not a person. A card with one run a person says it
+            // by any name at all.
+            let head = &chars[first.saturating_sub(96)..first];
+            let tail = &chars[last + 15..(last + 15 + 96).min(chars.len())];
+            let sides = match (two_names(head), two_names(tail)) {
+                (false, false) => (has_name(head), has_name(tail)),
+                sides => sides,
+            };
+            match sides {
                 (true, false) => Side::Before,
                 (false, true) => Side::After,
                 _ => Side::Either,
@@ -206,10 +211,11 @@ pub fn beneficiaries(raw: &[u8], this_year: u32) -> Vec<Beneficiary> {
             };
             let whole = 0..chars.len();
             let next = found_at[1];
-            let previous = found_at[found_at.len() - 2] + 15;
+            let previous = found_at[found_at.len() - 2];
             // The two ends say it, no neighbour in reach. A child last,
             // whose date disagrees with the NIR, leaves it to the first
-            // person's own record.
+            // person's own record, read only if the neighbour holds another
+            // NIR: under the same one, the date may be either's.
             match (
                 dated(first, whole.clone(), Side::Before),
                 dated(last, whole.clone(), Side::After),
@@ -217,8 +223,17 @@ pub fn beneficiaries(raw: &[u8], this_year: u32) -> Vec<Beneficiary> {
                 (true, false) => Some(Side::Before),
                 (false, true) => Some(Side::After),
                 (true, true) => None,
-                (false, false) if dated(first, first..next, Side::After) => Some(Side::After),
-                (false, false) if dated(last, previous..last, Side::Before) => Some(Side::Before),
+                (false, false)
+                    if nir(first) != nir(next) && dated(first, first..next, Side::After) =>
+                {
+                    Some(Side::After)
+                }
+                (false, false)
+                    if nir(last) != nir(previous)
+                        && dated(last, previous + 15..last, Side::Before) =>
+                {
+                    Some(Side::Before)
+                }
                 (false, false) => None,
             }
         }
@@ -736,6 +751,26 @@ mod tests {
         assert_eq!(found[0].birth_date, "1955-08-03");
         assert_eq!(found[1].birth_date, "1955-08-17");
         assert_eq!(found[2].birth_date, "");
+    }
+
+    /// One run a person, or a last person with one: the side still holds.
+    #[test]
+    fn a_card_with_one_name_run_keeps_its_side() {
+        let raw = b"\x00155087511600125\x00DUPONT\x00JEAN\x00255087511600172\x00MARIE\x00";
+        assert_eq!(beneficiaries(raw, 2026)[1].surname, "MARIE");
+        let raw = b"\x00DUPONT JEAN\x00155087511600125\x00DUPONT MARIE\x00255087511600172\x00";
+        let found = beneficiaries(raw, 2026);
+        assert_eq!(found[0].surname, "DUPONT JEAN");
+        assert_eq!(found[1].surname, "DUPONT MARIE");
+    }
+
+    /// A date between two persons of one NIR may be either's: nobody's.
+    #[test]
+    fn a_date_under_a_shared_number_goes_to_nobody() {
+        let raw = b"\x00DUPONT\x00JEAN\x00155087511600125\x00DUPONT\x00MARIE\x00255087511600172\x0017081955\x00DUPONT\x00LUCIE\x00255087511600172\x0012032015\x00";
+        let found = beneficiaries(raw, 2026);
+        assert_eq!(found[2].given, "LUCIE");
+        assert_eq!(found[2].birth_date, "", "{:?}", found[2]);
     }
 
     /// Both names on one side of the NIR, whatever else the file holds.
