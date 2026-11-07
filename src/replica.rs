@@ -663,10 +663,15 @@ fn split(op: &Op, limit: usize) -> Result<Vec<Op>, Op> {
         new: Map::new(),
         ..op.clone()
     };
-    // Greedy: columns into pieces while each piece stays under the limit.
+    // Greedy: columns into pieces while each piece stays under the limit,
+    // **shortest first**. Only the first piece of an Insert creates the row:
+    // in name order, a card's long prose filled it and its NOT NULL `name`
+    // fell into a Patch for a row that never came to exist.
     let pieces = |cols: &Map<String, Value>, other: &Map<String, Value>| {
         let mut out: Vec<(Map<String, Value>, Map<String, Value>)> = Vec::new();
-        for (c, v) in cols {
+        let mut shortest: Vec<(&String, &Value)> = cols.iter().collect();
+        shortest.sort_by_key(|(_, v)| v.to_string().len());
+        for (c, v) in shortest {
             let mut n = Map::new();
             n.insert(c.clone(), v.clone());
             let mut o = Map::new();
@@ -1489,6 +1494,17 @@ mod tests {
             whole.extend(o.new.clone());
         }
         assert_eq!(whole, row, "rien de perdu, rien de changé");
+
+        // The short columns open the row, whatever their name.
+        let mut card = row.clone();
+        card.insert("name".to_owned(), json!("Lasilix"));
+        let named = Op {
+            new: card,
+            ..op.clone()
+        };
+        let (lots, _) = batches(std::slice::from_ref(&named), 4_000);
+        let back: Vec<Op> = lots.iter().flat_map(|l| decode(l).unwrap()).collect();
+        assert_eq!(back[0].new.get("name"), Some(&json!("Lasilix")));
 
         let mut huge = Map::new();
         huge.insert("id".to_owned(), json!(6));

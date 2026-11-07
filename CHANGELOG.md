@@ -63,6 +63,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Writes made while a group is being founded are no longer erased.
   - « Prendre la leur » no longer overwrites a value edited since.
   - A post holding patient rows can join a group again.
+  - A card too long for one piece no longer loses its required columns
+    on the way, which left the row absent on the other post.
 - Two DFG results on the same day: the renal table now reads the last one
   entered, as biology does; it read the first, so a corrected 25 stayed 55.
 - Thrombocytopenia and anaemia readings now cover the LMWHs. Under
