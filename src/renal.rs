@@ -548,6 +548,7 @@ pub const TABLE: &[Adaptation] = &[
             "diclofenac",
             "ketoprofene",
             "naproxene",
+            "indometacine",
             "celecoxib",
             "etoricoxib",
             "piroxicam",
@@ -666,7 +667,7 @@ pub const TABLE: &[Adaptation] = &[
         source: "RCP allopurinol ; EULAR, goutte",
     },
     Adaptation {
-        needs: &["alendronate", "risedronate", "acide zoledronique", "bisphosphonate"],
+        needs: &["alendronate", "risedronate", "acide zoledronique", "bisphosphonate", "biphosphonate"],
         never: &[],
         label: "Bisphosphonates",
         steps: &[Step {
@@ -2144,6 +2145,28 @@ pub const TABLE: &[Adaptation] = &[
         ],
         source: "RCP Sunosi",
     },
+    Adaptation {
+        needs: &["sulfamide hypoglycemiant"],
+        never: &[],
+        label: "Sulfamides hypoglycémiants",
+        steps: &[Step {
+            below: 30,
+            level: Level::Contraindicated,
+            conduct: "Insuffisance rénale sévère : contre-indication, risque d'hypoglycémie prolongée.",
+        }],
+        source: "Diamicron, Amarel, Daonil, Glipizide : contre-indiqué en insuffisance rénale sévère",
+    },
+    Adaptation {
+        needs: &["modamide"],
+        never: &[],
+        label: "Amiloride",
+        steps: &[Step {
+            below: 60,
+            level: Level::Contraindicated,
+            conduct: "Insuffisance rénale modérée à sévère : contre-indication, risque d'hyperkaliémie.",
+        }],
+        source: "Modamide : « Contre-indiqué en cas d'insuffisance rénale modérée à sévère »",
+    },
 ];
 
 #[cfg(test)]
@@ -2249,7 +2272,7 @@ mod tests {
 
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 108;
+        const FLOOR: usize = 110;
         assert!(
             TABLE.len() >= FLOOR,
             "{} molécules rénales, il y en avait {FLOOR}",

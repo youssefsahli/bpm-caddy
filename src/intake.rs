@@ -908,6 +908,9 @@ fn quarters(text: &str) -> Option<u32> {
 /// énoncé — c'est ainsi que « 1 comprimé matin, midi et soir » se lit,
 /// et c'est la seule lecture que la langue autorise.
 fn placed(folded: &str) -> ([Option<Take>; 4], bool) {
+    if let Some(doses) = moments_first(folded) {
+        return (doses, false);
+    }
     let mut doses: [Option<Take>; 4] = [None; 4];
     // Une quantité comptée qui n'a pas trouvé de moment, quand les
     // quantités viennent avant les moments (« matin : 1 cp, soir : 1 cp »
@@ -998,7 +1001,7 @@ fn placed(folded: &str) -> ([Option<Take>; 4], bool) {
         }
         if let Some(m) = moment_of(t) {
             // « 1 cp le matin, pas le soir ».
-            let denied = (1..=2).any(|back| {
+            let denied = (1..=3).any(|back| {
                 i >= back && tokens[i - back].trim_matches(|c: char| c == ',') == "pas"
             });
             if !denied {
@@ -1025,6 +1028,54 @@ fn placed(folded: &str) -> ([Option<Take>; 4], bool) {
         });
     }
     (doses, lost)
+}
+
+/// **The moment first, its dose after**: « matin : 1 comprimé, soir : 1/2
+/// comprimé », « Matin 2, midi 1, soir 1 ». Read number-then-moment, each
+/// dose slid onto the next moment, and the evening printed the morning's.
+///
+/// `None` unless a moment opens the phrase and a counted dose follows one.
+/// Moments in a row share the dose after them (« matin et soir : 1 cp »).
+fn moments_first(folded: &str) -> Option<[Option<Take>; 4]> {
+    let tokens: Vec<&str> = folded.split_whitespace().collect();
+    let clean = |t: &str| {
+        t.trim_matches(|c: char| !c.is_alphanumeric() && c != '/' && c != '½')
+            .to_owned()
+    };
+    let first_moment = tokens.iter().position(|t| moment_of(t).is_some())?;
+    let opens = tokens[..first_moment]
+        .iter()
+        .all(|t| matches!(clean(t).as_str(), "" | "le" | "la" | "l" | "au" | "et"));
+    if !opens {
+        return None;
+    }
+    let mut doses: [Option<Take>; 4] = [None; 4];
+    let mut waiting: Vec<usize> = Vec::new();
+    let mut bound = false;
+    for (i, t) in tokens.iter().enumerate().skip(first_moment) {
+        if let Some(m) = moment_of(t) {
+            if i >= 1 && clean(tokens[i - 1]) == "pas" {
+                return None;
+            }
+            doses[m.index()] = Some(Take { quarters: None });
+            waiting.push(m.index());
+            continue;
+        }
+        let Some(q) = quarters(&clean(t)).filter(|q| *q > 0) else {
+            continue;
+        };
+        let next = tokens.get(i + 1).map(|n| clean(n));
+        let closes = next.as_deref().is_none_or(|n| {
+            UNITS.contains(&n) || moment_of(n).is_some() || matches!(n, "et" | "puis")
+        });
+        if closes && !waiting.is_empty() {
+            for m in waiting.drain(..) {
+                doses[m] = Some(Take { quarters: Some(q) });
+            }
+            bound = true;
+        }
+    }
+    bound.then_some(doses)
 }
 
 /// Le moment que ce mot désigne, s'il en désigne un.
@@ -1172,6 +1223,36 @@ fn per_day(folded: &str) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_dose_written_after_its_moment_stays_on_it() {
+        let grid = |text: &str| read(text).doses.map(|d| d.and_then(|t| t.quarters));
+        assert_eq!(
+            grid("le matin 1 comprimé et le soir 2 comprimés"),
+            [Some(4), None, Some(8), None]
+        );
+        assert_eq!(
+            grid("matin: 1 comprimé, soir: 1/2 comprimé"),
+            [Some(4), None, Some(2), None]
+        );
+        assert_eq!(
+            grid("Matin 2, midi 1, soir 1"),
+            [Some(8), Some(4), Some(4), None]
+        );
+        assert_eq!(
+            grid("matin et soir : 1 comprimé"),
+            [Some(4), None, Some(4), None]
+        );
+        // The dose before its moment reads as it always did.
+        assert_eq!(
+            grid("1 comprimé le matin et 2 le soir"),
+            [Some(4), None, Some(8), None]
+        );
+        // Not a dose.
+        assert_eq!(grid("matin et soir pendant 7 jours"), [None; 4]);
+        let denied = read("ne pas prendre le matin, 1 le soir");
+        assert!(denied.doses[0].is_none());
+    }
 
     fn q(r: &Reading, m: Moment) -> Option<Option<u32>> {
         r.doses[m.index()].map(|t| t.quarters)

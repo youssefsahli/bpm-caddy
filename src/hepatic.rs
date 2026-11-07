@@ -2230,6 +2230,66 @@ pub const TABLE: &[Adaptation] = &[
         steps: &[step(Moderate, Contraindicated, "Insuffisance hépatique modérée à sévère : ne pas utiliser, sauf si le bénéfice l'emporte sur le risque de thrombose de la veine porte ; plaquettes étroitement surveillées.")],
         source: "Nplate : « Ne pas utiliser en insuffisance hépatique modérée à sévère, Child-Pugh ≥ 7, sauf si le bénéfice l'emporte sur le risque de thrombose de la veine porte ».",
     },
+    Adaptation {
+        needs: &["valsartan"],
+        label: "Valsartan",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Tareg : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["telmisartan"],
+        label: "Telmisartan",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Micardis : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["clorazepate"],
+        label: "Clorazépate",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Tranxène : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["nordazepam"],
+        label: "Nordazépam",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Nordaz : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["loflazepate"],
+        label: "Loflazépate",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Victan : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["clotiazepam"],
+        label: "Clotiazépam",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Veratran : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["buprenorphine"],
+        label: "Buprénorphine",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Subutex, Suboxone, Temgésic, Orobupré : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["rizatriptan"],
+        label: "Rizatriptan",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Maxalt : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["eletriptan"],
+        label: "Élétriptan",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Relpax : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["naratriptan"],
+        label: "Naratriptan",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Naramig : contre-indication en « insuffisance hépatique sévère ».",
+    },
 ];
 
 #[cfg(test)]
@@ -2707,7 +2767,7 @@ mod tests {
     /// faire passer un test.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 214;
+        const FLOOR: usize = 224;
         assert!(
             TABLE.len() >= FLOOR,
             "{} molécules hépatiques, il y en avait {FLOOR}",

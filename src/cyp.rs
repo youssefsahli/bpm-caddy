@@ -2351,6 +2351,23 @@ pub const TABLE: &[Profile] = &[
         ],
         source: "Mekinist : « Substrat de la P-gp in vitro : attention avec les inhibiteurs puissants de la P-gp » ; « Inhibition transitoire de la BCRP intestinale » — sans force.",
     },
+    Profile {
+        needs: &["bosentan"],
+        label: "Bosentan",
+        actions: &[
+            Action::new(Cyp3a4, Inducer, None),
+            Action::new(Cyp2c9, Inducer, None),
+            Action::new(Cyp3a4, Substrate, None),
+            Action::new(Cyp2c9, Substrate, None),
+        ],
+        source: "Tracleer : « Le bosentan est inducteur du CYP3A4 et du CYP2C9 et substrat de ces mêmes enzymes » — sans force.",
+    },
+    Profile {
+        needs: &["cinacalcet"],
+        label: "Cinacalcet",
+        actions: &[Action::new(Cyp2d6, Inhibitor, Some(Strong))],
+        source: "Mimpara : « Le cinacalcet est un inhibiteur puissant du CYP2D6 ».",
+    },
 ];
 
 #[cfg(test)]
@@ -2395,7 +2412,7 @@ mod tests {
     /// toxicité de `db.rs`.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 197;
+        const FLOOR: usize = 199;
         assert!(
             TABLE.len() >= FLOOR,
             "{} molécules aux cytochromes, il y en avait {FLOOR}",

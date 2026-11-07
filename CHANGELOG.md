@@ -93,6 +93,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Two copies in one process no longer share a temporary file.
   - A service lease dated in the future no longer outlives its holder,
     and a quick restart after a crash no longer marks the file as shared.
+- **Clinical tables reach the whole class.**
+  - The Rein and Foie tabs no longer turn a card absent from the table
+    into « nothing to adapt »: they say « à vérifier ».
+  - Renal: indométacine, every biphosphonate, sulfonylureas, amiloride.
+    Hepatic: valsartan, telmisartan, four benzodiazepines, buprenorphine,
+    three triptans. Pregnancy: valpromide, lymécycline, indométacine; the
+    metformin line no longer covers Janumet and Eucreas. Biology:
+    valpromide, Betnesol, biphosphonates, more cytotoxics. Crushing:
+    Bonviva, Xigduo. Elderly: Nautamine, Toplexil. Cytochromes:
+    phénobarbital, primidone, bosentan, cinacalcet.
+- **Printed sheets.**
+  - A dose written after its moment (« matin : 1 comprimé, soir : 1/2
+    comprimé ») no longer slides onto the next moment.
+  - The nurse sheet now carries the file's wording: a duration, a stop
+    date or « à adapter à l'INR » were dropped.
+  - Coverage rows no longer stay on screen and print under the next
+    patient's name.
+  - A TROD sheet and the bilan give the act's day, not the print day.
+  - A long drug name no longer crushes the plan and conciliation columns;
+    a long fiche block no longer loses its end.
 - Two DFG results on the same day: the renal table now reads the last one
   entered, as biology does; it read the first, so a corrected 25 stayed 55.
 - Thrombocytopenia and anaemia readings now cover the LMWHs. Under

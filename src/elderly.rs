@@ -409,7 +409,7 @@ pub const TABLE: &[Inappropriate] = &[
         source: "Critères STOPP/START v2 ; HAS — prise en charge de la dépression de la personne âgée",
     },
     Inappropriate {
-        needs: &["antihistaminique h1 sedatif", "mequitazine", "doxylamine"],
+        needs: &["antihistaminique h1 sedatif", "mequitazine", "doxylamine", "diphenhydramine", "oxomemazine"],
         never: &[],
         label: "Antihistaminiques H1 de première génération",
         from: 75,

@@ -125,9 +125,18 @@ impl Sheet {
 pub fn sheet(lines: &[(String, String, Reading)]) -> Sheet {
     let mut out = Sheet::default();
     for (line, (name, posology, reading)) in lines.iter().enumerate() {
-        let note = [reading.meal.trim(), reading.note.trim()]
+        // **The file's words go with the dose.** The grid reads moments
+        // and quantities; « pendant 7 jours », « à arrêter le 12/11 », « à
+        // adapter à l'INR » stay in the phrase, and this sheet fills a pill
+        // organiser.
+        let told = crate::fuzzy::sort_key(posology);
+        let note = [posology.trim(), reading.meal.trim(), reading.note.trim()]
             .into_iter()
-            .filter(|s| !s.is_empty())
+            .enumerate()
+            .filter(|(i, s)| {
+                !s.is_empty() && (*i == 0 || !told.contains(&crate::fuzzy::sort_key(s)))
+            })
+            .map(|(_, s)| s)
             .collect::<Vec<_>>()
             .join(" · ");
         let apart = |text: String| Apart {

@@ -1037,7 +1037,7 @@ fn bilan_values(data: &BilanData, pharmacy: &PharmacyConfig) -> Vec<(&'static st
             ));
         }
         src.push_str(&format!(
-            "#table(columns: (auto, 1fr, 1fr), inset: 5pt, stroke: 0.5pt,\n  [*Médicament*], [*DCI et classe*], [*Posologie*],\n{rows})\n"
+            "#table(columns: (1.2fr, 1fr, 1fr), inset: 5pt, stroke: 0.5pt,\n  [*Médicament*], [*DCI et classe*], [*Posologie*],\n{rows})\n"
         ));
     }
 
@@ -1854,7 +1854,7 @@ const DEFAULT_PLAN_TEMPLATE: &str = r##"
 #align(center)[#text(10pt)[{{PATIENT_NAME}} — {{DATE}}]]
 #v(4mm)
 
-#table(columns: (auto, 1fr, 1fr, 1.2fr), inset: 7pt, stroke: 0.6pt,
+#table(columns: (1.3fr, 1fr, 1fr, 1.2fr), inset: 7pt, stroke: 0.6pt,
   [*Médicament*], [*Indication*], [*Posologie*], [*Remarques*],
 {{ROWS}})
 
@@ -2337,7 +2337,9 @@ fn renewal_sentence(s: &crate::renewal::Stand) -> String {
 fn products_body(lines: &[FicheLine]) -> String {
     let mut out = String::new();
     for l in lines {
-        out.push_str("#block(width: 100%, breakable: false)[\n");
+        // Breakable: unbreakable, a block longer than a page lost its end
+        // with no error, on a patient's sheet.
+        out.push_str("#block(width: 100%, breakable: true)[\n");
         out.push_str(&format!(
             "  #text(11.5pt, weight: \"bold\")[#{}]\n",
             typst_str(&l.name)
@@ -3267,7 +3269,7 @@ const DEFAULT_CONCILIATION_TEMPLATE: &str = r##"
 #align(center)[#text(9.5pt, style: "italic")[{{SUMMARY}}]]
 #v(3mm)
 
-#table(columns: (auto, auto, 1fr, 1fr, 1.1fr), inset: 5pt, stroke: 0.5pt,
+#table(columns: (auto, 1.2fr, 1fr, 1fr, 1.1fr), inset: 5pt, stroke: 0.5pt,
   [*Statut*], [*Traitement*], [*Au dossier*], [*Sur l'ordonnance de sortie*], [*Remarque*],
 {{ROWS}})
 

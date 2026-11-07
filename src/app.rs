@@ -378,6 +378,18 @@ fn creat_unit_doubt(value: f64, mg_l: bool) -> Option<&'static str> {
     }
 }
 
+/// The day an act happened: its appointment, else the day it was written.
+/// Today only for a proposal not yet held, whose sheet comes before it.
+fn act_day(itv: &Interview, today: &str) -> String {
+    let written = itv.created_at.get(..10).unwrap_or(&itv.created_at);
+    match (&itv.scheduled_date, itv.state) {
+        (Some(day), _) if !day.is_empty() => day.get(..10).unwrap_or(day).to_owned(),
+        (_, db::InterviewState::Identified) => today.to_owned(),
+        _ if written.is_empty() => today.to_owned(),
+        _ => written.to_owned(),
+    }
+}
+
 fn clearance_tenth(v: f64) -> f64 {
     (v * 10.0 + 1e-9).floor() / 10.0
 }
@@ -17441,6 +17453,11 @@ impl Session {
         // from another poste — is written before the file is reread.
         if let Some(prev) = previous {
             self.save_patient_edits(prev);
+        }
+        // The coverage rows have no owner: left here, they printed under
+        // the next patient's name.
+        if previous != Some(patient.id) {
+            self.couv_rows.clear();
         }
         self.note(crate::telemetry::Signal::File);
         // Et la trace. Ici parce que c'est la porte unique : une
@@ -39669,6 +39686,7 @@ impl App {
             .collect();
         // The biology, most recent first, and what it changes read
         // against these same treatments.
+        let bio_cut = session.bio_results.len() > 12;
         let biology: Vec<(String, String, String, String)> = session
             .bio_results
             .iter()
@@ -39692,6 +39710,14 @@ impl App {
                     level,
                 )
             })
+            .chain(bio_cut.then(|| {
+                (
+                    String::new(),
+                    trf("bilan_more", session.bio_results.len()),
+                    String::new(),
+                    String::new(),
+                )
+            }))
             .collect();
         let readings: Vec<crate::biology::Reading> = session
             .bio_results
@@ -39747,18 +39773,27 @@ impl App {
         .filter(|l| l.level != crate::vaccines::DueLevel::Ok)
         .map(|l| format!("{} — {}", l.label, l.detail))
         .collect();
+        let acts_cut = session.viewing_interviews.len() > 12;
         let acts: Vec<(String, String, String, String)> = session
             .viewing_interviews
             .iter()
             .take(12)
             .map(|i| {
                 (
-                    db::format_french_date(&i.created_at[..10.min(i.created_at.len())]),
+                    db::format_french_date(&act_day(i, &session.today)),
                     i.kind.label().to_owned(),
                     i.theme.clone(),
                     i.state.label().to_owned(),
                 )
             })
+            .chain(acts_cut.then(|| {
+                (
+                    String::new(),
+                    trf("bilan_more", session.viewing_interviews.len()),
+                    String::new(),
+                    String::new(),
+                )
+            }))
             .collect();
         // What the ordonnance asks to have measured — the only part of
         // the bilan that speaks about what is *not* on the file. The
@@ -44066,10 +44101,7 @@ impl App {
         itv: &Interview,
         what: TrodPrint,
     ) -> Result<std::path::PathBuf, String> {
-        let on = itv
-            .scheduled_date
-            .clone()
-            .unwrap_or_else(|| session.today.clone());
+        let on = act_day(itv, &session.today);
         let date = db::format_french_date(&on);
         let signature = config.pharmacy.signature_for(&itv.operator);
         if itv.kind == InterviewKind::Vaccination {

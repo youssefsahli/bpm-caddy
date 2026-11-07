@@ -347,7 +347,7 @@ impl Resolved {
 pub const TABLE: &[Advice] = &[
     // --- Ce qui ne se discute pas -------------------------------------
     Advice {
-        needs: &["valproate", "depakine", "depakote", "micropakine"],
+        needs: &["valproate", "valpromide", "depakine", "depakote", "micropakine"],
         never: &[],
         label: "Valproate",
         pregnancy: Level::Interdit,
@@ -473,13 +473,15 @@ pub const TABLE: &[Advice] = &[
             "diclofenac",
             "ketoprofene",
             "naproxene",
+            "indometacine",
             "celecoxib",
             "etoricoxib",
             "piroxicam",
             "advil",
             "nurofen",
         ],
-        never: &[],
+        // The eye drop: a local form does not wear this level.
+        never: &["indocollyre"],
         label: "AINS",
         pregnancy: Level::Interdit,
         // « Début du 6e mois » et non « 5 mois et demi » : c'est la
@@ -587,7 +589,7 @@ pub const TABLE: &[Advice] = &[
         source: "RCP Pylera ; CRAT (tétracyclines, métronidazole)",
     },
     Advice {
-        needs: &["doxycycline", "tetracycline", "minocycline", "tolexine"],
+        needs: &["doxycycline", "tetracycline", "minocycline", "lymecycline", "tolexine"],
         // La pommade à la chlortétracycline n'est pas une cycline
         // générale : sa fiche écrit que « l'usage local sur une petite
         // surface et pour une durée brève est acceptable ». Le Sterdex,
@@ -865,7 +867,8 @@ pub const TABLE: &[Advice] = &[
     },
     Advice {
         needs: &["metformine", "glucophage", "stagid"],
-        never: &[],
+        // Janumet and Eucreas: the association is advised against.
+        never: &["gliptine"],
         label: "Metformine",
         pregnancy: Level::Compatible,
         term: "",

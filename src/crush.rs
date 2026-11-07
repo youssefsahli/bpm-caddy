@@ -434,12 +434,12 @@ pub const TABLE: &[Rule] = &[
         source: "RCP lévothyroxine",
     },
     Rule {
-        needs: &["synjardy"],
+        needs: &["synjardy", "xigduo"],
         label: "Synjardy",
         verdict: Verdict::No,
         why: "Le RCP demande d'avaler le comprimé entier avec de l'eau, et l'écrasement de l'association n'est pas documenté.",
         instead: "Les deux composants prescrits séparément, dont la metformine à libération immédiate qui s'écrase : décision du prescripteur.",
-        source: "RCP Synjardy",
+        source: "RCP Synjardy ; Xigduo : « Les comprimés s'avalent entiers, sans être coupés ni écrasés ».",
     },
     Rule {
         needs: &["metformine lp", "glucophage lp"],
@@ -458,7 +458,7 @@ pub const TABLE: &[Rule] = &[
         source: "RCP metformine ; liste nationale des médicaments écrasables",
     },
     Rule {
-        needs: &["alendronate", "fosamax", "risedronate", "actonel"],
+        needs: &["alendronate", "fosamax", "risedronate", "actonel", "ibandronate"],
         label: "Bisphosphonates oraux",
         verdict: Verdict::No,
         why: "Très irritants pour l'œsophage : le comprimé se prend entier, à jeun, avec un grand verre d'eau et debout une demi-heure. Écrasé, il fait une ulcération.",
