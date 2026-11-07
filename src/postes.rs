@@ -1742,7 +1742,6 @@ const MOST_POSTS_HEARD: usize = 64;
 /// choisit pas la mémoire de ce poste.
 const MOST_NEARBY: usize = 32;
 
-#[allow(clippy::too_many_arguments)]
 /// A round's failure, said once until it changes.
 fn say_fault(tx: &std::sync::mpsc::Sender<Progress>, fault: &mut Option<String>, e: String) {
     if fault.as_deref() != Some(e.as_str()) {
@@ -1754,6 +1753,7 @@ fn say_fault(tx: &std::sync::mpsc::Sender<Progress>, fault: &mut Option<String>,
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn auto(
     path: &Path,
     password: &str,
