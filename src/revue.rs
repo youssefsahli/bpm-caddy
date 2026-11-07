@@ -476,7 +476,7 @@ const RULES: &[Rule] = &[
     },
     Rule {
         kind: Kind::Combination(&[
-            &["anticoagulant", "AOD", "AVK", "héparine", "apixaban", "rivaroxaban", "dabigatran", "édoxaban", "warfarine", "fluindione"],
+            &["anticoagulant", "AOD", "AVK", "héparine", "HBPM", "fondaparinux", "apixaban", "rivaroxaban", "dabigatran", "édoxaban", "warfarine", "fluindione"],
             &["AINS", "ibuprofène", "diclofénac", "kétoprofène", "naproxène", "coxib"],
         ]),
         severity: Severity::Alert,
@@ -486,7 +486,7 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
             &["benzodiazépine", "zolpidem", "zopiclone", "hypnotique"],
-            &["opioïde", "skenan", "sevredol", "actiskenan", "oramorph", "moscontin", "oxycodone", "tramadol", "codéine", "fentanyl"],
+            &["opioïde", "skenan", "sevredol", "actiskenan", "oramorph", "moscontin", "oxycodone", "tramadol", "codéine", "fentanyl", "buprénorphine", "méthadone", "tapentadol"],
         ]),
         severity: Severity::Alert,
         title: "Benzodiazépine + opioïde",
@@ -557,7 +557,7 @@ const RULES: &[Rule] = &[
     },
     Rule {
         kind: Kind::Combination(&[
-            &["anticoagulant", "AOD", "AVK", "héparine", "apixaban", "rivaroxaban", "dabigatran", "édoxaban"],
+            &["anticoagulant", "AOD", "AVK", "héparine", "HBPM", "fondaparinux", "apixaban", "rivaroxaban", "dabigatran", "édoxaban"],
             &["antiagrégant", "aspirine", "clopidogrel", "prasugrel", "ticagrélor"],
         ]),
         severity: Severity::Warn,
@@ -567,7 +567,7 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
             &["ISRS", "sertraline", "paroxétine", "citalopram", "fluoxétine", "IRSNa", "venlafaxine", "duloxétine"],
-            &["anticoagulant", "AOD", "AVK", "antiagrégant", "aspirine", "clopidogrel", "AINS"],
+            &["anticoagulant", "AOD", "AVK", "héparine", "HBPM", "fondaparinux", "antiagrégant", "aspirine", "clopidogrel", "AINS"],
         ]),
         severity: Severity::Warn,
         title: "Sérotoninergique et saignement",
@@ -616,7 +616,7 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
             &["AINS", "ibuprofène", "diclofénac", "kétoprofène", "naproxène", "coxib"],
-            &["corticoïde", "prednisone", "prednisolone", "méthylprednisolone"],
+            &["prednisone", "prednisolone", "méthylprednisolone", "bétaméthasone", "dexaméthasone", "hydrocortisone", "budésonide oral", "budésonide MMX"],
         ]),
         severity: Severity::Warn,
         title: "AINS + corticoïde",
@@ -665,7 +665,7 @@ const RULES: &[Rule] = &[
         detail: "Deux inhibiteurs de la pompe à protons : le plus souvent un reliquat d'ordonnance hospitalière. Un seul suffit, et son indication se réévalue.",
     },
     Rule {
-        kind: Kind::Duplicate(&["benzodiazépine", "zolpidem", "zopiclone"], 2),
+        kind: Kind::Duplicate(&["benzodiazépine", "hypnotique benzodiazépinique", "zolpidem", "zopiclone"], 2),
         severity: Severity::Warn,
         title: "Deux benzodiazépines",
         detail: "Deux benzodiazépines ou apparentés ensemble : aucun gain d'efficacité, mais un risque accru de dépendance et de chutes. Le relais vers une seule molécule se prépare.",
@@ -732,7 +732,7 @@ const RULES: &[Rule] = &[
     },
     Rule {
         kind: Kind::Duplicate(
-            &["anticoagulant", "AOD", "AVK", "héparine", "apixaban", "rivaroxaban", "dabigatran", "édoxaban", "warfarine", "fluindione", "acénocoumarol", "énoxaparine", "tinzaparine", "fondaparinux"],
+            &["anticoagulant", "AOD", "AVK", "héparine", "HBPM", "apixaban", "rivaroxaban", "dabigatran", "édoxaban", "warfarine", "fluindione", "acénocoumarol", "fondaparinux"],
             2,
         ),
         severity: Severity::Alert,
@@ -752,7 +752,9 @@ const RULES: &[Rule] = &[
         kind: Kind::Combination(&[
             &["IEC", "sartan", "ARA II"],
             &["antialdostérone", "spironolactone", "éplérénone"],
-            &["potassium", "kaléorid", "diffu-k"],
+            // Not « potassium »: it names the binders that treat the
+            // hyperkalaemia (Lokelma, Veltassa) and a colon preparation.
+            &["chlorure de potassium", "kaléorid", "diffu-k"],
         ]),
         severity: Severity::Alert,
         title: "Triple risque hyperkaliémique",
@@ -815,8 +817,10 @@ const RULES: &[Rule] = &[
                 "fentanyl",
                 "buprénorphine",
             ]],
-            &["laxatif", "macrogol", "lactulose", "bisacodyl", "sterculia", "docusate"],
-            &[],
+            // The peripheral antagonists treat the same constipation.
+            &["laxatif", "macrogol", "lactulose", "bisacodyl", "sterculia", "docusate", "naloxégol", "relistor"],
+            // Targinact holds its naloxone against it.
+            &["oxycodone + naloxone"],
         ),
         severity: Severity::Warn,
         title: "Opioïde sans laxatif",
@@ -846,7 +850,8 @@ const RULES: &[Rule] = &[
                 "acide zolédronique",
                 "dénosumab",
             ],
-            &[],
+            // The rule speaks of an oral course, not of an inhaler.
+            &["inhalé"],
         ),
         severity: Severity::Warn,
         title: "Corticoïde sans protection osseuse",
@@ -900,7 +905,7 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
             &["quinolone", "fluoroquinolone", "ciprofloxacine", "lévofloxacine", "ofloxacine", "norfloxacine", "moxifloxacine"],
-            &["corticoïde", "prednisone", "prednisolone", "méthylprednisolone"],
+            &["prednisone", "prednisolone", "méthylprednisolone", "bétaméthasone", "dexaméthasone", "hydrocortisone", "budésonide oral", "budésonide MMX"],
         ]),
         severity: Severity::Warn,
         title: "Fluoroquinolone + corticoïde",
@@ -1276,7 +1281,7 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
             &["gabapentine", "prégabaline", "gabapentinoïde"],
-            &["skenan", "sevredol", "actiskenan", "oramorph", "moscontin", "oxycodone", "hydromorphone", "fentanyl", "tramadol", "codéine", "méthadone", "lamaline", "izalgi", "poudre d'opium"],
+            &["skenan", "sevredol", "actiskenan", "oramorph", "moscontin", "oxycodone", "hydromorphone", "fentanyl", "tramadol", "codéine", "méthadone", "buprénorphine", "tapentadol", "lamaline", "izalgi", "poudre d'opium"],
         ]),
         severity: Severity::Alert,
         title: "Gabapentinoïde + opioïde",
@@ -1297,7 +1302,8 @@ const RULES: &[Rule] = &[
             // vitamine D, elle, ne nomme que ses cinq formes. Le calcium
             // reste dans la phrase, où il ne décide de rien.
             &["vitamine d"],
-            &[],
+            // Fosavance carries its own vitamin D.
+            &["colécalciférol"],
         ),
         severity: Severity::Warn,
         title: "Bisphosphonate sans vitamine D",
@@ -1335,6 +1341,72 @@ const RULES: &[Rule] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Each class the rules' fragments once missed, by the words its card
+    /// really carries.
+    #[test]
+    fn the_rules_reach_substitution_opioids_lmwh_and_spare_what_treats() {
+        let has = |ordo: &[Treatment], title: &str| review(ordo).iter().any(|p| p.title == title);
+        let subutex = t(
+            "Subutex",
+            "buprénorphine",
+            "traitement de substitution aux opiacés",
+        );
+        let methadone = t(
+            "Méthadone",
+            "méthadone",
+            "traitement de substitution aux opiacés",
+        );
+        let lexomil = t("Lexomil", "bromazépam", "benzodiazépine");
+        assert!(has(&[subutex, lexomil], "Benzodiazépine + opioïde"));
+        assert!(has(&[methadone, lexomil], "Benzodiazépine + opioïde"));
+        let lyrica = t("Lyrica", "prégabaline", "gabapentinoïde");
+        let palexia = t("Palexia", "tapentadol", "opioïde");
+        assert!(has(&[subutex, lyrica], "Gabapentinoïde + opioïde"));
+        assert!(has(&[palexia, lyrica], "Gabapentinoïde + opioïde"));
+        let havlane = t("Havlane", "loprazolam", "hypnotique benzodiazépinique");
+        assert!(has(&[havlane, lexomil], "Deux benzodiazépines"));
+        let stresam = t("Stresam", "étifoxine", "anxiolytique non benzodiazépinique");
+        assert!(!has(&[stresam, lexomil], "Deux benzodiazépines"));
+
+        let lovenox = t("Lovenox", "énoxaparine", "HBPM");
+        let arixtra = t("Arixtra", "fondaparinux", "anti-Xa injectable");
+        let advil = t("Advil", "ibuprofène", "AINS");
+        let plavix = t("Plavix", "clopidogrel", "antiagrégant");
+        let eliquis = t("Eliquis", "apixaban", "AOD");
+        assert!(has(&[lovenox, advil], "Anticoagulant + AINS"));
+        assert!(has(&[arixtra, advil], "Anticoagulant + AINS"));
+        assert!(has(&[lovenox, plavix], "Anticoagulant + antiagrégant"));
+        assert!(has(&[lovenox, eliquis], "Deux anticoagulants"));
+
+        let triatec = t("Triatec", "ramipril", "IEC");
+        let aldactone = t("Aldactone", "spironolactone", "antialdostérone");
+        let lokelma = t(
+            "Lokelma",
+            "cyclosilicate de sodium et de zirconium",
+            "chélateur du potassium (hyperkaliémie)",
+        );
+        let kaleorid = t("Kaléorid", "chlorure de potassium", "supplément potassique");
+        let triple = "Triple risque hyperkaliémique";
+        assert!(!has(&[triatec, aldactone, lokelma], triple));
+        assert!(has(&[triatec, aldactone, kaleorid], triple));
+
+        let pulmicort = t("Pulmicort", "budésonide", "corticoïde inhalé");
+        assert!(!has(&[pulmicort], "Corticoïde sans protection osseuse"));
+        assert!(!has(&[pulmicort, advil], "AINS + corticoïde"));
+        let cortancyl = t("Cortancyl", "prednisone", "corticoïde");
+        assert!(has(&[cortancyl], "Corticoïde sans protection osseuse"));
+        assert!(has(&[cortancyl, advil], "AINS + corticoïde"));
+
+        let fosavance = t(
+            "Fosavance",
+            "alendronate + colécalciférol",
+            "bisphosphonate",
+        );
+        assert!(!has(&[fosavance], "Bisphosphonate sans vitamine D"));
+        let targinact = t("Targinact", "oxycodone + naloxone", "opioïde");
+        assert!(!has(&[targinact], "Opioïde sans laxatif"));
+    }
 
     fn t<'a>(name: &'a str, dci: &'a str, class: &'a str) -> Treatment<'a> {
         Treatment {

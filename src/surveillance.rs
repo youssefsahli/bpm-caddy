@@ -503,7 +503,7 @@ pub const WATCHES: &[Watch] = &[
         // alpha-glucosidases se nomment par leur classe, et huit fiches
         // — Daonil, Glipizide, Novonorm, Galvus, Onglyza, Glucor,
         // Victoza, Mounjaro — n'avaient pas d'HbA1c.
-        needs: &["antidiabétique", "metformine", "insuline", "gliclazide", "glimépiride", "sitagliptine", "dapagliflozine", "empagliflozine", "sémaglutide", "dulaglutide", "sulfamide hypoglycémiant", "glinide", "gliptine", "GLP-1", "alpha-glucosidase", "tirzépatide"],
+        needs: &["antidiabétique", "metformine", "insuline", "gliclazide", "glimépiride", "sitagliptine", "gliflozine", "sémaglutide", "dulaglutide", "sulfamide hypoglycémiant", "glinide", "gliptine", "GLP-1", "alpha-glucosidase", "tirzépatide"],
         code: "HBA1C",
         every_months: 3,
         why: "L'HbA1c reflète les trois derniers mois : tous les trois mois tant que la cible n'est pas atteinte, tous les six mois ensuite. La cible se personnalise : 7 % ne convient pas à tous les patients.",
@@ -647,14 +647,14 @@ pub const WATCHES: &[Watch] = &[
         never: &[],
     },
     Watch {
-        needs: &["bisphosphonate", "alendronate", "risédronate", "zolédronique", "dénosumab"],
+        needs: &["bisphosphonate", "biphosphonate", "alendronate", "risédronate", "zolédronique", "dénosumab"],
         code: "CA",
         every_months: 12,
         why: "La calcémie et la vitamine D se corrigent avant l'injection, jamais après : sous dénosumab l'hypocalcémie peut être sévère, surtout si la clairance est basse.",
         never: &[],
     },
     Watch {
-        needs: &["bisphosphonate", "dénosumab", "vitamine D", "cholécalciférol", "calcifédiol"],
+        needs: &["bisphosphonate", "biphosphonate", "dénosumab", "vitamine D", "cholécalciférol", "calcifédiol"],
         code: "VITD",
         every_months: 12,
         why: "Une carence en vitamine D entretient l'hyperparathyroïdie et fait échouer le traitement de l'os : elle se corrige avant, et se recontrôle une fois par an.",

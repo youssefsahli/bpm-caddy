@@ -2537,8 +2537,11 @@ forfaits de location. Écrits sur un poste, ils valent sur tous ; un
 changement fait ailleurs pendant que les options sont ouvertes est relu
 et signalé, jamais écrasé. Le reste des options est propre au poste.
 
-Sauvegardes quotidiennes, en nombre fixé ; « Copier la base… » copie les
-trois fichiers, ensemble ou pas du tout. « Déplacer la base vers… » les
+Sauvegardes quotidiennes, en nombre fixé, dans `backups/` à côté de la
+base ; une copie du jour qui échoue se signale en bas de l'écran. Pour
+remettre une copie, application fermée : la renommer du nom du fichier
+manquant, à côté de la base. Une copie garde le mot de passe de son jour.
+« Copier la base… » copie les trois fichiers, ensemble ou pas du tout. « Déplacer la base vers… » les
 copie de même puis bascule ce poste sur la copie : il se verrouille et se
 rouvre dessus ; l'ancien fichier reste celui des autres postes, à
 repointer un par un. « Réinitialiser » fait d'abord une copie des trois

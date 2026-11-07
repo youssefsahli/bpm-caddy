@@ -65,6 +65,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - A post holding patient rows can join a group again.
   - A card too long for one piece no longer loses its required columns
     on the way, which left the row absent on the other post.
+- **Prescription review.**
+  - Buprenorphine, methadone and tapentadol now reach the benzodiazepine
+    and gabapentinoid alerts; benzodiazepine hypnotics count as duplicates.
+  - LMWH and fondaparinux now reach the NSAID, antiplatelet, SSRI and
+    double-anticoagulant rules.
+  - The hyperkalaemia rule no longer advises stopping a potassium binder.
+  - Inhaled corticosteroids no longer fire the rules about oral courses.
+  - Fosavance, Targinact, Moventig and Relistor no longer read as missing
+    what they provide.
+- **Monitoring.** Bonviva, Actonel, Aclasta, Zometa and Invokana get their
+  lines, and an empty list now says « à vérifier » instead of nothing due.
+- **Conciliation.** A strength written with no unit (« Eliquis 2.5 »), a
+  doubled take and a different named product (Actiskénan for Skenan) no
+  longer read as kept.
+- **Nutrition.** The adult criteria no longer give a verdict under 18.
+- **Backups and copies.**
+  - Compacting a copy no longer needs the file's size in memory: one
+    deleted piece could stop the daily copy of a large pieces file, and
+    a compaction failure now keeps the copy.
+  - A base that held a register no longer opens with it missing, even
+    with no copy beside it.
+  - A failed daily copy shows in the status bar, and a register or pieces
+    file with content and no copy shows in Options.
+  - « Copier la base » and the export no longer recreate a vanished base
+    and write it over a good copy.
+  - Two copies in one process no longer share a temporary file.
+  - A service lease dated in the future no longer outlives its holder,
+    and a quick restart after a crash no longer marks the file as shared.
 - Two DFG results on the same day: the renal table now reads the last one
   entered, as biology does; it read the first, so a corrected 25 stayed 55.
 - Thrombocytopenia and anaemia readings now cover the LMWHs. Under

@@ -328,6 +328,8 @@ pub fn compare(held: &[Held], list: &str, base: &[Known]) -> Vec<Divergence> {
         detail: String,
         matched: bool,
         raw: String,
+        /// The brand the line wrote out, if it wrote one.
+        brand: String,
     }
     // Le dossier d'abord, la base ensuite. Une ligne qui nomme quelque
     // chose que le patient prend déjà désigne *ce* traitement-là, et pas
@@ -395,6 +397,15 @@ pub fn compare(held: &[Held], list: &str, base: &[Known]) -> Vec<Divergence> {
                     detail: detail.to_owned(),
                     matched: true,
                     raw: raw.to_owned(),
+                    brand: {
+                        let (card, line) =
+                            (crate::fuzzy::sort_key(k.name), crate::fuzzy::sort_key(name));
+                        if card != crate::fuzzy::sort_key(k.dci) && line.contains(&card) {
+                            card
+                        } else {
+                            String::new()
+                        }
+                    },
                 });
             }
             None => entries.push(Entry {
@@ -404,6 +415,7 @@ pub fn compare(held: &[Held], list: &str, base: &[Known]) -> Vec<Divergence> {
                 detail: detail.to_owned(),
                 matched: false,
                 raw: raw.to_owned(),
+                brand: String::new(),
             }),
         }
     }
@@ -455,7 +467,21 @@ pub fn compare(held: &[Held], list: &str, base: &[Known]) -> Vec<Divergence> {
                     (mine, theirs),
                     (Some((a, ua)), Some((b, ub))) if ua == ub && (a - b).abs() > 1e-9
                 );
-                let kind = if !other_strength && same_dose(h.posology, &e.detail) {
+                // **Same molecule, another named product is not the same
+                // treatment**: Skenan (extended release) for Actiskénan
+                // (immediate release) read as kept. A line written as the
+                // molecule stays kept.
+                let other_brand = !e.brand.is_empty() && e.brand != crate::fuzzy::sort_key(h.name);
+                // « Eliquis 2.5 : 1 cp » carries no unit, and the 2.5 was
+                // skipped as a harmless prefix against a held 5 mg.
+                let bare = bare_strength(&e.detail).zip(first_number(h.strength));
+                let other_bare =
+                    theirs.is_none() && bare.is_some_and(|(a, b)| (a - b).abs() > 1e-9);
+                let kind = if !other_strength
+                    && !other_brand
+                    && !other_bare
+                    && same_dose(h.posology, &e.detail)
+                {
                     Change::Kept
                 } else {
                     Change::DoseChanged
@@ -717,6 +743,26 @@ fn same_units(words: Vec<String>) -> Vec<String> {
 /// La première quantité d'un texte, ramenée à son unité de base : les
 /// masses en microgrammes, les unités et les millilitres à part.
 /// « 1 g » et « 1000 mg » sont la même ; « 5mg », « 2,5 mg » se lisent.
+/// A strength written bare ahead of its posology: the number in
+/// « 2.5 : 1 cp le soir », not the one in « 2 cp le soir ».
+fn bare_strength(detail: &str) -> Option<f64> {
+    let words = dose_words(detail);
+    let number = |w: &String| w.parse::<f64>().ok();
+    let first = number(words.first()?)?;
+    number(words.get(1)?).map(|_| first)
+}
+
+/// The first number of a held strength, whatever its unit.
+fn first_number(text: &str) -> Option<f64> {
+    dose_words(text).iter().find_map(|w| {
+        let lead: String = w
+            .chars()
+            .take_while(|c| c.is_ascii_digit() || *c == '.')
+            .collect();
+        lead.parse().ok()
+    })
+}
+
 fn first_amount(text: &str) -> Option<(f64, &'static str)> {
     // **Lue par le même chemin que la comparaison** ([`same_units`]) :
     // lue à part, « 50 000 UI » se lisait « 000 UI » — zéro —, et deux
@@ -740,6 +786,14 @@ fn first_amount(text: &str) -> Option<(f64, &'static str)> {
 /// Un mot qui dit **une prise** : un moment, une liaison, une fréquence
 /// ou une grille (« 1-0-1 »).
 fn takes(word: &str) -> bool {
+    // « 1 cp + 1 cp » and « 2x » double a take.
+    if word == "+"
+        || word
+            .strip_suffix('x')
+            .is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+    {
+        return true;
+    }
     const WORDS: [&str; 37] = [
         "matin", "midi", "soir", "coucher", "nuit", "et", "le", "la", "les", "au", "puis", "fois",
         "jour", "jours", "par", "x", "j", "semaine", "semaines", "mois", "heures", "h", "a", "ou",
@@ -1015,6 +1069,61 @@ Vogalène lyoc si nausées
         assert_eq!(out[0].before, "5 mg le soir");
         assert_eq!(out[0].after, "5 mg le matin");
         assert_eq!(out[0].note, "IEC");
+    }
+
+    #[test]
+    fn a_strength_with_no_unit_a_doubled_take_and_another_brand_are_not_kept() {
+        let mut known = base();
+        known.push(Known {
+            name: "Skenan",
+            dci: "morphine",
+            class: "opioïde",
+        });
+        known.push(Known {
+            name: "Actiskénan",
+            dci: "morphine",
+            class: "opioïde à libération immédiate",
+        });
+        let eliquis = vec![Held {
+            name: "Eliquis",
+            dci: "apixaban",
+            class: "AOD",
+            posology: "1 cp matin et soir",
+            strength: "5 mg",
+        }];
+        let kind = |held: &[Held], line: &str| compare(held, line, &known)[0].kind;
+        assert_eq!(
+            kind(&eliquis, "ELIQUIS 2.5 : 1 cp matin et soir"),
+            Change::DoseChanged
+        );
+        assert_eq!(
+            kind(&eliquis, "Eliquis 5 : 1 cp matin et soir"),
+            Change::Kept
+        );
+        assert_eq!(kind(&eliquis, "Eliquis : 1 cp matin et soir"), Change::Kept);
+        assert_eq!(
+            kind(&eliquis, "Eliquis : 1 cp + 1 cp matin et soir"),
+            Change::DoseChanged
+        );
+        let skenan = vec![Held {
+            name: "Skenan",
+            dci: "morphine",
+            class: "opioïde",
+            posology: "1 gél matin et soir",
+            strength: "30 mg",
+        }];
+        assert_eq!(
+            kind(&skenan, "Actiskénan 30 mg : 1 gél matin et soir"),
+            Change::DoseChanged
+        );
+        assert_eq!(
+            kind(&skenan, "Skenan 30 mg : 1 gél matin et soir"),
+            Change::Kept
+        );
+        assert_eq!(
+            kind(&skenan, "morphine 30 mg : 1 gél matin et soir"),
+            Change::Kept
+        );
     }
 
     #[test]

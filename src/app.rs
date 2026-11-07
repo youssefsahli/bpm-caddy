@@ -215,6 +215,20 @@ fn officine_clashes(
 /// Run [`daily_backup`] on a background thread with its own connection:
 /// a copy rewrites the whole encrypted file, and doing that
 /// synchronously over a network share would freeze the UI at unlock.
+/// What today's copies last failed on, for the status bar: a Windows
+/// release has no stderr, and Options is a page nobody opens every day.
+static BACKUP_FAULT: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+fn note_backup_fault(e: String) {
+    if let Ok(mut fault) = BACKUP_FAULT.lock() {
+        *fault = Some(e);
+    }
+}
+
+fn backup_fault() -> Option<String> {
+    BACKUP_FAULT.lock().ok().and_then(|f| f.clone())
+}
+
 fn spawn_daily_backup(
     db_path: std::path::PathBuf,
     password: String,
@@ -227,6 +241,9 @@ fn spawn_daily_backup(
     std::thread::spawn(crate::pdf::sweep_private);
     if keep == 0 && scans_keep == 0 {
         return;
+    }
+    if let Ok(mut fault) = BACKUP_FAULT.lock() {
+        *fault = None;
     }
     std::thread::spawn(move || {
         // **Retentée** : au lancement, l'ouverture d'un poste de groupe
@@ -245,10 +262,13 @@ fn spawn_daily_backup(
         // registre cite un dossier, et une base copiée après lui les porte
         // tous — copiée avant, un patient créé entre les deux manquait à
         // la restauration.
-        if let Ok(db) = opened {
-            daily_stups_backup(&db, &db_path, &password, keep.max(scans_keep));
-            daily_scans_backup(&db, &db_path, &password, scans_keep);
-            daily_backup(&db, &db_path, &password, keep);
+        match opened {
+            Ok(db) => {
+                daily_stups_backup(&db, &db_path, &password, keep.max(scans_keep));
+                daily_scans_backup(&db, &db_path, &password, scans_keep);
+                daily_backup(&db, &db_path, &password, keep);
+            }
+            Err(e) => note_backup_fault(e),
         }
     });
 }
@@ -547,6 +567,7 @@ fn daily_copy(
     }
     if let Err(e) = std::fs::create_dir_all(dir) {
         eprintln!("bpm-caddy : dossier de sauvegarde inaccessible : {e}");
+        note_backup_fault(e.to_string());
         return;
     }
     // **Un nom à ce processus.** Deux postes qui font la copie du jour en
@@ -554,7 +575,14 @@ fn daily_copy(
     // « .db.part » : le second effaçait celui du premier en cours
     // d'écriture, et le premier renommait en copie du jour le fichier à
     // moitié écrit du second.
-    let part = target.with_extension(format!("db.{}.part", std::process::id()));
+    // Et à cette copie : verrouiller puis rouvrir pendant une longue copie
+    // en lance une seconde dans le même processus.
+    static COPIES: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let part = target.with_extension(format!(
+        "db.{}{}.part",
+        std::process::id(),
+        COPIES.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
     let _ = std::fs::remove_file(&part);
     // Les « .part » d'une copie coupée (une coupure de courant) portent
     // le numéro d'un autre processus : passé un jour, ils partent.
@@ -591,6 +619,7 @@ fn daily_copy(
     if let Err(e) = write(&part) {
         let _ = std::fs::remove_file(&part);
         eprintln!("bpm-caddy : {e}");
+        note_backup_fault(e);
         return;
     }
     // Un autre poste a pu faire la sienne entre-temps : la sienne reste.
@@ -5189,7 +5218,9 @@ impl NutritionForm {
             .map(|h| if h < 3.0 { h * 100.0 } else { h })
             .filter(|h| (50.0..=250.0).contains(h))?;
         Some(crate::nutrition::Assessment {
-            age: self.age.trim().parse().ok()?,
+            // The criteria are the adult ones (arrêté du 7 mai 2019): a
+            // child's BMI read against them gave a severe verdict.
+            age: self.age.trim().parse().ok().filter(|a| *a >= 18)?,
             weight: num(&self.weight).filter(|w| *w <= 400.0)?,
             height,
             usual_weight: num(&self.usual),
@@ -73360,7 +73391,15 @@ impl App {
                         .on_hover_text(tr("conseil_nut_aggression_tooltip"));
                     motif::section(ui, tr("conseil_nut_reading"));
                     let Some((r, a)) = &reading else {
-                        Self::conseil_note(ui, tr("conseil_nut_incomplete"));
+                        let child = f.age.trim().parse::<u32>().is_ok_and(|a| a < 18);
+                        Self::conseil_note(
+                            ui,
+                            tr(if child {
+                                "conseil_nut_adult_only"
+                            } else {
+                                "conseil_nut_incomplete"
+                            }),
+                        );
                         return;
                     };
                     let pct = |v: Option<f64>| v.map(|x| format!("{x:.1} %").replace('.', ","));
@@ -100381,6 +100420,16 @@ impl eframe::App for App {
                             + 14.0
                             + w(trf("status_quality_late", quality_late))
                     };
+                    if let Some(fault) = backup_fault() {
+                        if ui.available_width() > right_needs {
+                            ui.label(
+                                egui::RichText::new(tr("status_backup_failed"))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::alert()),
+                            )
+                            .on_hover_text(fault);
+                        }
+                    }
                     if quality_late > 0 && ui.available_width() > right_needs {
                         flag(
                             ui,
@@ -102835,14 +102884,20 @@ impl App {
                                             } else {
                                                 "opts_backup_behind_scans"
                                             };
+                                            let line = match (day.is_empty(), *series) {
+                                                (false, _) => trf(key, db::format_french_date(day)),
+                                                (true, "stups") => {
+                                                    tr("opts_backup_never_stups").to_owned()
+                                                }
+                                                (true, _) => {
+                                                    tr("opts_backup_never_scans").to_owned()
+                                                }
+                                            };
                                             ui.add(
                                                 egui::Label::new(
-                                                    egui::RichText::new(trf(
-                                                        key,
-                                                        db::format_french_date(day),
-                                                    ))
-                                                    .size(motif::pt(ui, 11.0))
-                                                    .color(motif::alert()),
+                                                    egui::RichText::new(line)
+                                                        .size(motif::pt(ui, 11.0))
+                                                        .color(motif::alert()),
                                                 )
                                                 .wrap(),
                                             );
@@ -103854,7 +103909,10 @@ impl App {
                     let password = session.password.clone();
                     let (tx, rx) = std::sync::mpsc::channel();
                     std::thread::spawn(move || {
-                        let done = db::Db::open(&path, &password)
+                        // `open_existing`: a folder gone since the session
+                        // opened must not be recreated empty and copied
+                        // over a good copy.
+                        let done = db::Db::open_existing(&path, &password)
                             .and_then(|db| db.copy_whole_to(&target, Some(&password)));
                         let said = match done {
                             Ok(()) => (false, trf("opts_db_copied", target.display())),

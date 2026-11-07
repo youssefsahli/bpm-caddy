@@ -1952,6 +1952,11 @@ impl BundleExport {
 
     fn run_in(&self, stage: &Path, password: &str) -> Result<(), String> {
         let open = |path: &Path| -> Result<Connection, String> {
+            // A plain open creates what is missing: a folder gone since
+            // the session opened packed three empty files over a good pack.
+            if !path.is_file() {
+                return Err(format!("fichier absent : {}", path.display()));
+            }
             let c = Connection::open(path).map_err(|e| e.to_string())?;
             c.busy_timeout(std::time::Duration::from_secs(5))
                 .map_err(|e| e.to_string())?;
@@ -2166,10 +2171,30 @@ fn stepwise_copy(src: &Connection, path: &Path, password: &str, what: &str) -> R
         .query_row("PRAGMA freelist_count", [], |r| r.get(0))
         .map_err(|e| format!("{what} : {e}"))?;
     if free > 0 {
-        out.execute_batch("PRAGMA journal_mode = OFF; VACUUM;")
-            .map_err(|e| format!("{what} : {e}"))?;
+        squeeze(out, path);
     }
     Ok(())
+}
+
+/// Compact a finished copy, **on disk and at best**. `VACUUM` in place holds
+/// its temporary database in memory (`TEMP_STORE=2`): 463 MB of memory for a
+/// 408 MB pieces file with one free page, and past that the whole copy was
+/// thrown away. A copy with its free pages, encrypted, is still a copy.
+fn squeeze(out: Connection, path: &Path) {
+    let tight = path.with_extension("tight");
+    let _ = std::fs::remove_file(&tight);
+    let written = tight
+        .to_str()
+        .is_some_and(|t| out.execute("VACUUM INTO ?1", [t]).is_ok());
+    drop(out);
+    let mut head = [0u8; 15];
+    let ciphered = std::fs::File::open(&tight)
+        .and_then(|mut f| std::io::Read::read_exact(&mut f, &mut head))
+        .is_ok()
+        && &head != b"SQLite format 3";
+    if !(written && ciphered && std::fs::rename(&tight, path).is_ok()) {
+        let _ = std::fs::remove_file(&tight);
+    }
 }
 
 /// Combien de temps, après la première reprise, une copie par étapes
@@ -2327,7 +2352,17 @@ pub fn backup_state(db_path: &Path) -> BackupState {
         .into_iter()
         .filter_map(|series| {
             let (others, _) = backup_days(&dir, &backup_prefix(db_path, Some(series)));
-            let last = others.last()?;
+            let Some(last) = others.last() else {
+                // A file with content and no copy at all is the worst lag,
+                // and read as none. Empty files stay under this weight.
+                let file = if series == "stups" {
+                    stups_path(db_path)
+                } else {
+                    scans_path(db_path)
+                };
+                let held = std::fs::metadata(file).is_ok_and(|m| m.len() > 256 * 1024);
+                return (held && newest.is_some()).then(|| (series, String::new()));
+            };
             (Some(last) < newest.as_ref()).then(|| (series, last.clone()))
         })
         .collect();
@@ -42373,6 +42408,9 @@ fn nc_values(n: &crate::qualite::NonConformite) -> Vec<rusqlite::types::Value> {
 
 pub struct Db {
     conn: Connection,
+    /// The service lease as this process last read it, and since when by
+    /// its own clock: see [`Db::hold_service`].
+    lease_seen: std::cell::RefCell<Option<(String, i64)>>,
     /// Les octets des pièces numérisées, dans leur **propre fichier
     /// chiffré** à côté de la base — `bpm_caddy_scans.db`.
     ///
@@ -43182,6 +43220,7 @@ impl Db {
         // seul fichier de la maison qu'on ne reconstitue pas. Quand des
         // copies d'un registre existent, l'ouverture s'arrête et dit
         // laquelle remettre en place.
+        let register_gone = std::fs::metadata(stups_path(path)).map_or(true, |m| m.len() == 0);
         if let Some(copy) = lost_register(path) {
             return Err(format!(
                 "Le registre des stupéfiants est introuvable ou vide à côté de la base \
@@ -43242,6 +43281,24 @@ impl Db {
             r.get::<_, i64>(0)
         })
         .map_err(|_| "Mot de passe incorrect (ou fichier illisible).".to_owned())?;
+        // **Et sans aucune copie à côté** — la base déplacée seule, un
+        // dossier de copies perdu : la base se souvient d'avoir tenu un
+        // registre, et l'ordonnancier ne repart pas de rien en silence.
+        let held: Option<String> = conn
+            .query_row(
+                "SELECT value FROM sync_local WHERE key = 'register_held'",
+                [],
+                |r| r.get(0),
+            )
+            .ok();
+        if register_gone && held.is_some() {
+            return Err(format!(
+                "Le registre des stupéfiants est introuvable ou vide à côté de la base ({}), \
+                 alors que cette base en tenait un. Remettre le fichier en place avant \
+                 d'ouvrir l'application.",
+                stups_path(path).display()
+            ));
+        }
         // **Les deux autres fichiers s'ouvrent pendant ce temps.** Chaque
         // ouverture paie la dérivation de clé de SQLCipher, et les trois
         // se suivaient : le déverrouillage attendait trois fois la même
@@ -43291,7 +43348,15 @@ impl Db {
         };
         let scans = joined(side.0)?;
         let stups = joined(side.1)?;
-        let db = Self { conn, scans, stups };
+        let db = Self {
+            conn,
+            lease_seen: Default::default(),
+            scans,
+            stups,
+        };
+        if held.is_none() && db.stup_weight().is_ok_and(|w| w.0 > 0) {
+            db.set_sync_local("register_held", "1")?;
+        }
         db.move_register_beside_the_base()?;
         // A post of a group: its capture follows the schema, which a
         // migration may just have widened — and a table added since the
@@ -59690,10 +59755,25 @@ impl Db {
                 |r| r.get(0),
             )
             .ok();
-        if let Some((who, at)) = held.as_deref().and_then(|v| v.split_once(' ')) {
-            let fresh = at.parse::<i64>().is_ok_and(|at| at >= now - SERVICE_FOR);
-            if who != me && fresh && !self.shared_file() {
-                self.set_sync_local("service_shared", "1")?;
+        //
+        // Prouvé par un bail **qui se renouvelle** sous nos yeux, et jugé
+        // sur notre horloge. Le seul âge de sa date se trompait deux fois :
+        // relancé moins de 90 s après un plantage, un poste seul se croyait
+        // partagé pour toujours ; et le bail d'un ordinateur à l'horloge en
+        // avance, éteint sans le rendre, n'expirait qu'à sa date.
+        let mut stuck = false;
+        if let Some(value) = held.as_deref() {
+            let holder = |v: &str| v.split(' ').next().unwrap_or("").to_owned();
+            let mut seen = self.lease_seen.borrow_mut();
+            match seen.as_ref() {
+                Some((was, since)) if was == value => stuck = now - *since > SERVICE_FOR,
+                Some((was, _)) => {
+                    if holder(was) == holder(value) && holder(value) != me && !self.shared_file() {
+                        self.set_sync_local("service_shared", "1")?;
+                    }
+                    *seen = Some((value.to_owned(), now));
+                }
+                None => *seen = Some((value.to_owned(), now)),
             }
         }
         let changed = self
@@ -59702,8 +59782,9 @@ impl Db {
                 "INSERT INTO sync_local (key, value) VALUES ('service', ?1 || ' ' || ?2)
                  ON CONFLICT (key) DO UPDATE SET value = excluded.value
                  WHERE substr(value, 1, length(?1) + 1) = ?1 || ' '
-                    OR CAST(substr(value, instr(value, ' ') + 1) AS INTEGER) < ?2 - ?3",
-                rusqlite::params![me, now, SERVICE_FOR],
+                    OR CAST(substr(value, instr(value, ' ') + 1) AS INTEGER) < ?2 - ?3
+                    OR ?4",
+                rusqlite::params![me, now, SERVICE_FOR, stuck],
             )
             .map_err(|e| e.to_string())?;
         Ok(changed == 1)
@@ -63235,6 +63316,20 @@ mod tests {
             .expect("a crossed deletion does not stop the post");
         assert!(b.sync_applied("r2"));
         assert!(act > 0);
+    }
+
+    /// **A lease dated in the future does not outlive its holder**, and a
+    /// restart after a crash is not a second computer.
+    #[test]
+    fn a_lease_is_judged_by_what_it_does_not_by_its_date() {
+        let (swept, a, _other) = two_posts("bail");
+        let b = Db::open(&swept.0.join("a.db"), "secret").unwrap();
+        let far = 1000 + 365 * 86_400;
+        assert!(a.hold_service("ahead", far).unwrap());
+        assert!(!b.hold_service("bbbb", 1000).unwrap());
+        assert!(!b.hold_service("bbbb", 1000 + SERVICE_FOR).unwrap());
+        assert!(b.hold_service("bbbb", 1001 + SERVICE_FOR).unwrap());
+        assert!(!b.shared_file(), "one sighting proves nobody is alive");
     }
 
     /// A post holding a file with its acts can be emptied to join: the
@@ -66864,6 +66959,55 @@ mod tests {
     /// dossier écrit sur un retour et pas sur une destruction, la
     /// référence qui appartient à deux natures, et le refus d'une
     /// destruction qui ne cite rien.
+    /// **The base remembers its register**, with no copy beside it: moved
+    /// alone, it opened on an empty ordonnancier.
+    #[test]
+    fn a_base_that_held_a_register_does_not_open_without_it() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-seul-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("seul.db");
+        let db = Db::open(&path, "secret").unwrap();
+        db.add_stupefiant(0, "Actiskenan 10 mg", "gélule", 0.0)
+            .unwrap();
+        drop(db);
+        drop(Db::open(&path, "secret").unwrap());
+        std::fs::remove_file(stups_path(&path)).unwrap();
+        assert!(Db::open(&path, "secret").is_err());
+    }
+
+    /// A copy with free pages is compacted on disk and stays encrypted.
+    #[test]
+    fn a_compacted_copy_is_smaller_and_still_ciphered() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-tight-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let src = dir.join("src.db");
+        let db = Db::open(&src, "secret").unwrap();
+        let n = db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        db.conn
+            .execute_batch(
+                "CREATE TABLE ballast (b BLOB);
+                 INSERT INTO ballast VALUES (zeroblob(2000000));
+                 DROP TABLE ballast;",
+            )
+            .unwrap();
+        let copy = dir.join("copy.db");
+        stepwise_copy(&db.conn, &copy, "secret", "copie").unwrap();
+        let bytes = std::fs::read(&copy).unwrap();
+        assert!(!bytes.starts_with(b"SQLite format 3"));
+        assert!(bytes.len() < std::fs::metadata(&src).unwrap().len() as usize);
+        let back = Connection::open(&copy).unwrap();
+        back.pragma_update(None, "key", "secret").unwrap();
+        let found: i64 = back
+            .query_row("SELECT id FROM patients WHERE id = ?1", [n], |r| r.get(0))
+            .unwrap();
+        assert_eq!(found, n);
+        assert!(!copy.with_extension("tight").exists());
+    }
+
     #[test]
     fn an_expired_destruction_keeps_its_record_and_a_held_product_stays_followed() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-perimes-{}", std::process::id()));
