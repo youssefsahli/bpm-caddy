@@ -86,7 +86,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   le soir »). Cycle days (« J1 à J14 », « du 16e au 25e jour du cycle »),
   unnamed conditions and meals beside a moment no longer draw a grid.
   « en 3 prises », « 3/j » give their count; a range or a ceiling (« deux à
-  trois fois par jour ») gives none.
+  trois fois par jour ») gives none. Insulin units fill the grid (« Lantus
+  20 UI le soir » prints 20 in the evening), unless the dose is adapted
+  (« selon glycémie ») ; « gél » and « cpr » count like « gélule » and
+  « comprimé » ; a clock hour fills its column when no moment is named
+  (« 1 cp à 8h et 20h »), and an hour with no column (16h, 21h) leaves the
+  line unread. A one-off before an examination (« la veille de la
+  coloscopie ») no longer reads as a daily take.
 - **Conciliation.** A strength written with no unit (« Eliquis 2.5 »), a
   doubled take and a different named product (Actiskénan for Skenan) no
   longer read as kept. Neither do a stopped or changed take written in

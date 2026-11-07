@@ -525,6 +525,11 @@ const NOT_DAILY: &[&str] = &[
     "lendemain matin",
     "lendemain soir",
     "veille au soir",
+    // a one-off before an examination: « 1 sachet à 20h la veille de la
+    // coloscopie » is no evening of every day.
+    "la veille de la ",
+    "la veille de l'",
+    "avant l'intervention",
     "jours, arret",
     "jours d'arret",
     " a j1",
@@ -560,14 +565,43 @@ const MEALS: &[(&str, &str)] = &[
 /// Les unités qui font d'un nombre un **dosage** et non une quantité.
 const STRENGTHS: &[&str] = &["mg", "g", "µg", "mcg", "ug", "ml", "ui", "%", "mmol", "kg"];
 
+/// **L'unité d'insuline est ce qu'on injecte** : « 20 UI le soir » porte
+/// 20 dans la colonne du soir, comme « 10-0-10 UI » et « 14 unités ». Sauf
+/// dans une phrase qui l'adapte ([`ADAPTED`]) : la case garde sa marque.
+/// Au-delà de 40 ([`quarters`]), le nombre n'est pas lu.
+const INSULIN: &[&str] = &["ui", "u"];
+
+/// Ce qui fait d'une dose d'insuline écrite un point de départ et non une
+/// dose : « 6 UI le matin selon glycémie ». Imprimer 6 dirait une dose fixe.
+const ADAPTED: &[&str] = &[
+    "selon",
+    "adapt",
+    "ajust",
+    "protocole",
+    "schema",
+    "correction",
+    "glycemie",
+    "dextro",
+    "+/-",
+    "titr",
+];
+
+fn insulin_counts(folded: &str) -> bool {
+    !ADAPTED.iter().any(|w| folded.contains(w))
+}
+
 /// Les unités qui font d'un nombre une **quantité**.
 const UNITS: &[&str] = &[
     "comprime",
     "comprimes",
     "cp",
     "cps",
+    "cpr",
+    "cprs",
     "gelule",
     "gelules",
+    "gel",
+    "gels",
     "sachet",
     "sachets",
     "goutte",
@@ -836,7 +870,8 @@ fn normalize(folded: &str) -> String {
     // lisait sur son premier mot — « matin » — et la grille imprimée
     // perdait le midi et le soir. Seulement quand **chaque** morceau
     // est un moment : « 1/2 », « 1-0-1 » restent la notation.
-    s.split(' ')
+    let s = s
+        .split(' ')
         .map(|tok| {
             let parts: Vec<&str> = tok.split(['-', '/', '+', ',', '&']).collect();
             if parts.len() > 1
@@ -850,7 +885,97 @@ fn normalize(folded: &str) -> String {
             }
         })
         .collect::<Vec<_>>()
-        .join(" ")
+        .join(" ");
+    clock_hours(&s)
+}
+
+/// The column a clock hour falls in, in minutes of the day. The gaps are
+/// on purpose: 16h is a goûter, 21h either evening or bedtime, and a
+/// take with no column of its own leaves the phrase unread.
+fn column_of_hour(minutes: u32) -> Option<&'static str> {
+    match minutes {
+        300..=630 => Some("matin"),
+        660..=840 => Some("midi"),
+        1080..=1230 => Some("soir"),
+        1290..=1439 => Some("coucher"),
+        _ => None,
+    }
+}
+
+/// « 8h », « 08h30 », « 20h00 », in minutes of the day.
+fn clock(token: &str) -> Option<u32> {
+    let t = token.trim_end_matches([',', '.']);
+    let (h, m) = t.split_once('h')?;
+    if h.is_empty() || h.len() > 2 || !h.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    if !(m.is_empty() || (m.len() == 2 && m.chars().all(|c| c.is_ascii_digit()))) {
+        return None;
+    }
+    let (h, m): (u32, u32) = (
+        h.parse().ok()?,
+        if m.is_empty() { 0 } else { m.parse().ok()? },
+    );
+    (h < 24 && m < 60).then_some(h * 60 + m)
+}
+
+/// **A clock hour is a moment** when the phrase names none: « 1 cp à 8h
+/// et 20h » is a morning and an evening take. Only an hour said as one
+/// (« à », « vers », after the dose's unit, or in a list of hours), never
+/// a delay (« 2h avant », « toutes les 12h »). An hour with no column is
+/// left as written, and the phrase stays unread.
+fn clock_hours(s: &str) -> String {
+    let mut tokens: Vec<String> = s.split_whitespace().map(str::to_owned).collect();
+    if tokens.iter().any(|t| moment_of(t).is_some()) {
+        return s.to_owned();
+    }
+    // « 8 h » is « 8h ».
+    let mut i = 0;
+    while i + 1 < tokens.len() {
+        let next = tokens[i + 1].trim_end_matches([',', '.']);
+        if next == "h" && tokens[i].chars().all(|c| c.is_ascii_digit()) && !tokens[i].is_empty() {
+            let glued = format!("{}{}", tokens[i], tokens[i + 1]);
+            tokens[i] = glued;
+            tokens.remove(i + 1);
+        }
+        i += 1;
+    }
+    let mut previous_hour = false;
+    for i in 0..tokens.len() {
+        let parts: Vec<&str> = tokens[i].split(['-', '/']).collect();
+        let minutes: Option<Vec<u32>> = parts.iter().map(|p| clock(p)).collect();
+        let Some(minutes) = minutes.filter(|m| !m.is_empty()) else {
+            previous_hour = previous_hour && tokens[i] == "et";
+            continue;
+        };
+        let before = i
+            .checked_sub(1)
+            .map(|b| {
+                tokens[b]
+                    .trim_matches(|c: char| !c.is_alphanumeric())
+                    .to_owned()
+            })
+            .unwrap_or_default();
+        let after = tokens
+            .get(i + 1)
+            .map(|a| a.trim_matches(|c: char| !c.is_alphanumeric()).to_owned())
+            .unwrap_or_default();
+        let said = matches!(before.as_str(), "a" | "vers")
+            || UNITS.contains(&before.as_str())
+            || previous_hour
+            || parts.len() > 1;
+        let delay = matches!(after.as_str(), "avant" | "apres" | "plus" | "de" | "d");
+        let columns: Option<Vec<&str>> = minutes.iter().map(|m| column_of_hour(*m)).collect();
+        previous_hour = true;
+        if !said || delay {
+            continue;
+        }
+        if let Some(columns) = columns {
+            let comma = if tokens[i].ends_with(',') { "," } else { "" };
+            tokens[i] = format!("{}{comma}", columns.join(" "));
+        }
+    }
+    tokens.join(" ")
 }
 
 /// Ce que porte la ligne d'un traitement à la demande : sa condition,
@@ -1179,7 +1304,9 @@ fn short_interval(folded: &str) -> bool {
 /// énoncé — c'est ainsi que « 1 comprimé matin, midi et soir » se lit,
 /// et c'est la seule lecture que la langue autorise.
 fn placed(folded: &str) -> ([Option<Take>; 4], bool) {
-    if let Some(doses) = moments_first(folded) {
+    let insulin = insulin_counts(folded);
+    let counts = |w: &str| UNITS.contains(&w) || (insulin && INSULIN.contains(&w));
+    if let Some(doses) = moments_first(folded, insulin) {
         return (doses, false);
     }
     let mut doses: [Option<Take>; 4] = [None; 4];
@@ -1206,6 +1333,8 @@ fn placed(folded: &str) -> ([Option<Take>; 4], bool) {
         })
     };
     let is = |i: usize, set: &[&str]| word(i).as_deref().is_some_and(|n| set.contains(&n));
+    let unit = |i: usize| word(i).as_deref().is_some_and(counts);
+    let strength = |i: usize| is(i, STRENGTHS) && !unit(i);
     let number = |i: usize| {
         tokens
             .get(i)
@@ -1271,8 +1400,7 @@ fn placed(folded: &str) -> ([Option<Take>; 4], bool) {
             let mut j = i;
             let mut q = q;
             // « 1, 5 cp »: a decimal cut by a typing space.
-            if tokens[i].ends_with(',') && q % 4 == 0 && number(i + 1).is_some() && is(i + 2, UNITS)
-            {
+            if tokens[i].ends_with(',') && q % 4 == 0 && number(i + 1).is_some() && unit(i + 2) {
                 pending = Some(None);
                 last = Some(None);
                 i += 3;
@@ -1303,15 +1431,15 @@ fn placed(folded: &str) -> ([Option<Take>; 4], bool) {
                 })
             };
             if (is(j + 1, &["a", "ou"]) || sign(j + 1)) && number(j + 2).is_some() {
-                let unit = is(j + 3, UNITS);
-                if unit || sign(j + 1) {
+                let counted = unit(j + 3);
+                if counted || sign(j + 1) {
                     pending = Some(None);
                     last = Some(None);
                 }
-                i = j + 3 + usize::from(unit);
+                i = j + 3 + usize::from(counted);
                 continue;
             }
-            if is(j + 1, STRENGTHS) {
+            if strength(j + 1) {
                 i = j + 2;
                 continue;
             }
@@ -1324,12 +1452,12 @@ fn placed(folded: &str) -> ([Option<Take>; 4], bool) {
                 pending = Some(None);
                 last = Some(None);
                 i = j + 2;
-                while i < tokens.len() && (number(i).is_some() || is(i, UNITS)) {
+                while i < tokens.len() && (number(i).is_some() || unit(i)) {
                     i += 1;
                 }
                 continue;
             }
-            if q > 0 && is(j + 1, UNITS) {
+            if q > 0 && unit(j + 1) {
                 // « 1 comprimé et demi », « 1 cp 1/2 », « 1 cp x 2 »,
                 // « 1 cp + 1 cp »: the unit does not end the quantity.
                 let fraction = tokens
@@ -1470,7 +1598,8 @@ fn placed(folded: &str) -> ([Option<Take>; 4], bool) {
 ///
 /// `None` unless a moment opens the phrase and a counted dose follows one.
 /// Moments in a row share the dose after them (« matin et soir : 1 cp »).
-fn moments_first(folded: &str) -> Option<[Option<Take>; 4]> {
+fn moments_first(folded: &str, insulin: bool) -> Option<[Option<Take>; 4]> {
+    let counts = |w: &str| UNITS.contains(&w) || (insulin && INSULIN.contains(&w));
     let tokens: Vec<&str> = folded.split_whitespace().collect();
     let clean = |t: &str| {
         t.trim_matches(|c: char| !c.is_alphanumeric() && c != '/' && c != '½')
@@ -1555,7 +1684,7 @@ fn moments_first(folded: &str) -> Option<[Option<Take>; 4]> {
         // A strength, an hour, a delay, a duration: said so by what follows
         // it, or by what stands before it.
         let measure = next.is_some_and(|n| {
-            STRENGTHS.contains(&n)
+            (STRENGTHS.contains(&n) && !counts(n))
                 || matches!(
                     n,
                     "h" | "heure" | "heures" | "min" | "minutes" | "jour" | "jours"
@@ -1565,7 +1694,7 @@ fn moments_first(folded: &str) -> Option<[Option<Take>; 4]> {
         // Past its dose, a phrase says nothing more that counts: another
         // quantity is a sum, a phase, a second moment.
         if waiting.is_empty() {
-            if (measure || aside) && !next.is_some_and(|n| UNITS.contains(&n)) {
+            if (measure || aside) && !next.is_some_and(counts) {
                 continue;
             }
             return Some(marks);
@@ -1574,7 +1703,7 @@ fn moments_first(folded: &str) -> Option<[Option<Take>; 4]> {
         let range = matches!(next, Some("a" | "ou")) && after.and_then(quarters).is_some();
         // « 1 1/2 », « 1 et demi », and past the unit « 1 comprimé et demi ».
         // « / » alone separates two moments, « 1/2 heure avant » is a delay.
-        let (rest, beyond) = if next.is_some_and(|n| UNITS.contains(&n)) {
+        let (rest, beyond) = if next.is_some_and(counts) {
             (after, third.as_deref())
         } else {
             (next, after)
@@ -1591,7 +1720,7 @@ fn moments_first(folded: &str) -> Option<[Option<Take>; 4]> {
         let closes = match next {
             None => beside,
             Some(n) => {
-                UNITS.contains(&n)
+                counts(n)
                     || moment_of(n).is_some()
                     || (matches!(n, "le" | "la" | "l" | "au" | "et" | "puis")
                         && after.is_some_and(|a| moment_of(a).is_some()))
@@ -1606,7 +1735,7 @@ fn moments_first(folded: &str) -> Option<[Option<Take>; 4]> {
                 .take_while(|t| moment_of(t).is_none())
                 .collect::<Vec<_>>()
                 .windows(2)
-                .any(|w| quarters(&w[0]).is_some_and(|q| q > 0) && UNITS.contains(&w[1].as_str()));
+                .any(|w| quarters(&w[0]).is_some_and(|q| q > 0) && counts(&w[1]));
             if (measure || aside) && dose_follows {
                 continue;
             }
@@ -2771,6 +2900,74 @@ mod tests {
             "5 mg une fois par jour le matin (soit 4 mg puis 8 mg pour la forme tert-butylamine)",
         ] {
             assert_eq!(read(text).kind, Kind::Placed, "{text}");
+        }
+    }
+
+    /// The common blanks of a real file: an insulin's units, « gél »,
+    /// « cpr », a clock hour. Each figure is the one written; an adapted
+    /// insulin, an hour with no column and a delay stay without one.
+    #[test]
+    fn units_abbreviations_and_clock_hours_are_read() {
+        let grid = |p: &str| {
+            let r = read(p);
+            assert_eq!(r.kind, Kind::Placed, "{p}");
+            Moment::ALL.map(|m| q(&r, m).flatten().map(|n| n / 4))
+        };
+        assert_eq!(grid("Lantus 20 UI le soir"), [None, None, Some(20), None]);
+        assert_eq!(
+            grid("Levemir 12 U matin et soir"),
+            [Some(12), None, Some(12), None]
+        );
+        assert_eq!(
+            grid("Novorapid 8 UI matin, 10 UI midi, 6 UI soir"),
+            [Some(8), Some(10), Some(6), None]
+        );
+        assert_eq!(
+            grid("Insulatard 10 UI au coucher"),
+            [None, None, None, Some(10)]
+        );
+        assert_eq!(grid("1 gél. matin et soir"), [Some(1), None, Some(1), None]);
+        assert_eq!(grid("1 cpr le matin"), [Some(1), None, None, None]);
+        assert_eq!(grid("1 cp à 8h et 20h"), [Some(1), None, Some(1), None]);
+        assert_eq!(
+            grid("1 cp à 8h, 12h et 18h"),
+            [Some(1), Some(1), Some(1), None]
+        );
+        assert_eq!(
+            grid("1 comprimé à 8 h et à 20 h"),
+            [Some(1), None, Some(1), None]
+        );
+        assert_eq!(grid("1 cp 8h-20h"), [Some(1), None, Some(1), None]);
+        assert_eq!(
+            grid("2 gél à 8h et 1 à 20h"),
+            [Some(2), None, Some(1), None]
+        );
+        assert_eq!(grid("Abasaglar 22 UI à 22 h"), [None, None, None, Some(22)]);
+        assert_eq!(grid("1 cp le soir à 22h"), [None, None, Some(1), None]);
+        // Adapted, past what a figure reads, or a strength: a mark, no figure.
+        for p in [
+            "6 UI le matin selon glycémie",
+            "Humalog 4 UI matin midi soir à adapter",
+            "Lovenox 4000 UI le soir",
+            "Vitamine D 1000 UI le matin",
+        ] {
+            let r = read(p);
+            assert!(r.has_grid(), "{p}");
+            assert!(
+                r.doses.iter().flatten().all(|t| t.quarters.is_none()),
+                "{p}"
+            );
+        }
+        // No column, a delay, a rhythm, a one-off: no grid.
+        for p in [
+            "1 cp à 21h",
+            "1 cp à 8h, 12h, 16h et 20h",
+            "1 cp 2h avant le repas",
+            "1 cp toutes les 12h",
+            "1 sachet à 20h la veille de la coloscopie",
+            "1 sachet le soir la veille de la coloscopie",
+        ] {
+            assert!(!read(p).has_grid(), "{p}");
         }
     }
 

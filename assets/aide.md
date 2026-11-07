@@ -245,7 +245,11 @@ patient lors d'un changement d'ordonnance. Trois parties.
 coucher — établie à partir de la posologie retenue au dossier pour
 **ce** patient. Un chiffre quand l'ordonnance précise la quantité, une
 pastille quand elle précise le moment sans la quantité : la fiche
-n'ajoute aucune unité non prescrite.
+n'ajoute aucune unité non prescrite. Une insuline s'écrit en unités
+(« 20 UI le soir » : 20 au soir), sauf posologie adaptée (« selon
+glycémie ») : pastille. Une heure se place dans sa colonne (8h matin,
+12h midi, 19h soir, 22h coucher) ; 16h ou 21h n'en ont pas, et la
+posologie passe telle quelle.
 
 Une posologie non interprétée occupe une seule case sur les quatre
 colonnes et est imprimée telle quelle : quatre cases vides se liraient
