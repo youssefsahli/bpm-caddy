@@ -617,7 +617,9 @@ fn daily_copy(
                     .is_some_and(|d| crate::date::parse_iso(d).is_some())
                     && rest.get(10..).is_some_and(|tail| {
                         tail.strip_prefix(".db.")
-                            .and_then(|t| t.strip_suffix(".part"))
+                            .and_then(|t| {
+                                t.strip_suffix(".part").or_else(|| t.strip_suffix(".tight"))
+                            })
                             .is_some_and(|pid| {
                                 !pid.is_empty() && pid.chars().all(|c| c.is_ascii_digit())
                             })
@@ -58744,6 +58746,15 @@ impl App {
                                 };
                                 q.new_due.clear();
                                 session.reload_qualite();
+                                // The verdict was cleared in the base: the
+                                // open form follows, or its next save puts
+                                // it back.
+                                let q = &mut session.qual;
+                                let fresh = q.ncs.iter().find(|n| n.id == a.nc_id).cloned();
+                                if let (Some(e), Some(fresh)) = (q.edit.as_mut(), fresh) {
+                                    e.draft.effective = fresh.effective;
+                                    e.shown = fresh;
+                                }
                             }
                             Err(err) => session.error = Some(err),
                         }

@@ -43291,13 +43291,23 @@ impl Db {
                 |r| r.get(0),
             )
             .ok();
+        // The written gesture of someone who knows it is lost for good:
+        // without it, no file would ever open again.
         if register_gone && held.is_some() {
-            return Err(format!(
-                "Le registre des stupéfiants est introuvable ou vide à côté de la base ({}), \
-                 alors que cette base en tenait un. Remettre le fichier en place avant \
-                 d'ouvrir l'application.",
-                stups_path(path).display()
-            ));
+            let given_up = path.with_extension("registre-perdu");
+            if !given_up.exists() {
+                return Err(format!(
+                    "Le registre des stupéfiants est introuvable ou vide à côté de la base \
+                     ({}), alors que cette base en tenait un. Remettre le fichier en place \
+                     avant d'ouvrir l'application. S'il est perdu pour de bon, créer un \
+                     fichier vide nommé {} : l'application repartira d'un registre vide.",
+                    stups_path(path).display(),
+                    given_up.display()
+                ));
+            }
+            conn.execute("DELETE FROM sync_local WHERE key = 'register_held'", [])
+                .map_err(|e| e.to_string())?;
+            let _ = std::fs::remove_file(&given_up);
         }
         // **Les deux autres fichiers s'ouvrent pendant ce temps.** Chaque
         // ouverture paie la dérivation de clé de SQLCipher, et les trois
@@ -43355,7 +43365,8 @@ impl Db {
             stups,
         };
         if held.is_none() && db.stup_weight().is_ok_and(|w| w.0 > 0) {
-            db.set_sync_local("register_held", "1")?;
+            // A locked shared drive must not fail an opening: next time.
+            let _ = db.set_sync_local("register_held", "1");
         }
         db.move_register_beside_the_base()?;
         // A post of a group: its capture follows the schema, which a
@@ -52702,30 +52713,32 @@ impl Db {
 
     pub fn insert_nc_action(&self, a: &crate::qualite::Action) -> Result<i64, String> {
         // A verdict judged the actions it saw: a new one reopens the question.
-        self.conn
-            .execute(
-                "UPDATE nonconformites SET effective = 0 WHERE id = ?1 AND effective = 1",
-                [a.nc_id],
-            )
-            .map_err(|e| e.to_string())?;
-        self.conn
-            .execute(
-                &format!(
-                    "INSERT INTO nc_actions (id, nc_id, preventive, what, owner, due_on, done_on)
-                     VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6)",
-                    next = next_id("nc_actions")
-                ),
-                rusqlite::params![
-                    a.nc_id,
-                    i64::from(a.preventive),
-                    &a.what,
-                    &a.owner,
-                    &a.due_on,
-                    &a.done_on
-                ],
-            )
-            .map_err(|e| e.to_string())?;
-        Ok(self.conn.last_insert_rowid())
+        // One write: a refused insert must not leave the verdict cleared.
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
+        tx.execute(
+            "UPDATE nonconformites SET effective = 0 WHERE id = ?1 AND effective = 1",
+            [a.nc_id],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.execute(
+            &format!(
+                "INSERT INTO nc_actions (id, nc_id, preventive, what, owner, due_on, done_on)
+                 VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6)",
+                next = next_id("nc_actions")
+            ),
+            rusqlite::params![
+                a.nc_id,
+                i64::from(a.preventive),
+                &a.what,
+                &a.owner,
+                &a.due_on,
+                &a.done_on
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        let id = tx.last_insert_rowid();
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(id)
     }
 
     /// Récrire une action, compare-and-set sur la ligne affichée.
@@ -66975,6 +66988,12 @@ mod tests {
         drop(Db::open(&path, "secret").unwrap());
         std::fs::remove_file(stups_path(&path)).unwrap();
         assert!(Db::open(&path, "secret").is_err());
+        // Given up on, in writing: the base opens, on an empty register.
+        let given_up = path.with_extension("registre-perdu");
+        std::fs::write(&given_up, "").unwrap();
+        drop(Db::open(&path, "secret").unwrap());
+        assert!(!given_up.exists());
+        assert!(Db::open(&path, "secret").is_ok());
     }
 
     /// A copy with free pages is compacted on disk and stays encrypted.

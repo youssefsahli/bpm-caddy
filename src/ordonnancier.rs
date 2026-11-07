@@ -1727,15 +1727,23 @@ pub fn read_count(typed: &str) -> Option<f64> {
     // « 3 plaquettes », « 2 cartons » and « 250 ml » through as units:
     // the tail must be a word of the catalogue's own units.
     let tail = crate::fuzzy::sort_key(rest.trim_start());
+    if tail.contains("boite") {
+        return None;
+    }
     let word = tail.split_whitespace().next().unwrap_or("");
+    let word = word.split('(').next().unwrap_or(word);
+    let word = word.trim_end_matches(|c: char| !c.is_alphanumeric());
     let word = word.strip_suffix('s').unwrap_or(word);
-    UNIT_PLURALS
-        .iter()
-        .any(|(one, _)| {
+    // What a count is written with at the counter, beside the catalogue.
+    const SHORT: &[&str] = &[
+        "cp", "cpr", "gel", "amp", "patch", "sachet", "dose", "unidose", "unite",
+    ];
+    (SHORT.contains(&word)
+        || UNIT_PLURALS.iter().any(|(one, _)| {
             let first = crate::fuzzy::sort_key(one);
             first.split_whitespace().next() == Some(word)
-        })
-        .then_some(value)
+        }))
+    .then_some(value)
 }
 
 /// **Un écart se motive case par case**, et pas une fois pour la
@@ -3403,6 +3411,18 @@ mod tests {
         assert_eq!(read_count("30 mg"), None);
         assert_eq!(read_count("1 O"), None);
         assert_eq!(read_count("2 flacons"), Some(2.0));
+        assert_eq!(read_count("3 gélules 2 boîtes"), None);
+        for short in [
+            "14 cp",
+            "14 cps",
+            "14 gél",
+            "7 cp.",
+            "14 gélule(s)",
+            "3 amp",
+            "5 patchs",
+        ] {
+            assert!(read_count(short).is_some(), "{short}");
+        }
         assert_eq!(read_count("7 comprimés sublinguaux"), Some(7.0));
         assert_eq!(read_count("1 dispositif"), Some(1.0));
     }

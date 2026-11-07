@@ -471,12 +471,20 @@ pub fn compare(held: &[Held], list: &str, base: &[Known]) -> Vec<Divergence> {
                 // treatment**: Skenan (extended release) for Actiskénan
                 // (immediate release) read as kept. A line written as the
                 // molecule stays kept.
-                let other_brand = !e.brand.is_empty() && e.brand != crate::fuzzy::sort_key(h.name);
+                //
+                // Only when their class here says they differ: Dafalgan for
+                // Doliprane is a substitution, and a column that flags every
+                // one is a column nobody reads. The names cannot tell:
+                // « actiskenan » holds « skenan ».
+                let other_brand = !e.brand.is_empty()
+                    && e.brand != crate::fuzzy::sort_key(h.name)
+                    && !e.class.is_empty()
+                    && !h.class.trim().is_empty()
+                    && crate::fuzzy::sort_key(&e.class) != crate::fuzzy::sort_key(h.class);
                 // « Eliquis 2.5 : 1 cp » carries no unit, and the 2.5 was
                 // skipped as a harmless prefix against a held 5 mg.
-                let bare = bare_strength(&e.detail).zip(first_number(h.strength));
-                let other_bare =
-                    theirs.is_none() && bare.is_some_and(|(a, b)| (a - b).abs() > 1e-9);
+                let other_bare = theirs.is_none()
+                    && bare_strength(&e.detail).is_some_and(|b| !strength_says(h.strength, b));
                 let kind = if !other_strength
                     && !other_brand
                     && !other_bare
@@ -744,12 +752,31 @@ fn same_units(words: Vec<String>) -> Vec<String> {
 /// masses en microgrammes, les unités et les millilitres à part.
 /// « 1 g » et « 1000 mg » sont la même ; « 5mg », « 2,5 mg » se lisent.
 /// A strength written bare ahead of its posology: the number in
-/// « 2.5 : 1 cp le soir », not the one in « 2 cp le soir ».
+/// « 2.5 : 1 cp le soir », not the one in « 2 cp le soir », nor the spaced
+/// grid « 1 0 1 »: a word follows the second number.
 fn bare_strength(detail: &str) -> Option<f64> {
     let words = dose_words(detail);
     let number = |w: &String| w.parse::<f64>().ok();
     let first = number(words.first()?)?;
-    number(words.get(1)?).map(|_| first)
+    number(words.get(1)?)?;
+    words
+        .get(2)?
+        .chars()
+        .all(char::is_alphabetic)
+        .then_some(first)
+}
+
+/// Can this bare number be the held strength, in whichever unit it left
+/// out? « Doliprane 1000 » against 1 g is the same; 2.5 against 5 mg is
+/// not. A strength nothing can be read from contests nothing.
+fn strength_says(strength: &str, bare: f64) -> bool {
+    let same = |v: f64| (v - bare).abs() < 1e-9;
+    let Some(typed) = first_number(strength) else {
+        return true;
+    };
+    same(typed)
+        || first_amount(strength)
+            .is_some_and(|(v, _)| same(v) || same(v / 1_000.0) || same(v / 1_000_000.0))
 }
 
 /// The first number of a held strength, whatever its unit.
@@ -1069,6 +1096,52 @@ Vogalène lyoc si nausées
         assert_eq!(out[0].before, "5 mg le soir");
         assert_eq!(out[0].after, "5 mg le matin");
         assert_eq!(out[0].note, "IEC");
+    }
+
+    #[test]
+    fn an_ordinary_sheet_stays_kept() {
+        let mut known = base();
+        known.push(Known {
+            name: "Eliquis",
+            dci: "apixaban",
+            class: "AOD",
+        });
+        known.push(Known {
+            name: "Doliprane",
+            dci: "paracétamol",
+            class: "antalgique",
+        });
+        known.push(Known {
+            name: "Dafalgan",
+            dci: "paracétamol",
+            class: "antalgique",
+        });
+        let kind = |held: &[Held], line: &str| compare(held, line, &known)[0].kind;
+        // A spaced grid is no strength.
+        let grid = [Held {
+            name: "Eliquis",
+            dci: "apixaban",
+            class: "AOD",
+            posology: "1 0 1",
+            strength: "5 mg",
+        }];
+        assert_eq!(kind(&grid, "Eliquis : 1 0 1"), Change::Kept);
+        let doliprane = [Held {
+            name: "Doliprane",
+            dci: "paracétamol",
+            class: "antalgique",
+            posology: "1 cp matin et soir",
+            strength: "1 g",
+        }];
+        // The strength in the other unit; a substitution within one class.
+        assert_eq!(
+            kind(&doliprane, "Doliprane 1000 : 1 cp matin et soir"),
+            Change::Kept
+        );
+        assert_eq!(
+            kind(&doliprane, "Dafalgan 1 g : 1 cp matin et soir"),
+            Change::Kept
+        );
     }
 
     #[test]

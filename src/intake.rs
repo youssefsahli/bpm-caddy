@@ -1049,13 +1049,25 @@ fn moments_first(folded: &str) -> Option<[Option<Take>; 4]> {
     if !opens {
         return None;
     }
+    let denied = |i: usize| (1..=3).any(|back| i >= back && clean(tokens[i - back]) == "pas");
     let mut doses: [Option<Take>; 4] = [None; 4];
+    // Every moment the phrase keeps, with no quantity: what is printed when
+    // a quantity cannot be told. A blank is read; a wrong figure is taken.
+    let mut marks = doses;
+    for (i, t) in tokens.iter().enumerate().skip(first_moment) {
+        if let Some(m) = moment_of(t).filter(|_| !denied(i)) {
+            marks[m.index()] = Some(Take { quarters: None });
+        }
+    }
     let mut waiting: Vec<usize> = Vec::new();
     let mut bound = false;
     for (i, t) in tokens.iter().enumerate().skip(first_moment) {
         if let Some(m) = moment_of(t) {
-            if i >= 1 && clean(tokens[i - 1]) == "pas" {
-                return None;
+            if denied(i) {
+                if i == first_moment {
+                    return None;
+                }
+                continue;
             }
             doses[m.index()] = Some(Take { quarters: None });
             waiting.push(m.index());
@@ -1064,16 +1076,51 @@ fn moments_first(folded: &str) -> Option<[Option<Take>; 4]> {
         let Some(q) = quarters(&clean(t)).filter(|q| *q > 0) else {
             continue;
         };
-        let next = tokens.get(i + 1).map(|n| clean(n));
-        let closes = next.as_deref().is_none_or(|n| {
-            UNITS.contains(&n) || moment_of(n).is_some() || matches!(n, "et" | "puis")
-        });
-        if closes && !waiting.is_empty() {
-            for m in waiting.drain(..) {
-                doses[m] = Some(Take { quarters: Some(q) });
-            }
-            bound = true;
+        if waiting.is_empty() {
+            continue;
         }
+        let next = tokens.get(i + 1).map(|n| clean(n));
+        let after = tokens.get(i + 2).map(|n| clean(n));
+        let next = next.as_deref();
+        let after = after.as_deref();
+        // A range, a mixed number: the phrase says more than one figure.
+        let range = matches!(next, Some("a" | "ou")) && after.and_then(quarters).is_some();
+        // « 1 1/2 », « 1 et demi », and past the unit « 1 comprimé et demi ».
+        let part = |w: &str| w == "demi" || w.contains(['/', '½', '¼', '¾']);
+        let third = tokens.get(i + 3).map(|n| clean(n));
+        let (rest, beyond) = if next.is_some_and(|n| UNITS.contains(&n)) {
+            (after, third.as_deref())
+        } else {
+            (next, after)
+        };
+        let mixed = rest.is_some_and(part) || (rest == Some("et") && beyond.is_some_and(part));
+        if range || mixed {
+            return Some(marks);
+        }
+        // What says this number is a dose: its unit, the moment it runs
+        // into, or the end of the phrase right after its own moment.
+        let beside = tokens[..i]
+            .iter()
+            .rev()
+            .map(|p| clean(p))
+            .find(|p| !p.is_empty())
+            .is_some_and(|p| moment_of(&p).is_some());
+        let closes = match next {
+            None => beside,
+            Some(n) => {
+                UNITS.contains(&n)
+                    || moment_of(n).is_some()
+                    || (matches!(n, "le" | "la" | "l" | "au" | "et" | "puis")
+                        && after.is_some_and(|a| moment_of(a).is_some()))
+            }
+        };
+        if !closes {
+            return bound.then_some(marks);
+        }
+        for m in waiting.drain(..) {
+            doses[m] = Some(Take { quarters: Some(q) });
+        }
+        bound = true;
     }
     bound.then_some(doses)
 }
@@ -1248,8 +1295,45 @@ mod tests {
             grid("1 comprimé le matin et 2 le soir"),
             [Some(4), None, Some(8), None]
         );
-        // Not a dose.
-        assert_eq!(grid("matin et soir pendant 7 jours"), [None; 4]);
+        assert_eq!(grid("matin 1, le soir 2"), [Some(4), None, Some(8), None]);
+        assert_eq!(
+            grid("matin : 1, le soir : 1/2"),
+            [Some(4), None, Some(2), None]
+        );
+        assert_eq!(
+            grid("matin 2, au coucher 1"),
+            [Some(8), None, None, Some(4)]
+        );
+        assert_eq!(
+            grid("matin et soir 2 pulvérisations pendant 10 jours"),
+            [Some(8), None, Some(8), None]
+        );
+        // Not a dose, or not one figure: the box stays a mark.
+        for blank in [
+            "matin et soir pendant 7 jours",
+            "le soir pendant 7",
+            "le matin à 8",
+            "le soir vers 20",
+            "le soir 1 à 2 comprimés",
+            "matin 1 ou 2 cp",
+            "matin et soir 1/2 à 1 cp",
+            "le soir 1 1/2 comprimé",
+            "matin 1 1/2 cp, soir 1 cp",
+            "le soir 1 comprimé et demi",
+            "le soir 1 et demi",
+            "le soir 1 cp 1/2",
+            "le soir 1 comprimé et 1/2",
+            "matin 5 mg, soir 10",
+        ] {
+            assert!(
+                grid(blank).iter().all(Option::is_none),
+                "{blank}: {:?}",
+                grid(blank)
+            );
+        }
+        // Denied after the dose.
+        let denied_late = read("le matin 1 comprimé, pas le soir");
+        assert!(denied_late.doses[2].is_none());
         let denied = read("ne pas prendre le matin, 1 le soir");
         assert!(denied.doses[0].is_none());
     }

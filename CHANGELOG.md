@@ -77,7 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Monitoring.** Bonviva, Actonel, Aclasta, Zometa and Invokana get their
   lines, and an empty list now says « à vérifier » instead of nothing due.
 - **Conciliation.** A strength written with no unit (« Eliquis 2.5 »), a
-  doubled take and a different named product (Actiskénan for Skenan) no
+  doubled take and a named product of another class on the card (Actiskénan for Skenan) no
   longer read as kept.
 - **Nutrition.** The adult criteria no longer give a verdict under 18.
 - **Backups and copies.**
