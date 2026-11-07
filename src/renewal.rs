@@ -254,6 +254,14 @@ pub fn read(p: &Prescription, today: &str, notice_days: u32) -> Stand {
     }
 }
 
+/// Does this date mean a new prescription rather than a corrected one?
+/// A delivery older than the new date cannot be one of its deliveries, so
+/// its count must start over: kept, a renewed prescription read 3 of 3.
+pub fn starts_over(was_on: &str, now_on: &str, delivered_on: &str) -> bool {
+    let (was_on, now_on, delivered_on) = (was_on.trim(), now_on.trim(), delivered_on.trim());
+    !now_on.is_empty() && now_on > was_on && !delivered_on.is_empty() && delivered_on < now_on
+}
+
 /// Rassembler les traitements qui viennent de la même ordonnance.
 ///
 /// Les champs sont portés par chaque ligne du dossier, parce que c'est
@@ -375,6 +383,18 @@ impl Viz {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_later_date_past_the_last_delivery_is_a_new_prescription() {
+        assert!(starts_over("2026-07-01", "2026-10-10", "2026-09-01"));
+        // A correction to an earlier date, or one the delivery still
+        // follows, keeps the count.
+        assert!(!starts_over("2026-07-05", "2026-07-01", "2026-09-01"));
+        assert!(!starts_over("2026-07-01", "2026-07-05", "2026-09-01"));
+        // No delivery day known: nothing says the count is stale.
+        assert!(!starts_over("2026-07-01", "2026-10-10", ""));
+        assert!(!starts_over("2026-07-01", "", "2026-06-01"));
+    }
 
     fn p(on: &str, days: u32, renewals: u32, dispensed: u32) -> Prescription {
         Prescription {

@@ -676,9 +676,13 @@ pub fn gaps(shifts: &[Shift], opening: &[Slot]) -> Vec<Slot> {
         }
         let mut run: Option<(u16, u16)> = None;
         for minute in open.start..open.end {
-            let covered = shifts
-                .iter()
-                .any(|s| s.kind.at_counter() && overlaps(&s.slot(), &Slot::point(minute)));
+            // A shift with no end is someone on duty until an hour nobody
+            // wrote: unknown, not a hole in the day.
+            let covered = shifts.iter().any(|s| {
+                s.kind.at_counter()
+                    && (overlaps(&s.slot(), &Slot::point(minute))
+                        || (s.end.is_none() && minute >= s.start))
+            });
             match (&mut run, covered) {
                 (Some(r), false) => r.1 = minute + 1,
                 (Some(_), true) => {
@@ -972,7 +976,8 @@ fn kind_named(word: &str) -> Option<ShiftKind> {
 /// « 09:30 », « 12.30 » — in minutes, or `None`.
 fn typed_bound(t: &str) -> Option<u16> {
     let t = t.trim();
-    if t.is_empty() {
+    // Byte offsets below: « 9€ » split inside a character and panicked.
+    if t.is_empty() || !t.is_ascii() {
         return None;
     }
     let (h, m) = match t.find(['h', ':', '.']) {
@@ -1889,6 +1894,9 @@ mod tests {
         assert_eq!(parse_day("9-12h7"), Err("9-12h7".to_owned()));
         assert_eq!(parse_day("p30"), Err("p30".to_owned()));
         assert_eq!(parse_day("co"), Err("co".to_owned()));
+        // A byte offset inside a character used to panic here.
+        assert_eq!(parse_day("9€"), Err("9€".to_owned()));
+        assert_eq!(parse_day("9-19€"), Err("9-19€".to_owned()));
     }
 
     /// What typing starts from reads back as the same day, kinds,

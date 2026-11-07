@@ -52636,6 +52636,13 @@ impl Db {
     }
 
     pub fn insert_nc_action(&self, a: &crate::qualite::Action) -> Result<i64, String> {
+        // A verdict judged the actions it saw: a new one reopens the question.
+        self.conn
+            .execute(
+                "UPDATE nonconformites SET effective = 0 WHERE id = ?1 AND effective = 1",
+                [a.nc_id],
+            )
+            .map_err(|e| e.to_string())?;
         self.conn
             .execute(
                 &format!(

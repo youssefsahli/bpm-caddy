@@ -38,6 +38,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Dispensings with no prescriber are counted in the vigilance notice.
   - The return hint no longer invites a name into the register.
   - Methadone capsules: delivery is split by 7 days, not 14.
+- **A planning cell ending in a character like « € » crashed the app.**
+  It is now refused with the rest of what a cell cannot read.
+- **A new prescription date restarts the delivery count.** A renewed
+  prescription typed on a finished line printed « délivrance 3 sur 3 ». A
+  date that does not read is now refused aloud.
+- **Till: a blank float is no longer saved as 0 €**, which turned the
+  next day's float into a false surplus. The field starts from the last
+  float and must be filled.
+- Quality register: a new action clears the efficacy verdict, and a
+  verdict with no action does not close a non-conformity.
+- A shift with no end no longer reads as a gap for the rest of the day.
+- Campaign: a free-text dose labelled with a subject's code is counted
+  on screen as it is in the bilan and the export.
 - Two DFG results on the same day: the renal table now reads the last one
   entered, as biology does; it read the first, so a corrected 25 stayed 55.
 - Thrombocytopenia and anaemia readings now cover the LMWHs. Under

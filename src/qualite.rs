@@ -225,7 +225,8 @@ pub fn cannot_close(nc: &NonConformite, actions: &[Action]) -> Option<&'static s
         return Some("qual_close_need_actions");
     }
     match nc.effective {
-        1 => None,
+        // A verdict judges actions: with none, the finding must be written.
+        1 if !mine.is_empty() => None,
         2 => Some("qual_close_not_effective"),
         _ if mine.is_empty() && !nc.verification.trim().is_empty() => None,
         _ => Some("qual_close_need_check"),
@@ -536,6 +537,10 @@ mod tests {
         assert_eq!(cannot_close(&n, &acts), Some("qual_close_not_effective"));
         n.effective = 1;
         assert_eq!(cannot_close(&n, &acts), None);
+        // A verdict with no action judged nothing: the finding is due.
+        let mut lone = n.clone();
+        lone.verification.clear();
+        assert_eq!(cannot_close(&lone, &[]), Some("qual_close_need_check"));
         n.closed_on = "2026-03-11".to_owned();
         assert_eq!(cannot_close(&n, &acts), Some("qual_close_already"));
     }

@@ -42177,9 +42177,13 @@ impl App {
                                 let typed = script_date.trim().to_owned();
                                 if typed.is_empty() {
                                     next.prescribed_on.clear();
-                                } else if let Ok(iso) = db::parse_event_date(&typed, &session.today)
-                                {
-                                    next.prescribed_on = iso;
+                                } else {
+                                    // Refused aloud: the field kept the typed
+                                    // date while the sheet printed the old one.
+                                    match db::parse_event_date(&typed, &session.today) {
+                                        Ok(iso) => next.prescribed_on = iso,
+                                        Err(e) => session.error = Some(e),
+                                    }
                                 }
                             }
                         });
@@ -42275,6 +42279,13 @@ impl App {
                 if next.dispensed > was.dispensed {
                     next.dispensed_on = session.today.clone();
                 } else if next.dispensed < was.dispensed {
+                    next.dispensed_on.clear();
+                } else if crate::renewal::starts_over(
+                    &was.prescribed_on,
+                    &next.prescribed_on,
+                    &was.dispensed_on,
+                ) {
+                    next.dispensed = 0;
                     next.dispensed_on.clear();
                 }
                 match session
@@ -84307,6 +84318,10 @@ impl App {
                 .map(|c| crate::caisse::euros(c.float_kept))
                 .unwrap_or_default();
             session.caisse_opening_for.clone_from(&session.caisse_day);
+            // The float left tonight starts as the one left last night.
+            if session.caisse_float.trim().is_empty() {
+                session.caisse_float.clone_from(&session.caisse_opening);
+            }
         }
         // La phrase sous le titre annonce ce que l'écran fait. Sans
         // recette attendue, il ne fait plus la moitié de ce qu'elle
@@ -84992,6 +85007,10 @@ impl App {
         let refused = Self::caisse_unreadable(session);
         if let Some(what) = refused.filter(|_| save) {
             session.caisse_note = Some((true, trf("caisse_unreadable", what)));
+        } else if save && session.caisse_float.trim().is_empty() {
+            // Blank is not zero: tomorrow would open on 0 and read the
+            // drawer's float as a surplus.
+            session.caisse_note = Some((true, tr("caisse_float_missing").to_owned()));
         } else if save && !session.today.is_empty() && session.caisse_day > session.today {
             session.caisse_note = Some((true, tr("caisse_future").to_owned()));
         } else if save {

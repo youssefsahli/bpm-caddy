@@ -1098,7 +1098,7 @@ pub fn subject_dates<'a>(
         Means::Vaccine => done
             .doses
             .iter()
-            .filter(|d| d.code == s.code)
+            .filter(|d| row_key(&d.code, &d.label) == s.code)
             .map(|d| d.given_on.trim())
             .filter(|d| inside(d))
             .collect(),
