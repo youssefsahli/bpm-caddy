@@ -748,22 +748,26 @@ fn same_units(words: Vec<String>) -> Vec<String> {
 /// La première quantité d'un texte, ramenée à son unité de base : les
 /// masses en microgrammes, les unités et les millilitres à part.
 /// « 1 g » et « 1000 mg » sont la même ; « 5mg », « 2,5 mg » se lisent.
-/// A strength written bare ahead of its posology: the line opens with one
-/// number more than the posology held, whatever its shape — « 15 : 1 cp/j »
-/// for « 1 cp/j », « 2.5 : 1 0 1 » for « 1 0 1 ». Read against the line
-/// alone, « 8 6 8 0 » of insulin was a strength ahead of a grid, and
-/// « 2 : 1 0 1 » a grid of four.
+/// A strength written bare ahead of its posology. Against the posology
+/// held: the words before it (« 2.5 cp : 1 cp matin »), or one number more
+/// at the opening, whatever its shape (« 15 : 1 cp/j », « 2.5 : 1 0 1 »);
+/// « 8 6 8 0 » of insulin is no strength ahead of a grid. With no number
+/// held (the posology is often empty), the line's own shape decides.
 fn bare_strength(detail: &str, posology: &str) -> Option<f64> {
-    let opening = |text: &str| -> Vec<f64> {
-        dose_words(text)
-            .iter()
-            .map_while(|w| w.parse().ok())
-            .collect()
-    };
-    let line = opening(detail);
-    (line.len() == opening(posology).len() + 1)
-        .then(|| line.first().copied())
-        .flatten()
+    let opening =
+        |words: &[String]| -> Vec<f64> { words.iter().map_while(|w| w.parse().ok()).collect() };
+    let words = dose_words(detail);
+    let held = dose_words(posology);
+    if !held.is_empty() && words.len() > held.len() && words.ends_with(&held) {
+        return words.first()?.parse().ok();
+    }
+    let line = opening(&words);
+    let first = *line.first()?;
+    if opening(&held).is_empty() {
+        let a_take = first <= 2.0 && first.fract() == 0.0;
+        return (line.len() == 2 || (line.len() == 4 && !a_take)).then_some(first);
+    }
+    (line.len() == opening(&held).len() + 1).then_some(first)
 }
 
 /// Can this bare number be the held strength, in whichever unit it left
@@ -1148,6 +1152,31 @@ Vogalène lyoc si nausées
         assert_eq!(kind(&grid, "Eliquis 2.5 : 1 0 1"), Change::DoseChanged);
         assert_eq!(kind(&grid, "Eliquis 5 : 1 0 1"), Change::Kept);
         assert_eq!(kind(&grid, "Eliquis 2 : 1 0 1"), Change::DoseChanged);
+        // The posology held is often empty, or has no number.
+        for posology in ["", "matin et soir"] {
+            let bare = [Held {
+                name: "Eliquis",
+                dci: "apixaban",
+                class: "AOD",
+                posology,
+                strength: "5 mg",
+            }];
+            assert_eq!(
+                kind(&bare, "Eliquis 2.5 : 1 cp matin et soir"),
+                Change::DoseChanged
+            );
+        }
+        let plain = [Held {
+            name: "Eliquis",
+            dci: "apixaban",
+            class: "AOD",
+            posology: "1 cp matin et soir",
+            strength: "5 mg",
+        }];
+        assert_eq!(
+            kind(&plain, "Eliquis 2.5 cp : 1 cp matin et soir"),
+            Change::DoseChanged
+        );
         let four = [Held {
             name: "Eliquis",
             dci: "apixaban",

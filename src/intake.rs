@@ -720,11 +720,14 @@ fn phased(folded: &str) -> bool {
         words.push((&folded[st..], depth > 0));
     }
     words.iter().enumerate().any(|(at, (w, inside))| {
-        *w == "puis"
-            && !inside
-            && !words
-                .get(at + 1)
-                .is_some_and(|(next, _)| GESTURES.contains(next))
+        let next = words.get(at + 1).map(|(next, _)| *next);
+        !inside
+            && match *w {
+                "puis" => !next.is_some_and(|n| GESTURES.contains(&n)),
+                // « ensuite 1 cp », and not « adaptée ensuite ».
+                "ensuite" => next.is_some_and(|n| n.starts_with(|c: char| c.is_ascii_digit())),
+                _ => false,
+            }
     })
 }
 
@@ -969,14 +972,25 @@ fn placed(folded: &str) -> ([Option<Take>; 4], bool) {
             }
             // Une fourchette : « 1 à 2 comprimés », « 20 à 40 mg ». Ce
             // qui suit le second nombre décide des deux.
-            if is(j + 1, &["a", "ou"]) && number(j + 2).is_some() {
-                if is(j + 3, UNITS) {
+            //
+            // **Written with a sign, it is never read as a figure**:
+            // « 1 / 2 comprimé » is a half or a slip, « 1 - 2 cp » a range,
+            // « 2 x 1 cp » a product. Number by number, the last one won.
+            let sign = |k: usize| {
+                tokens.get(k).is_some_and(|t| {
+                    matches!(
+                        t.trim_matches(|c: char| c == ',' || c == '.'),
+                        "/" | "-" | "–" | "x" | "×" | "+" | "voire"
+                    )
+                })
+            };
+            if (is(j + 1, &["a", "ou"]) || sign(j + 1)) && number(j + 2).is_some() {
+                let unit = is(j + 3, UNITS);
+                if unit || sign(j + 1) {
                     pending = Some(None);
                     last = Some(None);
-                    i = j + 4;
-                } else {
-                    i = j + 3;
                 }
+                i = j + 3 + usize::from(unit);
                 continue;
             }
             if is(j + 1, STRENGTHS) {
@@ -984,6 +998,20 @@ fn placed(folded: &str) -> ([Option<Take>; 4], bool) {
                 continue;
             }
             if q > 0 && is(j + 1, UNITS) {
+                // « 1 comprimé et demi », « 1 cp 1/2 », « 1 cp x 2 »,
+                // « 1 cp + 1 cp »: the unit does not end the quantity.
+                let fraction = tokens
+                    .get(j + 2)
+                    .is_some_and(|t| t.contains(['/', '½', '¼', '¾']) && number(j + 2).is_some())
+                    && !is(j + 3, &["h", "heure", "heures", "min", "minutes"]);
+                let half = is(j + 2, &["et"]) && is(j + 3, &["demi"]);
+                let more = sign(j + 2) && number(j + 3).is_some();
+                if fraction || half || more {
+                    pending = Some(None);
+                    last = Some(None);
+                    i = j + if fraction { 3 } else { 4 };
+                    continue;
+                }
                 lost |= matches!(pending, Some(Some(_)));
                 pending = Some(Some(q));
                 last = Some(Some(q));
@@ -1059,7 +1087,26 @@ fn moments_first(folded: &str) -> Option<[Option<Take>; 4]> {
             marks[m.index()] = Some(Take { quarters: None });
         }
     }
+    // **Strict: figures only if every word is accounted for.** Reading what
+    // it could, this printed 1-1-1 for « Matin 1, midi 0, soir 1 » and the
+    // first dose for « 1 cp + 1 cp ». Whatever does not fit leaves `marks`.
+    let previous = |i: usize| {
+        tokens[..i]
+            .iter()
+            .rev()
+            .map(|p| clean(p))
+            .find(|p| !p.is_empty())
+    };
+    let part = |w: &str| {
+        w == "demi"
+            || w.contains(['½', '¼', '¾'])
+            || (w.contains('/') && w.chars().any(|c| c.is_ascii_digit()))
+    };
     let mut waiting: Vec<usize> = Vec::new();
+    // A word between a moment and the next that is no dose: « matin un
+    // demi comprimé, soir 1 comprimé ». The moment does not share the next
+    // one's dose then.
+    let mut stray = false;
     let mut bound = false;
     for (i, t) in tokens.iter().enumerate().skip(first_moment) {
         if let Some(m) = moment_of(t) {
@@ -1069,31 +1116,49 @@ fn moments_first(folded: &str) -> Option<[Option<Take>; 4]> {
                 }
                 continue;
             }
+            if stray && !waiting.is_empty() {
+                return Some(marks);
+            }
+            stray = false;
             doses[m.index()] = Some(Take { quarters: None });
             waiting.push(m.index());
             continue;
         }
-        let Some(q) = quarters(&clean(t)).filter(|q| *q > 0) else {
+        let word = clean(t);
+        let Some(q) = quarters(&word) else {
+            stray |= !matches!(
+                word.as_str(),
+                "" | "le" | "la" | "l" | "au" | "aux" | "a" | "et"
+            );
             continue;
         };
-        if waiting.is_empty() {
-            continue;
-        }
         let next = tokens.get(i + 1).map(|n| clean(n));
         let after = tokens.get(i + 2).map(|n| clean(n));
+        let third = tokens.get(i + 3).map(|n| clean(n));
         let next = next.as_deref();
         let after = after.as_deref();
+        // A strength, an hour, a delay, a duration: said so by what follows
+        // it, or by what stands before it.
+        let measure = next.is_some_and(|n| {
+            STRENGTHS.contains(&n)
+                || matches!(
+                    n,
+                    "h" | "heure" | "heures" | "min" | "minutes" | "jour" | "jours"
+                )
+        });
+        let aside = previous(i).is_some_and(|p| matches!(p.as_str(), "a" | "vers" | "pendant"));
+        // Past its dose, a phrase says nothing more that counts: another
+        // quantity is a sum, a phase, a second moment.
+        if waiting.is_empty() {
+            if (measure || aside) && !next.is_some_and(|n| UNITS.contains(&n)) {
+                continue;
+            }
+            return Some(marks);
+        }
         // A range, a mixed number: the phrase says more than one figure.
         let range = matches!(next, Some("a" | "ou")) && after.and_then(quarters).is_some();
         // « 1 1/2 », « 1 et demi », and past the unit « 1 comprimé et demi ».
-        // A fraction has its digits (« / » alone separates two moments),
-        // and « 1/2 heure avant » is a delay.
-        let part = |w: &str| {
-            w == "demi"
-                || w.contains(['½', '¼', '¾'])
-                || (w.contains('/') && w.chars().any(|c| c.is_ascii_digit()))
-        };
-        let third = tokens.get(i + 3).map(|n| clean(n));
+        // « / » alone separates two moments, « 1/2 heure avant » is a delay.
         let (rest, beyond) = if next.is_some_and(|n| UNITS.contains(&n)) {
             (after, third.as_deref())
         } else {
@@ -1107,12 +1172,7 @@ fn moments_first(folded: &str) -> Option<[Option<Take>; 4]> {
         }
         // What says this number is a dose: its unit, the moment it runs
         // into, or the end of the phrase right after its own moment.
-        let beside = tokens[..i]
-            .iter()
-            .rev()
-            .map(|p| clean(p))
-            .find(|p| !p.is_empty())
-            .is_some_and(|p| moment_of(&p).is_some());
+        let beside = previous(i).is_some_and(|p| moment_of(&p).is_some());
         let closes = match next {
             None => beside,
             Some(n) => {
@@ -1123,24 +1183,8 @@ fn moments_first(folded: &str) -> Option<[Option<Take>; 4]> {
             }
         };
         if !closes {
-            // A strength, an hour or a delay ahead of the dose: « le soir
-            // 20 mg 1 comprimé ». Only when something says this number is
-            // none: « 1 / 2 comprimé », « 1 - 2 cp », « 2 x 1 cp » are one
-            // quantity, and skipping the first printed the last. The dose
-            // must then be written before the next moment, with its unit.
-            let measure = next.is_some_and(|n| {
-                STRENGTHS.contains(&n)
-                    || matches!(
-                        n,
-                        "h" | "heure" | "heures" | "min" | "minutes" | "jour" | "jours"
-                    )
-            });
-            let aside = tokens[..i]
-                .iter()
-                .rev()
-                .map(|p| clean(p))
-                .find(|p| !p.is_empty())
-                .is_some_and(|p| matches!(p.as_str(), "a" | "vers" | "pendant"));
+            // « le soir 20 mg 1 comprimé »: the dose is still to come,
+            // with its unit, before the next moment.
             let dose_follows = tokens[i + 1..]
                 .iter()
                 .map(|t| clean(t))
@@ -1151,11 +1195,13 @@ fn moments_first(folded: &str) -> Option<[Option<Take>; 4]> {
             if (measure || aside) && dose_follows {
                 continue;
             }
-            return bound.then_some(marks);
+            return Some(marks);
         }
+        // « midi 0 »: nothing at that moment.
         for m in waiting.drain(..) {
-            doses[m] = Some(Take { quarters: Some(q) });
+            doses[m] = (q > 0).then_some(Take { quarters: Some(q) });
         }
+        stray = false;
         bound = true;
     }
     bound.then_some(doses)
@@ -1364,7 +1410,53 @@ mod tests {
             grid("le matin 1 cp 1/2 heure avant le repas"),
             [Some(4), None, None, None]
         );
+        // A phase is not one day's grid.
+        assert_ne!(
+            read("2 cp le matin pendant 7 jours, ensuite 1 cp le matin").kind,
+            Kind::Placed
+        );
+        // Zero is a figure: nothing at that moment.
+        assert_eq!(
+            grid("Matin 1, midi 0, soir 1"),
+            [Some(4), None, Some(4), None]
+        );
+        assert_eq!(grid("matin 0, midi 0, soir 1"), [None, None, Some(4), None]);
+        assert_eq!(
+            grid("matin : 1 cp, midi : 0, soir : 1 cp"),
+            [Some(4), None, Some(4), None]
+        );
         // Not a dose, or not one figure: the box stays a mark.
+        for unsure in [
+            "le matin un demi comprimé, le soir 1 comprimé",
+            "le matin un comprimé et le soir 2 comprimés",
+            "matin : rien, soir : 1 cp",
+            "matin 45 midi 30 soir 20",
+            "le matin 1 cp + 1 cp",
+            "matin 1 cp + 1/2 cp, soir 1 cp",
+            "le soir 1 cp ou 2 cp",
+            "le soir 1 cp à 2 cp",
+            "le matin 1 cp x 2",
+            "le soir 1 cp en alternance avec 1/2 cp",
+            "matin 1 cp, 2 cp à midi, 1 cp le soir",
+            "matin 1 / 2 cp, soir 1 cp",
+            "le matin 1 x 2 cp, le soir 1 cp",
+            "matin 1 - 2 cp, soir 1 cp",
+            "matin 1 voire 2 cp, soir 1 cp",
+            "1 / 2 comprimé le soir",
+            "1 - 2 comprimés le soir",
+            "1 voire 2 cp le soir",
+            "1 comprimé et demi le soir",
+            "1 cp 1/2 le soir",
+            "1 + 1/2 cp le soir",
+            "1 cp x 3 matin midi soir",
+            "1 cp x 2 matin et soir",
+        ] {
+            assert!(
+                grid(unsure).iter().all(Option::is_none),
+                "{unsure}: {:?}",
+                grid(unsure)
+            );
+        }
         for blank in [
             "matin et soir pendant 7 jours",
             "le soir pendant 7",

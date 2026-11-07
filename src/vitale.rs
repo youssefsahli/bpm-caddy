@@ -394,6 +394,10 @@ fn names_around(
             (true, true) => Some(near(&before) <= near(&after)),
             (true, false) => Some(true),
             (false, true) => Some(false),
+            // One run each side: two persons' halves make no one's name.
+            (false, false) if before.len() == 1 && after.len() == 1 => {
+                Some(near(&before) <= near(&after))
+            }
             (false, false) => None,
         };
         if let Some(keep_before) = keep_before {
