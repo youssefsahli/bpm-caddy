@@ -191,6 +191,34 @@ pub fn beneficiaries(raw: &[u8], this_year: u32) -> Vec<Beneficiary> {
         }
         _ => Side::Either,
     };
+    // **Which side of its NIR a date sits, read once for the card too.**
+    // A child under the holder's NIR found the holder's date in reach: it
+    // agrees with that NIR, being the same one, and a girl born in 2015
+    // came back as 1955. A card that does not say keeps the date of its
+    // first person only; a blank is typed, a wrong age stays for years.
+    let date_side = match (found_at.first(), found_at.last()) {
+        (Some(&first), Some(&last)) if found_at.len() > 1 => {
+            let nir = |at: usize| chars[at..at + 15].iter().collect::<String>();
+            let whole = 0..chars.len();
+            let before = !birth_around(
+                &chars,
+                first,
+                whole.clone(),
+                &nir(first),
+                this_year,
+                Side::Before,
+            )
+            .is_empty();
+            let after =
+                !birth_around(&chars, last, whole, &nir(last), this_year, Side::After).is_empty();
+            match (before, after) {
+                (true, false) => Some(Side::Before),
+                (false, true) => Some(Side::After),
+                _ => None,
+            }
+        }
+        _ => Some(Side::Either),
+    };
     let mut out: Vec<Beneficiary> = Vec::new();
     for (n, &i) in found_at.iter().enumerate() {
         let window: String = chars[i..i + 15].iter().collect();
@@ -198,7 +226,11 @@ pub fn beneficiaries(raw: &[u8], this_year: u32) -> Vec<Beneficiary> {
         let lo = n.checked_sub(1).map_or(0, |p| found_at[p] + 15);
         let hi = found_at.get(n + 1).copied().unwrap_or(chars.len());
         let (surname, given) = names_around(&chars, i, lo..hi, side);
-        let birth_date = birth_around(&chars, i, lo..hi, &window, this_year);
+        let birth_date = match date_side {
+            Some(known) => birth_around(&chars, i, lo..hi, &window, this_year, known),
+            None if n == 0 => birth_around(&chars, i, lo..hi, &window, this_year, Side::Either),
+            None => String::new(),
+        };
         let found = Beneficiary {
             nir: window,
             surname,
@@ -312,9 +344,36 @@ fn names_around(
         Side::After => *k >= at + 15,
         Side::Either => true,
     });
+    // Measured from the NIR's edge, not from where a run starts: from its
+    // start, a long name before the NIR weighed more than a short one after.
+    let gap = |(k, s): &(usize, String)| {
+        if *k < at {
+            at.saturating_sub(k + s.chars().count())
+        } else {
+            k.saturating_sub(at + 15)
+        }
+    };
+    // Both names of a person sit on one side: « LEFEBVRE JEAN-PIERRE <NIR>
+    // CPAM MONTPELLIER » is not « JEAN-PIERRE CPAM MONTPELLIER ».
+    if matches!(side, Side::Either) {
+        let mut before: Vec<usize> = runs.iter().filter(|r| r.0 < at).map(gap).collect();
+        let mut after: Vec<usize> = runs.iter().filter(|r| r.0 >= at).map(gap).collect();
+        before.sort_unstable();
+        after.sort_unstable();
+        let near = |g: &[usize]| g.iter().take(2).sum::<usize>();
+        let keep_before = match (before.len() >= 2, after.len() >= 2) {
+            (true, true) => Some(near(&before) <= near(&after)),
+            (true, false) => Some(true),
+            (false, true) => Some(false),
+            (false, false) => None,
+        };
+        if let Some(keep_before) = keep_before {
+            runs.retain(|r| (r.0 < at) == keep_before);
+        }
+    }
     // Nearest to the NIR first: the card's own fields sit against it,
     // and whatever else is in the file is further away.
-    runs.sort_by_key(|(k, _)| at.abs_diff(*k));
+    runs.sort_by_key(|r| gap(r));
     runs.truncate(2);
     // …then back into the order the card wrote them.
     runs.sort_by_key(|(k, _)| *k);
@@ -343,6 +402,7 @@ fn birth_around(
     bounds: std::ops::Range<usize>,
     nir: &str,
     this_year: u32,
+    side: Side,
 ) -> String {
     let Some((year, month)) = nir_birth(nir, this_year) else {
         return String::new();
@@ -354,6 +414,12 @@ fn birth_around(
     // même mois de la même année donnait sinon son jour.
     let start = at.saturating_sub(96).max(bounds.start);
     let end = (at + 15 + 96).min(chars.len()).min(bounds.end.max(at + 15));
+    // Never the NIR's own digits: they are no date, on either side.
+    let (start, end) = match side {
+        Side::Before => (start, at),
+        Side::After => (at + 15, end),
+        Side::Either => (start, end),
+    };
     let text: String = chars[start..end].iter().collect();
     let digits: Vec<char> = text.chars().collect();
     for k in 0..digits.len().saturating_sub(7) {
@@ -404,6 +470,10 @@ pub struct CardRead {
     pub atr: String,
     /// The concatenated data of every command that returned some.
     pub data: Vec<u8>,
+    /// Commands the reader could not carry out: a card pulled midway
+    /// leaves a shorter list that looks like a whole one. Status words
+    /// are not counted, a script may probe.
+    pub failed: usize,
     /// One line per command: what was sent and what came back.
     pub log: Vec<String>,
 }
@@ -431,6 +501,7 @@ pub fn read_card(reader_filter: &str, script: &[Vec<u8>]) -> Result<CardRead, St
         readers: names.clone(),
         atr: String::new(),
         data: Vec::new(),
+        failed: 0,
         log: Vec::new(),
     };
     let filter = reader_filter.trim().to_lowercase();
@@ -458,7 +529,10 @@ pub fn read_card(reader_filter: &str, script: &[Vec<u8>]) -> Result<CardRead, St
                     .push(format!("> {}\n< {} [{}]", hex(command), hex(body), hex(sw)));
                 out.data.extend_from_slice(body);
             }
-            Err(e) => out.log.push(format!("> {}\n! {e}", hex(command))),
+            Err(e) => {
+                out.failed += 1;
+                out.log.push(format!("> {}\n! {e}", hex(command)));
+            }
         }
     }
     Ok(out)
@@ -622,6 +696,35 @@ mod tests {
         assert_eq!(found.len(), 2);
         assert_eq!(found[1].birth_date, "1955-08-17");
         assert_eq!(found[0].birth_date, "", "{:?}", found[0]);
+    }
+
+    /// A child under the holder's NIR: the holder's date agrees with that
+    /// NIR and sits in the child's reach, and must not become hers.
+    #[test]
+    fn a_child_on_a_parents_number_does_not_take_the_parents_date() {
+        let after = b"\x00DUPONT\x00JEAN\x00155087511600125\x0003081955\x00DUPONT\x00LUCIE\x00155087511600125\x0012032015\x00";
+        let found = beneficiaries(after, 2026);
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[0].birth_date, "1955-08-03");
+        assert_eq!(found[1].given, "LUCIE");
+        assert_eq!(found[1].birth_date, "", "{:?}", found[1]);
+        let before = b"\x0003081955\x00DUPONT\x00JEAN\x00155087511600125\x0012032015\x00DUPONT\x00LUCIE\x00155087511600125\x00";
+        let found = beneficiaries(before, 2026);
+        assert_eq!(found[0].birth_date, "1955-08-03");
+        assert_eq!(found[1].birth_date, "", "{:?}", found[1]);
+    }
+
+    /// Both names on one side of the NIR, whatever else the file holds.
+    #[test]
+    fn the_two_names_come_from_one_side_of_the_number() {
+        let raw = b"\x00LEFEBVRE\x00JEAN-PIERRE\x00155087511600125\x00CPAM MONTPELLIER\x00";
+        let found = beneficiaries(raw, 2026);
+        assert_eq!(found[0].surname, "LEFEBVRE");
+        assert_eq!(found[0].given, "JEAN-PIERRE");
+        let raw = b"\x00CAISSE\x00155087511600125\x00DUPONT\x00JEAN\x00";
+        let found = beneficiaries(raw, 2026);
+        assert_eq!(found[0].surname, "DUPONT");
+        assert_eq!(found[0].given, "JEAN");
     }
 
     /// **Né il y a cent ans** : le NIR dit « 25 », la carte écrit 1925 en

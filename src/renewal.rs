@@ -76,6 +76,20 @@ impl Prescription {
         self.renewals.saturating_add(1)
     }
 
+    /// What remains of the prescription from this delivery, in days, its
+    /// last day included. `duration_days` is what one delivery covers: read
+    /// as the whole length, a running prescription looked finished after
+    /// its first month and a late box was never said to be late.
+    pub fn qsp_from(&self, delivered_on: &str) -> Option<u32> {
+        if !self.is_dated() {
+            return None;
+        }
+        let whole = i64::from(self.duration_days) * i64::from(self.steps());
+        let ends_on = add_days(self.prescribed_on.trim(), whole - 1)?;
+        let left = crate::date::days_between(delivered_on.trim(), &ends_on)? + 1;
+        u32::try_from(left).ok().filter(|days| *days > 0)
+    }
+
     /// Y a-t-il de quoi calculer quoi que ce soit ?
     pub fn is_dated(&self) -> bool {
         !self.prescribed_on.trim().is_empty() && self.duration_days > 0
@@ -383,6 +397,26 @@ impl Viz {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_qsp_of_a_delivery_runs_to_the_end_of_the_prescription() {
+        let p = Prescription {
+            prescribed_on: "2026-08-01".to_owned(),
+            duration_days: 30,
+            renewals: 5,
+            ..Prescription::default()
+        };
+        // 180 days from 01/08: the last is 27/01/2027.
+        assert_eq!(p.qsp_from("2026-09-01"), Some(149));
+        assert_eq!(p.qsp_from("2027-01-27"), Some(1));
+        assert_eq!(p.qsp_from("2027-01-28"), None);
+        assert_eq!(p.qsp_from(""), None);
+        let undated = Prescription {
+            duration_days: 30,
+            ..Prescription::default()
+        };
+        assert_eq!(undated.qsp_from("2026-09-01"), None);
+    }
 
     #[test]
     fn a_later_date_past_the_last_delivery_is_a_new_prescription() {

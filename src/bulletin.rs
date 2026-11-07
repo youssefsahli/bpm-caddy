@@ -282,8 +282,15 @@ fn latin1(text: &str) -> Vec<u8> {
             '”' => 0x8E,
             '‘' => 0x8F,
             '’' => 0x90,
+            'Ł' => 0x95,
             'Œ' => 0x96,
+            'Š' => 0x97,
+            'Ÿ' => 0x98,
+            'Ž' => 0x99,
+            'ł' => 0x9B,
             'œ' => 0x9C,
+            'š' => 0x9D,
+            'ž' => 0x9E,
             '€' => 0xA0,
             c if (0xA1..256).contains(&(c as u32)) || (c as u32) < 0x80 => c as u8,
             _ => b'?',
@@ -583,6 +590,10 @@ mod tests {
         // PDFDocEncoding, not Latin-1: « œ », the curly apostrophe and a
         // no-break space are the three a French address carries.
         assert_eq!(latin1("Sacré-Cœur"), b"Sacr\xe9-C\x9cur".to_vec());
+        // The forms' own /Differences table, read from all five PDFs.
+        assert_eq!(latin1("HAŸ"), b"HA\x98".to_vec());
+        assert_eq!(latin1("Šimić"), b"\x97imi?".to_vec());
+        assert_eq!(latin1("Łž"), b"\x95\x9e".to_vec());
         assert_eq!(latin1("l’Église"), b"l\x90\xc9glise".to_vec());
         assert_eq!(
             latin1("34000\u{a0}Montpellier"),

@@ -80,12 +80,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   doubled take and a named product of another class on the card (Actiskénan for Skenan) no
   longer read as kept.
 - **Nutrition.** The adult criteria no longer give a verdict under 18.
+- **Vitale card.** A child under the holder's number no longer takes the
+  holder's birth date, both names come from one side of the number, and a
+  read cut short says the list may be incomplete.
+- **Scanning into the register.** Every scan replaces the lot and expiry,
+  a lot typed over drops the scanned expiry, and the expiry is shown, in
+  alert when past.
+- **Coverage from a file.** The prescribed length runs to the end of the
+  prescription, renewals included: a missed box on a running prescription
+  reads as overdue, not finished. A treatment with no delivery date says so
+  instead of counting from today. Sprays and drops « par narine », « dans
+  les deux narines », « œil » no longer count half the doses.
+- **Prescribers.** Picking a namesake writes the first name, so two
+  Dr Morel stay two for the register's watch. A stray opening quote in a
+  directory file no longer swallows the lines after it.
+- **Compression.** With no size entered the renewal says to give it,
+  instead of two pairs covered.
+- **Liaison sheet.** The patient's identity is unticked when another file
+  opens.
+- **Forms and barcodes.** Ÿ, Š, Ž, Ł print on the official forms; a CIP13
+  from a scanner sending the EAN-13 prefix reads.
 - **Backups and copies.**
   - Compacting a copy no longer needs the file's size in memory: one
     deleted piece could stop the daily copy of a large pieces file, and
     a compaction failure now keeps the copy.
   - A base that held a register no longer opens with it missing, even
-    with no copy beside it.
+    with no copy beside it; an empty `.registre-perdu` file beside the
+    base is the deliberate way past, when it is lost for good.
   - A failed daily copy shows in the status bar, and a register or pieces
     file with content and no copy shows in Options.
   - « Copier la base » and the export no longer recreate a vanished base

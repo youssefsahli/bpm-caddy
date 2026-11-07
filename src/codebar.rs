@@ -171,7 +171,7 @@ pub fn read_with(typed: &str, today: &str, separators: &[char]) -> Option<Scanne
     let raw = typed.trim_matches(|c: char| c.is_whitespace() || c == '\r' || c == '\n');
     // Certaines douchettes préfixent l'identifiant de symbologie AIM.
     // Il est reconnu et **jeté**, jamais lu comme une donnée.
-    let body = ["]d2", "]C1", "]e0", "]Q3"]
+    let body = ["]d2", "]C1", "]e0", "]E0", "]Q3"]
         .iter()
         .find_map(|p| raw.strip_prefix(p))
         .unwrap_or(raw);

@@ -156,9 +156,10 @@ pub fn per_day(posology: &str) -> Option<f64> {
     }
     // « 1 pulvérisation dans chaque narine matin et soir » : quatre par
     // jour, et le flacon durait le double à l'écran.
+    // Whatever the wording: « par narine », « dans les deux narines », « œil ».
     if words
-        .windows(2)
-        .any(|w| w[0] == "chaque" && matches!(w[1], "narine" | "oeil"))
+        .iter()
+        .any(|w| matches!(*w, "narine" | "narines" | "oeil" | "œil" | "yeux"))
     {
         return None;
     }
@@ -1032,6 +1033,12 @@ mod tests {
 
     #[test]
     fn a_dose_per_nostril_counts_nothing() {
+        assert_eq!(per_day("2 pulvérisations par narine matin et soir"), None);
+        assert_eq!(
+            per_day("1 pulvérisation dans les deux narines matin et soir"),
+            None
+        );
+        assert_eq!(per_day("1 goutte dans chaque œil matin et soir"), None);
         assert_eq!(
             per_day("1 pulvérisation dans chaque narine matin et soir"),
             None

@@ -69,6 +69,21 @@ impl Prescriber {
         format!("Dr {name}")
     }
 
+    /// What a pick writes on the line: [`Self::short`], with the first name
+    /// when the directory holds a namesake. Two Dr Morel written alike are
+    /// one prescriber to the register's watch, which counts them by name.
+    pub fn line_name<'a>(&self, directory: impl IntoIterator<Item = &'a Prescriber>) -> String {
+        let namesake = directory.into_iter().any(|o| {
+            o.last.trim().eq_ignore_ascii_case(self.last.trim())
+                && !o.first.trim().eq_ignore_ascii_case(self.first.trim())
+        });
+        if namesake && !self.last.trim().is_empty() && !self.first.trim().is_empty() {
+            format!("{} {}", self.short(), self.first.trim())
+        } else {
+            self.short()
+        }
+    }
+
     /// Ce qui s'affiche dans une liste de choix : de quoi distinguer
     /// deux homonymes, ce qu'un nom seul ne fait pas.
     pub fn label(&self) -> String {
@@ -275,7 +290,7 @@ fn cells_of(line: &str, sep: char) -> Vec<String> {
             out.push(std::mem::take(&mut cell));
             at_start = true;
             continue;
-        } else if c == '"' && at_start {
+        } else if c == '"' && at_start && closes(chars.clone(), sep) {
             quoted = true;
         } else {
             cell.push(c);
@@ -284,6 +299,23 @@ fn cells_of(line: &str, sep: char) -> Vec<String> {
     }
     out.push(cell);
     out
+}
+
+/// Does the quote opening a field close on a field's edge? One that does
+/// not is a literal: read as an opening, it ran across the following lines
+/// up to the next quote of the file, and the practitioners in between left
+/// the directory uncounted.
+fn closes(mut rest: impl Iterator<Item = char>, sep: char) -> bool {
+    while let Some(c) = rest.next() {
+        if c == '"' {
+            match rest.next() {
+                Some('"') => {}
+                None => return true,
+                Some(next) => return next == sep || matches!(next, '\n' | '\r'),
+            }
+        }
+    }
+    false
 }
 
 /// Replie un en-tête de colonne pour le comparer.
@@ -449,7 +481,7 @@ fn records(text: &str) -> Vec<String> {
                 at_start = true;
                 continue;
             }
-            '"' if at_start => quoted = true,
+            '"' if at_start && closes(chars.clone(), sep) => quoted = true,
             _ => {}
         }
         at_start = c == sep;
@@ -667,6 +699,14 @@ mod tests {
         };
         assert_eq!(only_first.short(), "Alice");
         assert_eq!(Prescriber::default().short(), "");
+        let morel = |first: &str| Prescriber {
+            last: "Morel".to_owned(),
+            first: first.to_owned(),
+            ..Prescriber::default()
+        };
+        let both = [morel("Jean"), morel("Alice")];
+        assert_eq!(both[0].line_name(&both), "Dr Morel Jean");
+        assert_eq!(both[0].line_name(&both[..1]), "Dr Morel");
     }
 
     /// **Rien n'est livré.** L'annuaire appartient à l'officine : une

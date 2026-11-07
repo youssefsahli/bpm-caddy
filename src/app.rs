@@ -13098,6 +13098,7 @@ impl Session {
         // Demo/e2e hook: replay a captured dump, so the whole path —
         // parsing, matching, the picker — is exercised without a reader
         // and without a real patient's card.
+        let mut failed = 0;
         let raw = match std::env::var("BPM_CADDY_VITALE_DUMP") {
             Ok(path) => {
                 std::fs::read(&path).map_err(|e| trf("vitale_dump_error", format!("{path} : {e}")))
@@ -13150,6 +13151,7 @@ impl Session {
                         note.push_str(line);
                     }
                     self.vitale_note = Some((false, note));
+                    failed = r.failed;
                     r.data
                 }),
                 Err(e) => Err(e),
@@ -13170,6 +13172,8 @@ impl Session {
                 None => head,
             };
             self.vitale_note = Some((true, note));
+        } else if failed > 0 {
+            self.vitale_note = Some((true, tr("vitale_partial").to_owned()));
         } else {
             self.vitale_note = None;
         }
@@ -55355,7 +55359,6 @@ impl App {
     /// Les lignes de la couverture reprises du dossier ouvert : nom et
     /// dosage, posologie, dernière délivrance, durée, unités par boîte.
     fn couverture_rows_from_file(session: &mut Session) {
-        let today_fr = db::format_french_date(&session.today);
         // Le dossier donne le nom, le dosage, la posologie, le jour de
         // la dernière délivrance et la durée ; la quantité de la boîte
         // reste à taper.
@@ -55375,11 +55378,9 @@ impl App {
                     .find(|(id, _)| *id == d.id)
                     .map(|(_, s)| s.clone())
                     .unwrap_or_default();
-                let date = if script.dispensed_on.trim().is_empty() {
-                    today_fr.clone()
-                } else {
-                    db::format_french_date(&script.dispensed_on)
-                };
+                // No delivery on file stays unknown: today's date made the
+                // sheet print a box covered from a day nobody delivered it.
+                let date = db::format_french_date(&script.dispensed_on);
                 let stored = session
                     .patient_box_units
                     .iter()
@@ -55398,11 +55399,10 @@ impl App {
                     patient_id: session.viewing.as_ref().map(|p| p.id),
                     posology: session.dose_of(d.id).to_owned(),
                     date,
-                    qsp: if script.duration_days > 0 {
-                        script.duration_days.to_string()
-                    } else {
-                        String::new()
-                    },
+                    qsp: script
+                        .qsp_from(&script.dispensed_on)
+                        .map(|days| days.to_string())
+                        .unwrap_or_default(),
                 }
             })
             .collect();
@@ -58851,9 +58851,9 @@ impl App {
         if f.treats_for != open.as_ref().map(|o| o.0) {
             f.treats_for = open.as_ref().map(|o| o.0);
             f.treats = treats.iter().map(|(id, _)| *id).collect();
-            if open.is_none() {
-                f.patient = false;
-            }
+            // The identity is asked for again: a message written for one
+            // file must not go out under the next one's name.
+            f.patient = false;
         }
         motif::panel(ui, body, Some(tr("liaison_title")), |ui| {
             ui.spacing_mut().scroll.floating = false;
@@ -64740,6 +64740,10 @@ impl App {
                         if scan.lost_focus() && ui.ctx().input(|i| i.key_pressed(egui::Key::Enter))
                         {
                             let typed = std::mem::take(&mut session.stup_scan);
+                            // Whatever this scan reads, the last box's lot
+                            // and expiry do not stay on the next line.
+                            session.stup_new_lot.clear();
+                            session.stup_new_expiry.clear();
                             match crate::codebar::read_with(
                                 typed.trim(),
                                 &session.today,
@@ -64769,10 +64773,25 @@ impl App {
                                             } else {
                                                 "stup_scan_known"
                                             };
-                                            session.stup_note = Some((
-                                                key != "stup_scan_known",
-                                                trf(key, s.code.clone()),
-                                            ));
+                                            let mut note = trf(key, s.code.clone());
+                                            // The line carries this date: it
+                                            // is said, and an expired box
+                                            // is not simply « reconnue ».
+                                            let expired = !s.expiry.is_empty()
+                                                && s.expiry.as_str() < session.today.as_str();
+                                            if !s.expiry.is_empty() {
+                                                note.push(' ');
+                                                note.push_str(&trf(
+                                                    if expired {
+                                                        "stup_scan_expired"
+                                                    } else {
+                                                        "stup_scan_expiry"
+                                                    },
+                                                    db::format_french_date(&s.expiry),
+                                                ));
+                                            }
+                                            session.stup_note =
+                                                Some((key != "stup_scan_known" || expired, note));
                                             // Une boîte scannée apporte son lot
                                             // et sa péremption : ils sont
                                             // dessus, et les retaper est une
@@ -67688,7 +67707,9 @@ impl App {
                                                 // Ce qui s'écrit sur la ligne est
                                                 // court ; ce qui s'affiche pour
                                                 // choisir distingue deux homonymes.
-                                                .map(|p| (p.short(), p.label()))
+                                                .map(|p| {
+                                                    (p.line_name(&session.prescribers), p.label())
+                                                })
                                                 .filter(|(short, _)| short.trim() != typed)
                                                 .collect();
                                             session.prescriber_hits =
@@ -67760,8 +67781,11 @@ impl App {
                                     )
                                     .on_hover_text(tr("stup_lot_tooltip"));
                                     // Tapé ici, il appartient au produit ouvert.
+                                    // The expiry was the scanned box's: it
+                                    // does not follow onto another lot.
                                     if lot.changed() {
                                         session.stup_lot_for = session.stup_open;
+                                        session.stup_new_expiry.clear();
                                     }
                                     focus_here |= lot.has_focus();
                                     // **On ne reçoit pas des unités, on
@@ -67857,8 +67881,11 @@ impl App {
                                     )
                                     .on_hover_text(tr("stup_lot_tooltip"));
                                     // Tapé ici, il appartient au produit ouvert.
+                                    // The expiry was the scanned box's: it
+                                    // does not follow onto another lot.
                                     if lot.changed() {
                                         session.stup_lot_for = session.stup_open;
+                                        session.stup_new_expiry.clear();
                                     }
                                     focus_here |= lot.has_focus();
                                 }
@@ -73121,7 +73148,11 @@ impl App {
                             .collect();
                         let r =
                             compression::renewal(&history, &state.class, state.size.trim(), &today);
-                        let text = if r.allowed > 0 {
+                        // No size, nothing delivered matches: that is not
+                        // a full right to two pairs.
+                        let text = if state.size.trim().is_empty() {
+                            tr("conseil_renewal_size").to_owned()
+                        } else if r.allowed > 0 {
                             trn("conseil_renewal_ok", &[&r.allowed, &r.half_year, &r.year])
                         } else {
                             trn(
@@ -73136,7 +73167,8 @@ impl App {
                                 ],
                             )
                         };
-                        Self::conseil_line(ui, &text, r.allowed == 0);
+                        let doubt = r.allowed == 0 || state.size.trim().is_empty();
+                        Self::conseil_line(ui, &text, doubt);
                     }
                     Self::conseil_note(ui, tr("conseil_renewal_rule"));
 
